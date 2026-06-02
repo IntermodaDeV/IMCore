@@ -1,9 +1,10 @@
-import UsersScreen from './Security/UsersScreen'
+
 import HomeScreen from './AdmSys/HomeScreen'
 import NotFoundScreen from './AdmSys/NotFoundScreen'
-import AccessScreen from './Security/AccessScreen'
-import MenuScreen from './Security/MenuScreen'
-import RolesScreen from './Security/RolesScreen'
+import AccessScreen from './Security/Access/AccessScreen'
+import MenuScreen from './Security/Menu/MenuScreen'
+import RolesScreen from './Security/Roles/RolesScreen'
+import UsersScreen from './Security/Users/UsersScreen'
 
 export const SCREENS = {
   inicio: HomeScreen,

@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO } from './security.types'
+import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO, UsersSettingsDTO } from './security.types'
 
 const schema = 'Security'
 export const securityService = {
@@ -12,4 +12,5 @@ export const securityService = {
 
   getAccess: () => httpClient.get<ExecutionResponse<AccessDTO[]>>(`${schema}/Access`),
   getRoles: () => httpClient.get<ExecutionResponse<RolesDTO[]>>(`${schema}/Roles`),
+  saveUsersSettings: (data: UsersSettingsDTO[]) => httpClient.post<ExecutionResponse<UsersSettingsDTO[]>>(`${schema}/UserSettings`, data),
 }

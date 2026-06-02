@@ -46,7 +46,7 @@ export default function LoginScreen() {
       const user = JSON.parse(response.InfoUser)
       await refreshMenu(user.Code)
       login(user)
-      navigation.navigate('Main' as never)
+      navigation.navigate('Loading' as never)
 
     } catch (error) {
 

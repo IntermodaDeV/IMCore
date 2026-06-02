@@ -5,9 +5,9 @@ import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import LoginScreen from './src/screens/AdmSys/LoginScreen'
 import DrawerNavigator from './src/navigation/DrawerNavigator'
-import BillFormScreen from './src/screens/Gira/Bills/BillsFormScreen'
 import { AuthProvider, useAuth } from './src/context/AuthContext'
 import { MenuProvider } from './src/context/MenuContext'
+import LoadingScreen from './src/components/Skeletons/LoadingScreen'
 
 
 function Root() {
@@ -39,18 +39,22 @@ function Root() {
 
             <Stack.Screen name="Login" component={LoginScreen} />
 
-            <Stack.Screen
-              name="gasto_form"
-              component={BillFormScreen}
-              options={{
-                headerShown: true,
-                title: 'Nuevo gasto',
-                headerStyle: {
-                  backgroundColor: navColors.background,
-                },
-                headerTintColor: navColors.text,
-              }}
-            />
+            <Stack.Screen name="Loading">
+              {({ route, navigation }) => (
+                <LoadingScreen
+                  text="Iniciando sesión..."
+                  duration={1000}
+                  onFinish={() => {
+                    const next = (route.params as any)?.next || 'Main'
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: next }],
+                    })
+                  }}
+                />
+              )}
+            </Stack.Screen>
+
           </Stack.Navigator>
             <View
               position="absolute"

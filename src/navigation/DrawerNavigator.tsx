@@ -1,15 +1,17 @@
+import * as Burnt from 'burnt'
 import React, { useState } from 'react'
 import { TouchableOpacity } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
 import { createDrawerNavigator, DrawerContentScrollView, DrawerContentComponentProps } from '@react-navigation/drawer'
-import { Button, Text, View, useTheme, useThemeName, Spinner } from 'tamagui'
+import { Button, Text, View, useTheme, useThemeName, YStack, XStack } from 'tamagui'
 import { useNavigation } from '@react-navigation/native'
 import { SCREENS } from '../screens/screens'
 import { useMenu } from '../context/MenuContext'
-import { MenuDTO } from '../api/modules/security/security.types'
+import { MenuDTO, UsersSettingsDTO } from '../api/modules/security/security.types'
 import { useAuth } from '../context/AuthContext'
-import LoadingScreen from '../components/Skeletons/LoadingScreen'
+import { SkeletonBox } from '../components/Skeletons/SkeletonList'
+import { securityService } from '../api/modules/security/security.service'
 
 const Drawer = createDrawerNavigator()
 
@@ -69,7 +71,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const { refreshMenu } = useMenu()
   const [refreshing, setRefreshing] = useState(false)
   const initials =`${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
-
+  const theme = useTheme()
   const MENU = buildMenuTree(props.menu ?? [])
 
   return (
@@ -106,7 +108,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
             }
           }}
         >
-          <LucideIcons.RotateCw size={16} color="#6b7280" />
+          <LucideIcons.RotateCw size={16} color={theme.primary?.val}  />
         </TouchableOpacity>
 
         <View flexDirection="row" alignItems="center" gap={12}>
@@ -146,13 +148,23 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
         </View>
       </View>
 
-      {refreshing ? (
-        <LoadingScreen />
-      ) : (
-        <>
+      <View flex={1}>
+        {refreshing ? (
+          <YStack padding={26} gap="$6" marginTop={20}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <XStack key={i} alignItems="center" gap="$3">
+                <SkeletonBox width={25} height={25} radius={6} />
+                <SkeletonBox width={190} height={25} />
+              </XStack>
+            ))}
+          </YStack>
+        ) : (
           <DrawerContentScrollView
             {...props}
-            contentContainerStyle={{ paddingTop: 12 }}
+            contentContainerStyle={{
+              paddingTop: 12,
+              paddingBottom: 20,
+            }}
           >
             <View>
               {MENU.map((item, index) => (
@@ -164,8 +176,8 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
               ))}
             </View>
           </DrawerContentScrollView>
-        </>
-      )}
+        )}
+      </View>
 
       <View paddingHorizontal={16} paddingTop={10} paddingBottom={6}>
         <Button
@@ -329,12 +341,35 @@ function TreeItem({
 function ThemeToggle() {
   const themeName = useThemeName()
   const isDark = themeName === 'dark'
+  const { user } = useAuth()
 
   const { setTheme } = useAuth()
 
+  const changeTheme = async () => {
+    let Data: UsersSettingsDTO = {
+      Id: user?.Id ?? 0,
+      Code: user?.Code ?? '',
+      Theme: isDark ? 'light' : 'dark',
+      Modified_By: user?.Code ?? '',
+      Status_Id: 1,
+      Options: 1,
+    }
+
+    const response = await securityService.saveUsersSettings([Data])
+    if(response.Success){
+      setTheme(isDark ? 'light' : 'dark')
+    }else{
+      Burnt.toast({
+        title: 'Error al guardar la configuración del tema de la aplicación',
+        message: '',
+        preset: 'error',
+      })
+    }
+  }
+
   return (
     <TouchableOpacity
-      onPress={() => setTheme(isDark ? 'light' : 'dark')}
+      onPress={changeTheme}
       activeOpacity={0.85}
     >
       <View

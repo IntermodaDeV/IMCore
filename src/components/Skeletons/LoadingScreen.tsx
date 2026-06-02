@@ -1,15 +1,31 @@
 import React, { useEffect, useRef } from 'react'
-import { Animated, Easing, StyleSheet, View, Text } from 'react-native'
+import { Animated, Easing, StyleSheet } from 'react-native'
+import { View, Text, YStack } from 'tamagui'
 
 type Props = {
   text?: string
+  duration?: number
+  onFinish?: () => void
 }
 
 const BALL_SIZE = 32
 const WAVE_HEIGHT = 18
 const DURATION = 1100
 
-export default function LoadingScreen({ text = 'Cargando...' }: Props) {
+export default function LoadingScreen({
+  text = 'Cargando...',
+  duration = 2000,
+  onFinish,
+}: Props) {
+  useEffect(() => {
+    if (!onFinish) return
+
+    const timer = setTimeout(() => {
+      onFinish()
+    }, duration)
+
+    return () => clearTimeout(timer)
+  }, [onFinish, duration])
   const anims = useRef([
     new Animated.Value(0),
     new Animated.Value(0),
@@ -42,27 +58,34 @@ export default function LoadingScreen({ text = 'Cargando...' }: Props) {
   }, [])
 
   const balls = [
-    { color: '#FF5722', anim: anims[0] },
-    { color: '#9E9E9E', anim: anims[1] },
-    { color: '#1A2F4E', anim: anims[2] },
+    { color: '#FF5722' },
+    { color: '#9E9E9E' },
+    { color: '#1A2F4E' },
   ]
 
   return (
     <View style={styles.container}>
-      <View style={styles.row}>
-        {balls.map((ball, i) => (
-          <Animated.View
-            key={i}
-            style={[
-              styles.ball,
-              { backgroundColor: ball.color },
-              { transform: [{ translateY: ball.anim }] },
-            ]}
-          />
-        ))}
-      </View>
+      <YStack alignItems="center" gap="$4">
+        {/* Loader */}
+        <View style={styles.row}>
+          {balls.map((ball, i) => (
+            <Animated.View
+              key={i}
+              style={[
+                styles.ball,
+                { backgroundColor: ball.color },
+                { transform: [{ translateY: anims[i] }] },
+              ]}
+            />
+          ))}
+        </View>
 
-      {text ? <Text style={styles.label}>{text}</Text> : null}
+        {/* Texto */}
+        <Text style={styles.text}>{text}</Text>
+
+        {/* Subtexto opcional */}
+        <Text style={styles.subtext}>IMCore</Text>
+      </YStack>
     </View>
   )
 }
@@ -70,9 +93,9 @@ export default function LoadingScreen({ text = 'Cargando...' }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0d1c32', // 🔵 azul oscuro base IMCore
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 14,
   },
   row: {
     flexDirection: 'row',
@@ -85,9 +108,16 @@ const styles = StyleSheet.create({
     height: BALL_SIZE,
     borderRadius: BALL_SIZE / 2,
   },
-  label: {
-    fontSize: 14,
-    color: '#888',
-    letterSpacing: 0.3,
+  text: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  subtext: {
+    color: '#FF551A', // naranja marca
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
 })

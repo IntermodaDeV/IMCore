@@ -31,6 +31,15 @@ export interface UsersDTO {
   [key: string]: any
 }
 
+export interface UsersSettingsDTO {
+  Id: number
+  Code: string
+  Status_Id: number
+  Theme: string
+  Modified_By: string
+  Options: number
+}
+
 export type MenuDTO = {
   Id: number;
   Code: string;
