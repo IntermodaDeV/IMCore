@@ -1,13 +1,17 @@
 import UsersScreen from './Security/UsersScreen'
 import HomeScreen from './AdmSys/HomeScreen'
-import BillsScreen from './Gira/Bills/BillsScreen'
 import NotFoundScreen from './AdmSys/NotFoundScreen'
+import AccessScreen from './Security/AccessScreen'
+import MenuScreen from './Security/MenuScreen'
+import RolesScreen from './Security/RolesScreen'
 
 export const SCREENS = {
   inicio: HomeScreen,
   usuarios: UsersScreen,
+  access: AccessScreen,
+  menu: MenuScreen,
 
-  gastos: BillsScreen,
+  roles: RolesScreen,
 
   not_found: NotFoundScreen,
 }

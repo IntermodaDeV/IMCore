@@ -3,12 +3,13 @@ import { TouchableOpacity } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
 import { createDrawerNavigator, DrawerContentScrollView, DrawerContentComponentProps } from '@react-navigation/drawer'
-import { Button, Text, View, useTheme, useThemeName } from 'tamagui'
+import { Button, Text, View, useTheme, useThemeName, Spinner } from 'tamagui'
 import { useNavigation } from '@react-navigation/native'
 import { SCREENS } from '../screens/screens'
 import { useMenu } from '../context/MenuContext'
 import { MenuDTO } from '../api/modules/security/security.types'
 import { useAuth } from '../context/AuthContext'
+import LoadingScreen from '../components/Skeletons/LoadingScreen'
 
 const Drawer = createDrawerNavigator()
 
@@ -65,6 +66,8 @@ export default function DrawerNavigator({ setTheme }: any) {
 function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: any; menu: MenuDTO[] }) {
   const navigation = useNavigation()
   const { user, logout } = useAuth()
+  const { refreshMenu } = useMenu()
+  const [refreshing, setRefreshing] = useState(false)
   const initials =`${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
 
   const MENU = buildMenuTree(props.menu ?? [])
@@ -84,6 +87,28 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
         shadowOpacity={0.06}
         shadowRadius={10}
       >
+        {/* Botón refrescar */}
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            zIndex: 1,
+          }}
+          onPress={async () => {
+            if (!user?.Code) return
+
+            try {
+              setRefreshing(true)
+              await refreshMenu(user.Code)
+            } finally {
+              setRefreshing(false)
+            }
+          }}
+        >
+          <LucideIcons.RotateCw size={16} color="#6b7280" />
+        </TouchableOpacity>
+
         <View flexDirection="row" alignItems="center" gap={12}>
           <View
             width={50}
@@ -121,21 +146,26 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
         </View>
       </View>
 
-      <DrawerContentScrollView
-        {...props}
-        contentContainerStyle={{ paddingTop: 12 }}
-      >
-
-        <View>
-          {MENU.map((item, index) => (
-            <TreeItem
-              key={item.Id ?? index}
-              item={item}
-              navigation={props.navigation}
-            />
-          ))}
-        </View>
-      </DrawerContentScrollView>
+      {refreshing ? (
+        <LoadingScreen />
+      ) : (
+        <>
+          <DrawerContentScrollView
+            {...props}
+            contentContainerStyle={{ paddingTop: 12 }}
+          >
+            <View>
+              {MENU.map((item, index) => (
+                <TreeItem
+                  key={item.Id ?? index}
+                  item={item}
+                  navigation={props.navigation}
+                />
+              ))}
+            </View>
+          </DrawerContentScrollView>
+        </>
+      )}
 
       <View paddingHorizontal={16} paddingTop={10} paddingBottom={6}>
         <Button

@@ -21,7 +21,6 @@ export default function UsersScreen() {
     try {
       setLoading(true)
       const response: ExecutionResponse<UsersDTO[]> = await securityService.getUsers()
-      console.log(response?.Data);
       if(response.Success){
         setData(response?.Data)
       }

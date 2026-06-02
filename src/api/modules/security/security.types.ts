@@ -42,6 +42,10 @@ export type MenuDTO = {
   MenuOrder: number;
   Status_Name: string;
   User_Code: string;
+  Create_By: string;
+  Creation_Date: string;
+  Modified_By: string | null;
+  Modification_Date: string | Date | null;
 };
 
 export type AccessDTO = {
@@ -55,4 +59,16 @@ export type AccessDTO = {
   Modified_By: string | null;
   Modification_Date: string | Date | null;
   Status_Name: string;
+};
+
+export type RolesDTO = {
+  Id: number;
+  RoleName: string;
+  Description: string;
+  Status_Id: number;
+  StatusName: string;
+  Create_By: string;
+  Creation_Date: string;
+  Modified_By: string | null;
+  Modification_Date: string | Date | null;
 };
