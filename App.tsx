@@ -8,14 +8,15 @@ import DrawerNavigator from './src/navigation/DrawerNavigator'
 import { AuthProvider, useAuth } from './src/context/AuthContext'
 import { MenuProvider } from './src/context/MenuContext'
 import LoadingScreen from './src/components/Skeletons/LoadingScreen'
-
+import AccessForm from './src/screens/Security/Access/AccessForm'
 
 function Root() {
   const { theme, loading } = useAuth()
   const Stack = createNativeStackNavigator()
+  
   const navigationTheme = {
     light: {
-      background: '#ffffff',
+      background: '#dcd6d6',
       text: '#0F172A',
       primary: '#FF551A',
     },
@@ -32,7 +33,7 @@ function Root() {
     <TamaguiProvider config={config} defaultTheme={theme}>
       <Theme name={theme}>
         <NavigationContainer>
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Navigator screenOptions={{ headerShown: false }}> 
             <Stack.Screen name="Main">
               {() => <DrawerNavigator />}
             </Stack.Screen>
@@ -55,17 +56,34 @@ function Root() {
               )}
             </Stack.Screen>
 
+            <Stack.Screen
+              name="access_form"
+              component={AccessForm}
+              options={{
+                headerShown: true,
+                title: 'Nuevo acceso',
+                headerStyle: {
+                  backgroundColor: navColors.background,
+                },
+                headerTitleStyle: {
+                  fontSize: 16,
+                  fontWeight: '600',
+                },
+                headerTintColor: navColors.text,
+              }}
+            />
           </Stack.Navigator>
-            <View
-              position="absolute"
-              bottom={10}
-              right={12}
-              pointerEvents="none"
-            >
-              <Text color="$textMuted" fontSize={11}>
-                IMCore v1.0
-              </Text>
-            </View>
+
+          <View
+            position="absolute"
+            bottom={10}
+            right={12}
+            pointerEvents="none"
+          >
+            <Text color="$textMuted" fontSize={11}>
+              IMCore v1.0
+            </Text>
+          </View>
 
         </NavigationContainer>
       </Theme>
