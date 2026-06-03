@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigation } from '@react-navigation/native'
-import { EllipsisVertical, Plus, RotateCw, Trash2, Shield, Pencil, ShieldCheck, KeyRound, } from 'lucide-react-native'
+import { EllipsisVertical, Plus, RotateCw, Pencil, ShieldCheck, KeyRound, } from 'lucide-react-native'
 import { YStack, Text, ScrollView, Card, XStack, View, useTheme, Popover, Button } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { UsersDTO } from '../../../api/modules/security/security.types'

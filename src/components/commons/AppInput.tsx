@@ -89,7 +89,7 @@ export default function AppInput({
             setFocused(false)
             onBlur?.(e)
           }}
-          height={46}
+          height={40}
           paddingLeft={prefix ? 35 : '$3'}
           paddingRight={suffix ? 50 : '$3'}
           borderWidth={1}
@@ -97,6 +97,7 @@ export default function AppInput({
           backgroundColor="$background"
           borderRadius={6}
           color="$text"
+          fontSize={13}
         />
 
         {(prefix) && (
@@ -137,7 +138,7 @@ export default function AppInput({
           pointerEvents="none"
           position="absolute"
           left={12}
-          top={floating ? -8 : 17}
+          top={floating ? -2 : 17}
           fontSize={floating ? 11 : 14}
           color="$textMuted"
           backgroundColor="$background"
@@ -155,10 +156,11 @@ export default function AppInput({
 
       {error && (
         <Text
-          fontSize={11}
+          fontSize={10}
           color="red"
+          marginTop={-5}
         >
-          {error}
+          * {error}
         </Text>
       )}
 
