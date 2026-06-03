@@ -157,23 +157,24 @@ export default function AccessScreen() {
                           paddingVertical={2}
                           pressStyle={{ opacity: 0.7 }}
                           onPress={() => {
-
                             setSelectedItem(item)
                             setDialogOpen(true)
                           }}
                         >
-                            <Text fontSize={10} color="white" fontWeight="700">
-                              {item.Status_Name}
-                            </Text>
-                        </View>
-                        <View
-                          borderRadius={8}
-                          pressStyle={{ opacity: 0.6 }}
-                          onPress={() => createAccess(item.Id)}
-                        >
-                          <Pencil size={16} color={theme.primary?.val} />
+                          <Text fontSize={10} color="white" fontWeight="700">
+                            {item.Status_Name}
+                          </Text>
                         </View>
 
+                        {item?.Status_Id === 1 && (
+                          <View
+                            borderRadius={8}
+                            pressStyle={{ opacity: 0.6 }}
+                            onPress={() => createAccess(item.Id)}
+                          >
+                            <Pencil size={16} color={theme.primary?.val} />
+                          </View>
+                        )}
                       </XStack>
 
                     </XStack>

@@ -42,19 +42,19 @@ export interface UsersSettingsDTO {
 
 export type MenuDTO = {
   Id: number;
-  Code: string;
   Name: string;
-  Description: string;
+  Description?: string;
   Route: string;
   Icon: string;
-  ParentMenu_Id: number;
-  MenuOrder: number;
-  Status_Name: string;
-  User_Code: string;
-  Create_By: string;
-  Creation_Date: string;
-  Modified_By: string | null;
-  Modification_Date: string | Date | null;
+  ParentMenu_Id?: number | null;
+  MenuOrder?: number | null;
+  Status_Id?: number;
+  Status_Name?: string;
+  User_Code?: string;
+  Create_By?: string;
+  Creation_Date?: string;
+  Modified_By?: string | null;
+  Modification_Date?: string | Date | null;
 };
 
 export type AccessDTO = {
@@ -81,6 +81,16 @@ export type IAccessControl = {
   Create_By: string;
 };
 
+export type IMenuControl = {
+  Id: number;
+  User_Code: string | null;
+  Rol_Id: number | null;
+  Menu_Id: number | null;
+  Status_Id: number;
+  Type_Id: number;
+  Create_By: string;
+};
+
 
 export type RolesDTO = {
   Id: number;
@@ -88,6 +98,18 @@ export type RolesDTO = {
   Description: string;
   Status_Id: number;
   StatusName: string;
+  Create_By: string;
+  Creation_Date: string;
+  Modified_By: string | null;
+  Modification_Date: string | Date | null;
+};
+
+export type ITypes = {
+  Id: number;
+  Name: string;
+  Description: string;
+  Status_Id: number;
+  Category: string;
   Create_By: string;
   Creation_Date: string;
   Modified_By: string | null;

@@ -9,9 +9,10 @@ import { AuthProvider, useAuth } from './src/context/AuthContext'
 import { MenuProvider } from './src/context/MenuContext'
 import LoadingScreen from './src/components/Skeletons/LoadingScreen'
 import AccessForm from './src/screens/Security/Access/AccessForm'
+import MenuForm from './src/screens/Security/Menu/MenuForm'
 
 function Root() {
-  const { theme, loading } = useAuth()
+  const { theme, loading, user } = useAuth()
   const Stack = createNativeStackNavigator()
   
   const navigationTheme = {
@@ -34,44 +35,65 @@ function Root() {
       <Theme name={theme}>
         <NavigationContainer>
           <Stack.Navigator screenOptions={{ headerShown: false }}> 
-            <Stack.Screen name="Main">
-              {() => <DrawerNavigator />}
-            </Stack.Screen>
-
-            <Stack.Screen name="Login" component={LoginScreen} />
-
-            <Stack.Screen name="Loading">
-              {({ route, navigation }) => (
-                <LoadingScreen
-                  text="Iniciando sesión..."
-                  duration={1000}
-                  onFinish={() => {
-                    const next = (route.params as any)?.next || 'Main'
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: next }],
-                    })
+            {user ? (
+              <>
+                <Stack.Screen name="Main">
+                  {() => <DrawerNavigator />}
+                </Stack.Screen>
+                <Stack.Screen name="Loading">
+                  {({ route, navigation }) => (
+                    <LoadingScreen
+                      text="Iniciando sesión..."
+                      duration={1000}
+                      onFinish={() => {
+                        const next = (route.params as any)?.next || 'Main'
+                        navigation.reset({
+                          index: 0,
+                          routes: [{ name: next }],
+                        })
+                      }}
+                    />
+                  )}
+                </Stack.Screen>
+    
+                <Stack.Screen
+                  name="access_form"
+                  component={AccessForm}
+                  options={{
+                    headerShown: true,
+                    title: 'Nuevo acceso',
+                    headerStyle: {
+                      backgroundColor: navColors.background,
+                    },
+                    headerTitleStyle: {
+                      fontSize: 16,
+                      fontWeight: '600',
+                    },
+                    headerTintColor: navColors.text,
                   }}
                 />
-              )}
-            </Stack.Screen>
 
-            <Stack.Screen
-              name="access_form"
-              component={AccessForm}
-              options={{
-                headerShown: true,
-                title: 'Nuevo acceso',
-                headerStyle: {
-                  backgroundColor: navColors.background,
-                },
-                headerTitleStyle: {
-                  fontSize: 16,
-                  fontWeight: '600',
-                },
-                headerTintColor: navColors.text,
-              }}
-            />
+                <Stack.Screen
+                  name="menu_form"
+                  component={MenuForm}
+                  options={{
+                    headerShown: true,
+                    title: 'Nuevo menú',
+                    headerStyle: {
+                      backgroundColor: navColors.background,
+                    },
+                    headerTitleStyle: {
+                      fontSize: 16,
+                      fontWeight: '600',
+                    },
+                    headerTintColor: navColors.text,
+                  }}
+                />
+              </>
+            ) : (
+              <Stack.Screen name="Login" component={LoginScreen} />
+            )
+            }
           </Stack.Navigator>
 
           <View

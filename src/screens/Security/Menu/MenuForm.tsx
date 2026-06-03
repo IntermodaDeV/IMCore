@@ -5,24 +5,26 @@ import { useNavigation, useRoute } from '@react-navigation/native'
 import Page from '../../../components/commons/Page'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
-import { AccessDTO, IAccessControl, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
+import { IMenuControl, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
 import { securityService } from '../../../api/modules/security/security.service'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
 import { Shield, User } from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
+import AppSelect from '../../../components/commons/AppSelect'
 
 type TabType = 'general' | 'usuarios' | 'roles'
 
-export default function AccessForm() {
+export default function MenuForm() {
     const navigation = useNavigation()
     const route = useRoute()
     const { Id } = route.params as { Id?: number }
     const [loading, setLoading] = useState(false)
     const [users, setUsers] = useState<UsersDTO[]>([])
     const [roles, setRoles] = useState<RolesDTO[]>([])
-    const [accessControl, setAccessControl] = useState<IAccessControl[]>([])
+    const [menusList, setMenusList] = useState<any[]>([])
+    const [menuControl, setMenuControl] = useState<IMenuControl[]>([])
     const [loadingSave, setLoadingSave] = useState(false)
     const [activeTab, setActiveTab] = useState<TabType>('general')
     const [filteredUsers, setFilteredUsers] = useState<UsersDTO[]>([])
@@ -31,38 +33,97 @@ export default function AccessForm() {
     const { user } = useAuth()
     const isEdit = !!Id
 
-    const defaultValues: AccessDTO = {
+    const defaultValues: MenuDTO = {
         Id: -1,
         Name: '',
-        KeyVar: '',
         Description: '',
-        Status_Id: 1,
+        Route: '',
+        Icon: '',
+        ParentMenu_Id: null,
+        MenuOrder: null,
+        User_Code: '',
         Create_By: '',
-        Creation_Date: '',
-        Modified_By: null,
-        Modification_Date: null,
-        Status_Name: ''
+        Modified_By: '',
     }
 
-    const { control, handleSubmit, formState: { errors }, reset, getValues } = useForm<AccessDTO>({ defaultValues, mode: 'onTouched' })
+    const { control, handleSubmit, formState: { errors }, reset, getValues } = useForm<MenuDTO>({ defaultValues, mode: 'onTouched' })
 
-    const save = handleSubmit(async (data: AccessDTO) => {
+    const getInfo = async () => {
+        setLoading(true)
+        const responseTypes: ExecutionResponse<MenuDTO[]> = await securityService.getMenus()
+        let dataMenus: MenuDTO[] = responseTypes?.Data?.filter((i: MenuDTO) => i?.Status_Id === 1)
+        let menuOptions = dataMenus.map((i) => ({
+            label: i.Name,
+            value: Number(i.Id),
+        }))
+        setMenusList(menuOptions)
+        if(activeTab === 'general'){
+            if (Id) {
+                const response: ExecutionResponse<MenuDTO[]> = await securityService.getMenuById(Id)
+                if (response.Success) {
+                    reset(response.Data[0])
+                    navigation.setOptions({ title: isEdit ? `Editar menú: ${getValues('Name')}` : 'Nuevo menú' })
+                } else {
+                    Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                    setLoading(false)
+                }
+            }
+        }
+        else if(activeTab === 'usuarios'){
+            const response: ExecutionResponse<UsersDTO[]> = await securityService.getUsers()
+            if (response.Success) {
+                setUsers(response.Data?.filter(u => u.Status_Id === 1) ?? [])
+                const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControl(6, Id as number)
+                setMenuControl(resp.Data ?? []) 
+            } else {
+                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                setLoading(false)
+            }
+        }else{
+            const response: ExecutionResponse<RolesDTO[]> = await securityService.getRoles()
+            if (response.Success) {
+                setRoles(response.Data?.filter(r => r.Status_Id === 1) ?? [])
+                const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControl(7, Id as number)
+                setMenuControl(resp.Data ?? []) 
+            } else {
+                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                setLoading(false)
+            }
+        }
+        setLoading(false)
+    }
+
+    const getInfoSinLonuding = async () => {
+        if(activeTab === 'usuarios'){
+            const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControl(6, Id as number)
+            setMenuControl(resp.Data ?? []) 
+            
+        }else{
+            const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControl(7, Id as number)
+            setMenuControl(resp.Data ?? []) 
+        }
+    }
+
+    const save = handleSubmit(async (data: MenuDTO) => {
         setLoadingSave(true)
         try {
-            let info: AccessDTO = {
+            let info: MenuDTO = {
                 Id: data.Id,
                 Name: data.Name,
-                KeyVar: data.KeyVar,
+                Icon: data.Icon,
                 Description: data.Description,
+                MenuOrder: data.MenuOrder,
+                ParentMenu_Id: data.ParentMenu_Id === 0 ? null : data.ParentMenu_Id,
+                Route: data.Route,
+                Status_Name: '',
                 Create_By: user?.Code ?? '',
                 Status_Id: data.Status_Id,
-                Status_Name: '',
                 Modified_By: user?.Code ?? '',
                 Creation_Date: data.Creation_Date || new Date().toISOString(),
                 Modification_Date: new Date().toISOString(),
             }
 
-            const response: ExecutionResponse<AccessDTO[]> = await securityService.saveAccess([info])
+            const response: ExecutionResponse<MenuDTO[]> = await securityService.saveMenu([info])
             if (response.Success) {
                 Burnt.toast({ title: response.SuccessMessage || 'Registro guardado correctamente', message: '', preset: 'done' })
                 navigation.goBack()
@@ -79,64 +140,15 @@ export default function AccessForm() {
         setLoadingSave(false)
     })
 
-    const getInfo = async () => {
-        setLoading(true)
-        if(activeTab === 'general'){
-            if (Id) {
-                const response: ExecutionResponse<AccessDTO[]> = await securityService.getAccessById(Id)
-                if (response.Success) {
-                    reset(response.Data[0])
-                    navigation.setOptions({ title: isEdit ? `Editar acceso: ${getValues('Name')}` : 'Nuevo acceso' })
-                } else {
-                    Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                    setLoading(false)
-                }
-            }
-        }else if(activeTab === 'usuarios'){
-            const response: ExecutionResponse<UsersDTO[]> = await securityService.getUsers()
-            if (response.Success) {
-                setUsers(response.Data?.filter(u => u.Status_Id === 1) ?? [])
-                const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControl(6, Id as number)
-                setAccessControl(resp.Data ?? []) 
-            } else {
-                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                setLoading(false)
-            }
-        }else{
-            const response: ExecutionResponse<RolesDTO[]> = await securityService.getRoles()
-            if (response.Success) {
-                setRoles(response.Data?.filter(r => r.Status_Id === 1) ?? [])
-                const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControl(7, Id as number)
-                setAccessControl(resp.Data ?? []) 
-            } else {
-                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                setLoading(false)
-            }
-        }
-        setLoading(false)
-    }
-
-    const getInfoSinLonuding = async () => {
-        if(activeTab === 'usuarios'){
-            const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControl(6, Id as number)
-            setAccessControl(resp.Data ?? []) 
-            
-        }else{
-            const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControl(7, Id as number)
-            setAccessControl(resp.Data ?? []) 
-        }
-    }
-
-    const toggleUserAccess = async (selectedUser: UsersDTO) => {
-        const existing = accessControl.find((ac) => ac.User_Code === selectedUser.Code)
-        let payload: IAccessControl
-
+    const toggleUserMenu = async (selectedUser: UsersDTO) => {
+        const existing = menuControl.find((ac) => ac.User_Code === selectedUser.Code)
+        let payload: IMenuControl
         setLoadingToggle(selectedUser.Code)
         if (!existing) {
             payload = {
                 Id: -1,
                 User_Code: selectedUser.Code,
-                Access_Id: Id as number,
+                Menu_Id: Id as number,
                 Rol_Id: null,
                 Status_Id: 1,
                 Type_Id: 6,
@@ -148,13 +160,12 @@ export default function AccessForm() {
             payload = { ...existing, Status_Id: 1, Type_Id: 6, Create_By: user?.Code as string}
         }
         try {
-            const response = await securityService.saveAccessControl([payload])
+            const response = await securityService.saveMenuControl([payload])
             if (response.Success) {
                 if (!existing) {
-                    // setAccessControl((prev) => [...prev, { ...payload, Id: response.Data?.Id ?? -1 }])
-                    setAccessControl((prev) => [...prev, { ...payload, Id: response.Data?.[0]?.Id ?? -1 }])
+                    setMenuControl((prev) => [...prev, { ...payload, Id: response.Data?.[0]?.Id ?? -1 }])
                 } else {
-                    setAccessControl((prev) =>
+                    setMenuControl((prev) =>
                         prev.map((ac) =>
                             ac.User_Code === selectedUser.Code
                                 ? { ...ac, Status_Id: payload.Status_Id }
@@ -162,7 +173,8 @@ export default function AccessForm() {
                         )
                     )
                 }
-                getInfoSinLonuding()
+                const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControl(6, Id as number)
+                setMenuControl(resp.Data ?? []) 
                 Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done' })
             } else {
                 Burnt.toast({ title: response.ErrorMessage || 'Error al actualizar', message: '', preset: 'error' })
@@ -173,16 +185,15 @@ export default function AccessForm() {
         setLoadingToggle(null)
     }
 
-    const toggleRolAccess = async (selectedUser: RolesDTO) => {
-        const existing = accessControl.find((ac) => ac.Rol_Id === selectedUser.Id)
-        let payload: IAccessControl
-
+    const toggleRolMenu = async (selectedUser: RolesDTO) => {
+        const existing = menuControl.find((ac) => ac.Rol_Id === selectedUser.Id)
+        let payload: IMenuControl
         setLoadingToggle(selectedUser.Id)
         if (!existing) {
             payload = {
                 Id: -1,
                 User_Code: null,
-                Access_Id: Id as number,
+                Menu_Id: Id as number,
                 Rol_Id: selectedUser.Id,
                 Status_Id: 1,
                 Type_Id: 7,
@@ -194,12 +205,12 @@ export default function AccessForm() {
             payload = { ...existing, Status_Id: 1, Type_Id: 7, Create_By: user?.Code as string}
         }
         try {
-            const response = await securityService.saveAccessControl([payload])
+            const response = await securityService.saveMenuControl([payload])
             if (response.Success) {
                 if (!existing) {
-                    setAccessControl((prev) => [...prev, { ...payload, Id: response.Data?.[0]?.Id ?? -1 }])
+                    setMenuControl((prev) => [...prev, { ...payload, Id: response.Data?.[0]?.Id ?? -1 }])
                 } else {
-                    setAccessControl((prev) =>
+                    setMenuControl((prev) =>
                         prev.map((ac) =>
                             ac.Rol_Id === selectedUser.Id
                                 ? { ...ac, Status_Id: payload.Status_Id }
@@ -220,7 +231,7 @@ export default function AccessForm() {
 
     useEffect(() => { getInfo() }, [])
     useEffect(() => {                               
-        navigation.setOptions({ title: isEdit ? `Editar acceso: ${getValues('Name')}` : 'Nuevo acceso' })
+        navigation.setOptions({ title: isEdit ? `Editar menú: ${getValues('Name')}` : 'Nuevo menú' })
     }, [isEdit])
 
     useEffect(() => {
@@ -309,19 +320,66 @@ export default function AccessForm() {
                                                 />
                                             )}
                                         />
+
                                         <Controller
                                             control={control}
-                                            name="KeyVar"
+                                            name="ParentMenu_Id"
+                                            render={({ field: { onChange, value } }) => (
+                                                <AppSelect
+                                                    label="Menú padre"
+                                                    value={value ?? undefined}
+                                                    onValueChange={(val) => onChange(Number(val))}
+                                                    options={menusList}
+                                                />
+                                            )}
+                                        />
+
+                                        <Controller
+                                            control={control}
+                                            name="Route"
                                             rules={{ required: 'Campo requerido' }}
                                             render={({ field: { onChange, value } }) => (
                                                 <AppInput
                                                     label="Identificador único"
                                                     value={value}
                                                     onChangeText={onChange}
-                                                    error={errors.KeyVar?.message}
+                                                    error={errors.Route?.message}
                                                 />
                                             )}
                                         />
+                                        <Controller
+                                            control={control}
+                                            name="Icon"
+                                            rules={{ required: 'Campo requerido' }}
+                                            render={({ field: { onChange, value } }) => (
+                                                <AppInput
+                                                    label="Icono"
+                                                    value={value}
+                                                    onChangeText={onChange}
+                                                    error={errors.Icon?.message}
+                                                />
+                                            )}
+                                        />
+
+                                        <Controller
+                                            control={control}
+                                            name="MenuOrder"
+                                            rules={{ required: 'Campo requerido' }}
+                                            render={({ field: { onChange, value } }) => (
+                                                <AppInput
+                                                    label="Orden"
+                                                    value={value ?? ''}
+                                                    format="integer"
+                                                    keyboardType="numeric"
+                                                    onChangeText={(text) => {
+                                                        const number = text === '' ? null : Number(text)
+                                                        onChange(number)
+                                                    }}
+                                                    error={errors.MenuOrder?.message}
+                                                />
+                                            )}
+                                        />
+
                                         <Controller
                                             control={control}
                                             name="Description"
@@ -379,7 +437,6 @@ export default function AccessForm() {
                         )}
 
                         {activeTab === 'usuarios' && (
-
                             <>
                                 <View paddingHorizontal="$4" paddingTop="$2">
                                     <SearchInput
@@ -392,10 +449,7 @@ export default function AccessForm() {
                                 <ScrollView flex={1} showsVerticalScrollIndicator={false}>
                                     <YStack paddingHorizontal="$4" paddingBottom="$4" gap="$3">
                                         {filteredUsers.map((user) => {
-                                            const hasAccess = (accessControl ?? []).some(
-                                                (ac) => ac.User_Code === user.Code && ac.Status_Id === 1
-                                            )
-                                            const id = `checkbox-user-${user.Id}`
+                                            const hasMenu = (menuControl ?? []).some((ac) => ac.User_Code === user.Code && ac.Status_Id === 1)
 
                                             const isLoadingThis = loadingToggle === user.Code
                                             const isDisabled = loadingToggle !== null && !isLoadingThis
@@ -416,7 +470,7 @@ export default function AccessForm() {
                                                     shadowOpacity={0.07}
                                                     shadowRadius={6}
                                                     elevation={2}
-                                                    onPress={() => !isDisabled && !isLoadingThis && toggleUserAccess(user)}
+                                                    onPress={() => !isDisabled && !isLoadingThis && toggleUserMenu(user)}
                                                     opacity={isDisabled ? 0.4 : 1}
                                                     pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
                                                 >
@@ -427,7 +481,7 @@ export default function AccessForm() {
                                                         top={0}
                                                         bottom={0}
                                                         width={4}
-                                                        backgroundColor={hasAccess ? '$primary' : 'transparent'}
+                                                        backgroundColor={hasMenu ? '$primary' : 'transparent'}
                                                     />
 
                                                     {/* Ícono usuario */}
@@ -435,14 +489,14 @@ export default function AccessForm() {
                                                         width={40}
                                                         height={40}
                                                         borderRadius={20}
-                                                        backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                        backgroundColor={hasMenu ? 'rgba(255, 85, 26, 0.12)' : '$card'}
                                                         justifyContent="center"
                                                         alignItems="center"
                                                     >
                                                         {isLoadingThis ? (
                                                             <Spinner size="small" color="$primary" />
                                                         ) : (
-                                                            <User size={20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
+                                                            <User size={20} color={hasMenu ? '#FF551A' : '#94A3B8'} />
                                                         )}
                                                     </View>
 
@@ -458,7 +512,7 @@ export default function AccessForm() {
 
                                                     {/* Badge + Checkbox */}
                                                     <XStack alignItems="center" gap="$2">
-                                                        {hasAccess && (
+                                                        {hasMenu && (
                                                             <View
                                                                 backgroundColor="rgba(255, 85, 26, 0.12)"
                                                                 paddingHorizontal="$2"
@@ -492,9 +546,7 @@ export default function AccessForm() {
                                 <ScrollView flex={1} showsVerticalScrollIndicator={false}>
                                     <YStack padding="$4" gap="$3">
                                         {filteredRoles.map((item) => {
-                                            const hasAccess = (accessControl ?? []).some((ac) => ac.Rol_Id === item.Id && ac.Status_Id === 1)
-                                            const id = `checkbox-user-${item.Id}`
-                                            
+                                            const hasMenu = (menuControl ?? []).some((ac) => ac.Rol_Id === item.Id && ac.Status_Id === 1)
                                             const isLoadingThis = loadingToggle === item.Id
                                             const isDisabled = loadingToggle !== null && !isLoadingThis
 
@@ -508,7 +560,7 @@ export default function AccessForm() {
                                                     alignItems="center"
                                                     borderWidth={0}
                                                     overflow="hidden"
-                                                    onPress={() => !isDisabled && !isLoadingThis && toggleRolAccess(item)}
+                                                    onPress={() => !isDisabled && !isLoadingThis && toggleRolMenu(item)}
                                                     opacity={isDisabled ? 0.4 : 1}
                                                     pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
                                                     gap="$3"
@@ -525,7 +577,7 @@ export default function AccessForm() {
                                                         top={0}
                                                         bottom={0}
                                                         width={4}
-                                                        backgroundColor={hasAccess ? '$primary' : 'transparent'}
+                                                        backgroundColor={hasMenu ? '$primary' : 'transparent'}
                                                     />
 
                                                     {/* Ícono usuario */}
@@ -533,14 +585,14 @@ export default function AccessForm() {
                                                         width={40}
                                                         height={40}
                                                         borderRadius={20}
-                                                        backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                        backgroundColor={hasMenu ? 'rgba(255, 85, 26, 0.12)' : '$card'}
                                                         justifyContent="center"
                                                         alignItems="center"
                                                     >
                                                         {isLoadingThis ? (
                                                             <Spinner size="small" color="$primary" />
                                                         ) : (
-                                                            <Shield size={20} color={hasAccess ? '#FF551A' : '#94A3B8'}/>
+                                                            <Shield size={20} color={hasMenu ? '#FF551A' : '#94A3B8'}/>
                                                         )}
                                                     </View>
 
@@ -556,7 +608,7 @@ export default function AccessForm() {
 
                                                     {/* Badge + Checkbox */}
                                                     <XStack alignItems="center" gap="$2">
-                                                        {hasAccess && (
+                                                        {hasMenu && (
                                                             <View
                                                                 backgroundColor="rgba(255, 85, 26, 0.12)"
                                                                 paddingHorizontal="$2"

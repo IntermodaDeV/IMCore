@@ -11,8 +11,8 @@ type Option = {
 
 type Props = {
   label: string
-  value?: string
-  onValueChange?: (value: string) => void
+  value?: string | number
+  onValueChange?: (value: string | number) => void
   options: Option[]
   error?: string
   placeholder?: string
