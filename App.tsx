@@ -10,6 +10,7 @@ import { MenuProvider } from './src/context/MenuContext'
 import LoadingScreen from './src/components/Skeletons/LoadingScreen'
 import AccessForm from './src/screens/Security/Access/AccessForm'
 import MenuForm from './src/screens/Security/Menu/MenuForm'
+import RolesForm from './src/screens/Security/Roles/RolesForm'
 
 function Root() {
   const { theme, loading, user } = useAuth()
@@ -79,6 +80,23 @@ function Root() {
                   options={{
                     headerShown: true,
                     title: 'Nuevo menú',
+                    headerStyle: {
+                      backgroundColor: navColors.background,
+                    },
+                    headerTitleStyle: {
+                      fontSize: 16,
+                      fontWeight: '600',
+                    },
+                    headerTintColor: navColors.text,
+                  }}
+                />
+
+                <Stack.Screen
+                  name="rolls_form"
+                  component={RolesForm}
+                  options={{
+                    headerShown: true,
+                    title: 'Nuevo rol',
                     headerStyle: {
                       backgroundColor: navColors.background,
                     },

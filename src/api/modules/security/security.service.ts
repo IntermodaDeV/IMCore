@@ -16,6 +16,7 @@ export const securityService = {
 
   getMenuControl: (Type_Id: number, Menu_Id: number) => httpClient.get<ExecutionResponse<IMenuControl[]>>(`${schema}/MenuControl?Type_Id=${Type_Id}&Menu_Id=${Menu_Id}`),
   saveMenuControl: (data: IMenuControl[]) => httpClient.post<ExecutionResponse<IMenuControl[]>>(`${schema}/MenuControl`, data),
+  getMenuControlByRol: (Rol_Id: number) => httpClient.get<ExecutionResponse<IMenuControl[]>>(`${schema}/MenuControlByRol?Rol_Id=${Rol_Id}`),
 
   getAccess: () => httpClient.get<ExecutionResponse<AccessDTO[]>>(`${schema}/Access`),
   saveAccess: (data: AccessDTO[]) => httpClient.post<ExecutionResponse<AccessDTO[]>>(`${schema}/Access`, data),
@@ -24,10 +25,13 @@ export const securityService = {
 
   getAccessControl: (Type_Id: number, Access_Id: number) => httpClient.get<ExecutionResponse<IAccessControl[]>>(`${schema}/AccessControl?Type_Id=${Type_Id}&Access_Id=${Access_Id}`),
   saveAccessControl: (data: IAccessControl[]) => httpClient.post<ExecutionResponse<IAccessControl[]>>(`${schema}/AccessControl`, data),
+  getAccessControlByRol: (Rol_Id: number) => httpClient.get<ExecutionResponse<IAccessControl[]>>(`${schema}/AccessControlByRol?Rol_Id=${Rol_Id}`),
+
 
   getRoles: () => httpClient.get<ExecutionResponse<RolesDTO[]>>(`${schema}/Roles`),
   saveRoles: (data: RolesDTO[]) => httpClient.post<ExecutionResponse<RolesDTO[]>>(`${schema}/Roles`, data),
   changeStatusRoles: (data: RolesDTO[]) => httpClient.put<ExecutionResponse<RolesDTO[]>>(`${schema}/Roles`, data),
+  getRolById: (Id: number) => httpClient.get<ExecutionResponse<RolesDTO[]>>(`${schema}/RolById?Id=${Id}`),
 
   getTypesByCategory: (Category: string) => httpClient.get<ExecutionResponse<ITypes[]>>(`${schema}/TypesByCategory?Category=${Category}`),
 }
