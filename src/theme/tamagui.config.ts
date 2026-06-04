@@ -10,16 +10,18 @@ export const config = createTamagui({
       white: '#ffffff',
       primary: '#FF551A',
       secondary: '#001F3F',
+      secondary1: '#001F3F',
       gray: '#5F6368',
       gray2: '#dfe0e0',
-      gray3: '#F1F5F9',
+      gray3: '#d5d7d9',
+      red: '#f10000',
     },
   },
 
   themes: {
     light: {
       background: '#FFFFFF',
-      backgroundPage: '#ece9e9',
+      backgroundPage: '#F1F5F9',
       backgroundPage2: '#bcbcbc',
       card: '#e2dddd',
       card2: '#FFFFFF',

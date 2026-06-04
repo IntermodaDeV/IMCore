@@ -1,5 +1,5 @@
 import * as Burnt from 'burnt'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { TouchableOpacity } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
@@ -12,6 +12,7 @@ import { MenuDTO, UsersSettingsDTO } from '../api/modules/security/security.type
 import { useAuth } from '../context/AuthContext'
 import { SkeletonBox } from '../components/Skeletons/SkeletonList'
 import { securityService } from '../api/modules/security/security.service'
+import { useNavigationState } from '@react-navigation/native'
 
 const Drawer = createDrawerNavigator()
 
@@ -72,6 +73,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const [refreshing, setRefreshing] = useState(false)
   const initials =`${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
   const theme = useTheme()
+  const currentRoute = useNavigationState(state => state?.routes?.[state.index]?.name)
   const MENU = buildMenuTree(props.menu ?? [])
 
   return (
@@ -142,7 +144,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
             </Text>
 
             <Text color="$textMuted" fontSize={12} marginTop={2}>
-              Informática
+              {user?.Code}
             </Text>
           </View>
         </View>
@@ -172,6 +174,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
                   key={item.Id ?? index}
                   item={item}
                   navigation={props.navigation}
+                  currentRoute={currentRoute}
                 />
               ))}
             </View>
@@ -261,20 +264,35 @@ export function buildMenuTree(menu: MenuDTO[] = []) {
   return roots
 }
 
+const hasActiveDescendant = (item: any, currentRoute?: string): boolean => {
+    if (!item.children?.length) return false
+    return item.children.some((child: any) =>
+        child.Route === currentRoute || hasActiveDescendant(child, currentRoute)
+    )
+}
+
 function TreeItem({
   item,
   level = 0,
   navigation,
+  currentRoute,
 }: {
   item: any
   level?: number
   navigation: any
+  currentRoute?: string
 }) {
   const [open, setOpen] = useState(false)
   const Icon = LucideIcons[item.Icon as keyof typeof LucideIcons]
   const hasChildren = item.children?.length > 0
 
   const theme = useTheme()
+  const isActive = !hasChildren && item.Route === currentRoute
+  const hasActiveChild = hasActiveDescendant(item, currentRoute)
+
+  useEffect(() => {
+    if (hasActiveChild) setOpen(true)
+  }, [hasActiveChild])
 
   const handlePress = () => {
     if (hasChildren) {
@@ -301,17 +319,42 @@ function TreeItem({
           alignItems="center"
           justifyContent="space-between"
           paddingVertical={10}
-          paddingLeft={5 + level * 18}
-          paddingRight={4}
+          paddingLeft={12 + level * 18}
+          paddingRight={12}
+          marginHorizontal={8}
+          marginVertical={1}
+          borderRadius={10}
+          backgroundColor={
+              isActive
+                  ? 'rgba(255, 85, 26, 0.12)'
+                  : hasActiveChild
+                  ? 'rgba(255, 85, 26, 0.06)'
+                  : 'transparent'
+          }
         >
+          {isActive && (
+            <View
+                position="absolute"
+                left={0}
+                top={6}
+                bottom={6}
+                width={3}
+                borderRadius={2}
+                backgroundColor="$primary"
+            />
+          )}
+
           <View flexDirection="row" alignItems="center" gap={12}>
-            {Icon ? <Icon size={18} color={theme.primary?.val} /> : null}
+            {Icon ? <Icon size={18} color={'#FF551A'} /> : null}
 
             {!Icon && level > 0 && (
-              <FileText size={14} color={theme.primary?.val} />
+              <FileText size={14} color={'#FF551A'} />
             )}
-
-            <Text color="$text" fontSize={14}>
+            <Text
+              color={isActive || hasActiveChild ? '$primary' : '$text'}
+              fontSize={14}
+              fontWeight={isActive || hasActiveChild ? '700' : '400'}
+            >
               {item.Name}
             </Text>
           </View>
@@ -332,6 +375,7 @@ function TreeItem({
             item={child}
             level={level + 1}
             navigation={navigation}
+            currentRoute={currentRoute} 
           />
         ))}
     </>

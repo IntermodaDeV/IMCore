@@ -15,18 +15,20 @@ export interface UsersDTO {
   Code: string
   Name: string
   LastName: string
-  Email: string
-  PasswordHash: string
+  Email?: string
+  PasswordHash?: string | null,
+  ConfirmPassword?: string
   Status_Id: number
   Theme: string
-  Access: string
+  Access?: string
 
-  Create_By: string
-  Roles: string
-  Creation_Date: string | Date
+  Create_By?: string
+  Roles?: string | null
+  Creation_Date?: string | Date
+  ValidateAD?: boolean | null
 
-  Modified_By: string
-  Modification_Date: string | Date | null
+  Modified_By?: string
+  Modification_Date?: string | Date | null
   DynamicColumns?: Record<string, string>
   [key: string]: any
 }

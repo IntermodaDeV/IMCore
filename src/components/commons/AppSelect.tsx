@@ -24,7 +24,7 @@ export default function AppSelect({
   onValueChange,
   options,
   error,
-  placeholder = 'Seleccionar...',
+  placeholder = '',
 }: Props) {
   const [open, setOpen] = useState(false)
   const [scrollY, setScrollY] = useState(0)
@@ -38,17 +38,17 @@ export default function AppSelect({
   const floating = open || !!value
 
   return (
-    <YStack gap="$1">
+    <YStack gap="$1" marginTop="$2">
 
       {/* LABEL */}
       <Text
         pointerEvents="none"
         position="absolute"
         left={12}
-        top={floating ? -8 : 14}
+        top={floating ? -6 : 17}
         fontSize={floating ? 11 : 14}
         color="$textMuted"
-        backgroundColor="$background"
+        backgroundColor="$card2"
         paddingHorizontal={floating ? 6 : 0}
         paddingVertical={floating ? 2 : 0}
         borderRadius={floating ? 6 : 0}
@@ -60,11 +60,11 @@ export default function AppSelect({
       {/* INPUT */}
       <Pressable onPress={() => setOpen(!open)}>
         <View
-          height={46}
+          height={40}
           borderWidth={1}
           borderRadius={6}
           borderColor={error ? 'red' : '$border'}
-          backgroundColor="$background"
+          backgroundColor="$card2"
           justifyContent="center"
           paddingHorizontal="$3"
         >
@@ -85,7 +85,7 @@ export default function AppSelect({
           top={46}
           left={0}
           right={0}
-          backgroundColor="$background"
+          backgroundColor="$card2"
           borderWidth={1}
           borderTopWidth={0}
           borderColor="$border"

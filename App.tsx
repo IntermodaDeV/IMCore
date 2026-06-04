@@ -11,6 +11,7 @@ import LoadingScreen from './src/components/Skeletons/LoadingScreen'
 import AccessForm from './src/screens/Security/Access/AccessForm'
 import MenuForm from './src/screens/Security/Menu/MenuForm'
 import RolesForm from './src/screens/Security/Roles/RolesForm'
+import UsersForm from './src/screens/Security/Users/UsersForm,'
 
 function Root() {
   const { theme, loading, user } = useAuth()
@@ -91,6 +92,24 @@ function Root() {
                   }}
                 />
 
+                <Stack.Screen
+                  name="users_form"
+                  component={UsersForm}
+                  options={{
+                    headerShown: true,
+                    title: 'Nuevo usuario',
+                    headerStyle: {
+                      backgroundColor: navColors.background,
+                    },
+                    headerTitleStyle: {
+                      fontSize: 16,
+                      fontWeight: '600',
+                    },
+                    headerTintColor: navColors.text,
+                  }}
+                />
+
+                
                 <Stack.Screen
                   name="rolls_form"
                   component={RolesForm}
