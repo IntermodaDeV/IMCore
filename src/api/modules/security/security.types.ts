@@ -33,6 +33,20 @@ export interface UsersDTO {
   [key: string]: any
 }
 
+export interface IUserExternalCodes {
+  Id?: number
+  User_Code: string
+  KeyVar?: string | null
+  ExternalCode: string
+  Status_Id: number
+
+  Create_By: string
+  Creation_Date?: string | Date | null
+
+  Modified_By?: string | null
+  Modification_Date?: string | Date | null
+}
+
 export interface UsersSettingsDTO {
   Id: number
   Code: string

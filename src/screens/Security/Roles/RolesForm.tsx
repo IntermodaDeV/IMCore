@@ -12,6 +12,7 @@ import { useAuth } from '../../../context/AuthContext'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
 import { User } from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
+import { handleError } from '../../../utils/errorHandler'
 
 type TabType = 'general' | 'accesos' | 'permisos'
 
@@ -80,37 +81,51 @@ export default function RolesForm() {
 
     const getInfo = async () => {
         setLoading(true)
-        if(activeTab === 'general'){
-            if (Id) {
-                const response: ExecutionResponse<RolesDTO[]> = await securityService.getRolById(Id)
+        try{
+            if(activeTab === 'general'){
+                if (Id) {
+                    const response: ExecutionResponse<RolesDTO[]> = await securityService.getRolById(Id)
+                    if (response.Success) {
+                        reset(response.Data[0])
+                        navigation.setOptions({ title: isEdit ? `Editar rol: ${getValues('RoleName')}` : 'Nuevo rol' })
+                    } else {
+                        Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                        setLoading(false)
+                    }
+                }
+            }else if(activeTab === 'accesos'){
+                const response: ExecutionResponse<AccessDTO[]> = await securityService.getAccess()
                 if (response.Success) {
-                    reset(response.Data[0])
-                    navigation.setOptions({ title: isEdit ? `Editar rol: ${getValues('RoleName')}` : 'Nuevo rol' })
+                    setAccess(response.Data?.filter(u => u.Status_Id === 1) ?? [])
+                    const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControlByRol(Id as number)
+                    setAccessControl(resp.Data ?? []) 
+                } else {
+                    Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                    setLoading(false)
+                }
+            } else{
+                const response: ExecutionResponse<MenuDTO[]> = await securityService.getMenus()
+                if (response.Success) {
+                    setPermisos(response.Data?.filter(r => r.Status_Id === 1) ?? [])
+                    const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControlByRol(Id as number)
+                    setMenuControl(resp.Data ?? []) 
                 } else {
                     Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
                     setLoading(false)
                 }
             }
-        }else if(activeTab === 'accesos'){
-            const response: ExecutionResponse<AccessDTO[]> = await securityService.getAccess()
-            if (response.Success) {
-                setAccess(response.Data?.filter(u => u.Status_Id === 1) ?? [])
-                const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControlByRol(Id as number)
-                setAccessControl(resp.Data ?? []) 
-            } else {
-                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                setLoading(false)
+        }catch (err) {
+            const error = handleError(err)
+            Burnt.toast({
+                title: error.message,
+                message: error.message,
+                preset: 'error',
+            })
+            if (navigation.canGoBack()) {
+                navigation.goBack()
             }
-        } else{
-            const response: ExecutionResponse<MenuDTO[]> = await securityService.getMenus()
-            if (response.Success) {
-                setPermisos(response.Data?.filter(r => r.Status_Id === 1) ?? [])
-                const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControlByRol(Id as number)
-                setMenuControl(resp.Data ?? []) 
-            } else {
-                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                setLoading(false)
-            }
+        } finally {
+            setLoading(false)
         }
         setLoading(false)
     }

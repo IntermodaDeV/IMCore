@@ -12,6 +12,9 @@ import { ExecutionResponse } from '../../../api/modules/response.type'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import SearchInput from '../../../components/commons/SearchInput'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
+import { AppError, handleError } from '../../../utils/errorHandler'
+import ErrorState from '../../AdmSys/ErrorState'
+import EmptyState from '../../AdmSys/EmptyState'
 
 export type RootStackParamList = {
   home: undefined;
@@ -26,16 +29,21 @@ export default function MenuScreen() {
   const [filtered, setFiltered] = useState<MenuDTO[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<MenuDTO | null>(null)
+  const [error, setError] = useState<AppError | null>(null)
   const { user } = useAuth()
   const [data, setData] = useState<MenuDTO[]>([])
 
   const getInfo = React.useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       const response: ExecutionResponse<MenuDTO[]> = await securityService.getMenus()
-      if(response.Success){
-        setData(response?.Data)
+      if (response.Success) {
+        setData(response.Data)
+        setFiltered(response.Data)
       }
+    } catch (err) {
+      setError(handleError(err))
     } finally {
       setLoading(false)
     }
@@ -110,7 +118,15 @@ export default function MenuScreen() {
       >
         {loading ? (
           <SkeletonList/>
-        ) : (
+        ) : error ? (
+            <ErrorState
+              type="server"
+              title={error.title}
+              message={error.message}
+              errorCode={error.status}
+              onRetry={getInfo}
+            />
+          ) : (
 
           <>
             <SearchInput
@@ -119,74 +135,75 @@ export default function MenuScreen() {
               onResults={setFiltered}
               placeholder="Buscar..."
             />
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              marginBottom="$3"
-            >
-              {filtered.map((item) => {
-                const isActive = item.Status_Name === 'Activo'
 
-                return (
-                  <Card
-                    key={item.Id}
-                    backgroundColor="$backgroundPage"
-                    borderRadius={10}
-                    padding="$3"
-                    marginBottom="$2"
-                  >
-                    <XStack justifyContent="space-between" alignItems="flex-start">
+            <ScrollView showsVerticalScrollIndicator={false} marginBottom="$3">
+              {(filtered?.length ?? 0) === 0 ? (
+                <EmptyState onAction={() => getInfo()} />
+              ) : (
+                (filtered ?? []).map((item) => {
+                  const isActive = item.Status_Name === 'Activo'
 
-                      {/* INFO */}
-                      <YStack flex={1}>
-                        <Text fontSize={14} fontWeight="800" color="$text">
-                          {item.Name}
-                        </Text>
+                  return (
+                    <Card
+                      key={item.Id}
+                      backgroundColor="$backgroundPage"
+                      borderRadius={10}
+                      padding="$3"
+                      marginBottom="$2"
+                    >
+                      <XStack justifyContent="space-between" alignItems="flex-start">
 
-                        <Text fontSize={11} color="$text">
-                          {item.Description || 'Sin descripción'}
-                        </Text>
+                        {/* INFO */}
+                        <YStack flex={1}>
+                          <Text fontSize={14} fontWeight="800" color="$text">
+                            {item.Name}
+                          </Text>
 
-                        <Text fontSize={10} color="$text">
-                          Indentificador: {item.Route}
-                        </Text>
+                          <Text fontSize={11} color="$text">
+                            {item.Description || 'Sin descripción'}
+                          </Text>
 
-                      </YStack>
+                          <Text fontSize={10} color="$text">
+                            Identificador: {item.Route}
+                          </Text>
+                        </YStack>
 
-                      {/* TOP RIGHT ACTIONS (HORIZONTAL) */}
-                      <XStack alignItems="flex-start" gap="$2">
+                        {/* ACTIONS */}
+                        <XStack alignItems="flex-start" gap="$2">
 
-                        <View
-                          borderRadius={999}
-                          backgroundColor={isActive ? '#22c55e' : '#ef4444'}
-                          paddingHorizontal={8}
-                          paddingVertical={2}
-                          pressStyle={{ opacity: 0.7 }}
-                          onPress={() => {
-                            setSelectedItem(item)
-                            setDialogOpen(true)
-                          }}
-                        >
+                          <View
+                            borderRadius={999}
+                            backgroundColor={isActive ? '#22c55e' : '#ef4444'}
+                            paddingHorizontal={8}
+                            paddingVertical={2}
+                            pressStyle={{ opacity: 0.7 }}
+                            onPress={() => {
+                              setSelectedItem(item)
+                              setDialogOpen(true)
+                            }}
+                          >
                             <Text fontSize={10} color="white" fontWeight="700">
                               {item.Status_Name}
                             </Text>
-                        </View>
-
-                        {item?.Status_Id === 1 && (
-                          <View
-                            borderRadius={8}
-                            pressStyle={{ opacity: 0.6 }}
-                            onPress={() => createMenu(item.Id)}
-                          >
-                            <Pencil size={16} color={theme.primary?.val} />
                           </View>
-                        )}
+
+                          {Number(item?.Status_Id) === 1 && (
+                            <View
+                              borderRadius={8}
+                              pressStyle={{ opacity: 0.6 }}
+                              onPress={() => createMenu(item.Id)}
+                            >
+                              <Pencil size={16} color={theme.primary?.val} />
+                            </View>
+                          )}
+
+                        </XStack>
 
                       </XStack>
-
-                    </XStack>
-                  </Card>
-                )
-              })}
+                    </Card>
+                  )
+                })
+              )}
             </ScrollView>
           </>
         )}

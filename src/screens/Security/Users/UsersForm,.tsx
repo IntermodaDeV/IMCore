@@ -14,6 +14,7 @@ import { Check as CheckIcon, Shield, Eye, EyeOff, User} from 'lucide-react-nativ
 import SearchInput from '../../../components/commons/SearchInput'
 import AppSelect from '../../../components/commons/AppSelect'
 import AccordionSection from '../../../components/commons/AccordionSection'
+import { handleError } from '../../../utils/errorHandler'
 
 type TabType = 'general' | 'accesos' | 'permisos'
 
@@ -57,40 +58,54 @@ export default function UsersForm() {
 
     const getInfo = async () => {
         setLoading(true)
-        if(activeTab === 'general'){
-            const responseRoles: ExecutionResponse<RolesDTO[]> = await securityService.getRoles()
-            setRoles(responseRoles.Data.filter((i: RolesDTO) => i?.Status_Id === 1))
-            if (Id) {
-                const response: ExecutionResponse<UsersDTO[]> = await securityService.getUserById(Id)
+        try{
+            if(activeTab === 'general'){
+                const responseRoles: ExecutionResponse<RolesDTO[]> = await securityService.getRoles()
+                setRoles(responseRoles.Data.filter((i: RolesDTO) => i?.Status_Id === 1))
+                if (Id) {
+                    const response: ExecutionResponse<UsersDTO[]> = await securityService.getUserById(Id)
+                    if (response.Success) {
+                        reset(response.Data[0])
+                        setUser_Code(response.Data[0]?.Code)
+                        navigation.setOptions({ title: isEdit ? `Editar usuario: ${getValues('Code')}` : 'Nuevo usuario' })
+                    } else {
+                        Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                        setLoading(false)
+                    }
+                }
+            } else if(activeTab === 'accesos'){
+                const response: ExecutionResponse<AccessDTO[]> = await securityService.getAccess()
                 if (response.Success) {
-                    reset(response.Data[0])
-                    setUser_Code(response.Data[0]?.Code)
-                    navigation.setOptions({ title: isEdit ? `Editar usuario: ${getValues('Code')}` : 'Nuevo usuario' })
+                    setAccess(response.Data?.filter(u => u.Status_Id === 1) ?? [])
+                    const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControlByUser(user_Code as string)
+                    setAccessControl(resp.Data ?? []) 
+                } else {
+                    Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                    setLoading(false)
+                }
+            } else{
+                const response: ExecutionResponse<MenuDTO[]> = await securityService.getMenus()
+                if (response.Success) {
+                    setPermisos(response.Data?.filter(r => r.Status_Id === 1) ?? [])
+                    const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControlByUser(user_Code as string)
+                    setMenuControl(resp.Data ?? []) 
                 } else {
                     Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
                     setLoading(false)
                 }
             }
-        } else if(activeTab === 'accesos'){
-            const response: ExecutionResponse<AccessDTO[]> = await securityService.getAccess()
-            if (response.Success) {
-                setAccess(response.Data?.filter(u => u.Status_Id === 1) ?? [])
-                const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControlByUser(user_Code as string)
-                setAccessControl(resp.Data ?? []) 
-            } else {
-                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                setLoading(false)
+        }catch (err) {
+            const error = handleError(err)
+            Burnt.toast({
+                title: error.message,
+                message: error.message,
+                preset: 'error',
+            })
+            if (navigation.canGoBack()) {
+                navigation.goBack()
             }
-        } else{
-            const response: ExecutionResponse<MenuDTO[]> = await securityService.getMenus()
-            if (response.Success) {
-                setPermisos(response.Data?.filter(r => r.Status_Id === 1) ?? [])
-                const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControlByUser(user_Code as string)
-                setMenuControl(resp.Data ?? []) 
-            } else {
-                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                setLoading(false)
-            }
+        } finally {
+            setLoading(false)
         }
         setLoading(false)
     }

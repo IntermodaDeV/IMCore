@@ -12,6 +12,9 @@ import { ExecutionResponse } from '../../../api/modules/response.type'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import SearchInput from '../../../components/commons/SearchInput'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
+import { AppError, handleError } from '../../../utils/errorHandler'
+import ErrorState from '../../AdmSys/ErrorState'
+import EmptyState from '../../AdmSys/EmptyState'
 
 export type RootStackParamList = {
   home: undefined;
@@ -26,16 +29,21 @@ export default function AccessScreen() {
   const [filtered, setFiltered] = useState<AccessDTO[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<AccessDTO | null>(null)
+  const [error, setError] = useState<AppError | null>(null)
   const { user } = useAuth()
   const [data, setData] = useState<AccessDTO[]>([])
 
   const getInfo = React.useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       const response: ExecutionResponse<AccessDTO[]> = await securityService.getAccess()
-      if(response.Success){
-        setData(response?.Data)
+      if (response.Success) {
+        setData(response.Data)
+        setFiltered(response.Data)
       }
+    } catch (err) {
+      setError(handleError(err))
     } finally {
       setLoading(false)
     }
@@ -110,7 +118,16 @@ export default function AccessScreen() {
       >
         {loading ? (
           <SkeletonList/>
-        ) : (
+        ) : error ? (
+          <ErrorState
+            type="server"
+            title={error.title}
+            message={error.message}
+            errorCode={error.status}
+            onRetry={getInfo}
+          />
+        ) : 
+        (
           <>
             <SearchInput
               data={data}
@@ -122,66 +139,70 @@ export default function AccessScreen() {
               showsVerticalScrollIndicator={false}
               marginBottom="$3"
             >
-              {filtered.map((item) => {
-                const isActive = item.Status_Name === 'Activo'
 
-                return (
-                  <YStack
-                    key={item.Id}
-                    backgroundColor="$backgroundPage"
-                    padding="$3"
-                    borderRadius={10}
-                    marginBottom="$2"
-                  >
-                    <XStack justifyContent="space-between" alignItems="flex-start">
+              {(filtered?.length ?? 0) === 0 ? (
+                  <EmptyState onAction={() => getInfo()} />
+                ) : (
+                  (filtered ?? []).map((item) => {
+                    const isActive = item.Status_Name === 'Activo'
 
-                      <YStack flex={1}>
-                        <Text fontSize={14} fontWeight="800" color="$text">
-                          {item.Name}
-                        </Text>
+                    return (
+                      <YStack
+                        key={item.Id}
+                        backgroundColor="$backgroundPage"
+                        padding="$3"
+                        borderRadius={10}
+                        marginBottom="$2"
+                      >
+                        <XStack justifyContent="space-between" alignItems="flex-start">
 
-                        <Text fontSize={11} color="$text">
-                          {item.Description || 'Sin descripción'}
-                        </Text>
+                          <YStack flex={1}>
+                            <Text fontSize={14} fontWeight="800" color="$text">
+                              {item.Name}
+                            </Text>
 
-                        <Text fontSize={10} color="$text" marginTop="$1">
-                          Llave única: {item.KeyVar}
-                        </Text>
+                            <Text fontSize={11} color="$text">
+                              {item.Description || 'Sin descripción'}
+                            </Text>
+
+                            <Text fontSize={10} color="$text" marginTop="$1">
+                              Llave única: {item.KeyVar}
+                            </Text>
+                          </YStack>
+
+                          <XStack alignItems="flex-start" gap="$3">
+                            <View
+                              borderRadius={999}
+                              backgroundColor={isActive ? '#22c55e' : '#ef4444'}
+                              paddingHorizontal={8}
+                              paddingVertical={2}
+                              pressStyle={{ opacity: 0.7 }}
+                              onPress={() => {
+                                setSelectedItem(item)
+                                setDialogOpen(true)
+                              }}
+                            >
+                              <Text fontSize={10} color="white" fontWeight="700">
+                                {item.Status_Name}
+                              </Text>
+                            </View>
+
+                            {item?.Status_Id === 1 && (
+                              <View
+                                borderRadius={8}
+                                pressStyle={{ opacity: 0.6 }}
+                                onPress={() => createAccess(item.Id)}
+                              >
+                                <Pencil size={16} color={theme.primary?.val} />
+                              </View>
+                            )}
+                          </XStack>
+
+                        </XStack>
                       </YStack>
-
-                      <XStack alignItems="flex-start" gap="$3">
-                        <View
-                          borderRadius={999}
-                          backgroundColor={isActive ? '#22c55e' : '#ef4444'}
-                          paddingHorizontal={8}
-                          paddingVertical={2}
-                          pressStyle={{ opacity: 0.7 }}
-                          onPress={() => {
-                            setSelectedItem(item)
-                            setDialogOpen(true)
-                          }}
-                        >
-                          <Text fontSize={10} color="white" fontWeight="700">
-                            {item.Status_Name}
-                          </Text>
-                        </View>
-
-                        {item?.Status_Id === 1 && (
-                          <View
-                            borderRadius={8}
-                            pressStyle={{ opacity: 0.6 }}
-                            onPress={() => createAccess(item.Id)}
-                          >
-                            <Pencil size={16} color={theme.primary?.val} />
-                          </View>
-                        )}
-                      </XStack>
-
-                    </XStack>
-                  </YStack>
-                )
-              })}
-
+                    )
+                  })
+              )}
             </ScrollView>
           </>
         )}

@@ -13,6 +13,7 @@ import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
 import { Shield, User } from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
 import AppSelect from '../../../components/commons/AppSelect'
+import { handleError } from '../../../utils/errorHandler'
 
 type TabType = 'general' | 'usuarios' | 'roles'
 
@@ -49,48 +50,59 @@ export default function MenuForm() {
     const { control, handleSubmit, formState: { errors }, reset, getValues } = useForm<MenuDTO>({ defaultValues, mode: 'onTouched' })
 
     const getInfo = async () => {
-        setLoading(true)
-        const responseTypes: ExecutionResponse<MenuDTO[]> = await securityService.getMenus()
-        let dataMenus: MenuDTO[] = responseTypes?.Data?.filter((i: MenuDTO) => i?.Status_Id === 1)
-        let menuOptions = dataMenus.map((i) => ({
-            label: i.Name,
-            value: Number(i.Id),
-        }))
-        setMenusList(menuOptions)
-        if(activeTab === 'general'){
-            if (Id) {
-                const response: ExecutionResponse<MenuDTO[]> = await securityService.getMenuById(Id)
-                if (response.Success) {
-                    reset(response.Data[0])
-                    navigation.setOptions({ title: isEdit ? `Editar menú: ${getValues('Name')}` : 'Nuevo menú' })
-                } else {
-                    Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                    setLoading(false)
-                }
+        const tab = activeTab
+        try {
+            setLoading(true)
+
+            const response = await securityService.getMenus()
+
+            setMenusList(
+            response.Data?.filter((i) => i.Status_Id === 1).map((i) => ({
+                label: i.Name,
+                value: Number(i.Id),
+            })) ?? []
+            )
+
+            if (tab === 'general' && Id) {
+            const res = await securityService.getMenuById(Id)
+
+            if (res.Success) {
+                reset(res.Data[0])
             }
+            }
+
+            if (tab === 'usuarios') {
+            const [usersRes, controlRes] = await Promise.all([
+                securityService.getUsers(),
+                securityService.getMenuControl(6, Id as number),
+            ])
+
+            setUsers(usersRes.Data ?? [])
+            setMenuControl(controlRes.Data ?? [])
+            }
+
+            if (tab === 'roles') {
+            const [rolesRes, controlRes] = await Promise.all([
+                securityService.getRoles(),
+                securityService.getMenuControl(7, Id as number),
+            ])
+
+            setRoles(rolesRes.Data ?? [])
+            setMenuControl(controlRes.Data ?? [])
+            }
+        } catch (err) {
+            const error = handleError(err)
+            Burnt.toast({
+                title: error.message,
+                message: error.message,
+                preset: 'error',
+            })
+            if (navigation.canGoBack()) {
+                navigation.goBack()
+            }
+        } finally {
+            setLoading(false)
         }
-        else if(activeTab === 'usuarios'){
-            const response: ExecutionResponse<UsersDTO[]> = await securityService.getUsers()
-            if (response.Success) {
-                setUsers(response.Data?.filter(u => u.Status_Id === 1) ?? [])
-                const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControl(6, Id as number)
-                setMenuControl(resp.Data ?? []) 
-            } else {
-                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                setLoading(false)
-            }
-        }else{
-            const response: ExecutionResponse<RolesDTO[]> = await securityService.getRoles()
-            if (response.Success) {
-                setRoles(response.Data?.filter(r => r.Status_Id === 1) ?? [])
-                const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControl(7, Id as number)
-                setMenuControl(resp.Data ?? []) 
-            } else {
-                Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
-                setLoading(false)
-            }
-        }
-        setLoading(false)
     }
 
     const getInfoSinLonuding = async () => {
@@ -229,7 +241,6 @@ export default function MenuForm() {
         setLoadingToggle(null)
     }
 
-    useEffect(() => { getInfo() }, [])
     useEffect(() => {                               
         navigation.setOptions({ title: isEdit ? `Editar menú: ${getValues('Name')}` : 'Nuevo menú' })
     }, [isEdit])

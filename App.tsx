@@ -45,7 +45,7 @@ function Root() {
                 <Stack.Screen name="Loading">
                   {({ route, navigation }) => (
                     <LoadingScreen
-                      text="Iniciando sesión..."
+                      // text="Iniciando sesión..."
                       duration={1000}
                       onFinish={() => {
                         const next = (route.params as any)?.next || 'Main'

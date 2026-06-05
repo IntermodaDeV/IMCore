@@ -74,6 +74,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const initials =`${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
   const theme = useTheme()
   const currentRoute = useNavigationState(state => state?.routes?.[state.index]?.name)
+  const [openId, setOpenId] = useState<number | null>(null)
   const MENU = buildMenuTree(props.menu ?? [])
 
   return (
@@ -169,14 +170,16 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
             }}
           >
             <View>
-              {MENU.map((item, index) => (
-                <TreeItem
-                  key={item.Id ?? index}
-                  item={item}
-                  navigation={props.navigation}
-                  currentRoute={currentRoute}
-                />
-              ))}
+            {MENU.map((item, index) => (
+              <TreeItem
+                key={item.Id ?? index}
+                item={item}
+                navigation={props.navigation}
+                currentRoute={currentRoute}
+                openId={openId}
+                setOpenId={setOpenId}
+              />
+            ))}
             </View>
           </DrawerContentScrollView>
         )}
@@ -276,30 +279,32 @@ function TreeItem({
   level = 0,
   navigation,
   currentRoute,
+  openId,
+  setOpenId,
 }: {
   item: any
   level?: number
   navigation: any
   currentRoute?: string
+  openId: number | null
+  setOpenId: (id: number | null) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const Icon = LucideIcons[item.Icon as keyof typeof LucideIcons]
-  const hasChildren = item.children?.length > 0
-
   const theme = useTheme()
-  const isActive = !hasChildren && item.Route === currentRoute
-  const hasActiveChild = hasActiveDescendant(item, currentRoute)
+  const Icon = LucideIcons[item.Icon as keyof typeof LucideIcons]
 
-  useEffect(() => {
-    if (hasActiveChild) setOpen(true)
-  }, [hasActiveChild])
+  const hasChildren = item.children?.length > 0
+  const isOpen = openId === item.Id
+
+  const isActive = !hasChildren && item.Route === currentRoute
 
   const handlePress = () => {
     if (hasChildren) {
-      setOpen(!open)
+      setOpenId(isOpen ? null : item.Id) 
       return
     }
+
     const route = item.Route
+
     if (navigation.getState().routeNames.includes(route)) {
       navigation.navigate(route)
     } else {
@@ -307,13 +312,9 @@ function TreeItem({
     }
   }
 
-
   return (
     <>
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={handlePress}
-      >
+      <TouchableOpacity activeOpacity={0.8} onPress={handlePress}>
         <View
           flexDirection="row"
           alignItems="center"
@@ -325,42 +326,41 @@ function TreeItem({
           marginVertical={1}
           borderRadius={10}
           backgroundColor={
-              isActive
-                  ? 'rgba(255, 85, 26, 0.12)'
-                  : hasActiveChild
-                  ? 'rgba(255, 85, 26, 0.06)'
-                  : 'transparent'
+            isActive
+              ? 'rgba(255, 85, 26, 0.06)'
+              : 'transparent'
           }
         >
           {isActive && (
             <View
-                position="absolute"
-                left={0}
-                top={6}
-                bottom={6}
-                width={3}
-                borderRadius={2}
-                backgroundColor="$primary"
+              position="absolute"
+              left={0}
+              top={6}
+              bottom={6}
+              width={3}
+              borderRadius={2}
+              backgroundColor="$primary"
             />
           )}
 
           <View flexDirection="row" alignItems="center" gap={12}>
-            {Icon ? <Icon size={18} color={'#FF551A'} /> : null}
-
-            {!Icon && level > 0 && (
-              <FileText size={14} color={'#FF551A'} />
+            {Icon ? (
+              <Icon size={18} color={'#FF551A'} />
+            ) : (
+              level > 0 && <FileText size={14} color={'#FF551A'} />
             )}
+
             <Text
-              color={isActive || hasActiveChild ? '$primary' : '$text'}
+              color={isActive ? '$primary' : '$text'}
               fontSize={14}
-              fontWeight={isActive || hasActiveChild ? '700' : '400'}
+              fontWeight={isActive ? '700' : '400'}
             >
               {item.Name}
             </Text>
           </View>
 
           {hasChildren &&
-            (open ? (
+            (isOpen ? (
               <ChevronDown size={16} color={theme.primary?.val} />
             ) : (
               <ChevronRight size={16} color={theme.primary?.val} />
@@ -368,14 +368,16 @@ function TreeItem({
         </View>
       </TouchableOpacity>
 
-      {open &&
+      {isOpen &&
         item.children?.map((child: any, index: number) => (
           <TreeItem
-            key={`${child.title}-${index}`}
+            key={`${child.Id}-${index}`}
             item={child}
             level={level + 1}
             navigation={navigation}
-            currentRoute={currentRoute} 
+            currentRoute={currentRoute}
+            openId={openId}
+            setOpenId={setOpenId}
           />
         ))}
     </>

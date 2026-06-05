@@ -12,11 +12,15 @@ import { ExecutionResponse } from '../../../api/modules/response.type'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import SearchInput from '../../../components/commons/SearchInput'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
+import { AppError, handleError } from '../../../utils/errorHandler'
+import ErrorState from '../../AdmSys/ErrorState'
+import EmptyState from '../../AdmSys/EmptyState'
 
 export type RootStackParamList = {
   home: undefined;
   rolls_form: { Id?: number };
 };
+
 type NavProps = NativeStackNavigationProp<RootStackParamList>;
 
 export default function RolesScreen() {
@@ -26,16 +30,21 @@ export default function RolesScreen() {
   const [filtered, setFiltered] = useState<RolesDTO[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<RolesDTO | null>(null)
-  const { user } = useAuth()
+  const [error, setError] = useState<AppError | null>(null)
   const [data, setData] = useState<RolesDTO[]>([])
+  const { user } = useAuth()
 
   const getInfo = React.useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       const response: ExecutionResponse<RolesDTO[]> = await securityService.getRoles()
-      if(response.Success){
-        setData(response?.Data)
+      if (response.Success) {
+        setData(response.Data)
+        setFiltered(response.Data)
       }
+    } catch (err) {
+      setError(handleError(err))
     } finally {
       setLoading(false)
     }
@@ -109,21 +118,34 @@ export default function RolesScreen() {
         padding="$3"
       >
         {loading ? (
-          <SkeletonList/>
+          <SkeletonList />
+        ) : error ? (
+          <ErrorState
+            type="server"
+            title={error.title}
+            message={error.message}
+            errorCode={error.status}
+            onRetry={getInfo}
+          />
         ) : (
-          <>
-            <SearchInput
-              data={data}
-              searchKeys={['RoleName', 'Description']}
-              onResults={setFiltered}
-              placeholder="Buscar..."
-            />
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              marginBottom="$3"
-            >
-              {filtered.map((item) => {
+        <>
+          <SearchInput
+            data={data}
+            searchKeys={['RoleName', 'Description']}
+            onResults={setFiltered}
+            placeholder="Buscar..."
+          />
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            marginBottom="$3"
+          >
+            {(filtered?.length ?? 0) === 0 ? (
+              <EmptyState onAction={() => getInfo()} />
+            ) : (
+              (filtered ?? []).map((item) => {
                 const isActive = item.StatusName === 'Activo'
+
                 return (
                   <Card
                     key={item.Id}
@@ -133,62 +155,75 @@ export default function RolesScreen() {
                     marginBottom="$2"
                   >
                     <XStack justifyContent="space-between" alignItems="flex-start">
-                      {/* INFO */}
                       <YStack flex={1}>
-                      <Text fontSize={14} fontWeight="800" color="$text">
-                        {item.RoleName}
-                      </Text>
+                        <Text
+                          fontSize={14}
+                          fontWeight="800"
+                          color="$text"
+                        >
+                          {item.RoleName}
+                        </Text>
 
-                      <Text fontSize={11} color="$text">
-                        {item.Description || 'Sin descripción'}
-                      </Text>
+                        <Text
+                          fontSize={11}
+                          color="$text"
+                        >
+                          {item.Description || 'Sin descripción'}
+                        </Text>
 
-                      <Text fontSize={10} color="$text">
+                        <Text
+                          fontSize={10}
+                          color="$text"
+                        >
                           Fecha creación:{' '}
                           {new Date(item.Creation_Date).toLocaleDateString()}
-                      </Text>
+                        </Text>
                       </YStack>
 
-                      {/* TOP RIGHT ACTIONS */}
                       <XStack alignItems="flex-start" gap="$2">
-
-                      {/* STATUS */}
-                      <View
-                        borderRadius={999}
-                        backgroundColor={isActive ? '#22c55e' : '#ef4444'}
-                        paddingHorizontal={8}
-                        paddingVertical={2}
-                        pressStyle={{ opacity: 0.7 }}
-                        onPress={() => {
-                          setSelectedItem(item)
-                          setDialogOpen(true)
-                        }}
-                      >
-                        <Text fontSize={10} color="white" fontWeight="700">
-                          {item.StatusName}
-                        </Text>
-                      </View>
-
-                      {/* EDIT */}
-                      {item?.Status_Id === 1 && (
                         <View
-                          borderRadius={8}
-                          pressStyle={{ opacity: 0.6 }}
-                          onPress={() => openForm(item?.Id)}
+                          borderRadius={999}
+                          backgroundColor={
+                            isActive ? '#22c55e' : '#ef4444'
+                          }
+                          paddingHorizontal={8}
+                          paddingVertical={2}
+                          pressStyle={{ opacity: 0.7 }}
+                          onPress={() => {
+                            setSelectedItem(item)
+                            setDialogOpen(true)
+                          }}
                         >
-                          <Pencil size={16} color={theme.primary?.val} />
+                          <Text
+                            fontSize={10}
+                            color="white"
+                            fontWeight="700"
+                          >
+                            {item.StatusName}
+                          </Text>
                         </View>
-                      )}
 
+                        {item.Status_Id === 1 && (
+                          <View
+                            borderRadius={8}
+                            pressStyle={{ opacity: 0.6 }}
+                            onPress={() => openForm(item.Id)}
+                          >
+                            <Pencil
+                              size={16}
+                              color={theme.primary?.val}
+                            />
+                          </View>
+                        )}
                       </XStack>
-
                     </XStack>
-                    </Card>
+                  </Card>
                 )
-              })}
-            </ScrollView>
-          </>
-        )}
+              })
+            )}
+          </ScrollView>
+        </>
+      )}
       </YStack>
 
       <ConfirmDialog
