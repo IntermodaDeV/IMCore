@@ -1,4 +1,4 @@
-import * as Burnt from 'burnt'
+//import * as Burnt from 'burnt'
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Pencil, Plus, RotateCw } from 'lucide-react-native'
@@ -69,7 +69,7 @@ export default function AccessScreen() {
               : item
           )
         )
-        Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done'})
+//        Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done'})
       }
     } finally {
       setDialogOpen(false)
