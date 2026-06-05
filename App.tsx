@@ -30,8 +30,11 @@ function Root() {
     },
   }
   const navColors = navigationTheme[theme]
-  if (loading) return null
+  // if (loading) return null
 
+  if (loading) {
+    return <LoadingScreen text="Iniciando sesión..." />
+  }
   return (
     <TamaguiProvider config={config} defaultTheme={theme}>
       <Theme name={theme}>
@@ -45,7 +48,7 @@ function Root() {
                 <Stack.Screen name="Loading">
                   {({ route, navigation }) => (
                     <LoadingScreen
-                      // text="Iniciando sesión..."
+                      text="Iniciando sesión..."
                       duration={1000}
                       onFinish={() => {
                         const next = (route.params as any)?.next || 'Main'

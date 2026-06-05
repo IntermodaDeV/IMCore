@@ -5,6 +5,7 @@ import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO, Us
 const schema = 'Security'
 export const securityService = {
   login: (data: LoginRequest) => httpClient.post<LoginResponse, LoginRequest>(`${schema}/loginUser`,data),
+  logout: (User_Code : string) => httpClient.post(`${schema}/logout?User_Code=${User_Code}`),
   getUsers: () => httpClient.get<ExecutionResponse<UsersDTO[]>>(`${schema}/Users`),
   saveUsers: (data: UsersDTO[]) => httpClient.post<ExecutionResponse<UsersDTO[]>>(`${schema}/Users`, data),
   saveUsersSettings: (data: UsersSettingsDTO[]) => httpClient.post<ExecutionResponse<UsersSettingsDTO[]>>(`${schema}/UserSettings`, data),

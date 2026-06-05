@@ -1,5 +1,5 @@
 import * as Burnt from 'burnt'
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { TouchableOpacity } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
@@ -13,6 +13,8 @@ import { useAuth } from '../context/AuthContext'
 import { SkeletonBox } from '../components/Skeletons/SkeletonList'
 import { securityService } from '../api/modules/security/security.service'
 import { useNavigationState } from '@react-navigation/native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
 
 const Drawer = createDrawerNavigator()
 
@@ -76,6 +78,16 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const currentRoute = useNavigationState(state => state?.routes?.[state.index]?.name)
   const [openId, setOpenId] = useState<number | null>(null)
   const MENU = buildMenuTree(props.menu ?? [])
+
+  const logoutUser = async () => {
+    await securityService.logout(user?.Code as string)
+    await AsyncStorage.removeItem('accessToken')
+    await AsyncStorage.removeItem('refreshToken')
+    await AsyncStorage.removeItem('user')
+    await AsyncStorage.removeItem('theme')
+    await AsyncStorage.removeItem('menu')
+    await logout()
+  }
 
   return (
     <View flex={1} backgroundColor="$background">
@@ -194,13 +206,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           alignItems="center"
           justifyContent="center"
           pressStyle={{ opacity: 0.8 }}
-          onPress={async () => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' as never }],
-            })
-            await logout()
-          }}
+          onPress={async () => logoutUser()}
         >
           <LogOut size={18} color="white" />
 

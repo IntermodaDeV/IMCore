@@ -1,6 +1,9 @@
 export type LoginRequest = {
   Code: string
   password: string
+  
+	IPAddress?: string
+	Device?: string
 }
 
 export type LoginResponse = {
@@ -8,6 +11,8 @@ export type LoginResponse = {
   SuccessMessage: string
   ErrorMessage: string
   InfoUser: string 
+  AccessToken: string
+  RefreshToken: string
 }
 
 export interface UsersDTO {
