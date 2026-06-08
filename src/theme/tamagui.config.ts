@@ -1,8 +1,26 @@
 import { createTamagui } from 'tamagui'
 import { defaultConfig } from '@tamagui/config/v5'
+import { createAnimations } from '@tamagui/animations-react-native'
+
+const animations = createAnimations({
+  fast: {
+    type: 'timing',
+    duration: 150,
+  },
+  medium: {
+    type: 'timing',
+    duration: 250,
+  },
+  slow: {
+    type: 'timing',
+    duration: 400,
+  },
+})
 
 export const config = createTamagui({
   ...defaultConfig,
+
+  animations,
 
   tokens: {
     ...defaultConfig.tokens,

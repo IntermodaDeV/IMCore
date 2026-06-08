@@ -1,5 +1,6 @@
 import Config from 'react-native-config'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { refreshAccessToken } from '../auth/refreshToken'
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -33,6 +34,21 @@ export class NetworkError extends Error {
 class HttpClient {
   private baseUrl = Config.API_URL
 
+  private async fetchRequest<TResponse>(
+    fullUrl: string,
+    options: RequestInit
+  ): Promise<TResponse> {
+    const response = await fetch(fullUrl, options)
+
+    const text = await response.text()
+
+    if (!response.ok) {
+      throw new HttpError(response.status, text)
+    }
+
+    return text ? JSON.parse(text) : null
+  }
+
   private buildQuery(params?: Record<string, any>) {
     if (!params) return ''
 
@@ -54,36 +70,37 @@ class HttpClient {
     params,
     headers,
   }: RequestOptions<TBody>): Promise<TResponse> {
-    try {
-      const fullUrl = `${this.baseUrl}${url}${this.buildQuery(params)}`
+    const fullUrl = `${this.baseUrl}${url}${this.buildQuery(params)}`
+    const token = await AsyncStorage.getItem('accessToken')
 
-      const token = await AsyncStorage.getItem('accessToken')
-
-      const finalHeaders: Record<string, string> = {
+    const options: RequestInit = {
+      method,
+      headers: {
         ...(body ? { 'Content-Type': 'application/json' } : {}),
         ...(headers || {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      }
-      const response = await fetch(fullUrl, {
-        method,
-        headers: finalHeaders,
-        body: body ? JSON.stringify(body) : undefined,
-      })
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    }
 
-      const text = await response.text()
+    try {
+      return await this.fetchRequest<TResponse>(fullUrl, options)
+    } catch (error: any) {
+      if (error instanceof HttpError && error.status === 401) {
+        const newToken = await refreshAccessToken()
+        if (!newToken) {
+          throw error 
+        }
 
-      if (!response.ok) {
-        throw new HttpError(response.status, text)
-      }
+        const retryOptions: RequestInit = {
+          ...options,
+          headers: {
+            ...options.headers,
+            Authorization: `Bearer ${newToken}`,
+          },
+        }
 
-      return text ? JSON.parse(text) : null
-    } catch (error) {
-      if (error instanceof HttpError) {
-        throw error
-      }
-
-      if (error instanceof TypeError) {
-        throw new NetworkError()
+        return await this.fetchRequest<TResponse>(fullUrl, retryOptions)
       }
 
       throw error

@@ -1,4 +1,3 @@
-//import * as Burnt from 'burnt'
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Plus, RotateCw, Pencil } from 'lucide-react-native'
@@ -7,6 +6,7 @@ import { securityService } from '../../../api/modules/security/security.service'
 import { RolesDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
 import { useAuth } from '../../../context/AuthContext'
+import { useShowToast } from '../../../utils/useShowToast'
 import SkeletonList from '../../../components/Skeletons/SkeletonList'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
@@ -33,6 +33,7 @@ export default function RolesScreen() {
   const [error, setError] = useState<AppError | null>(null)
   const [data, setData] = useState<RolesDTO[]>([])
   const { user } = useAuth()
+  const { showToast } = useShowToast()
 
   const getInfo = React.useCallback(async () => {
     try {
@@ -84,7 +85,7 @@ export default function RolesScreen() {
               : item
           )
         )
-//        Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done'})
+        showToast('success', 'Éxito', response.SuccessMessage || 'Estado actualizado correctamente', 5000, 'bottom')
       }
     } finally {
       setDialogOpen(false)

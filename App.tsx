@@ -1,5 +1,5 @@
-import React from 'react'
-import { TamaguiProvider, Text, Theme, View } from 'tamagui'
+import React, { useState } from 'react'
+import { Button, TamaguiProvider, Text, Theme, View } from 'tamagui'
 import { config } from './src/theme/tamagui.config'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -12,10 +12,15 @@ import AccessForm from './src/screens/Security/Access/AccessForm'
 import MenuForm from './src/screens/Security/Menu/MenuForm'
 import RolesForm from './src/screens/Security/Roles/RolesForm'
 import UsersForm from './src/screens/Security/Users/UsersForm,'
+import { ToastProvider, ToastViewport } from '@tamagui/toast'
+import { CustomToast } from './src/components/commons/CustomToast'
+import { ToastPositionProvider } from './src/context/ToastPositionContext'
+import { useToastPosition } from './src/context/ToastPositionContext'
 
 function Root() {
   const { theme, loading, user } = useAuth()
   const Stack = createNativeStackNavigator()
+  const { position: toastPosition } = useToastPosition()
   
   const navigationTheme = {
     light: {
@@ -30,124 +35,132 @@ function Root() {
     },
   }
   const navColors = navigationTheme[theme]
-  // if (loading) return null
+  if (loading) return null
 
-  if (loading) {
-    return <LoadingScreen text="Iniciando sesión..." />
-  }
   return (
     <TamaguiProvider config={config} defaultTheme={theme}>
       <Theme name={theme}>
-        <NavigationContainer>
-          <Stack.Navigator screenOptions={{ headerShown: false }}> 
-            {user ? (
-              <>
-                <Stack.Screen name="Main">
-                  {() => <DrawerNavigator />}
-                </Stack.Screen>
-                <Stack.Screen name="Loading">
-                  {({ route, navigation }) => (
-                    <LoadingScreen
-                      text="Iniciando sesión..."
-                      duration={1000}
-                      onFinish={() => {
-                        const next = (route.params as any)?.next || 'Main'
-                        navigation.reset({
-                          index: 0,
-                          routes: [{ name: next }],
-                        })
-                      }}
-                    />
-                  )}
-                </Stack.Screen>
-    
-                <Stack.Screen
-                  name="access_form"
-                  component={AccessForm}
-                  options={{
-                    headerShown: true,
-                    title: 'Nuevo acceso',
-                    headerStyle: {
-                      backgroundColor: navColors.background,
-                    },
-                    headerTitleStyle: {
-                      fontSize: 16,
-                      fontWeight: '600',
-                    },
-                    headerTintColor: navColors.text,
-                  }}
-                />
 
-                <Stack.Screen
-                  name="menu_form"
-                  component={MenuForm}
-                  options={{
-                    headerShown: true,
-                    title: 'Nuevo menú',
-                    headerStyle: {
-                      backgroundColor: navColors.background,
-                    },
-                    headerTitleStyle: {
-                      fontSize: 16,
-                      fontWeight: '600',
-                    },
-                    headerTintColor: navColors.text,
-                  }}
-                />
+        <ToastProvider swipeDirection="horizontal">
+          <NavigationContainer>
+            <Stack.Navigator screenOptions={{ headerShown: false }}> 
+              {user ? (
+                <>
+                  <Stack.Screen name="Main">
+                    {() => <DrawerNavigator />}
+                  </Stack.Screen>
+                  <Stack.Screen name="Loading">
+                    {({ route, navigation }) => (
+                      <LoadingScreen
+                        text="Iniciando sesión..."
+                        duration={1000}
+                        onFinish={() => {
+                          const next = (route.params as any)?.next || 'Main'
+                          navigation.reset({
+                            index: 0,
+                            routes: [{ name: next }],
+                          })
+                        }}
+                      />
+                    )}
+                  </Stack.Screen>
+      
+                  <Stack.Screen
+                    name="access_form"
+                    component={AccessForm}
+                    options={{
+                      headerShown: true,
+                      title: 'Nuevo acceso',
+                      headerStyle: {
+                        backgroundColor: navColors.background,
+                      },
+                      headerTitleStyle: {
+                        fontSize: 16,
+                        fontWeight: '600',
+                      },
+                      headerTintColor: navColors.text,
+                    }}
+                  />
 
-                <Stack.Screen
-                  name="users_form"
-                  component={UsersForm}
-                  options={{
-                    headerShown: true,
-                    title: 'Nuevo usuario',
-                    headerStyle: {
-                      backgroundColor: navColors.background,
-                    },
-                    headerTitleStyle: {
-                      fontSize: 16,
-                      fontWeight: '600',
-                    },
-                    headerTintColor: navColors.text,
-                  }}
-                />
+                  <Stack.Screen
+                    name="menu_form"
+                    component={MenuForm}
+                    options={{
+                      headerShown: true,
+                      title: 'Nuevo menú',
+                      headerStyle: {
+                        backgroundColor: navColors.background,
+                      },
+                      headerTitleStyle: {
+                        fontSize: 16,
+                        fontWeight: '600',
+                      },
+                      headerTintColor: navColors.text,
+                    }}
+                  />
 
-                
-                <Stack.Screen
-                  name="rolls_form"
-                  component={RolesForm}
-                  options={{
-                    headerShown: true,
-                    title: 'Nuevo rol',
-                    headerStyle: {
-                      backgroundColor: navColors.background,
-                    },
-                    headerTitleStyle: {
-                      fontSize: 16,
-                      fontWeight: '600',
-                    },
-                    headerTintColor: navColors.text,
-                  }}
-                />
-              </>
-            ) : (
-              <Stack.Screen name="Login" component={LoginScreen} />
-            )
-            }
-          </Stack.Navigator>
+                  <Stack.Screen
+                    name="users_form"
+                    component={UsersForm}
+                    options={{
+                      headerShown: true,
+                      title: 'Nuevo usuario',
+                      headerStyle: {
+                        backgroundColor: navColors.background,
+                      },
+                      headerTitleStyle: {
+                        fontSize: 16,
+                        fontWeight: '600',
+                      },
+                      headerTintColor: navColors.text,
+                    }}
+                  />
 
-          <View
-            position="absolute"
-            bottom={10}
-            right={12}
-            pointerEvents="none"
-          >
-            <Text color="$textMuted" fontSize={11}>
-              IMCore v1.0
-            </Text>
-          </View>
+                  
+                  <Stack.Screen
+                    name="rolls_form"
+                    component={RolesForm}
+                    options={{
+                      headerShown: true,
+                      title: 'Nuevo rol',
+                      headerStyle: {
+                        backgroundColor: navColors.background,
+                      },
+                      headerTitleStyle: {
+                        fontSize: 16,
+                        fontWeight: '600',
+                      },
+                      headerTintColor: navColors.text,
+                    }}
+                  />
+                </>
+              ) : (
+                <Stack.Screen name="Login" component={LoginScreen} />
+              )
+              }
+            </Stack.Navigator>
 
-        </NavigationContainer>
+            <View
+              position="absolute"
+              bottom={10}
+              right={12}
+              pointerEvents="none"
+            >
+              <Text color="$textMuted" fontSize={11}>
+                IMCore v1.0
+              </Text>
+            </View>
+
+          </NavigationContainer>
+
+          <CustomToast />
+
+          <ToastViewport
+            top={toastPosition === 'top' ? 50 : undefined}
+            bottom={toastPosition === 'bottom' ? 20 : undefined}
+            right={20}
+          />
+        </ToastProvider>
       </Theme>
     </TamaguiProvider>
   )
@@ -157,7 +170,9 @@ export default function App() {
   return (
     <AuthProvider>
       <MenuProvider>
-        <Root />
+        <ToastPositionProvider>
+          <Root />
+        </ToastPositionProvider>
       </MenuProvider>
     </AuthProvider>
   )

@@ -1,4 +1,4 @@
-//import * as Burnt from 'burnt'
+import { useShowToast } from '../../../utils/useShowToast'
 import React, { useEffect, useState } from 'react'
 import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
@@ -32,6 +32,7 @@ export default function MenuForm() {
     const [filteredRoles, setFilteredRoles] = useState<RolesDTO[]>([])
     const [loadingToggle, setLoadingToggle] = useState<string | number |  null>(null)
     const { user } = useAuth()
+    const { showToast } = useShowToast()
     const isEdit = !!Id
 
     const defaultValues: MenuDTO = {
@@ -92,11 +93,7 @@ export default function MenuForm() {
             }
         } catch (err) {
             const error = handleError(err)
-            // Burnt.toast({
-            //     title: error.message,
-            //     message: error.message,
-            //     preset: 'error',
-            // })
+            showToast('error', 'Error', error.message, 5000, 'bottom')
             if (navigation.canGoBack()) {
                 navigation.goBack()
             }
@@ -137,18 +134,18 @@ export default function MenuForm() {
 
             const response: ExecutionResponse<MenuDTO[]> = await securityService.saveMenu([info])
             if (response.Success) {
-//                Burnt.toast({ title: response.SuccessMessage || 'Registro guardado correctamente', message: '', preset: 'done' })
+                showToast('success', 'Éxito', response.SuccessMessage || 'Registro guardado correctamente', 5000, 'bottom')
                 navigation.goBack()
             } else {
-//                Burnt.toast({ title: response.ErrorMessage || 'Error al guardar', message: '', preset: 'error' })
+                showToast('error', 'Error', response.ErrorMessage || 'Error al guardar', 5000, 'bottom')
             }
         } catch (error) {
-//            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
-//            setLoadingSave(false)
+            showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'bottom')
+            setLoadingSave(false)
         }
         setLoadingSave(false)
     }, () => {
-        // Burnt.toast({ title: 'Complete los campos requeridos', message: '', preset: 'error' })
+        showToast('error', 'Error', 'Complete los campos requeridos', 5000, 'bottom')
         setLoadingSave(false)
     })
 
@@ -187,12 +184,12 @@ export default function MenuForm() {
                 }
                 const resp: ExecutionResponse<IMenuControl[]> = await securityService.getMenuControl(6, Id as number)
                 setMenuControl(resp.Data ?? []) 
-//                Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done' })
+                showToast('success', 'Éxito', response.SuccessMessage || 'Operación realizada correctamente', 5000, 'bottom')
             } else {
-//                Burnt.toast({ title: response.ErrorMessage || 'Error al actualizar', message: '', preset: 'error' })
+                showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
             }
         } catch {
-//            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
+            showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'bottom')
         }
         setLoadingToggle(null)
     }
@@ -231,12 +228,12 @@ export default function MenuForm() {
                     )
                 }
                 getInfoSinLonuding()
-//                Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done' })
+                showToast('success', 'Éxito', response.SuccessMessage || 'Operación realizada correctamente', 5000, 'bottom')
             } else {
-//                Burnt.toast({ title: response.ErrorMessage || 'Error al actualizar', message: '', preset: 'error' })
+                showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
             }
         } catch {
-//            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
+            showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'bottom')
         }
         setLoadingToggle(null)
     }

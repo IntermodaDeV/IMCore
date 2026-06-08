@@ -1,4 +1,3 @@
-import * as Burnt from 'burnt'
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Plus, RotateCw, Pencil, KeyRound, Eye, EyeOff, ChevronDown, ChevronUp, Trash2  } from 'lucide-react-native'
@@ -17,6 +16,7 @@ import AppInput from '../../../components/commons/AppInput'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
+import { useShowToast } from '../../../utils/useShowToast'
 
 type ChangePasswordForm = {
   CurrentPassword: string
@@ -54,6 +54,7 @@ export default function UsersScreen() {
   const [error, setError] = useState<AppError | null>(null)
   const [deletingCode, setDeletingCode] = useState<{ userId: number; keyVar: string } | null>(null) 
   const { user } = useAuth()
+  const { showToast } = useShowToast()
 
   const defaultValues: ChangePasswordForm = {
     CurrentPassword: '',
@@ -112,7 +113,7 @@ export default function UsersScreen() {
               : item
           )
         )
-        Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done' })
+        showToast('success', 'Éxito', response.SuccessMessage, 5000, 'bottom')
       }
     } finally {
       setDialogOpen(false)
@@ -133,15 +134,15 @@ export default function UsersScreen() {
 
       const response: ExecutionResponse<any[]> = await securityService.changePassword(info)
       if (true) {
-        Burnt.toast({ title: response.SuccessMessage || 'Registro guardado correctamente', message: '', preset: 'done' })
+        showToast('success', 'Éxito', response.SuccessMessage || 'Registro guardado correctamente', 5000, 'bottom')
         setPasswordDialogOpen(false)
         reset(defaultValues)
         getInfo()
       } else {
-        Burnt.toast({ title: response.ErrorMessage || 'Error al guardar', message: '', preset: 'error' })
+        showToast('error', 'Error', response.ErrorMessage || 'Error al guardar', 5000, 'bottom')
       }
     } catch (error) {
-      Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
+      showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'bottom')
     }
     setLoadingSave(false)
   }
@@ -167,7 +168,7 @@ export default function UsersScreen() {
       const response = await securityService.saveUserExternalCodes([data])
 
       if (response.Success) {
-        Burnt.toast({ title: response.SuccessMessage || 'Guardado correctamente', message: '', preset: 'done' })
+        showToast('success', 'Éxito', response.SuccessMessage || 'Registro guardado correctamente', 5000, 'bottom')
         setExternalCodeDialog(false)
         setData(prev =>
           prev.map(u =>
@@ -183,10 +184,10 @@ export default function UsersScreen() {
           )
         )
       } else {
-        Burnt.toast({ title: response.ErrorMessage || 'Error al guardar', message: '', preset: 'error' })
+        showToast('error', 'Error', response.ErrorMessage || 'Error al guardar', 5000, 'bottom')
       }
     } catch (error) {
-      Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
+      showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'bottom')
     }
     setLoadingSave(false)
   }
@@ -206,7 +207,7 @@ export default function UsersScreen() {
       const response = await securityService.saveUserExternalCodes([data])
 
       if (response.Success) {
-        Burnt.toast({ title: response.SuccessMessage || 'Eliminado correctamente', message: '', preset: 'done' })
+        showToast('success', 'Éxito', response.SuccessMessage || 'Eliminado correctamente', 5000, 'bottom')
         setExternalCodeDialog(false)
         setData(prev =>
           prev.map(u =>
@@ -222,10 +223,10 @@ export default function UsersScreen() {
           )
         )
       } else {
-        Burnt.toast({ title: response.ErrorMessage || 'Error al guardar', message: '', preset: 'error' })
+        showToast('error', 'Error', response.ErrorMessage || 'Error al guardar', 5000, 'bottom')
       }
     } catch (error) {
-      Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
+      showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'bottom')
     }
     setDeleteCodeDialog(false)
     setDeletingCode(null)

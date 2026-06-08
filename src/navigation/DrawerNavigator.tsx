@@ -1,4 +1,3 @@
-//import * as Burnt from 'burnt'
 import React, { useState } from 'react'
 import { TouchableOpacity } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
@@ -13,7 +12,7 @@ import { useAuth } from '../context/AuthContext'
 import { SkeletonBox } from '../components/Skeletons/SkeletonList'
 import { securityService } from '../api/modules/security/security.service'
 import { useNavigationState } from '@react-navigation/native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useShowToast } from '../utils/useShowToast'
 
 
 const Drawer = createDrawerNavigator()
@@ -81,11 +80,6 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
 
   const logoutUser = async () => {
     await securityService.logout(user?.Code as string)
-    await AsyncStorage.removeItem('accessToken')
-    await AsyncStorage.removeItem('refreshToken')
-    await AsyncStorage.removeItem('user')
-    await AsyncStorage.removeItem('theme')
-    await AsyncStorage.removeItem('menu')
     await logout()
   }
 
@@ -394,6 +388,7 @@ function ThemeToggle() {
   const themeName = useThemeName()
   const isDark = themeName === 'dark'
   const { user } = useAuth()
+  const { showToast } = useShowToast()
 
   const { setTheme } = useAuth()
 
@@ -411,11 +406,7 @@ function ThemeToggle() {
     if(response.Success){
       setTheme(isDark ? 'light' : 'dark')
     }else{
-//      Burnt.toast({
-//        title: 'Error al guardar la configuración del tema de la aplicación',
-//        message: '',
-//        preset: 'error',
-//      })
+      showToast('error', 'Error', 'Error al guardar la configuración del tema de la aplicación', 5000, 'top')
     }
   }
 

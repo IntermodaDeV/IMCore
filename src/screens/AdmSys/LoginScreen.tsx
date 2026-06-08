@@ -1,5 +1,4 @@
-//import * as Burnt from 'burnt'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import DeviceInfo from 'react-native-device-info'
 import { YStack, Card, Input, Button, Text, XStack, Spinner  } from 'tamagui'
 import { ImageBackground, Image } from 'react-native'
@@ -11,6 +10,7 @@ import { securityService } from '../../api/modules/security/security.service'
 import { useMenu } from '../../context/MenuContext'
 import { Pressable } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useShowToast } from '../../utils/useShowToast'
 
 type FormData = {
   Code: string
@@ -19,6 +19,7 @@ type FormData = {
 
 export default function LoginScreen() {
   const navigation = useNavigation()
+  const { showToast } = useShowToast()
   const { refreshMenu } = useMenu()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -48,13 +49,8 @@ export default function LoginScreen() {
         Device: `${brand} ${device} (${systemName} ${systemVersion})`,
       }
       const response = await securityService.login(info)
-
       if (!response?.Success) {
-        /*Burnt.toast({
-          title: response?.ErrorMessage || 'Error',
-          message: response?.ErrorMessage || 'Ocurrió un problema al iniciar sesión',
-          preset: 'error',
-        })*/
+        showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
         return
       }
 
@@ -67,13 +63,7 @@ export default function LoginScreen() {
       // navigation.navigate('Loading' as never)
 
     } catch (error) {
-
-      /*Burnt.toast({
-        title: 'Error',
-        message: 'Ocurrió un problema al iniciar sesión',
-        preset: 'error',
-      })*/
-
+      showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
     } finally {
       setLoading(false)
     }

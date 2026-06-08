@@ -1,4 +1,3 @@
-//import * as Burnt from 'burnt'
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Pencil, Plus, RotateCw } from 'lucide-react-native'
@@ -7,6 +6,7 @@ import { securityService } from '../../../api/modules/security/security.service'
 import { AccessDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
 import { useAuth } from '../../../context/AuthContext'
+import { useShowToast } from '../../../utils/useShowToast'
 import SkeletonList from '../../../components/Skeletons/SkeletonList'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
@@ -31,6 +31,7 @@ export default function AccessScreen() {
   const [selectedItem, setSelectedItem] = useState<AccessDTO | null>(null)
   const [error, setError] = useState<AppError | null>(null)
   const { user } = useAuth()
+  const { showToast } = useShowToast()
   const [data, setData] = useState<AccessDTO[]>([])
 
   const getInfo = React.useCallback(async () => {
@@ -77,7 +78,7 @@ export default function AccessScreen() {
               : item
           )
         )
-//        Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done'})
+        showToast('success', 'Éxito', response.SuccessMessage || 'Estado actualizado correctamente', 5000, 'bottom')
       }
     } finally {
       setDialogOpen(false)
