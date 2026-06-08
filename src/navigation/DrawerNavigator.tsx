@@ -1,4 +1,4 @@
-import * as Burnt from 'burnt'
+//import * as Burnt from 'burnt'
 import React, { useState } from 'react'
 import { TouchableOpacity } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
@@ -411,11 +411,11 @@ function ThemeToggle() {
     if(response.Success){
       setTheme(isDark ? 'light' : 'dark')
     }else{
-      Burnt.toast({
-        title: 'Error al guardar la configuración del tema de la aplicación',
-        message: '',
-        preset: 'error',
-      })
+//      Burnt.toast({
+//        title: 'Error al guardar la configuración del tema de la aplicación',
+//        message: '',
+//        preset: 'error',
+//      })
     }
   }
 

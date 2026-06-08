@@ -1,4 +1,4 @@
-import * as Burnt from 'burnt'
+//import * as Burnt from 'burnt'
 import React, { useEffect, useState } from 'react'
 import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
@@ -65,18 +65,18 @@ export default function AccessForm() {
 
             const response: ExecutionResponse<AccessDTO[]> = await securityService.saveAccess([info])
             if (response.Success) {
-                Burnt.toast({ title: response.SuccessMessage || 'Registro guardado correctamente', message: '', preset: 'done' })
+//                Burnt.toast({ title: response.SuccessMessage || 'Registro guardado correctamente', message: '', preset: 'done' })
                 navigation.goBack()
             } else {
-                Burnt.toast({ title: response.ErrorMessage || 'Error al guardar', message: '', preset: 'error' })
+//                Burnt.toast({ title: response.ErrorMessage || 'Error al guardar', message: '', preset: 'error' })
             }
         } catch (error) {
-            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
+//            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
             setLoadingSave(false)
         }
         setLoadingSave(false)
     }, () => {
-        Burnt.toast({ title: 'Complete los campos requeridos', message: '', preset: 'error' })
+//        Burnt.toast({ title: 'Complete los campos requeridos', message: '', preset: 'error' })
         setLoadingSave(false)
     })
 
@@ -91,7 +91,7 @@ export default function AccessForm() {
                         reset(response.Data[0])
                         navigation.setOptions({ title: isEdit ? `Editar acceso: ${getValues('Name')}` : 'Nuevo acceso' })
                     } else {
-                        Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                        // Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
                         setLoading(false)
                     }
                 }
@@ -102,7 +102,7 @@ export default function AccessForm() {
                     const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControl(6, Id as number)
                     setAccessControl(resp.Data ?? []) 
                 } else {
-                    Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+                    // Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
                     setLoading(false)
                 }
             }else{
@@ -112,17 +112,17 @@ export default function AccessForm() {
                     const resp: ExecutionResponse<IAccessControl[]> = await securityService.getAccessControl(7, Id as number)
                     setAccessControl(resp.Data ?? []) 
                 } else {
-                    Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
+//                    Burnt.toast({ title: response?.ErrorMessage || 'Error al obtener la información', message: '', preset: 'error' })
                     setLoading(false)
                 }
             }
         }catch (err) {
             const error = handleError(err)
-            Burnt.toast({
-                title: error.message,
-                message: error.message,
-                preset: 'error',
-            })
+            // Burnt.toast({
+            //     title: error.message,
+            //     message: error.message,
+            //     preset: 'error',
+            // })
             if (navigation.canGoBack()) {
                 navigation.goBack()
             }
@@ -179,12 +179,12 @@ export default function AccessForm() {
                     )
                 }
                 getInfoSinLonuding()
-                Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done' })
+//                Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done' })
             } else {
-                Burnt.toast({ title: response.ErrorMessage || 'Error al actualizar', message: '', preset: 'error' })
+//                Burnt.toast({ title: response.ErrorMessage || 'Error al actualizar', message: '', preset: 'error' })
             }
         } catch {
-            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
+//            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
         }
         setLoadingToggle(null)
     }
@@ -224,12 +224,12 @@ export default function AccessForm() {
                     )
                 }
                 getInfoSinLonuding()
-                Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done' })
+//                Burnt.toast({ title: response.SuccessMessage, message: '', preset: 'done' })
             } else {
-                Burnt.toast({ title: response.ErrorMessage || 'Error al actualizar', message: '', preset: 'error' })
+//                Burnt.toast({ title: response.ErrorMessage || 'Error al actualizar', message: '', preset: 'error' })
             }
         } catch {
-            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
+//            Burnt.toast({ title: 'Ocurrió un error inesperado', message: '', preset: 'error' })
         }
         setLoadingToggle(null)
     }

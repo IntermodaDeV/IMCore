@@ -1,4 +1,4 @@
-import * as Burnt from 'burnt'
+//import * as Burnt from 'burnt'
 import React, { useState } from 'react'
 import DeviceInfo from 'react-native-device-info'
 import { YStack, Card, Input, Button, Text, XStack, Spinner  } from 'tamagui'
@@ -50,11 +50,11 @@ export default function LoginScreen() {
       const response = await securityService.login(info)
 
       if (!response?.Success) {
-        Burnt.toast({
+        /*Burnt.toast({
           title: response?.ErrorMessage || 'Error',
           message: response?.ErrorMessage || 'Ocurrió un problema al iniciar sesión',
           preset: 'error',
-        })
+        })*/
         return
       }
 
@@ -68,11 +68,11 @@ export default function LoginScreen() {
 
     } catch (error) {
 
-      Burnt.toast({
+      /*Burnt.toast({
         title: 'Error',
         message: 'Ocurrió un problema al iniciar sesión',
         preset: 'error',
-      })
+      })*/
 
     } finally {
       setLoading(false)
