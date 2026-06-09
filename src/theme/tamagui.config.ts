@@ -39,6 +39,7 @@ export const config = createTamagui({
   themes: {
     light: {
       background: '#FFFFFF',
+      backgroundHeader: '#FFFFFF',
       backgroundPage: '#F1F5F9',
       backgroundPage2: '#bcbcbc',
       card: '#e2dddd',
@@ -60,6 +61,7 @@ export const config = createTamagui({
 
     dark: {
       background: '#0B1220',
+      backgroundHeader: '#000000',
       backgroundPage: '#070f18',
       card: '#111827',
       card2: '#1e3a5f',

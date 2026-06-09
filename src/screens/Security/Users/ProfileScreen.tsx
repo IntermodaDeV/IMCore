@@ -43,13 +43,13 @@ export default function ProfileScreen() {
         const isRemoving = favorites.includes(id)
         const existing = quickActions.find(q => q.Menu_Id === id)
 
-        const data = {
+        const info = {
             Id: existing ? existing.Id : -1, 
             User_Code: user?.Code,
             Menu_Id: id,
             Status_Id: isRemoving ? 2 : 1
         }
-        const response: ExecutionResponse<IQuickActions[]> = await securityService.saveQuickActions([data])
+        const response: ExecutionResponse<IQuickActions[]> = await securityService.saveQuickActions([info])
         if(response.Success){
             setFavorites(prev =>
                 prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]

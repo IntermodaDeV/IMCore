@@ -15,6 +15,11 @@ export type LoginResponse = {
   RefreshToken: string
 }
 
+interface RoleDTO {
+  RoleName: string
+}
+
+
 export interface UsersDTO {
   Id: number
   Code: string
@@ -28,7 +33,7 @@ export interface UsersDTO {
   Access?: string
 
   Create_By?: string
-  Roles?: string | null
+  Roles?: RoleDTO[]
   Creation_Date?: string | Date
   ValidateAD?: boolean | null
 
@@ -140,14 +145,14 @@ export type ITypes = {
 
 export type IQuickActions = {
   Id: number;
-  User_Code: string;
+  User_Code?: string;
   Menu_Id: number;
-  Status_Id: number;
-  Icon: string;
-  Name: string;
-  Route: string;
-  Create_By: string;
-  Creation_Date: string;
-  Modified_By: string | null;
-  Modification_Date: string | Date | null;
+  Status_Id?: number;
+  Icon?: string;
+  Name?: string;
+  Route?: string;
+  Create_By?: string;
+  Creation_Date?: string;
+  Modified_By?: string | null;
+  Modification_Date?: string | Date | null;
 };

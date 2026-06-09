@@ -13,6 +13,7 @@ import * as Icons from 'lucide-react-native'
 import { Pressable } from 'react-native'
 import { useWindowDimensions } from 'react-native'
 import { PullLoader } from '../../components/Skeletons/PullLoader'
+import { useMenu } from '../../context/MenuContext'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -27,7 +28,7 @@ export default function HomeScreen() {
   const greeting = getGreeting()
   const navigation = useNavigation<any>()
   const { height } = useWindowDimensions()
-
+  const { menu } = useMenu()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
   const [data, setData] = useState<IQuickActions[]>([])
@@ -111,7 +112,7 @@ export default function HomeScreen() {
           
           <XStack flexWrap="wrap" justifyContent="space-between">
             {data.map((item) => {
-              const IconComponent = (Icons as any)[item.Icon] || Icons.FileText
+              const IconComponent = (Icons as any)[item.Icon ?? ''] || Icons.FileText
               return (
                 <Pressable
                   key={item.Id}
@@ -154,53 +155,6 @@ export default function HomeScreen() {
                 </Pressable>
               )
             })}
-          </XStack>
-        </YStack>
-
-        {/* Fecha */}
-        <YStack width="100%" marginTop="auto" paddingTop="$2" marginBottom="$4">
-          <XStack
-            backgroundColor="$card2"
-            borderRadius="$6"
-            padding="$4"
-            alignItems="center"
-            justifyContent="space-between"
-            elevation={2}
-          >
-            <XStack alignItems="center" gap="$3">
-              <YStack
-                width={44}
-                height={44}
-                borderRadius={12}
-                backgroundColor="rgba(255,85,26,0.1)"
-                justifyContent="center"
-                alignItems="center"
-              >
-                <Icons.CalendarDays size={22} color="#FF551A" />
-              </YStack>
-              <YStack>
-                <Text fontSize={14} fontWeight="700" color="$text" textTransform="capitalize">
-                  {new Date().toLocaleDateString('es-HN', { weekday: 'long', day: 'numeric', month: 'long' })}
-                </Text>
-                <Text fontSize={12} color="$textMuted">
-                  {new Date().toLocaleDateString('es-HN', { year: 'numeric' })}
-                </Text>
-              </YStack>
-            </XStack>
-
-            <XStack
-              backgroundColor="rgba(255,85,26,0.1)"
-              paddingHorizontal="$3"
-              paddingVertical="$2"
-              borderRadius={8}
-              alignItems="center"
-              gap="$1"
-            >
-              <Icons.Clock size={12} color="#FF551A" />
-              <Text fontSize={13} fontWeight="700" color="$primary">
-                {new Date().toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </XStack>
           </XStack>
         </YStack>
       </YStack>

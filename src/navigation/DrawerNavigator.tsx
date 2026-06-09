@@ -70,7 +70,7 @@ export default function DrawerNavigator({ setTheme }: any) {
         headerShown: true,
         drawerType: 'slide',
         headerStyle: {
-          backgroundColor: theme.background?.val,
+          backgroundColor: theme.backgroundHeader?.val,
           height: 50,
         },
         headerTintColor: theme.text?.val,
