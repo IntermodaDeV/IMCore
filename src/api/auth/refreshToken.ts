@@ -4,7 +4,9 @@ import Config from 'react-native-config'
 export async function refreshAccessToken() {
   try {
     const refreshToken = await AsyncStorage.getItem('refreshToken')
-    if (!refreshToken) return null
+    if (!refreshToken) {
+      return null
+    }
 
     const response = await fetch(`${Config.API_URL}Security/refreshToken`, {
       method: 'POST',
@@ -16,17 +18,22 @@ export async function refreshAccessToken() {
       }),
     })
 
+    const data = await response.json()
+
     if (!response.ok) {
+      if (response.status === 401 || response.status === 400) {
+        await AsyncStorage.removeItem('refreshToken')
+        await AsyncStorage.removeItem('accessToken')
+      }
       return null
     }
-
-    const data = await response.json()
 
     await AsyncStorage.setItem('accessToken', data.AccessToken)
     await AsyncStorage.setItem('refreshToken', data.RefreshToken)
 
     return data.AccessToken
   } catch (error) {
+    console.log('[RefreshToken] Error de red:', error)
     return null
   }
 }

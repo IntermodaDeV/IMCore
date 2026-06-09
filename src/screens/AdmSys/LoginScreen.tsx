@@ -59,8 +59,8 @@ export default function LoginScreen() {
       await AsyncStorage.setItem('refreshToken', response.RefreshToken)
       await AsyncStorage.setItem('userCode', user.Code)
       await refreshMenu(user.Code)
-      login(user)
       // navigation.navigate('Loading' as never)
+      login(user)
 
     } catch (error) {
       showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')

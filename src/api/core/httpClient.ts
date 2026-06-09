@@ -34,14 +34,9 @@ export class NetworkError extends Error {
 class HttpClient {
   private baseUrl = Config.API_URL
 
-  private async fetchRequest<TResponse>(
-    fullUrl: string,
-    options: RequestInit
-  ): Promise<TResponse> {
+  private async fetchRequest<TResponse>( fullUrl: string, options: RequestInit): Promise<TResponse> {
     const response = await fetch(fullUrl, options)
-
     const text = await response.text()
-
     if (!response.ok) {
       throw new HttpError(response.status, text)
     }

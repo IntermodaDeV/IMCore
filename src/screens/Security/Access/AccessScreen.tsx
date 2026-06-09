@@ -15,6 +15,7 @@ import ConfirmDialog from '../../../components/commons/ConfirmDialog'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
+import { PullLoader } from '../../../components/Skeletons/PullLoader'
 
 export type RootStackParamList = {
   home: undefined;
@@ -118,7 +119,10 @@ export default function AccessScreen() {
         padding="$3"
       >
         {loading ? (
-          <SkeletonList/>
+          <>
+            <PullLoader />
+            <SkeletonList/>
+          </>
         ) : error ? (
           <ErrorState
             type="server"

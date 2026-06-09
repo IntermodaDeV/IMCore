@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { TouchableOpacity } from 'react-native'
+import React, { useState, useRef, useEffect } from 'react'
+import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
 import { createDrawerNavigator, DrawerContentScrollView, DrawerContentComponentProps } from '@react-navigation/drawer'
@@ -10,10 +10,9 @@ import { useMenu } from '../context/MenuContext'
 import { MenuDTO, UsersSettingsDTO } from '../api/modules/security/security.types'
 import { useAuth } from '../context/AuthContext'
 import { SkeletonBox } from '../components/Skeletons/SkeletonList'
-import { securityService } from '../api/modules/security/security.service'
 import { useNavigationState } from '@react-navigation/native'
 import { useShowToast } from '../utils/useShowToast'
-
+import { securityService } from '../api/modules/security/security.service'
 
 const Drawer = createDrawerNavigator()
 
@@ -29,6 +28,33 @@ const createDrawerContent = (setTheme: any, menu: MenuDTO[] = []) => {
   }
 }
 
+function AnimatedDots({ color }: { color?: string }) {
+  const anims = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current
+
+  useEffect(() => {
+    const animations = anims.map((anim, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 120),
+          Animated.timing(anim, { toValue: -6, duration: 300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: 300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ])
+      )
+    )
+
+    animations.forEach(a => a.start())
+    return () => animations.forEach(a => a.stop())
+  }, [anims])
+
+  return (
+    <RNView style={localStyles.dotsContainer}>
+      {anims.map((anim, idx) => (
+        <Animated.View key={idx} style={[localStyles.dot, { backgroundColor: color ?? '#FF551A', transform: [{ translateY: anim }] }]} />
+      ))}
+    </RNView>
+  )
+}
+
 export default function DrawerNavigator({ setTheme }: any) {
   const theme = useTheme()
   const { menu, loading } = useMenu()
@@ -38,6 +64,7 @@ export default function DrawerNavigator({ setTheme }: any) {
 
   return (
     <Drawer.Navigator
+      initialRouteName="inicio"
       drawerContent={createDrawerContent(setTheme, menu)}
       screenOptions={{
         headerShown: true,
@@ -55,14 +82,29 @@ export default function DrawerNavigator({ setTheme }: any) {
         drawerInactiveTintColor: theme.textMuted?.val,
       }}
     >
-      {Object.entries(SCREENS).map(([Name, component]) => (
-        <Drawer.Screen
-          key={Name}
-          name={Name}
-          component={component}
-          options={{ title: Name === 'not_found' ? 'Página no encontrada' : screenTitles[Name] ?? Name }}
-        />
-      ))}
+      {Object.entries(SCREENS).map(([Name, component]) => {
+        const title = Name === 'not_found' ? 'Página no encontrada' : screenTitles[Name] ?? Name
+        const options: any = {}
+        if (Name === 'inicio') {
+          options.headerTitle = () => (
+              <RNImage
+                source={require('../assets/LOGOMODINTER.png')}
+                style={{ width: 70, resizeMode: 'contain', marginLeft: -14, marginBottom: 6 }}
+              />
+            )
+        } else {
+          options.title = title
+        }
+
+        return (
+          <Drawer.Screen
+            key={Name}
+            name={Name}
+            component={component}
+            options={options}
+          />
+        )
+      })}
     </Drawer.Navigator>
   )
 }
@@ -72,6 +114,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const { user, logout } = useAuth()
   const { refreshMenu } = useMenu()
   const [refreshing, setRefreshing] = useState(false)
+  const [navLoading, setNavLoading] = useState<string | null>(null)
   const initials =`${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
   const theme = useTheme()
   const currentRoute = useNavigationState(state => state?.routes?.[state.index]?.name)
@@ -79,13 +122,11 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const MENU = buildMenuTree(props.menu ?? [])
 
   const logoutUser = async () => {
-    await securityService.logout(user?.Code as string)
     await logout()
   }
 
   return (
     <View flex={1} backgroundColor="$background">
-
       <View
         marginBottom={2}
         borderRadius={14}
@@ -184,6 +225,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
                 currentRoute={currentRoute}
                 openId={openId}
                 setOpenId={setOpenId}
+                setNavLoading={setNavLoading}
               />
             ))}
             </View>
@@ -235,6 +277,13 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           <ThemeToggle/>
         </View>
       </View>
+        {navLoading && (
+          <RNView style={localStyles.overlay} pointerEvents="auto">
+            <RNView style={localStyles.center}>
+              <AnimatedDots color={theme.primary?.val ?? '#FF551A'} />
+            </RNView>
+          </RNView>
+        )}
     </View>
   )
 }
@@ -281,6 +330,7 @@ function TreeItem({
   currentRoute,
   openId,
   setOpenId,
+  setNavLoading,
 }: {
   item: any
   level?: number
@@ -288,9 +338,10 @@ function TreeItem({
   currentRoute?: string
   openId: number | null
   setOpenId: (id: number | null) => void
+  setNavLoading?: (route: string | null) => void
 }) {
   const theme = useTheme()
-  const Icon = LucideIcons[item.Icon as keyof typeof LucideIcons]
+  const IconComp = (LucideIcons[item.Icon as keyof typeof LucideIcons] as any)
 
   const hasChildren = item.children?.length > 0
   const isOpen = openId === item.Id
@@ -305,11 +356,23 @@ function TreeItem({
 
     const route = item.Route
 
+    // show navigation loading overlay
+    try {
+      setNavLoading && setNavLoading(route)
+    } catch (e) {}
+
     if (navigation.getState().routeNames.includes(route)) {
       navigation.navigate(route)
     } else {
       navigation.navigate('not_found', { name: route })
     }
+
+    // close drawer and clear loading after short delay
+    try {
+      navigation.closeDrawer && navigation.closeDrawer()
+    } catch (e) {}
+
+    setTimeout(() => setNavLoading && setNavLoading(null), 500)
   }
 
   return (
@@ -344,8 +407,8 @@ function TreeItem({
           )}
 
           <View flexDirection="row" alignItems="center" gap={12}>
-            {Icon ? (
-              <Icon size={18} color={'#FF551A'} />
+            {IconComp ? (
+              <IconComp size={18} color={'#FF551A'} />
             ) : (
               level > 0 && <FileText size={14} color={'#FF551A'} />
             )}
@@ -378,6 +441,7 @@ function TreeItem({
             currentRoute={currentRoute}
             openId={openId}
             setOpenId={setOpenId}
+            setNavLoading={setNavLoading}
           />
         ))}
     </>
@@ -393,6 +457,7 @@ function ThemeToggle() {
   const { setTheme } = useAuth()
 
   const changeTheme = async () => {
+    setTheme(isDark ? 'light' : 'dark')
     let Data: UsersSettingsDTO = {
       Id: user?.Id ?? 0,
       Code: user?.Code ?? '',
@@ -442,3 +507,37 @@ function ThemeToggle() {
     </TouchableOpacity>
   )
 }
+
+const localStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    zIndex: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  center: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dotsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dot: {
+    width: 12,
+    height: 12,
+    borderRadius: 12,
+    marginHorizontal: 6,
+  },
+})

@@ -136,3 +136,18 @@ export type ITypes = {
   Modified_By: string | null;
   Modification_Date: string | Date | null;
 };
+
+
+export type IQuickActions = {
+  Id: number;
+  User_Code: string;
+  Menu_Id: number;
+  Status_Id: number;
+  Icon: string;
+  Name: string;
+  Route: string;
+  Create_By: string;
+  Creation_Date: string;
+  Modified_By: string | null;
+  Modification_Date: string | Date | null;
+};

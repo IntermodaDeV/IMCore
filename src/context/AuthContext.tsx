@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { UsersDTO } from '../api/modules/security/security.types'
+import { securityService } from '../api/modules/security/security.service'
 
 type AuthContextType = {
   user: UsersDTO | null
@@ -10,6 +11,10 @@ type AuthContextType = {
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => Promise<void>
   loading: boolean
+  transitioning: boolean
+  setTransitioning: (value: boolean) => void
+  transitionMessage: string | null
+  setTransitionMessage: (value: string | null) => void
 }
 
 const AuthContext = createContext<AuthContextType>(
@@ -22,10 +27,10 @@ export const AuthProvider = ({
   children: React.ReactNode
 }) => {
   const [user, setUser] = useState<UsersDTO | null>(null)
-
   const [themeState, setThemeState] = useState<'light' | 'dark'>('light')
-
   const [loading, setLoading] = useState(true)
+  const [transitioning, setTransitioning] = useState(false)
+  const [transitionMessage, setTransitionMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const loadSession = async () => {
@@ -73,8 +78,10 @@ export const AuthProvider = ({
       setUser(userData)
       const userTheme = userData?.Theme === 'dark' ? 'dark' : 'light'
       setThemeState(userTheme)
-      await AsyncStorage.setItem('user',JSON.stringify(userData))
-      await AsyncStorage.setItem('theme',userTheme)
+      await AsyncStorage.setItem('user', JSON.stringify(userData))
+      await AsyncStorage.setItem('theme', userTheme)
+      setTransitionMessage('Iniciando sesión...')
+      setTransitioning(true)
     } catch (error) {
       console.log('Login error', error)
     }
@@ -82,8 +89,17 @@ export const AuthProvider = ({
 
   const logout = async () => {
     try {
-      setUser(null)
+      setTransitionMessage('Cerrando sesión...')
+      setTransitioning(true)
+      if (user?.Code) {
+        try {
+          await securityService.logout(user.Code)
+        } catch (serverError) {
+          console.log('Error logout en servidor (continuando con limpieza local)', serverError)
+        }
+      }
 
+      setUser(null)
       await Promise.all([
         AsyncStorage.removeItem('user'),
         AsyncStorage.removeItem('theme'),
@@ -93,6 +109,7 @@ export const AuthProvider = ({
       ])
     } catch (e) {
       console.log('Error logout', e)
+      setUser(null)
     }
   }
 
@@ -106,6 +123,10 @@ export const AuthProvider = ({
         theme: themeState,
         setTheme,
         loading,
+        transitioning,
+        setTransitioning,
+        transitionMessage,
+        setTransitionMessage,
       }}
     >
       {children}

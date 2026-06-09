@@ -18,7 +18,7 @@ import { ToastPositionProvider } from './src/context/ToastPositionContext'
 import { useToastPosition } from './src/context/ToastPositionContext'
 
 function Root() {
-  const { theme, loading, user } = useAuth()
+  const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage } = useAuth()
   const Stack = createNativeStackNavigator()
   const { position: toastPosition } = useToastPosition()
   
@@ -35,7 +35,32 @@ function Root() {
     },
   }
   const navColors = navigationTheme[theme]
-  if (loading) return null
+  if (loading) {
+    return (
+      <TamaguiProvider config={config} defaultTheme={theme}>
+        <Theme name={theme}>
+          <LoadingScreen text="Cargando sesión..." duration={1000000} />
+        </Theme>
+      </TamaguiProvider>
+    )
+  }
+
+  if (transitioning) {
+    return (
+      <TamaguiProvider config={config} defaultTheme={theme}>
+        <Theme name={theme}>
+          <LoadingScreen
+            text={transitionMessage ?? 'Iniciando sesión...'}
+            duration={transitionMessage === 'Cerrando sesión...' ? 800 : 1200}
+            onFinish={() => {
+              setTransitioning(false)
+              setTransitionMessage(null)
+            }}
+          />
+        </Theme>
+      </TamaguiProvider>
+    )
+  }
 
   return (
     <TamaguiProvider config={config} defaultTheme={theme}>
