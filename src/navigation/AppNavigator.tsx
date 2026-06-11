@@ -4,7 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 
 import LoginScreen from '../screens/LoginScreen'
 import HomeScreen from '../screens/HomeScreen'
-
+import AprobacionSolicitudCompra from '../screens/CadenaSuministro/AprobacionSolicitudCompra'
 const RootStack = createNativeStackNavigator({
   screens: {
     Login: {
@@ -19,6 +19,9 @@ const RootStack = createNativeStackNavigator({
         headerShown: false,
       },
     },
+    aprobacionSC:{
+      screen: AprobacionSolicitudCompra
+    }
   },
 })
 
