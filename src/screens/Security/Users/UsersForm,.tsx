@@ -15,11 +15,14 @@ import SearchInput from '../../../components/commons/SearchInput'
 import AppSelect from '../../../components/commons/AppSelect'
 import AccordionSection from '../../../components/commons/AccordionSection'
 import { handleError } from '../../../utils/errorHandler'
-
+import { usePageHeader } from '../../../hooks/usePageHeader'
+import * as Icons from 'lucide-react-native'
+import { useUpdatePageHeader } from '../../../hooks/useUpdatePageHeader'
 
 type TabType = 'general' | 'accesos' | 'permisos'
 
 export default function UsersForm() {
+    const { updateHeader } = useUpdatePageHeader()
     const navigation = useNavigation()
     const route = useRoute()
     const { Id } = route.params as { Id?: number }
@@ -244,8 +247,26 @@ export default function UsersForm() {
     }
 
     useEffect(() => { getInfo() }, [])
+    
+    usePageHeader({
+        left:(
+                <Icons.ArrowLeft onPress={() => navigation.navigate<any>('usuarios')} />   
+                ),
+        center: 
+            <Text>{isEdit ? `Editar usuario: ${getValues('Code')}` : 'Nuevo usuario'}</Text>
+        ,
+
+        right: <></>,
+    })
+
     useEffect(() => {                               
-        navigation.setOptions({ title: isEdit ? `Editar usuario: ${getValues('Code')}` : 'Nuevo usuario' })
+        updateHeader({
+            center: 
+                <Text>
+                    Editar usuario: {getValues('Code')}
+                </Text>
+            ,
+        })
     }, [isEdit])
 
     useEffect(() => {
@@ -269,629 +290,629 @@ export default function UsersForm() {
         { key: 'permisos', label: 'Permisos' },
     ]
 
+    
+
     return (
-        <Page>
-            <YStack backgroundColor="$backgroundPage" flex={1}>
+        <YStack backgroundColor="$backgroundPage" flex={1}>
 
-                {loading ? (
-                    <SkeletonForm />
-                ) : (
-                    <>
-                        {/* TABS */}
-                        {Id && (
-                            <XStack
-                                backgroundColor="$gray3"
-                                borderRadius="$3"
-                                marginHorizontal="$4"
-                                marginTop="$3"
-                                marginBottom="$2"
-                                padding="$2"
-                            >
-                                {tabs.map((tab) => {
-                                    const isActive = activeTab === tab.key
-                                    return (
-                                        <Button
-                                            key={tab.key}
-                                            flex={1}
-                                            height={36}
-                                            borderRadius="$3"
-                                            backgroundColor={isActive ? '$primary' : 'transparent'}
-                                            pressStyle={{ opacity: 0.8 }}
-                                            onPress={() => setActiveTab(tab.key)}
-                                            borderWidth={0}
-                                            shadowColor={isActive ? 'rgba(0,0,0,0.15)' : 'transparent'}
-                                            shadowOffset={isActive ? { width: 0, height: 1 } : { width: 0, height: 0 }}
-                                            shadowOpacity={isActive ? 1 : 0}
-                                            shadowRadius={isActive ? 3 : 0}
+            {loading ? (
+                <SkeletonForm />
+            ) : (
+                <>
+                    {/* TABS */}
+                    {Id && (
+                        <XStack
+                            backgroundColor="$gray3"
+                            borderRadius="$3"
+                            marginHorizontal="$4"
+                            marginTop="$3"
+                            marginBottom="$2"
+                            padding="$2"
+                        >
+                            {tabs.map((tab) => {
+                                const isActive = activeTab === tab.key
+                                return (
+                                    <Button
+                                        key={tab.key}
+                                        flex={1}
+                                        height={36}
+                                        borderRadius="$3"
+                                        backgroundColor={isActive ? '$primary' : 'transparent'}
+                                        pressStyle={{ opacity: 0.8 }}
+                                        onPress={() => setActiveTab(tab.key)}
+                                        borderWidth={0}
+                                        shadowColor={isActive ? 'rgba(0,0,0,0.15)' : 'transparent'}
+                                        shadowOffset={isActive ? { width: 0, height: 1 } : { width: 0, height: 0 }}
+                                        shadowOpacity={isActive ? 1 : 0}
+                                        shadowRadius={isActive ? 3 : 0}
+                                    >
+                                        <Text
+                                            fontSize={13}
+                                            fontWeight={isActive ? '700' : '400'}
+                                            color={isActive ? '$white' : '$gray10'}
                                         >
-                                            <Text
-                                                fontSize={13}
-                                                fontWeight={isActive ? '700' : '400'}
-                                                color={isActive ? '$white' : '$gray10'}
-                                            >
-                                                {tab.label}
-                                            </Text>
-                                        </Button>
-                                    )
-                                })}
-                            </XStack>
-                        )}
+                                            {tab.label}
+                                        </Text>
+                                    </Button>
+                                )
+                            })}
+                        </XStack>
+                    )}
 
-                        {activeTab === 'general' && (
-                            <>
-                                <ScrollView flex={1} showsVerticalScrollIndicator={false}>
-                                    <YStack flex={1} padding="$4" gap="$1">
-                                        <Controller
-                                            control={control}
-                                            name="Code"
-                                            rules={{ required: 'Campo requerido' }}
-                                            render={({ field: { onChange, value } }) => (
-                                                <AppInput
-                                                    label="Usuario"
-                                                    value={value}
-                                                    onChangeText={onChange}
-                                                    error={errors.Code?.message}
-                                                />
-                                            )}
-                                        />
-                                        <Controller
-                                            control={control}
-                                            name="Name"
-                                            rules={{ required: 'Campo requerido' }}
-                                            render={({ field: { onChange, value } }) => (
-                                                <AppInput
-                                                    label="Nombre"
-                                                    value={value}
-                                                    onChangeText={onChange}
-                                                    error={errors.Name?.message}
-                                                />
-                                            )}
-                                        />
+                    {activeTab === 'general' && (
+                        <>
+                            <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+                                <YStack flex={1} padding="$4" gap="$1">
+                                    <Controller
+                                        control={control}
+                                        name="Code"
+                                        rules={{ required: 'Campo requerido' }}
+                                        render={({ field: { onChange, value } }) => (
+                                            <AppInput
+                                                label="Usuario"
+                                                value={value}
+                                                onChangeText={onChange}
+                                                error={errors.Code?.message}
+                                            />
+                                        )}
+                                    />
+                                    <Controller
+                                        control={control}
+                                        name="Name"
+                                        rules={{ required: 'Campo requerido' }}
+                                        render={({ field: { onChange, value } }) => (
+                                            <AppInput
+                                                label="Nombre"
+                                                value={value}
+                                                onChangeText={onChange}
+                                                error={errors.Name?.message}
+                                            />
+                                        )}
+                                    />
 
-                                        <Controller
-                                            control={control}
-                                            name="LastName"
-                                            rules={{ required: 'Campo requerido' }}
-                                            render={({ field: { onChange, value } }) => (
-                                                <AppInput
-                                                    label="Apellido"
-                                                    value={value}
-                                                    onChangeText={onChange}
-                                                    error={errors.LastName?.message}
-                                                />
-                                            )}
-                                        />
+                                    <Controller
+                                        control={control}
+                                        name="LastName"
+                                        rules={{ required: 'Campo requerido' }}
+                                        render={({ field: { onChange, value } }) => (
+                                            <AppInput
+                                                label="Apellido"
+                                                value={value}
+                                                onChangeText={onChange}
+                                                error={errors.LastName?.message}
+                                            />
+                                        )}
+                                    />
 
-                                        <Controller
-                                            control={control}
-                                            name="Theme"
-                                            render={({ field: { onChange, value } }) => (
-                                                <AppSelect
-                                                    label="Tema"
-                                                    value={value}
-                                                    onValueChange={onChange}
-                                                    options={[
-                                                        {
-                                                            label: 'Claro',
-                                                            value: 'light',
-                                                        },
-                                                        {
-                                                            label: 'Oscuro',
-                                                            value: 'dark',
-                                                        }
-                                                    ]}
-                                                />
-                                            )}
-                                        />
-
-                                        <Controller
-                                            control={control}
-                                            name="Roles"
-                                            rules={{
-                                                validate: (value) => {
-                                                    const roles = (value ?? '')
-                                                        .split(',')
-                                                        .map((r) => r.trim())
-                                                        .filter(Boolean)
-
-                                                    return roles.length > 0 || 'Debe asignar al menos un rol'
-                                                }
-                                            }}
-                                            render={() => null}
-                                        />
-
-                                        <AccordionSection
-                                            title="Roles asignados"
-                                            subtitle={
-                                                roles.filter((r) => {
-                                                    const assigned = (watch('Roles') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-                                                    return assigned.includes(String(r.Id))
-                                                }).length + ' roles activos'
-                                            }
-                                            subtitleError={errors.Roles?.message}
-                                        >
-                                            {roles.map((rol) => {
-                                                const assigned = (watch('Roles') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-                                                const isChecked = assigned.includes(String(rol.Id))
-
-                                                const toggleRol = () => {
-                                                    let updated: string[]
-
-                                                    if (isChecked) {
-                                                        updated = assigned.filter((id) => id !== String(rol.Id))
-                                                    } else {
-                                                        updated = [...assigned, String(rol.Id)]
+                                    <Controller
+                                        control={control}
+                                        name="Theme"
+                                        render={({ field: { onChange, value } }) => (
+                                            <AppSelect
+                                                label="Tema"
+                                                value={value}
+                                                onValueChange={onChange}
+                                                options={[
+                                                    {
+                                                        label: 'Claro',
+                                                        value: 'light',
+                                                    },
+                                                    {
+                                                        label: 'Oscuro',
+                                                        value: 'dark',
                                                     }
+                                                ]}
+                                            />
+                                        )}
+                                    />
 
-                                                    setValue('Roles', updated.join(','), {
-                                                        shouldValidate: true
-                                                    })
+                                    <Controller
+                                        control={control}
+                                        name="Roles"
+                                        rules={{
+                                            validate: (value) => {
+                                                const roles = (value ?? '')
+                                                    .split(',')
+                                                    .map((r) => r.trim())
+                                                    .filter(Boolean)
+
+                                                return roles.length > 0 || 'Debe asignar al menos un rol'
+                                            }
+                                        }}
+                                        render={() => null}
+                                    />
+
+                                    <AccordionSection
+                                        title="Roles asignados"
+                                        subtitle={
+                                            roles.filter((r) => {
+                                                const assigned = (watch('Roles') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+                                                return assigned.includes(String(r.Id))
+                                            }).length + ' roles activos'
+                                        }
+                                        subtitleError={errors.Roles?.message}
+                                    >
+                                        {roles.map((rol) => {
+                                            const assigned = (watch('Roles') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+                                            const isChecked = assigned.includes(String(rol.Id))
+
+                                            const toggleRol = () => {
+                                                let updated: string[]
+
+                                                if (isChecked) {
+                                                    updated = assigned.filter((id) => id !== String(rol.Id))
+                                                } else {
+                                                    updated = [...assigned, String(rol.Id)]
                                                 }
 
-                                                return (
-                                                    <XStack
-                                                        key={rol.Id}
-                                                        backgroundColor="$card"
-                                                        borderRadius="$4"
-                                                        paddingVertical="$3"
-                                                        paddingHorizontal="$4"
-                                                        alignItems="center"
-                                                        borderWidth={0}
-                                                        overflow="hidden"
-                                                        onPress={toggleRol}
-                                                        pressStyle={{ opacity: 0.75, scale: 0.99 }}
-                                                        gap="$3"
-                                                    >
-                                                        {/* Franja izquierda */}
-                                                        <View
-                                                            position="absolute"
-                                                            left={0} top={0} bottom={0}
-                                                            width={4}
-                                                            backgroundColor={isChecked ? '$primary' : 'transparent'}
-                                                        />
+                                                setValue('Roles', updated.join(','), {
+                                                    shouldValidate: true
+                                                })
+                                            }
 
-                                                        {/* Ícono */}
+                                            return (
+                                                <XStack
+                                                    key={rol.Id}
+                                                    backgroundColor="$card"
+                                                    borderRadius="$4"
+                                                    paddingVertical="$3"
+                                                    paddingHorizontal="$4"
+                                                    alignItems="center"
+                                                    borderWidth={0}
+                                                    overflow="hidden"
+                                                    onPress={toggleRol}
+                                                    pressStyle={{ opacity: 0.75, scale: 0.99 }}
+                                                    gap="$3"
+                                                >
+                                                    {/* Franja izquierda */}
+                                                    <View
+                                                        position="absolute"
+                                                        left={0} top={0} bottom={0}
+                                                        width={4}
+                                                        backgroundColor={isChecked ? '$primary' : 'transparent'}
+                                                    />
+
+                                                    {/* Ícono */}
+                                                    <View
+                                                        width={36}
+                                                        height={36}
+                                                        borderRadius={18}
+                                                        backgroundColor={isChecked ? 'rgba(255, 85, 26, 0.12)' : '$card2'}
+                                                        justifyContent="center"
+                                                        alignItems="center"
+                                                    >
+                                                        <Shield size={18} color={isChecked ? '#FF551A' : '#94A3B8'} />
+                                                    </View>
+
+                                                    {/* Info */}
+                                                    <YStack flex={1} gap="$0.5">
+                                                        <Text fontSize={13} fontWeight="700" color="$text">
+                                                            {rol.RoleName}
+                                                        </Text>
+                                                        <Text fontSize={11} color="$textMuted" numberOfLines={1}>
+                                                            {rol.Description}
+                                                        </Text>
+                                                    </YStack>
+
+                                                    {/* Checkbox */}
+                                                    <Checkbox
+                                                        id={`rol-${rol.Id}`}
+                                                        size="$4"
+                                                        checked={isChecked}
+                                                        onCheckedChange={toggleRol}
+                                                        backgroundColor={isChecked ? '$primary' : 'transparent'}
+                                                        borderColor={isChecked ? '$primary' : '$textMuted'}
+                                                    >
+                                                        <Checkbox.Indicator>
+                                                            <CheckIcon size={13} color="#FF551A" />
+                                                        </Checkbox.Indicator>
+                                                    </Checkbox>
+                                                </XStack>
+                                            )
+                                        })}
+                                    </AccordionSection>
+
+
+                                    {!Id && (
+                                        <>
+                                            <Controller
+                                                control={control}
+                                                name="ValidateAD"
+                                                render={({ field: { value, onChange } }) => (
+                                                    <XStack
+                                                        backgroundColor={value ? 'rgba(255, 85, 26, 0.06)' : '$card2'}
+                                                        borderWidth={1.5}
+                                                        borderColor={value ? '$primary' : '$border'}
+                                                        borderRadius="$5"
+                                                        padding="$4"
+                                                        marginTop="$3"
+                                                        alignItems="center"
+                                                        gap="$3"
+                                                        pressStyle={{ opacity: 0.8 }}
+                                                        onPress={() => {
+                                                            onChange(!value)
+                                                            if (!value) {
+                                                                // está activando AD → limpiar errores de password
+                                                                clearErrors(['PasswordHash', 'ConfirmPassword'])
+                                                            }
+                                                        }}
+                                                    >
                                                         <View
-                                                            width={36}
-                                                            height={36}
-                                                            borderRadius={18}
-                                                            backgroundColor={isChecked ? 'rgba(255, 85, 26, 0.12)' : '$card2'}
+                                                            width={38}
+                                                            height={38}
+                                                            borderRadius={22}
+                                                            backgroundColor={value ? 'rgba(255, 85, 26, 0.12)' : '$card'}
                                                             justifyContent="center"
                                                             alignItems="center"
                                                         >
-                                                            <Shield size={18} color={isChecked ? '#FF551A' : '#94A3B8'} />
+                                                            <Shield size={22} color={value ? '#FF551A' : '#94A3B8'} />
                                                         </View>
 
-                                                        {/* Info */}
                                                         <YStack flex={1} gap="$0.5">
-                                                            <Text fontSize={13} fontWeight="700" color="$text">
-                                                                {rol.RoleName}
+                                                            <Text fontSize={14} fontWeight="700" color="$text">
+                                                                Active Directory
                                                             </Text>
-                                                            <Text fontSize={11} color="$textMuted" numberOfLines={1}>
-                                                                {rol.Description}
+                                                            <Text fontSize={12} color="$textMuted" lineHeight={18}>
+                                                                El usuario iniciará sesión utilizando sus credenciales de dominio.
                                                             </Text>
                                                         </YStack>
 
-                                                        {/* Checkbox */}
-                                                        <Checkbox
-                                                            id={`rol-${rol.Id}`}
-                                                            size="$4"
-                                                            checked={isChecked}
-                                                            onCheckedChange={toggleRol}
-                                                            backgroundColor={isChecked ? '$primary' : 'transparent'}
-                                                            borderColor={isChecked ? '$primary' : '$textMuted'}
+                                                        <View
+                                                            width={42}
+                                                            height={24}
+                                                            borderRadius={12}
+                                                            backgroundColor={value ? '$primary' : '$buttonCancel'}
+                                                            justifyContent="center"
+                                                            paddingHorizontal={3}
                                                         >
-                                                            <Checkbox.Indicator>
-                                                                <CheckIcon size={13} color="#FF551A" />
-                                                            </Checkbox.Indicator>
-                                                        </Checkbox>
+                                                            <View
+                                                                width={18}
+                                                                height={18}
+                                                                borderRadius={9}
+                                                                backgroundColor="white"
+                                                                alignSelf={value ? 'flex-end' : 'flex-start'}
+                                                                shadowColor="#000"
+                                                                shadowOffset={{ width: 0, height: 1 }}
+                                                                shadowOpacity={0.15}
+                                                                shadowRadius={2}
+                                                                elevation={2}
+                                                            />
+                                                        </View>
                                                     </XStack>
-                                                )
-                                            })}
-                                        </AccordionSection>
+                                                )}
+                                            />
 
-
-                                        {!Id && (
-                                            <>
-                                                <Controller
-                                                    control={control}
-                                                    name="ValidateAD"
-                                                    render={({ field: { value, onChange } }) => (
-                                                        <XStack
-                                                            backgroundColor={value ? 'rgba(255, 85, 26, 0.06)' : '$card2'}
-                                                            borderWidth={1.5}
-                                                            borderColor={value ? '$primary' : '$border'}
-                                                            borderRadius="$5"
-                                                            padding="$4"
-                                                            marginTop="$3"
-                                                            alignItems="center"
-                                                            gap="$3"
-                                                            pressStyle={{ opacity: 0.8 }}
-                                                            onPress={() => {
-                                                                onChange(!value)
-                                                                if (!value) {
-                                                                    // está activando AD → limpiar errores de password
-                                                                    clearErrors(['PasswordHash', 'ConfirmPassword'])
+                                            {!validateAD && (
+                                                <>
+                                                    <Controller
+                                                        control={control}
+                                                        name="PasswordHash"
+                                                        rules={{
+                                                            validate: (value) => {
+                                                                if (Id) return true
+                                                                if (watch('ValidateAD')) return true
+                                                                if (!value || value.trim() === '') return 'Campo requerido'
+                                                                return true
+                                                            }
+                                                        }}
+                                                        render={({ field: { onChange, value } }) => (
+                                                            <AppInput
+                                                                label="Contraseña"
+                                                                value={value}
+                                                                onChangeText={onChange}
+                                                                secureTextEntry={!showPassword}
+                                                                rightElement={
+                                                                    <View
+                                                                        onPress={() => setShowPassword((prev) => !prev)}
+                                                                        pressStyle={{ opacity: 0.6 }}
+                                                                        padding="$2"
+                                                                    >
+                                                                        {showPassword
+                                                                            ? <EyeOff size={18} color="#94A3B8" />
+                                                                            : <Eye size={18} color="#94A3B8" />
+                                                                        }
+                                                                    </View>
                                                                 }
-                                                            }}
-                                                        >
-                                                            <View
-                                                                width={38}
-                                                                height={38}
-                                                                borderRadius={22}
-                                                                backgroundColor={value ? 'rgba(255, 85, 26, 0.12)' : '$card'}
-                                                                justifyContent="center"
-                                                                alignItems="center"
-                                                            >
-                                                                <Shield size={22} color={value ? '#FF551A' : '#94A3B8'} />
-                                                            </View>
+                                                            />
+                                                        )}
+                                                    />
 
-                                                            <YStack flex={1} gap="$0.5">
-                                                                <Text fontSize={14} fontWeight="700" color="$text">
-                                                                    Active Directory
-                                                                </Text>
-                                                                <Text fontSize={12} color="$textMuted" lineHeight={18}>
-                                                                    El usuario iniciará sesión utilizando sus credenciales de dominio.
-                                                                </Text>
-                                                            </YStack>
+                                                    <Controller
+                                                        control={control}
+                                                        name="ConfirmPassword"
+                                                        rules={{
+                                                            validate: (value) => {
+                                                                if (Id) return true
+                                                                if (watch('ValidateAD')) return true
+                                                                if (!value || value.trim() === '') return 'Campo requerido'
+                                                                if (value !== watch('PasswordHash')) return 'Las contraseñas no coinciden'
+                                                                return true
+                                                            }
+                                                        }}
+                                                        render={({ field: { onChange, value } }) => (
+                                                            <AppInput
+                                                                label="Confirmar contraseña"
+                                                                value={value}
+                                                                onChangeText={onChange}
+                                                                secureTextEntry={!showConfirmPassword}
+                                                                error={errors.ConfirmPassword?.message}
+                                                                rightElement={
+                                                                    <View
+                                                                        onPress={() => setShowConfirmPassword((prev) => !prev)}
+                                                                        pressStyle={{ opacity: 0.6 }}
+                                                                        padding="$2"
+                                                                    >
+                                                                        {showConfirmPassword
+                                                                            ? <EyeOff size={18} color="#94A3B8" />
+                                                                            : <Eye size={18} color="#94A3B8" />
+                                                                        }
+                                                                    </View>
+                                                                }
+                                                            />
+                                                        )}
+                                                    />
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+                                </YStack>
+                            </ScrollView>
 
-                                                            <View
-                                                                width={42}
-                                                                height={24}
-                                                                borderRadius={12}
-                                                                backgroundColor={value ? '$primary' : '$buttonCancel'}
-                                                                justifyContent="center"
-                                                                paddingHorizontal={3}
-                                                            >
-                                                                <View
-                                                                    width={18}
-                                                                    height={18}
-                                                                    borderRadius={9}
-                                                                    backgroundColor="white"
-                                                                    alignSelf={value ? 'flex-end' : 'flex-start'}
-                                                                    shadowColor="#000"
-                                                                    shadowOffset={{ width: 0, height: 1 }}
-                                                                    shadowOpacity={0.15}
-                                                                    shadowRadius={2}
-                                                                    elevation={2}
-                                                                />
-                                                            </View>
-                                                        </XStack>
-                                                    )}
+                            {/* BOTONES solo en tab General */}
+                            <XStack
+                                paddingTop="$2"
+                                paddingBottom="$4"
+                                paddingHorizontal="$4"
+                                gap="$3"
+                                marginBottom="$3"
+                                style={{ zIndex: 12 }}
+                            >
+                                <Button
+                                    flex={1}
+                                    backgroundColor="$buttonCancel"
+                                    height={45}
+                                    borderRadius="$3"
+                                    justifyContent="center"
+                                    alignItems="center"
+                                    pressStyle={{ opacity: 0.7 }}
+                                    onPress={() => navigation.goBack()}
+                                    disabled={loadingSave}
+                                    opacity={loadingSave ? 0.5 : 1}
+                                >
+                                    <Text color="black" fontWeight="700">Cancelar</Text>
+                                </Button>
+
+                                <Button
+                                    flex={1}
+                                    backgroundColor="$primary"
+                                    height={45}
+                                    borderRadius="$3"
+                                    justifyContent="center"
+                                    alignItems="center"
+                                    pressStyle={{ opacity: 0.7 }}
+                                    onPress={save}
+                                    disabled={loadingSave}
+                                    opacity={loadingSave ? 0.5 : 1}
+                                >
+                                    <Text color="$white" fontWeight="700">Guardar</Text>
+                                </Button>
+                            </XStack>
+                        </>
+                    )}
+
+                    {activeTab === 'accesos' && (
+                        <>
+                            <View paddingHorizontal="$4" paddingTop="$2">
+                                <SearchInput
+                                    data={access}
+                                    searchKeys={['Name', 'KeyVar', 'Description']}
+                                    onResults={setFilteredAccess}
+                                    placeholder="Buscar..."
+                                />
+                            </View>
+                            <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+                                <YStack paddingHorizontal="$4" paddingBottom="$4" gap="$3">
+                                    {filteredAccess.map((i) => {
+                                        const hasAccess = (accessControl ?? []).some(
+                                            (ac) => ac.Access_Id === i?.Id && ac.Status_Id === 1
+                                        )
+                                        const id = `checkbox-user-${i.Id}`
+
+                                        const isLoadingThis = loadingToggle === i.Id
+                                        const isDisabled = loadingToggle !== null && !isLoadingThis
+
+                                        return (
+                                            <XStack
+                                                key={i.Id}
+                                                backgroundColor="$card2"
+                                                borderRadius="$4"
+                                                paddingVertical="$3"
+                                                paddingHorizontal="$4"
+                                                alignItems="center"
+                                                borderWidth={0}
+                                                overflow="hidden"
+                                                gap="$3"
+                                                shadowColor="#000"
+                                                shadowOffset={{ width: 0, height: 2 }}
+                                                shadowOpacity={0.07}
+                                                shadowRadius={6}
+                                                elevation={2}
+                                                onPress={() => !isDisabled && !isLoadingThis && toggleRolAccess(i)}
+                                                opacity={isDisabled ? 0.4 : 1}
+                                                pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
+                                            >
+                                                {/* Franja izquierda */}
+                                                <View
+                                                    position="absolute"
+                                                    left={0}
+                                                    top={0}
+                                                    bottom={0}
+                                                    width={4}
+                                                    backgroundColor={hasAccess ? '$primary' : 'transparent'}
                                                 />
 
-                                                {!validateAD && (
-                                                    <>
-                                                        <Controller
-                                                            control={control}
-                                                            name="PasswordHash"
-                                                            rules={{
-                                                                validate: (value) => {
-                                                                    if (Id) return true
-                                                                    if (watch('ValidateAD')) return true
-                                                                    if (!value || value.trim() === '') return 'Campo requerido'
-                                                                    return true
-                                                                }
-                                                            }}
-                                                            render={({ field: { onChange, value } }) => (
-                                                                <AppInput
-                                                                    label="Contraseña"
-                                                                    value={value}
-                                                                    onChangeText={onChange}
-                                                                    secureTextEntry={!showPassword}
-                                                                    rightElement={
-                                                                        <View
-                                                                            onPress={() => setShowPassword((prev) => !prev)}
-                                                                            pressStyle={{ opacity: 0.6 }}
-                                                                            padding="$2"
-                                                                        >
-                                                                            {showPassword
-                                                                                ? <EyeOff size={18} color="#94A3B8" />
-                                                                                : <Eye size={18} color="#94A3B8" />
-                                                                            }
-                                                                        </View>
-                                                                    }
-                                                                />
-                                                            )}
-                                                        />
-
-                                                        <Controller
-                                                            control={control}
-                                                            name="ConfirmPassword"
-                                                            rules={{
-                                                                validate: (value) => {
-                                                                    if (Id) return true
-                                                                    if (watch('ValidateAD')) return true
-                                                                    if (!value || value.trim() === '') return 'Campo requerido'
-                                                                    if (value !== watch('PasswordHash')) return 'Las contraseñas no coinciden'
-                                                                    return true
-                                                                }
-                                                            }}
-                                                            render={({ field: { onChange, value } }) => (
-                                                                <AppInput
-                                                                    label="Confirmar contraseña"
-                                                                    value={value}
-                                                                    onChangeText={onChange}
-                                                                    secureTextEntry={!showConfirmPassword}
-                                                                    error={errors.ConfirmPassword?.message}
-                                                                    rightElement={
-                                                                        <View
-                                                                            onPress={() => setShowConfirmPassword((prev) => !prev)}
-                                                                            pressStyle={{ opacity: 0.6 }}
-                                                                            padding="$2"
-                                                                        >
-                                                                            {showConfirmPassword
-                                                                                ? <EyeOff size={18} color="#94A3B8" />
-                                                                                : <Eye size={18} color="#94A3B8" />
-                                                                            }
-                                                                        </View>
-                                                                    }
-                                                                />
-                                                            )}
-                                                        />
-                                                    </>
-                                                )}
-                                            </>
-                                        )}
-                                    </YStack>
-                                </ScrollView>
-
-                                {/* BOTONES solo en tab General */}
-                                <XStack
-                                    paddingTop="$2"
-                                    paddingBottom="$4"
-                                    paddingHorizontal="$4"
-                                    gap="$3"
-                                    marginBottom="$3"
-                                    style={{ zIndex: 12 }}
-                                >
-                                    <Button
-                                        flex={1}
-                                        backgroundColor="$buttonCancel"
-                                        height={45}
-                                        borderRadius="$3"
-                                        justifyContent="center"
-                                        alignItems="center"
-                                        pressStyle={{ opacity: 0.7 }}
-                                        onPress={() => navigation.goBack()}
-                                        disabled={loadingSave}
-                                        opacity={loadingSave ? 0.5 : 1}
-                                    >
-                                        <Text color="black" fontWeight="700">Cancelar</Text>
-                                    </Button>
-
-                                    <Button
-                                        flex={1}
-                                        backgroundColor="$primary"
-                                        height={45}
-                                        borderRadius="$3"
-                                        justifyContent="center"
-                                        alignItems="center"
-                                        pressStyle={{ opacity: 0.7 }}
-                                        onPress={save}
-                                        disabled={loadingSave}
-                                        opacity={loadingSave ? 0.5 : 1}
-                                    >
-                                        <Text color="$white" fontWeight="700">Guardar</Text>
-                                    </Button>
-                                </XStack>
-                            </>
-                        )}
-
-                        {activeTab === 'accesos' && (
-                            <>
-                                <View paddingHorizontal="$4" paddingTop="$2">
-                                    <SearchInput
-                                        data={access}
-                                        searchKeys={['Name', 'KeyVar', 'Description']}
-                                        onResults={setFilteredAccess}
-                                        placeholder="Buscar..."
-                                    />
-                                </View>
-                                <ScrollView flex={1} showsVerticalScrollIndicator={false}>
-                                    <YStack paddingHorizontal="$4" paddingBottom="$4" gap="$3">
-                                        {filteredAccess.map((i) => {
-                                            const hasAccess = (accessControl ?? []).some(
-                                                (ac) => ac.Access_Id === i?.Id && ac.Status_Id === 1
-                                            )
-                                            const id = `checkbox-user-${i.Id}`
-
-                                            const isLoadingThis = loadingToggle === i.Id
-                                            const isDisabled = loadingToggle !== null && !isLoadingThis
-
-                                            return (
-                                                <XStack
-                                                    key={i.Id}
-                                                    backgroundColor="$card2"
-                                                    borderRadius="$4"
-                                                    paddingVertical="$3"
-                                                    paddingHorizontal="$4"
+                                                {/* Ícono usuario */}
+                                                <View
+                                                    width={40}
+                                                    height={40}
+                                                    borderRadius={20}
+                                                    backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                    justifyContent="center"
                                                     alignItems="center"
-                                                    borderWidth={0}
-                                                    overflow="hidden"
-                                                    gap="$3"
-                                                    shadowColor="#000"
-                                                    shadowOffset={{ width: 0, height: 2 }}
-                                                    shadowOpacity={0.07}
-                                                    shadowRadius={6}
-                                                    elevation={2}
-                                                    onPress={() => !isDisabled && !isLoadingThis && toggleRolAccess(i)}
-                                                    opacity={isDisabled ? 0.4 : 1}
-                                                    pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
                                                 >
-                                                    {/* Franja izquierda */}
-                                                    <View
-                                                        position="absolute"
-                                                        left={0}
-                                                        top={0}
-                                                        bottom={0}
-                                                        width={4}
-                                                        backgroundColor={hasAccess ? '$primary' : 'transparent'}
-                                                    />
+                                                    {isLoadingThis ? (
+                                                        <Spinner size="small" color="$primary" />
+                                                    ) : (
+                                                        <User size={20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
+                                                    )}
+                                                </View>
 
-                                                    {/* Ícono usuario */}
-                                                    <View
-                                                        width={40}
-                                                        height={40}
-                                                        borderRadius={20}
-                                                        backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$card'}
-                                                        justifyContent="center"
-                                                        alignItems="center"
-                                                    >
-                                                        {isLoadingThis ? (
-                                                            <Spinner size="small" color="$primary" />
-                                                        ) : (
-                                                            <User size={20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
-                                                        )}
-                                                    </View>
+                                                {/* Info */}
+                                                <YStack flex={1} gap="$0.5">
+                                                    <Text fontWeight="700" fontSize={14} color="$text">
+                                                        {i.Name}
+                                                    </Text>
+                                                    <Text fontSize={12} color="$textMuted">
+                                                        {i.KeyVar} - {i.Description}
+                                                    </Text>
+                                                </YStack>
 
-                                                    {/* Info */}
-                                                    <YStack flex={1} gap="$0.5">
-                                                        <Text fontWeight="700" fontSize={14} color="$text">
-                                                            {i.Name}
-                                                        </Text>
-                                                        <Text fontSize={12} color="$textMuted">
-                                                           {i.KeyVar} - {i.Description}
-                                                        </Text>
-                                                    </YStack>
-
-                                                    {/* Badge + Checkbox */}
-                                                    <XStack alignItems="center" gap="$2">
-                                                        {hasAccess && (
-                                                            <View
-                                                                backgroundColor="rgba(255, 85, 26, 0.12)"
-                                                                paddingHorizontal="$2"
-                                                                paddingVertical={3}
-                                                                borderRadius="$10"
-                                                            >
-                                                                <Text fontSize={10} color="$primary" fontWeight="700">
-                                                                    Activo
-                                                                </Text>
-                                                            </View>
-                                                        )}
-                                                    </XStack>
+                                                {/* Badge + Checkbox */}
+                                                <XStack alignItems="center" gap="$2">
+                                                    {hasAccess && (
+                                                        <View
+                                                            backgroundColor="rgba(255, 85, 26, 0.12)"
+                                                            paddingHorizontal="$2"
+                                                            paddingVertical={3}
+                                                            borderRadius="$10"
+                                                        >
+                                                            <Text fontSize={10} color="$primary" fontWeight="700">
+                                                                Activo
+                                                            </Text>
+                                                        </View>
+                                                    )}
                                                 </XStack>
-                                            )
-                                        })}
-                                    </YStack>
-                                </ScrollView>
-                            </>
-                        )}
+                                            </XStack>
+                                        )
+                                    })}
+                                </YStack>
+                            </ScrollView>
+                        </>
+                    )}
 
-                        {activeTab === 'permisos' && (
-                            <>
-                                <View paddingHorizontal="$4" paddingTop="$2">
-                                    <SearchInput
-                                        data={permisos}
-                                        searchKeys={['Name', 'Route', 'Description']}
-                                        onResults={setFilteredPermisos}
-                                        placeholder="Buscar..."
-                                    />
-                                </View>
-                                <ScrollView flex={1} showsVerticalScrollIndicator={false}>
-                                    <YStack paddingHorizontal="$4" paddingBottom="$4" gap="$3">
-                                        {filteredPermisos.map((i) => {
-                                            const hasAccess = (menuControl ?? []).some(
-                                                (ac) => ac.Menu_Id === i?.Id && ac.Status_Id === 1
-                                            )
-                                            const id = `checkbox-user-${i.Id}`
-
-                                            const isLoadingThis = loadingToggle === i.Id
-                                            const isDisabled = loadingToggle !== null && !isLoadingThis
-
-                                            return (
-                                                <XStack
-                                                    key={i.Id}
-                                                    backgroundColor="$card2"
-                                                    borderRadius="$4"
-                                                    paddingVertical="$3"
-                                                    paddingHorizontal="$4"
-                                                    alignItems="center"
-                                                    borderWidth={0}
-                                                    overflow="hidden"
-                                                    gap="$3"
-                                                    shadowColor="#000"
-                                                    shadowOffset={{ width: 0, height: 2 }}
-                                                    shadowOpacity={0.07}
-                                                    shadowRadius={6}
-                                                    elevation={2}
-                                                    onPress={() => !isDisabled && !isLoadingThis && toggleRolMenu(i)}
-                                                    opacity={isDisabled ? 0.4 : 1}
-                                                    pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
-                                                >
-                                                    {/* Franja izquierda */}
-                                                    <View
-                                                        position="absolute"
-                                                        left={0}
-                                                        top={0}
-                                                        bottom={0}
-                                                        width={4}
-                                                        backgroundColor={hasAccess ? '$primary' : 'transparent'}
-                                                    />
-
-                                                    {/* Ícono usuario */}
-                                                    <View
-                                                        width={40}
-                                                        height={40}
-                                                        borderRadius={20}
-                                                        backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$card'}
-                                                        justifyContent="center"
-                                                        alignItems="center"
-                                                    >
-                                                        {isLoadingThis ? (
-                                                            <Spinner size="small" color="$primary" />
-                                                        ) : (
-                                                            <User size={20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
-                                                        )}
-                                                    </View>
-
-                                                    {/* Info */}
-                                                    <YStack flex={1} gap="$0.5">
-                                                        <Text fontWeight="700" fontSize={14} color="$text">
-                                                            {i.Name}
-                                                        </Text>
-                                                        <Text fontSize={12} color="$textMuted">
-                                                            {i.Description}
-                                                        </Text>
-                                                    </YStack>
-
-                                                    {/* Badge + Checkbox */}
-                                                    <XStack alignItems="center" gap="$2">
-                                                        {hasAccess && (
-                                                            <View
-                                                                backgroundColor="rgba(255, 85, 26, 0.12)"
-                                                                paddingHorizontal="$2"
-                                                                paddingVertical={3}
-                                                                borderRadius="$10"
-                                                            >
-                                                                <Text fontSize={10} color="$primary" fontWeight="700">
-                                                                    Activo
-                                                                </Text>
-                                                            </View>
-                                                        )}
-                                                    </XStack>
-                                                </XStack>
-                                            )
-                                        })}
-                                    </YStack>
-                                </ScrollView>
-                            </>
-                        )}
-
-                        {loadingSave && (
-                            <View
-                                position="absolute"
-                                top={0} left={0} right={0} bottom={0}
-                                justifyContent="center"
-                                alignItems="center"
-                                backgroundColor="rgba(0,0,0,0.2)"
-                            >
-                                <Spinner size="large" color="$primary" />
+                    {activeTab === 'permisos' && (
+                        <>
+                            <View paddingHorizontal="$4" paddingTop="$2">
+                                <SearchInput
+                                    data={permisos}
+                                    searchKeys={['Name', 'Route', 'Description']}
+                                    onResults={setFilteredPermisos}
+                                    placeholder="Buscar..."
+                                />
                             </View>
-                        )}
-                    </>
-                )}
-            </YStack>
-        </Page>
+                            <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+                                <YStack paddingHorizontal="$4" paddingBottom="$4" gap="$3">
+                                    {filteredPermisos.map((i) => {
+                                        const hasAccess = (menuControl ?? []).some(
+                                            (ac) => ac.Menu_Id === i?.Id && ac.Status_Id === 1
+                                        )
+                                        const id = `checkbox-user-${i.Id}`
+
+                                        const isLoadingThis = loadingToggle === i.Id
+                                        const isDisabled = loadingToggle !== null && !isLoadingThis
+
+                                        return (
+                                            <XStack
+                                                key={i.Id}
+                                                backgroundColor="$card2"
+                                                borderRadius="$4"
+                                                paddingVertical="$3"
+                                                paddingHorizontal="$4"
+                                                alignItems="center"
+                                                borderWidth={0}
+                                                overflow="hidden"
+                                                gap="$3"
+                                                shadowColor="#000"
+                                                shadowOffset={{ width: 0, height: 2 }}
+                                                shadowOpacity={0.07}
+                                                shadowRadius={6}
+                                                elevation={2}
+                                                onPress={() => !isDisabled && !isLoadingThis && toggleRolMenu(i)}
+                                                opacity={isDisabled ? 0.4 : 1}
+                                                pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
+                                            >
+                                                {/* Franja izquierda */}
+                                                <View
+                                                    position="absolute"
+                                                    left={0}
+                                                    top={0}
+                                                    bottom={0}
+                                                    width={4}
+                                                    backgroundColor={hasAccess ? '$primary' : 'transparent'}
+                                                />
+
+                                                {/* Ícono usuario */}
+                                                <View
+                                                    width={40}
+                                                    height={40}
+                                                    borderRadius={20}
+                                                    backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                    justifyContent="center"
+                                                    alignItems="center"
+                                                >
+                                                    {isLoadingThis ? (
+                                                        <Spinner size="small" color="$primary" />
+                                                    ) : (
+                                                        <User size={20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
+                                                    )}
+                                                </View>
+
+                                                {/* Info */}
+                                                <YStack flex={1} gap="$0.5">
+                                                    <Text fontWeight="700" fontSize={14} color="$text">
+                                                        {i.Name}
+                                                    </Text>
+                                                    <Text fontSize={12} color="$textMuted">
+                                                        {i.Description}
+                                                    </Text>
+                                                </YStack>
+
+                                                {/* Badge + Checkbox */}
+                                                <XStack alignItems="center" gap="$2">
+                                                    {hasAccess && (
+                                                        <View
+                                                            backgroundColor="rgba(255, 85, 26, 0.12)"
+                                                            paddingHorizontal="$2"
+                                                            paddingVertical={3}
+                                                            borderRadius="$10"
+                                                        >
+                                                            <Text fontSize={10} color="$primary" fontWeight="700">
+                                                                Activo
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </XStack>
+                                            </XStack>
+                                        )
+                                    })}
+                                </YStack>
+                            </ScrollView>
+                        </>
+                    )}
+
+                    {loadingSave && (
+                        <View
+                            position="absolute"
+                            top={0} left={0} right={0} bottom={0}
+                            justifyContent="center"
+                            alignItems="center"
+                            backgroundColor="rgba(0,0,0,0.2)"
+                        >
+                            <Spinner size="large" color="$primary" />
+                        </View>
+                    )}
+                </>
+            )}
+        </YStack>
     )
 }

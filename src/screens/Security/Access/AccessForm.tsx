@@ -10,13 +10,18 @@ import { securityService } from '../../../api/modules/security/security.service'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
-import { Shield, User } from 'lucide-react-native'
+import { ArrowLeft, Shield, User } from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
 import { handleError } from '../../../utils/errorHandler'
+import { shadows } from '../../../theme/shadows'
+import { usePageHeader } from '../../../hooks/usePageHeader'
+import { useUpdatePageHeader } from '../../../hooks/useUpdatePageHeader'
 
 type TabType = 'general' | 'usuarios' | 'roles'
 
 export default function AccessForm() {
+    const { updateHeader } = useUpdatePageHeader()
+    
     const navigation = useNavigation()
     const route = useRoute()
     const { Id } = route.params as { Id?: number }
@@ -231,8 +236,27 @@ export default function AccessForm() {
     }
 
     useEffect(() => { getInfo() }, [])
+
+    usePageHeader({
+        left:(
+                <ArrowLeft onPress={() => navigation.navigate<any>('access')} />   
+                ),
+        center: 
+            <Text>{isEdit ? `Editar acceso: ${getValues('Name')}` : 'Nuevo acceso'}</Text>
+        ,
+
+        right: <></>,
+    })
+
     useEffect(() => {                               
-        navigation.setOptions({ title: isEdit ? `Editar acceso: ${getValues('Name')}` : 'Nuevo acceso' })
+        updateHeader({
+            center: 
+                <Text>
+                    Editar acceso: {getValues('Name')}
+                </Text>
+            ,
+        })
+
     }, [isEdit])
 
     useEffect(() => {
@@ -425,9 +449,7 @@ export default function AccessForm() {
                                                     gap="$3"
                                                     shadowColor="#000"
                                                     shadowOffset={{ width: 0, height: 2 }}
-                                                    shadowOpacity={0.07}
-                                                    shadowRadius={6}
-                                                    elevation={2}
+                                                    {...shadows.sm}
                                                     onPress={() => !isDisabled && !isLoadingThis && toggleUserAccess(user)}
                                                     opacity={isDisabled ? 0.4 : 1}
                                                     pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}

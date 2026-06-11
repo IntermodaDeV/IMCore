@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
-import { Pencil, Plus, RotateCw } from 'lucide-react-native'
+import { ArrowLeft, Pencil, Plus, RotateCw } from 'lucide-react-native'
 import { YStack, Text, ScrollView, useTheme, XStack, View  } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { AccessDTO } from '../../../api/modules/security/security.types'
@@ -16,6 +16,7 @@ import { AppError, handleError } from '../../../utils/errorHandler'
 import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
 import { PullLoader } from '../../../components/Skeletons/PullLoader'
+import { usePageHeader } from '../../../hooks/usePageHeader'
 
 export type RootStackParamList = {
   home: undefined;
@@ -86,6 +87,16 @@ export default function AccessScreen() {
     }
   }
 
+  usePageHeader({
+      center: (
+      <Text fontSize={16} fontWeight="700" color="$text">
+          Accesos
+      </Text>
+      ),
+
+      right: ( <XStack> <RotateCw onPress={() => getInfo()} />. <Plus onPress={() => createAccess()} /> </XStack>),
+  })
+
   useEffect(() => {
     getInfo()
   }, [])
@@ -100,19 +111,10 @@ export default function AccessScreen() {
     setFiltered(data)
   }, [data])
 
-  const headerActions = React.useMemo(() => [
-    {
-      icon: RotateCw,
-      onPress: () => getInfo(),
-    },
-    {
-      icon: Plus,
-      onPress: () => createAccess(),
-    },
-  ], [getInfo])
+
 
   return (
-    <Page headerActions={headerActions}>
+    <Page >
       <YStack
         flex={1}
         backgroundColor="$card2"

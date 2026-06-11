@@ -15,6 +15,7 @@ import ConfirmDialog from '../../../components/commons/ConfirmDialog'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
+import { usePageHeader } from '../../../hooks/usePageHeader'
 
 export type RootStackParamList = {
   home: undefined;
@@ -99,19 +100,19 @@ export default function MenuScreen() {
     }
   }
 
-  const headerActions = React.useMemo(() => [
-    {
-      icon: RotateCw,
-      onPress: () => getInfo(),
-    },
-    {
-      icon: Plus,
-      onPress: () => createMenu(),
-    },
-  ], [getInfo])
+  usePageHeader({
+      center: (
+      <Text fontSize={16} fontWeight="700" color="$text">
+          Menu
+      </Text>
+      ),
+
+      right: ( <XStack> <RotateCw onPress={() => getInfo()} />. <Plus onPress={() => createMenu()} /> </XStack>),
+  })
+
 
   return (
-    <Page headerActions={headerActions}>
+    <Page>
       <YStack
         flex={1}
         backgroundColor="$card2"

@@ -1,6 +1,7 @@
 import React from 'react'
 import { AlertDialog, Button, XStack, YStack, Text, Sheet  } from 'tamagui'
 import { TriangleAlert } from 'lucide-react-native'
+import { shadows } from '../../theme/shadows'
 
 interface ConfirmDialogProps {
     open: boolean
@@ -45,10 +46,7 @@ export default function ConfirmDialog({
                         paddingVertical="$5"
                         marginHorizontal="$5"
                         x={0} y={0} scale={1} opacity={1}
-                        shadowColor="#000"
-                        shadowOffset={{ width: 0, height: 8 }}
-                        shadowOpacity={0.15}
-                        shadowRadius={24}
+                        {...shadows.lg}
                     >
                     <YStack gap="$2" alignItems="center">
 

@@ -10,14 +10,19 @@ import { securityService } from '../../../api/modules/security/security.service'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
-import { Shield, User } from 'lucide-react-native'
+import { ArrowLeft, Shield, User } from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
 import AppSelect from '../../../components/commons/AppSelect'
 import { handleError } from '../../../utils/errorHandler'
+import { shadows } from '../../../theme/shadows'
+import { usePageHeader } from '../../../hooks/usePageHeader'
+import { useUpdatePageHeader } from '../../../hooks/useUpdatePageHeader'
 
 type TabType = 'general' | 'usuarios' | 'roles'
 
 export default function MenuForm() {
+    const { updateHeader } = useUpdatePageHeader()
+    
     const navigation = useNavigation()
     const route = useRoute()
     const { Id } = route.params as { Id?: number }
@@ -238,8 +243,28 @@ export default function MenuForm() {
         setLoadingToggle(null)
     }
 
-    useEffect(() => {                               
-        navigation.setOptions({ title: isEdit ? `Editar menú: ${getValues('Name')}` : 'Nuevo menú' })
+    usePageHeader({
+        left:(
+                <ArrowLeft onPress={() => navigation.navigate<any>('menu')} />   
+                ),
+        center: 
+            <Text>Nuevo menú</Text>
+        ,
+
+        right: <></>,
+    })
+
+    useEffect(() => {
+        if(isEdit){
+            updateHeader({
+                center: 
+                    <Text>
+                        Editar Menú: {getValues('Name')}
+                    </Text>
+                ,
+            })
+        }
+        console.log('isEdit', isEdit)                               
     }, [isEdit])
 
     useEffect(() => {
@@ -574,9 +599,7 @@ export default function MenuForm() {
                                                     gap="$3"
                                                     shadowColor="#000"
                                                     shadowOffset={{ width: 0, height: 2 }}
-                                                    shadowOpacity={0.07}
-                                                    shadowRadius={6}
-                                                    elevation={2}
+                                                    {...shadows.md}
                                                 >
                                                     {/* Franja izquierda */}
                                                     <View

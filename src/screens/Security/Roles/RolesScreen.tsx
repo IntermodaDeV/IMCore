@@ -15,10 +15,11 @@ import ConfirmDialog from '../../../components/commons/ConfirmDialog'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
+import { usePageHeader } from '../../../hooks/usePageHeader'
 
 export type RootStackParamList = {
   home: undefined;
-  rolls_form: { Id?: number };
+  roles_form: { Id?: number };
 };
 
 type NavProps = NativeStackNavigationProp<RootStackParamList>;
@@ -58,7 +59,7 @@ export default function RolesScreen() {
   )
 
   const openForm = (Id?: number) => {
-    navigation.navigate('rolls_form', { Id })
+    navigation.navigate('roles_form', { Id })
   }
 
   const toggleStatus = async () => {
@@ -100,19 +101,19 @@ export default function RolesScreen() {
     getInfo()
   }, [])
 
-  const headerActions = React.useMemo(() => [
-    {
-      icon: RotateCw,
-      onPress: () => getInfo(),
-    },
-    {
-      icon: Plus,
-      onPress: () => openForm(),
-    },
-  ], [getInfo])
+  usePageHeader({
+      center: (
+      <Text fontSize={16} fontWeight="700" color="$text">
+          Roles
+      </Text>
+      ),
+
+      right: ( <XStack> <RotateCw onPress={() => getInfo()} />. <Plus onPress={() => openForm()} /> </XStack>),
+  })
+
 
   return (
-    <Page headerActions={headerActions}>
+    <Page>
       <YStack
         flex={1}
         backgroundColor="$card2"

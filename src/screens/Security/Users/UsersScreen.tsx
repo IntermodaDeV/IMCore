@@ -17,6 +17,7 @@ import { AppError, handleError } from '../../../utils/errorHandler'
 import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
 import { useShowToast } from '../../../utils/useShowToast'
+import { usePageHeader } from '../../../hooks/usePageHeader'
 
 type ChangePasswordForm = {
   CurrentPassword: string
@@ -27,7 +28,7 @@ type ChangePasswordForm = {
 
 export type RootStackParamList = {
   home: undefined;
-  users_form: { Id?: number };
+  usuario_form: { Id?: number };
 };
 type NavProps = NativeStackNavigationProp<RootStackParamList>;
 
@@ -83,8 +84,19 @@ export default function UsersScreen() {
   }, [])
 
   const openForm = (Id?: number) => {
-    navigation.navigate('users_form', { Id })
+    console.log('Opening form for user ID:', Id)
+    navigation.navigate('usuario_form', { Id })
   }
+
+  usePageHeader({
+      center: (
+      <Text fontSize={16} fontWeight="700" color="$text">
+          Usuarios
+      </Text>
+      ),
+
+      right: ( <XStack> <RotateCw onPress={() => getInfo()} />. <Plus onPress={() => openForm()} /> </XStack>),
+  })
 
   const toggleStatus = async () => {
     if (!selectedItem) return
@@ -242,23 +254,12 @@ export default function UsersScreen() {
     getInfo()
   }, [])
 
-  const headerActions = React.useMemo(() => [
-    {
-      icon: RotateCw,
-      onPress: () => getInfo(),
-    },
-    {
-      icon: Plus,
-      onPress: () => openForm(),
-    },
-  ], [getInfo])
-
   useEffect(() => {
     setFiltered(data)
   }, [data])
 
   return (
-    <Page headerActions={headerActions}>
+    <Page >
       <YStack
         flex={1}
         backgroundColor="$card2"

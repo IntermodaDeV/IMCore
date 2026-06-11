@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { YStack, Text, XStack } from 'tamagui'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from 'tamagui'
@@ -13,6 +13,11 @@ import { Pressable } from 'react-native'
 import { useWindowDimensions } from 'react-native'
 import { PullLoader } from '../../components/Skeletons/PullLoader'
 import { useMenu } from '../../context/MenuContext'
+import { shadows } from '../../theme/shadows'
+import { useHeader } from '../../context/HeaderContext'
+import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage } from 'react-native'
+import {MenuButton} from '../../components/commons/MenuBotton'
+import { usePageHeader } from '../../hooks/usePageHeader'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -22,6 +27,8 @@ function getGreeting() {
 }
 
 export default function HomeScreen() {
+  
+
   const { user } = useAuth()
   const theme = useTheme()
   const greeting = getGreeting()
@@ -32,6 +39,20 @@ export default function HomeScreen() {
   const [error, setError] = useState<AppError | null>(null)
   const [data, setData] = useState<IQuickActions[]>([])
   const [menus, setMenus] = useState<any[]>([])
+
+  usePageHeader({
+    center: (
+      <RNImage
+        source={require('../../assets/LOGOMODINTER.png')}
+        style={{
+          width: 50,
+          height: 30,
+        }}
+      />
+    ),
+
+    right: <Icons.Bell size={20} color={theme.textWelcome?.val} />,
+  })
 
   const getInfo = React.useCallback(async () => {
     try {
@@ -54,6 +75,8 @@ export default function HomeScreen() {
       getInfo()
     }, [getInfo])
   )
+
+
 
   return (
     <ScrollView
@@ -139,8 +162,7 @@ export default function HomeScreen() {
                     backgroundColor="$card2"
                     justifyContent="center"
                     alignItems="center"
-                    shadowOpacity={0.15}
-                    elevation={6}
+                    {...shadows.sm}
                   >
                     <IconComponent size={26} color="#FF551A" />
                   </YStack>
@@ -150,7 +172,7 @@ export default function HomeScreen() {
                     fontSize={12}
                     fontWeight="600"
                     textAlign="center"
-                    color="$textWelcome"
+                    color="$textBlack"
                   >
                     {item.Name}
                   </Text>
@@ -183,14 +205,14 @@ export default function HomeScreen() {
                   }]}
                 >
                   <YStack
+                    {...shadows.sm}
                     backgroundColor="$card2"
                     borderRadius={16}
                     padding={12}
                     height={100}
                     justifyContent="space-between"
-                    elevation={2}
-                    shadowOpacity={0.06}
-                    shadowRadius={8}
+                    
+                    
                   >
                     <YStack
                       width={36}

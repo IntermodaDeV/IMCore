@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import DeviceInfo from 'react-native-device-info'
-import { YStack, Card, Input, Button, Text, XStack, Spinner  } from 'tamagui'
-import { ImageBackground, Image } from 'react-native'
+import { YStack, Card, Input, Button, Text, XStack, Spinner, ScrollView  } from 'tamagui'
+import { ImageBackground, Image, KeyboardAvoidingView, Platform } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { User, Lock, LogIn,Eye, EyeOff } from 'lucide-react-native'
 import { useForm, Controller } from 'react-hook-form'
@@ -70,6 +70,11 @@ export default function LoginScreen() {
   }
 
   return (
+    <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  >
+
     <ImageBackground
       source={require('../../assets/bg-intermoda-entrada.png')}
       resizeMode="cover"
@@ -158,6 +163,7 @@ export default function LoginScreen() {
                     size="$4"
                     borderWidth={0}
                     backgroundColor="transparent"
+                    autoCapitalize="none"
                   />
                 </XStack>
               )}
@@ -248,5 +254,6 @@ export default function LoginScreen() {
         </Card>
       </YStack>
     </ImageBackground>
+  </KeyboardAvoidingView>
   )
 }

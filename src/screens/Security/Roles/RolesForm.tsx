@@ -10,13 +10,17 @@ import { securityService } from '../../../api/modules/security/security.service'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
-import { User } from 'lucide-react-native'
+import { ArrowLeft, User } from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
 import { handleError } from '../../../utils/errorHandler'
+import { usePageHeader } from '../../../hooks/usePageHeader'
+import { useUpdatePageHeader } from '../../../hooks/useUpdatePageHeader'
 
 type TabType = 'general' | 'accesos' | 'permisos'
 
 export default function RolesForm() {
+
+    const { updateHeader } = useUpdatePageHeader()
     const navigation = useNavigation()
     const route = useRoute()
     const { Id } = route.params as { Id?: number }
@@ -228,6 +232,29 @@ export default function RolesForm() {
     useEffect(() => { getInfo() }, [])
     useEffect(() => {                               
         navigation.setOptions({ title: isEdit ? `Editar rol: ${getValues('RoleName')}` : 'Nuevo rol' })
+    }, [isEdit])
+
+    usePageHeader({
+        left:(
+                <ArrowLeft onPress={() => navigation.navigate<any>('roles')} />   
+                ),
+        center: 
+            <Text>Nuevo rol</Text>
+        ,
+
+        right: <></>,
+    })
+
+    useEffect(() => {  
+        if(isEdit){
+            updateHeader({
+                center: 
+                    <Text>
+                        Editar rol: {getValues('RoleName')}
+                    </Text>
+                ,
+            })
+        }                             
     }, [isEdit])
 
     useEffect(() => {

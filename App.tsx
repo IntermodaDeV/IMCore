@@ -89,75 +89,6 @@ function Root() {
                       />
                     )}
                   </Stack.Screen>
-      
-                  <Stack.Screen
-                    name="access_form"
-                    component={AccessForm}
-                    options={{
-                      headerShown: true,
-                      title: 'Nuevo acceso',
-                      headerStyle: {
-                        backgroundColor: navColors.background,
-                      },
-                      headerTitleStyle: {
-                        fontSize: 16,
-                        fontWeight: '600',
-                      },
-                      headerTintColor: navColors.text,
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="menu_form"
-                    component={MenuForm}
-                    options={{
-                      headerShown: true,
-                      title: 'Nuevo menú',
-                      headerStyle: {
-                        backgroundColor: navColors.background,
-                      },
-                      headerTitleStyle: {
-                        fontSize: 16,
-                        fontWeight: '600',
-                      },
-                      headerTintColor: navColors.text,
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="users_form"
-                    component={UsersForm}
-                    options={{
-                      headerShown: true,
-                      title: 'Nuevo usuario',
-                      headerStyle: {
-                        backgroundColor: navColors.background,
-                      },
-                      headerTitleStyle: {
-                        fontSize: 16,
-                        fontWeight: '600',
-                      },
-                      headerTintColor: navColors.text,
-                    }}
-                  />
-
-                  
-                  <Stack.Screen
-                    name="rolls_form"
-                    component={RolesForm}
-                    options={{
-                      headerShown: true,
-                      title: 'Nuevo rol',
-                      headerStyle: {
-                        backgroundColor: navColors.background,
-                      },
-                      headerTitleStyle: {
-                        fontSize: 16,
-                        fontWeight: '600',
-                      },
-                      headerTintColor: navColors.text,
-                    }}
-                  />
                 </>
               ) : (
                 <Stack.Screen name="Login" component={LoginScreen} />
@@ -171,9 +102,7 @@ function Root() {
               right={12}
               pointerEvents="none"
             >
-              <Text color="$textMuted" fontSize={11}>
-                IMCore v1.0
-              </Text>
+              
             </View>
 
           </NavigationContainer>

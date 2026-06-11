@@ -13,6 +13,11 @@ import { SkeletonBox } from '../components/Skeletons/SkeletonList'
 import { useNavigationState } from '@react-navigation/native'
 import { useShowToast } from '../utils/useShowToast'
 import { securityService } from '../api/modules/security/security.service'
+import { shadows } from '../theme/shadows'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import * as Icons from 'lucide-react-native'
+import { HeaderProvider } from '../context/HeaderContext'
+import { AppHeader } from '../components/commons/AppHeader'
 
 const Drawer = createDrawerNavigator()
 
@@ -61,19 +66,16 @@ export default function DrawerNavigator({ setTheme }: any) {
   if (loading) return null
   
   const screenTitles = Object.fromEntries((menu ?? []).map(item => [item.Route, item.Name]))
+  const insets = useSafeAreaInsets()
 
   return (
+  <HeaderProvider>
     <Drawer.Navigator
       initialRouteName="inicio"
       drawerContent={createDrawerContent(setTheme, menu)}
       screenOptions={{
-        headerShown: true,
+        header: ({route, options}) => <AppHeader  route={route} options={options} />,
         drawerType: 'slide',
-        headerStyle: {
-          backgroundColor: theme.backgroundHeader?.val,
-          height: 50,
-        },
-        headerTintColor: theme.text?.val,
         drawerStyle: {
           backgroundColor: theme.background?.val,
           width: 290,
@@ -82,31 +84,16 @@ export default function DrawerNavigator({ setTheme }: any) {
         drawerInactiveTintColor: theme.textMuted?.val,
       }}
     >
-      {Object.entries(SCREENS).map(([Name, component]) => {
-        const title = Name === 'not_found' ? 'Página no encontrada' : screenTitles[Name] ?? Name
-        const options: any = {}
-        if (Name === 'inicio') {
-          options.headerTitle = () => (
-              <RNImage
-                source={require('../assets/LOGOMODINTER.png')}
-                style={{ width: 70, resizeMode: 'contain', marginLeft: -14, marginBottom: 6 }}
-              />
-            )
-        } else {
-          options.title = title
-        }
-
-        return (
-          <Drawer.Screen
-            key={Name}
-            name={Name}
-            component={component}
-            options={options}
-          />
-        )
-      })}
+      {Object.entries(SCREENS).map(([Name, component]) => (
+        <Drawer.Screen
+          key={Name}
+          name={Name}
+          component={component}
+        />
+      ))}
     </Drawer.Navigator>
-  )
+  </HeaderProvider>
+)
 }
 
 function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: any; menu: MenuDTO[] }) {
@@ -120,6 +107,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const currentRoute = useNavigationState(state => state?.routes?.[state.index]?.name)
   const [openId, setOpenId] = useState<number | null>(null)
   const MENU = buildMenuTree(props.menu ?? [])
+  const insets = useSafeAreaInsets()
 
   const logoutUser = async () => {
     await logout()
@@ -133,11 +121,9 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
         padding={14}
         marginLeft={14}
         marginRight={14}
-        marginTop={16}
+        marginTop={16 +  insets.top}
         backgroundColor="$textUser"
-        shadowColor="#000"
-        shadowOpacity={0.06}
-        shadowRadius={10}
+        {...shadows.sm}
       >
         {/* Botón refrescar */}
         <TouchableOpacity
@@ -271,7 +257,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           width="100%"
         >
           <Text color="$textMuted" fontSize={11}>
-            IMCore v1.0
+            1.0.0
           </Text>
 
           <ThemeToggle/>

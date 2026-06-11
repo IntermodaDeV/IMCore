@@ -13,9 +13,16 @@ import { useThemeName } from 'tamagui'
 import { TouchableOpacity } from 'react-native'
 import { UsersSettingsDTO } from '../../../api/modules/security/security.types'
 import { PullLoader } from '../../../components/Skeletons/PullLoader'
-
+import { shadows } from '../../../theme/shadows'
+import { useHeader } from '../../../context/HeaderContext'
+import { useNavigation, useRoute } from '@react-navigation/native'
+import { usePageHeader } from '../../../hooks/usePageHeader'
 export default function ProfileScreen() {
+
     const { user } = useAuth()
+    const { setHeader } = useHeader();
+    const navigation = useNavigation();
+
     const [data, setData] = useState<any[]>([])
     const initials = `${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
     const { menu } = useMenu()
@@ -58,6 +65,19 @@ export default function ProfileScreen() {
         }
         
     }
+
+    usePageHeader({
+        left:(
+        <Icons.ArrowLeft onPress={() => navigation.goBack()} />   
+        ),
+            center: (
+            <Text fontSize={16} fontWeight="700" color="$text">
+                Mi Perfil
+            </Text>
+            ),
+
+            right: <></>,
+        })
     
     const changeTheme = async () => {
         setTheme(isDark ? 'light' : 'dark')
@@ -76,7 +96,9 @@ export default function ProfileScreen() {
     }
 
     useEffect(() => {
-        getInfo()
+        getInfo();
+
+        
     }, [])
 
     return (
@@ -90,9 +112,7 @@ export default function ProfileScreen() {
                     borderRadius="$6"
                     padding="$5"
                     alignItems="center"
-                    elevation={3}
-                    shadowOpacity={0.08}
-                    shadowRadius={10}
+                    {...shadows.sm}
                 >
                     <YStack
                         width={72}
@@ -130,7 +150,7 @@ export default function ProfileScreen() {
                 </YStack>
 
                 {/* Info Personal */}
-                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" elevation={2}>
+                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" {...shadows.sm}>
                     <XStack alignItems="center" gap="$2">
                         <Icons.User size={16} color={'#FF551A'} />
                         <Text fontSize={15} fontWeight="700" color="$text">Información Personal</Text>
@@ -150,7 +170,7 @@ export default function ProfileScreen() {
                 </YStack>
 
                 {/* Accesos rápidos */}
-                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" elevation={2}>
+                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" {...shadows.sm}>
 
                     {/* Header */}
                     <XStack alignItems="center" justifyContent="space-between">
@@ -238,7 +258,7 @@ export default function ProfileScreen() {
                 </YStack>
 
                 {/* Tema */}
-                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" elevation={2} marginBottom="$3">
+                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" marginBottom="$3" {...shadows.sm}>
                     <XStack alignItems="center" gap="$2">
                         <Icons.Palette size={16} color={'#FF551A'} />
                         <Text fontSize={15} fontWeight="700" color="$text">Apariencia</Text>
