@@ -1,5 +1,5 @@
 
-import { Check, X, ChevronUp, ClipboardList, Earth, ChevronDown } from 'lucide-react-native'
+import { Check, X, ChevronUp, ClipboardList, ChevronDown } from 'lucide-react-native'
 import { useState } from 'react';
 import {
   YStack,
@@ -12,6 +12,7 @@ import {
   styled,
   ScrollView,
 } from 'tamagui'
+import { usePageHeader } from '../../hooks/usePageHeader';
 
 export default function AprobacionSolicitudCompra() {
 
@@ -19,6 +20,15 @@ export default function AprobacionSolicitudCompra() {
   const ClipboardListStyled = styled(ClipboardList, { color: '$primary' });
   const CheckStyled = styled(Check, { color: '$white' });
   const XStyled = styled(X, { color: '$error' });
+
+  usePageHeader({
+      center: (
+      <Text fontSize="$4" fontWeight="700" color="$text">
+          Aprobación de solicitudes de compra
+      </Text>
+      ),
+
+  })
 
   //Estados
   const [solicitudes, setSolicitudes] = useState([
@@ -141,27 +151,52 @@ export default function AprobacionSolicitudCompra() {
             borderColor="#E2E8F0"
             overflow="hidden"
           >
-            <XStack padding="$3" gap="$3" alignItems="center" backgroundColor="$backgroundHover">
-              <View
-                width={34}
-                height={34}
-                borderRadius="$3"
-                backgroundColor="$primaryOpacity"
-                alignItems="center"
-                justifyContent="center"
-              >
 
-                <ClipboardListStyled size={18} />
-              </View>
+            <XStack padding="$3" justifyContent="space-between" backgroundColor="$backgroundSurface">
+              <XStack  gap="$3" alignItems="center" >
+                <View
+                  width={34}
+                  height={34}
+                  borderRadius="$3"
+                  backgroundColor="$primaryOpacity"
+                  alignItems="center"
+                  justifyContent="center"
+                >
 
-              <YStack>
-                <Text fontWeight="700" color="#1E293B">
-                  {solicitud.codigo}
-                </Text>
-                <Text fontSize="$2" color="$foregroundMuted">
-                  Preparado por: {solicitud.preparadoPor}
-                </Text>
-              </YStack>
+                  <ClipboardListStyled size={18} />
+                </View>
+
+                <YStack>
+                  <Text fontWeight="700" color="#1E293B">
+                    {solicitud.codigo}
+                  </Text>
+                  <Text fontSize="$1" color="$foregroundMuted">
+                    Preparado por: {solicitud.preparadoPor}
+                  </Text>
+                </YStack>
+              </XStack>
+
+              <XStack gap="$4" marginTop="$1">
+
+                <Button
+                  height={32}
+                  width={32}
+                  borderRadius="$3"
+                  backgroundColor="transparent"
+                  borderWidth={1.5}
+                  borderColor="$error"
+                  >
+                  <XStyled size={15} />
+                </Button>
+                <Button
+                  height={32}
+                  width={32}
+                  borderRadius="$3"
+                  backgroundColor="$success"
+                >
+                  <CheckStyled size={15} />
+                </Button>
+              </XStack>
             </XStack>
 
             <YStack padding="$3" gap="$2">
@@ -240,46 +275,7 @@ export default function AprobacionSolicitudCompra() {
                 )
               ))}
 
-              <YStack gap="$2" marginTop="$3">
-                <Text fontSize="$2" color="#334155" fontWeight="700">
-                  Justificación (Opcional)
-                </Text>
-
-                <Input
-                  placeholder="Escribe una nota..."
-                  height={42}
-                  borderColor="#F3C7B8"
-                  backgroundColor="#FFFFFF"
-                  borderRadius="$3"
-                  fontSize="$3"
-                />
-              </YStack>
-
-              <YStack gap="$2" marginTop="$1">
-                <Button
-                  height={32}
-                  borderRadius="$3"
-                  backgroundColor="$success"
-                >
-                  <CheckStyled size={15} />
-                  <Text color="white" fontSize="$3">
-                    Aprobar
-                  </Text>
-                </Button>
-
-                <Button
-                  height={32}
-                  borderRadius="$3"
-                  backgroundColor="$backgroundElevated"
-                  borderWidth={1.5}
-                  borderColor="$error"
-                  >
-                  <XStyled size={15} />
-                  <Text color="$error" fontSize="$3">
-                    Rechazar
-                  </Text>
-                </Button>
-              </YStack>
+              
             </YStack>
           </Card>
         ))}

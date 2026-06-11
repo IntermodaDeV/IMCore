@@ -106,8 +106,17 @@ export default function MenuScreen() {
           Menu
       </Text>
       ),
+      right: (
+        <XStack gap="$2">
+          <View onPress={() => getInfo()}>
+            <RotateCw size={18} />
+          </View>
 
-      right: ( <XStack> <RotateCw onPress={() => getInfo()} />. <Plus onPress={() => createMenu()} /> </XStack>),
+          <View onPress={() => createMenu()}>
+            <Plus size={18} />
+          </View>
+        </XStack>
+      )
   })
 
 

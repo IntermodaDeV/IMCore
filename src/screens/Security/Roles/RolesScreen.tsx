@@ -107,8 +107,17 @@ export default function RolesScreen() {
           Roles
       </Text>
       ),
+      right: (
+        <XStack gap="$2">
+          <View onPress={() => getInfo()}>
+            <RotateCw size={18} />
+          </View>
 
-      right: ( <XStack> <RotateCw onPress={() => getInfo()} />. <Plus onPress={() => openForm()} /> </XStack>),
+          <View onPress={() => openForm()}>
+            <Plus size={18} />
+          </View>
+        </XStack>
+      )
   })
 
 

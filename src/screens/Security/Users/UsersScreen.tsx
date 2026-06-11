@@ -95,7 +95,17 @@ export default function UsersScreen() {
       </Text>
       ),
 
-      right: ( <XStack> <RotateCw onPress={() => getInfo()} />. <Plus onPress={() => openForm()} /> </XStack>),
+      right: (
+        <XStack gap="$2">
+          <View onPress={() => getInfo()}>
+            <RotateCw size={18} />
+          </View>
+
+          <View onPress={() => openForm()}>
+            <Plus size={18} />
+          </View>
+        </XStack>
+      )
   })
 
   const toggleStatus = async () => {

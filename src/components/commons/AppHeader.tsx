@@ -25,7 +25,7 @@ export function AppHeader({ route, options }: { route: any; options: any }) {
       position="relative"
       zIndex={100}
     >
-      <Text fontSize="$1" color="rgba(59, 59, 59, 0.4)" position="absolute" bottom={40} right={16}>
+      <Text fontSize="$1" color="rgba(59, 59, 59, 0.4)" position="absolute" bottom={insets.top - 20} right={16}>
         1.0.0
       </Text>
       <XStack
@@ -67,7 +67,9 @@ export function AppHeader({ route, options }: { route: any; options: any }) {
           alignItems="center"
           justifyContent="flex-end"
         >
-          {header?.right}
+          {typeof header?.right === 'string'
+            ? <Text>{header.right}</Text>
+            : header?.right ?? <Text></Text>}
         </XStack>
       </XStack>
     </View>

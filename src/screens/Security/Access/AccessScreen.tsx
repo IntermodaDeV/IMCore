@@ -93,8 +93,18 @@ export default function AccessScreen() {
           Accesos
       </Text>
       ),
+   
+      right: (
+        <XStack gap="$2">
+          <View onPress={() => getInfo()}>
+            <RotateCw size={18} />
+          </View>
 
-      right: ( <XStack> <RotateCw onPress={() => getInfo()} />. <Plus onPress={() => createAccess()} /> </XStack>),
+          <View onPress={() => createAccess()}>
+            <Plus size={18} />
+          </View>
+        </XStack>
+      )
   })
 
   useEffect(() => {
