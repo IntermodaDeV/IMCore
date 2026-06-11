@@ -1,7 +1,7 @@
-import * as Burnt from 'burnt'
-import React, { useState } from 'react'
-import { YStack, Card, Input, Button, Text, XStack, Spinner  } from 'tamagui'
-import { ImageBackground, Image } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import DeviceInfo from 'react-native-device-info'
+import { YStack, Card, Input, Button, Text, XStack, Spinner, ScrollView  } from 'tamagui'
+import { ImageBackground, Image, KeyboardAvoidingView, Platform } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { User, Lock, LogIn,Eye, EyeOff } from 'lucide-react-native'
 import { useForm, Controller } from 'react-hook-form'
@@ -9,6 +9,8 @@ import { useAuth } from '../../context/AuthContext'
 import { securityService } from '../../api/modules/security/security.service'
 import { useMenu } from '../../context/MenuContext'
 import { Pressable } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useShowToast } from '../../utils/useShowToast'
 
 type FormData = {
   Code: string
@@ -17,6 +19,7 @@ type FormData = {
 
 export default function LoginScreen() {
   const navigation = useNavigation()
+  const { showToast } = useShowToast()
   const { refreshMenu } = useMenu()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -29,39 +32,49 @@ export default function LoginScreen() {
     mode: 'onTouched'
   })
 
+
   const loginUser = async (data: FormData) => {
     try {
       setLoading(true)
-      const response = await securityService.login({ Code: data.Code, password: data.password})
+      const device = await DeviceInfo.getDeviceName()
+      const ipAddress = await DeviceInfo.getIpAddress()
+      const brand = DeviceInfo.getBrand()
+      const systemName = DeviceInfo.getSystemName()
+      const systemVersion = DeviceInfo.getSystemVersion()
 
+      let info = {
+        Code: data.Code, 
+        password: data.password,
+        IPAddress: ipAddress,
+        Device: `${brand} ${device} (${systemName} ${systemVersion})`,
+      }
+      const response = await securityService.login(info)
       if (!response?.Success) {
-        Burnt.toast({
-          title: response?.ErrorMessage || 'Error',
-          message: response?.ErrorMessage || 'Ocurrió un problema al iniciar sesión',
-          preset: 'error',
-        })
+        showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
         return
       }
 
       const user = JSON.parse(response.InfoUser)
+      await AsyncStorage.setItem('accessToken', response.AccessToken)
+      await AsyncStorage.setItem('refreshToken', response.RefreshToken)
+      await AsyncStorage.setItem('userCode', user.Code)
       await refreshMenu(user.Code)
+      // navigation.navigate('Loading' as never)
       login(user)
-      navigation.navigate('Main' as never)
 
     } catch (error) {
-
-      Burnt.toast({
-        title: 'Error',
-        message: 'Ocurrió un problema al iniciar sesión',
-        preset: 'error',
-      })
-
+      showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
     } finally {
       setLoading(false)
     }
   }
 
   return (
+    <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  >
+
     <ImageBackground
       source={require('../../assets/bg-intermoda-entrada.png')}
       resizeMode="cover"
@@ -150,6 +163,7 @@ export default function LoginScreen() {
                     size="$4"
                     borderWidth={0}
                     backgroundColor="transparent"
+                    autoCapitalize="none"
                   />
                 </XStack>
               )}
@@ -240,5 +254,6 @@ export default function LoginScreen() {
         </Card>
       </YStack>
     </ImageBackground>
+  </KeyboardAvoidingView>
   )
 }

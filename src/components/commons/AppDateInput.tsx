@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { YStack, Text, View, Input, XStack } from 'tamagui'
 import { Pressable } from 'react-native'
-import DatePicker from 'react-native-date-picker'
+//import DatePicker from 'react-native-date-picker'
 import { Calendar } from 'lucide-react-native'
 
 type Props = {
@@ -91,7 +91,7 @@ export default function AppDateInput({
         </Text>
       )}
 
-      {/* MODAL DATE PICKER */}
+      {/* MODAL DATE PICKER
       <DatePicker
         modal
         open={open}
@@ -99,7 +99,7 @@ export default function AppDateInput({
         mode="date"
         onConfirm={handleConfirm}
         onCancel={() => setOpen(false)}
-      />
+      />*/}
 
     </YStack>
   )

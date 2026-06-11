@@ -1,14 +1,15 @@
-import UsersScreen from './Security/UsersScreen'
+
 import HomeScreen from './AdmSys/HomeScreen'
-import BillsScreen from './Gira/Bills/BillsScreen'
 import NotFoundScreen from './AdmSys/NotFoundScreen'
 import { ScreensCadenaSuministro } from './CadenaSuministro'
+import { rootSecurity } from './Security/rootSecurity'
+import ProfileScreen from './Security/Users/ProfileScreen'
 
 export const SCREENS = {
   inicio: HomeScreen,
-  usuarios: UsersScreen,
-
-  gastos: BillsScreen,
+  Perfil: ProfileScreen,
+  
+  ...rootSecurity,
 
   ...ScreensCadenaSuministro,
   not_found: NotFoundScreen,

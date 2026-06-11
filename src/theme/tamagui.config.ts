@@ -1,5 +1,21 @@
 import { createTamagui } from 'tamagui'
 import { defaultConfig } from '@tamagui/config/v5'
+import { createAnimations } from '@tamagui/animations-react-native'
+
+const animations = createAnimations({
+  fast: {
+    type: 'timing',
+    duration: 150,
+  },
+  medium: {
+    type: 'timing',
+    duration: 250,
+  },
+  slow: {
+    type: 'timing',
+    duration: 400,
+  },
+})
 
 const BrandColors = {
     //Agreagdos semanticos
@@ -27,6 +43,8 @@ const BrandColors = {
 export const config = createTamagui({
   ...defaultConfig,
 
+  animations,
+
   tokens: {
     ...defaultConfig.tokens,
     color: {
@@ -34,19 +52,24 @@ export const config = createTamagui({
       primary: '#FF551A',
       primaryOpacity: 'rgba(214, 106, 27, 0.2)',
       secondary: '#001F3F',
+      secondary1: '#001F3F',
       gray: '#5F6368',
       gray2: '#b5b9bd',
       backgroundBase: '#F8FAFC',
 
       //Agreagdos semanticos
       ...BrandColors,
+      gray2: '#dfe0e0',
+      gray3: '#d5d7d9',
+      red: '#f10000',
     },
   },
 
   themes: {
     light: {
       background: '#FFFFFF',
-      backgroundPage: '#bcbcbc',
+      backgroundHeader: '#FFFFFF',
+      backgroundPage: '#F1F5F9',
       backgroundPage2: '#bcbcbc',
       card: '#e2dddd',
       card2: '#FFFFFF',
@@ -64,10 +87,14 @@ export const config = createTamagui({
 
       
       
+      colorGradient1:'#f5dad1',
+      colorGradient2:'#c9def4',
+      textWelcome:'#7a2b11',
     },
 
     dark: {
       background: '#0B1220',
+      backgroundHeader: '#000000',
       backgroundPage: '#070f18',
       card: '#111827',
       card2: '#1e3a5f',
@@ -82,6 +109,9 @@ export const config = createTamagui({
       buttonCancel: '#bcbcbc',
       buttonCancelText: '#FFFFFF',
       textUser: '#1e3a5f',
+      colorGradient1:'#FF551A',
+      colorGradient2:'#1561ad',
+      textWelcome:'#f8a88e',
     },
   },
 })

@@ -2,9 +2,10 @@ import React from 'react'
 import { createStaticNavigation } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 
-import LoginScreen from '../screens/LoginScreen'
-import HomeScreen from '../screens/HomeScreen'
+import LoginScreen from '../screens/AdmSys/LoginScreen'
+import HomeScreen from '../screens/AdmSys/HomeScreen'
 import AprobacionSolicitudCompra from '../screens/CadenaSuministro/AprobacionSolicitudCompra'
+
 const RootStack = createNativeStackNavigator({
   screens: {
     Login: {

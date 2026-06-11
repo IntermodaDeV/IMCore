@@ -1,14 +1,23 @@
-import React, { useState } from 'react'
-import { TouchableOpacity } from 'react-native'
+import React, { useState, useRef, useEffect } from 'react'
+import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
 import { createDrawerNavigator, DrawerContentScrollView, DrawerContentComponentProps } from '@react-navigation/drawer'
-import { Button, Text, View, useTheme, useThemeName } from 'tamagui'
+import { Button, Text, View, useTheme, useThemeName, YStack, XStack } from 'tamagui'
 import { useNavigation } from '@react-navigation/native'
 import { SCREENS } from '../screens/screens'
 import { useMenu } from '../context/MenuContext'
-import { MenuDTO } from '../api/modules/security/security.types'
+import { MenuDTO, UsersSettingsDTO } from '../api/modules/security/security.types'
 import { useAuth } from '../context/AuthContext'
+import { SkeletonBox } from '../components/Skeletons/SkeletonList'
+import { useNavigationState } from '@react-navigation/native'
+import { useShowToast } from '../utils/useShowToast'
+import { securityService } from '../api/modules/security/security.service'
+import { shadows } from '../theme/shadows'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import * as Icons from 'lucide-react-native'
+import { HeaderProvider } from '../context/HeaderContext'
+import { AppHeader } from '../components/commons/AppHeader'
 
 const Drawer = createDrawerNavigator()
 
@@ -24,24 +33,49 @@ const createDrawerContent = (setTheme: any, menu: MenuDTO[] = []) => {
   }
 }
 
+function AnimatedDots({ color }: { color?: string }) {
+  const anims = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current
+
+  useEffect(() => {
+    const animations = anims.map((anim, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 120),
+          Animated.timing(anim, { toValue: -6, duration: 300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: 300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ])
+      )
+    )
+
+    animations.forEach(a => a.start())
+    return () => animations.forEach(a => a.stop())
+  }, [anims])
+
+  return (
+    <RNView style={localStyles.dotsContainer}>
+      {anims.map((anim, idx) => (
+        <Animated.View key={idx} style={[localStyles.dot, { backgroundColor: color ?? '#FF551A', transform: [{ translateY: anim }] }]} />
+      ))}
+    </RNView>
+  )
+}
+
 export default function DrawerNavigator({ setTheme }: any) {
   const theme = useTheme()
   const { menu, loading } = useMenu()
   if (loading) return null
   
   const screenTitles = Object.fromEntries((menu ?? []).map(item => [item.Route, item.Name]))
+  const insets = useSafeAreaInsets()
 
   return (
+  <HeaderProvider>
     <Drawer.Navigator
+      initialRouteName="inicio"
       drawerContent={createDrawerContent(setTheme, menu)}
       screenOptions={{
-        headerShown: true,
+        header: ({route, options}) => <AppHeader  route={route} options={options} />,
         drawerType: 'slide',
-        headerStyle: {
-          backgroundColor: theme.background?.val,
-          height: 50,
-        },
-        headerTintColor: theme.text?.val,
         drawerStyle: {
           backgroundColor: theme.background?.val,
           width: 290,
@@ -55,35 +89,64 @@ export default function DrawerNavigator({ setTheme }: any) {
           key={Name}
           name={Name}
           component={component}
-          options={{ title: Name === 'not_found' ? 'Página no encontrada' : screenTitles[Name] ?? Name }}
         />
       ))}
     </Drawer.Navigator>
-  )
+  </HeaderProvider>
+)
 }
 
 function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: any; menu: MenuDTO[] }) {
   const navigation = useNavigation()
   const { user, logout } = useAuth()
+  const { refreshMenu } = useMenu()
+  const [refreshing, setRefreshing] = useState(false)
+  const [navLoading, setNavLoading] = useState<string | null>(null)
   const initials =`${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
-
+  const theme = useTheme()
+  const currentRoute = useNavigationState(state => state?.routes?.[state.index]?.name)
+  const [openId, setOpenId] = useState<number | null>(null)
   const MENU = buildMenuTree(props.menu ?? [])
+  const insets = useSafeAreaInsets()
+
+  const logoutUser = async () => {
+    await logout()
+  }
 
   return (
     <View flex={1} backgroundColor="$background">
-
       <View
         marginBottom={2}
         borderRadius={14}
         padding={14}
         marginLeft={14}
         marginRight={14}
-        marginTop={16}
+        marginTop={16 +  insets.top}
         backgroundColor="$textUser"
-        shadowColor="#000"
-        shadowOpacity={0.06}
-        shadowRadius={10}
+        {...shadows.sm}
       >
+        {/* Botón refrescar */}
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            zIndex: 1,
+          }}
+          onPress={async () => {
+            if (!user?.Code) return
+
+            try {
+              setRefreshing(true)
+              await refreshMenu(user.Code)
+            } finally {
+              setRefreshing(false)
+            }
+          }}
+        >
+          <LucideIcons.RotateCw size={16} color={theme.primary?.val}  />
+        </TouchableOpacity>
+
         <View flexDirection="row" alignItems="center" gap={12}>
           <View
             width={50}
@@ -115,27 +178,46 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
             </Text>
 
             <Text color="$textMuted" fontSize={12} marginTop={2}>
-              Informática
+              {user?.Code}
             </Text>
           </View>
         </View>
       </View>
 
-      <DrawerContentScrollView
-        {...props}
-        contentContainerStyle={{ paddingTop: 12 }}
-      >
-
-        <View>
-          {MENU.map((item, index) => (
-            <TreeItem
-              key={item.Id ?? index}
-              item={item}
-              navigation={props.navigation}
-            />
-          ))}
-        </View>
-      </DrawerContentScrollView>
+      <View flex={1}>
+        {refreshing ? (
+          <YStack padding={26} gap="$6" marginTop={20}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <XStack key={i} alignItems="center" gap="$3">
+                <SkeletonBox width={25} height={25} radius={6} />
+                <SkeletonBox width={190} height={25} />
+              </XStack>
+            ))}
+          </YStack>
+        ) : (
+          <DrawerContentScrollView
+            {...props}
+            contentContainerStyle={{
+              paddingTop: 12,
+              paddingBottom: 20,
+            }}
+          >
+            <View>
+            {MENU.map((item, index) => (
+              <TreeItem
+                key={item.Id ?? index}
+                item={item}
+                navigation={props.navigation}
+                currentRoute={currentRoute}
+                openId={openId}
+                setOpenId={setOpenId}
+                setNavLoading={setNavLoading}
+              />
+            ))}
+            </View>
+          </DrawerContentScrollView>
+        )}
+      </View>
 
       <View paddingHorizontal={16} paddingTop={10} paddingBottom={6}>
         <Button
@@ -146,13 +228,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           alignItems="center"
           justifyContent="center"
           pressStyle={{ opacity: 0.8 }}
-          onPress={async () => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' as never }],
-            })
-            await logout()
-          }}
+          onPress={async () => logoutUser()}
         >
           <LogOut size={18} color="white" />
 
@@ -181,12 +257,19 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           width="100%"
         >
           <Text color="$textMuted" fontSize={11}>
-            IMCore v1.0
+            1.0.0
           </Text>
 
           <ThemeToggle/>
         </View>
       </View>
+        {navLoading && (
+          <RNView style={localStyles.overlay} pointerEvents="auto">
+            <RNView style={localStyles.center}>
+              <AnimatedDots color={theme.primary?.val ?? '#FF551A'} />
+            </RNView>
+          </RNView>
+        )}
     </View>
   )
 }
@@ -219,63 +302,114 @@ export function buildMenuTree(menu: MenuDTO[] = []) {
   return roots
 }
 
+const hasActiveDescendant = (item: any, currentRoute?: string): boolean => {
+    if (!item.children?.length) return false
+    return item.children.some((child: any) =>
+        child.Route === currentRoute || hasActiveDescendant(child, currentRoute)
+    )
+}
+
 function TreeItem({
   item,
   level = 0,
   navigation,
+  currentRoute,
+  openId,
+  setOpenId,
+  setNavLoading,
 }: {
   item: any
   level?: number
   navigation: any
+  currentRoute?: string
+  openId: number | null
+  setOpenId: (id: number | null) => void
+  setNavLoading?: (route: string | null) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const Icon = LucideIcons[item.Icon as keyof typeof LucideIcons]
-  const hasChildren = item.children?.length > 0
-
   const theme = useTheme()
+  const IconComp = (LucideIcons[item.Icon as keyof typeof LucideIcons] as any)
+
+  const hasChildren = item.children?.length > 0
+  const isOpen = openId === item.Id
+
+  const isActive = !hasChildren && item.Route === currentRoute
 
   const handlePress = () => {
     if (hasChildren) {
-      setOpen(!open)
+      setOpenId(isOpen ? null : item.Id) 
       return
     }
+
     const route = item.Route
+
+    // show navigation loading overlay
+    try {
+      setNavLoading && setNavLoading(route)
+    } catch (e) {}
+
     if (navigation.getState().routeNames.includes(route)) {
       navigation.navigate(route)
     } else {
       navigation.navigate('not_found', { name: route })
     }
-  }
 
+    // close drawer and clear loading after short delay
+    try {
+      navigation.closeDrawer && navigation.closeDrawer()
+    } catch (e) {}
+
+    setTimeout(() => setNavLoading && setNavLoading(null), 500)
+  }
 
   return (
     <>
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={handlePress}
-      >
+      <TouchableOpacity activeOpacity={0.8} onPress={handlePress}>
         <View
           flexDirection="row"
           alignItems="center"
           justifyContent="space-between"
           paddingVertical={10}
-          paddingLeft={5 + level * 18}
-          paddingRight={4}
+          paddingLeft={12 + level * 18}
+          paddingRight={12}
+          marginHorizontal={8}
+          marginVertical={1}
+          borderRadius={10}
+          backgroundColor={
+            isActive
+              ? 'rgba(255, 85, 26, 0.06)'
+              : 'transparent'
+          }
         >
-          <View flexDirection="row" alignItems="center" gap={12}>
-            {Icon ? <Icon size={18} color={theme.primary?.val} /> : null}
+          {isActive && (
+            <View
+              position="absolute"
+              left={0}
+              top={6}
+              bottom={6}
+              width={3}
+              borderRadius={2}
+              backgroundColor="$primary"
+            />
+          )}
 
-            {!Icon && level > 0 && (
-              <FileText size={14} color={theme.primary?.val} />
+          <View flexDirection="row" alignItems="center" gap={12}>
+            {IconComp ? (
+              <IconComp size={18} color={'#FF551A'} />
+            ) : (
+              level > 0 && <FileText size={14} color={'#FF551A'} />
             )}
 
-            <Text color="$text" fontSize={14}>
+            <Text
+              color={isActive ? '$primary' : '$text'}
+              fontSize={14}
+              fontWeight={isActive ? '700' : '400'}
+            >
               {item.Name}
             </Text>
           </View>
 
           {hasChildren &&
-            (open ? (
+            (isOpen ? (
               <ChevronDown size={16} color={theme.primary?.val} />
             ) : (
               <ChevronRight size={16} color={theme.primary?.val} />
@@ -283,13 +417,17 @@ function TreeItem({
         </View>
       </TouchableOpacity>
 
-      {open &&
+      {isOpen &&
         item.children?.map((child: any, index: number) => (
           <TreeItem
-            key={`${child.title}-${index}`}
+            key={`${child.Id}-${index}`}
             item={child}
             level={level + 1}
             navigation={navigation}
+            currentRoute={currentRoute}
+            openId={openId}
+            setOpenId={setOpenId}
+            setNavLoading={setNavLoading}
           />
         ))}
     </>
@@ -299,12 +437,33 @@ function TreeItem({
 function ThemeToggle() {
   const themeName = useThemeName()
   const isDark = themeName === 'dark'
+  const { user } = useAuth()
+  const { showToast } = useShowToast()
 
   const { setTheme } = useAuth()
 
+  const changeTheme = async () => {
+    setTheme(isDark ? 'light' : 'dark')
+    let Data: UsersSettingsDTO = {
+      Id: user?.Id ?? 0,
+      Code: user?.Code ?? '',
+      Theme: isDark ? 'light' : 'dark',
+      Modified_By: user?.Code ?? '',
+      Status_Id: 1,
+      Options: 1,
+    }
+
+    const response = await securityService.saveUsersSettings([Data])
+    if(response.Success){
+      setTheme(isDark ? 'light' : 'dark')
+    }else{
+      showToast('error', 'Error', 'Error al guardar la configuración del tema de la aplicación', 5000, 'top')
+    }
+  }
+
   return (
     <TouchableOpacity
-      onPress={() => setTheme(isDark ? 'light' : 'dark')}
+      onPress={changeTheme}
       activeOpacity={0.85}
     >
       <View
@@ -334,3 +493,37 @@ function ThemeToggle() {
     </TouchableOpacity>
   )
 }
+
+const localStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    zIndex: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  center: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dotsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dot: {
+    width: 12,
+    height: 12,
+    borderRadius: 12,
+    marginHorizontal: 6,
+  },
+})

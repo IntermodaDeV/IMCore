@@ -1,8 +1,10 @@
-import { FileText, AlertTriangle, Home } from 'lucide-react-native'
+import { AlertTriangle, Home } from 'lucide-react-native'
+import { useNavigation } from '@react-navigation/native'
 import React from 'react'
 import { View, Text, Button } from 'tamagui'
 
 export default function NotFoundScreen({ route }: any) {
+  const navigation = useNavigation();
   return (
     <View
       flex={1}
@@ -85,7 +87,12 @@ export default function NotFoundScreen({ route }: any) {
           alignItems="center"
           justifyContent="center"
           pressStyle={{ opacity: 0.8 }}
-          onPress={() => navigation.navigate('Home' as never)}
+          onPress={() =>   
+            navigation.getParent()?.reset({
+              index: 0,
+              routes: [{ name: 'Main' }],
+            })
+          }
         >
           <Home size={18} color="white" />
           <Text color="white" fontWeight="700">
