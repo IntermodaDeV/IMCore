@@ -27,7 +27,7 @@ export const rootSecurity: TScreens = {
   menu: {
     Screen: MenuScreen,
     Childs: {
-      menuForm: MenuForm,
+      menu_form: MenuForm,
     },
   },
 
