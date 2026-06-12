@@ -239,24 +239,25 @@ export default function AccessForm() {
 
     usePageHeader({
         left:(
-                <ArrowLeft onPress={() => navigation.navigate<any>('access')} />   
+                <ArrowLeft onPress={() => navigation.goBack()} />   
                 ),
         center: 
-            <Text>{isEdit ? `Editar acceso: ${getValues('Name')}` : 'Nuevo acceso'}</Text>
+            <Text>Editar acceso</Text>
         ,
 
         right: <></>,
     })
 
-    useEffect(() => {                               
-        updateHeader({
-            center: 
-                <Text>
-                    Editar acceso: {getValues('Name')}
-                </Text>
-            ,
-        })
-
+    useEffect(() => {  
+        if(isEdit){
+            updateHeader({
+                center: 
+                    <Text>
+                        Editar acceso: {getValues('Name')}
+                    </Text>
+                ,
+            })
+        }                             
     }, [isEdit])
 
     useEffect(() => {

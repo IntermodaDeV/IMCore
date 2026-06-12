@@ -63,7 +63,7 @@ export default function MenuScreen() {
 
   useEffect(() => {
     setFiltered(data)
-  }, [data])
+  }, [data])l
 
   const createMenu = (Id?: number) => {
     navigation.navigate('menu_form', { Id })
