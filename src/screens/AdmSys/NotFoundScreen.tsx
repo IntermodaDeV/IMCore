@@ -8,7 +8,7 @@ export default function NotFoundScreen({ route }: any) {
   return (
     <View
       flex={1}
-      backgroundColor="$card2"
+      backgroundColor="$backgroundElevated"
       padding="$6"
       justifyContent="space-between"
     >

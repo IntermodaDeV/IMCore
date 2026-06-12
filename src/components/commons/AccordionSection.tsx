@@ -22,7 +22,7 @@ export default function AccordionSection({
 
     return (
         <YStack
-            backgroundColor="$card2"
+            backgroundColor="$backgroundElevated"
             borderRadius="$5"
             borderWidth={1}
             borderColor="$border"

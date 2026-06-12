@@ -424,7 +424,7 @@ export default function RolesForm() {
                                             return (
                                                 <XStack
                                                     key={i.Id}
-                                                    backgroundColor="$card2"
+                                                    backgroundColor="$backgroundElevated"
                                                     borderRadius="$4"
                                                     paddingVertical="$3"
                                                     paddingHorizontal="$4"
@@ -524,7 +524,7 @@ export default function RolesForm() {
                                             return (
                                                 <XStack
                                                     key={i.Id}
-                                                    backgroundColor="$card2"
+                                                    backgroundColor="$backgroundElevated"
                                                     borderRadius="$4"
                                                     paddingVertical="$3"
                                                     paddingHorizontal="$4"

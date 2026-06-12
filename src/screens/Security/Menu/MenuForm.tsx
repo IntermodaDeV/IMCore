@@ -490,7 +490,7 @@ export default function MenuForm() {
                                             return (
                                                 <XStack
                                                     key={user.Id}
-                                                    backgroundColor="$card2"
+                                                    backgroundColor="$backgroundElevated"
                                                     borderRadius="$4"
                                                     paddingVertical="$3"
                                                     paddingHorizontal="$4"
@@ -586,7 +586,7 @@ export default function MenuForm() {
                                             return (
                                                 <XStack
                                                     key={item.Id}
-                                                    backgroundColor="$card2"
+                                                    backgroundColor="$backgroundElevated"
                                                     borderRadius="$4"
                                                     paddingVertical="$3"
                                                     paddingHorizontal="$4"

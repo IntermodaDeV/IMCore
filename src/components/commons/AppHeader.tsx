@@ -4,6 +4,8 @@ import { Text, XStack, View, useTheme } from 'tamagui'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useHeader } from '../../context/HeaderContext'
 import { MenuButton } from './MenuBotton'
+import { shadows } from '../../theme/shadows';
+import { Platform } from 'react-native';
 
 
 export function AppHeader({ route, options }: { route: any; options: any }) {
@@ -14,18 +16,12 @@ export function AppHeader({ route, options }: { route: any; options: any }) {
   return (
     <View
       paddingTop={insets.top}
-      backgroundColor={theme.backgroundHeader?.val}
-      shadowColor="#000"
-      shadowOffset={{
-        width: 0,
-        height: 4,
-      }}
-      shadowOpacity={0.12}
-      shadowRadius={8}
+      backgroundColor={theme.background?.val}
+      {...shadows.xl}
       position="relative"
       zIndex={100}
     >
-      <Text fontSize="$1" color="rgba(59, 59, 59, 0.4)" position="absolute" bottom={insets.top - 20} right={16}>
+      <Text fontSize="$1" color="rgba(59, 59, 59, 0.4)" position="absolute" bottom={ Platform.OS === 'ios' ? insets.top - 14 : 0 } right={16}>
         1.0.0
       </Text>
       <XStack

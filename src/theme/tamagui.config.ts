@@ -1,44 +1,28 @@
 import { createTamagui } from 'tamagui'
 import { defaultConfig } from '@tamagui/config/v5'
-import { createAnimations } from '@tamagui/animations-react-native'
-
-const animations = createAnimations({
-  fast: {
-    type: 'timing',
-    duration: 150,
-  },
-  medium: {
-    type: 'timing',
-    duration: 250,
-  },
-  slow: {
-    type: 'timing',
-    duration: 400,
-  },
-})
+import { animations } from './animations'
 
 const BrandColors = {
-    //Agreagdos semanticos
-    black: '#0F172A',  //1E293B
+  // =========================
+  // BRAND
+  // =========================
+  primary: '#FF551A',
+  primaryOpacity: 'rgba(255, 85, 26, 0.20)',
 
-    backgroundElevated: '#FFFFFF',
-    backgroundSurface: '#F1F5F9',
-    backgroundHover: '#E2E8F0',
-    backgroundPress: '#F8FAFC',
+  // =========================
+  // STATUS
+  // =========================
+  success: '#22C55E',
+  successOpacity: 'rgba(34, 197, 94, 0.20)',
 
+  warning: '#EAB308',
+  warningOpacity: 'rgba(234, 179, 8, 0.20)',
 
-    foregroundBase: '#0F172A',
-    foregroundSecondary: '#475569',
-    foregroundMuted: '#94A3B8',
+  error: '#EF4444',
+  errorOpacity: 'rgba(239, 68, 68, 0.20)',
 
-    success: '#22C55E',
-    successOpacity: 'rgba(34, 197, 94, 0.2)',
-
-    warning: '#EAB300',
-    warningOpacity: 'rgba(234, 179, 0, 0.2)',
-
-    error: '#EF4444',
-    errorOpacity: 'rgba(239, 68, 68, 0.2)',
+  info: '#3B82F6',
+  infoOpacity: 'rgba(59, 130, 246, 0.20)',
 }
 
 export const config = createTamagui({
@@ -48,75 +32,120 @@ export const config = createTamagui({
 
   tokens: {
     ...defaultConfig.tokens,
-    color: {
-      white: '#ffffff',
-      primary: '#FF551A',
-      primaryOpacity: 'rgba(214, 106, 27, 0.2)',
-      secondary: '#001F3F',
-      secondary1: '#001F3F',
-      gray: '#5F6368',
-      gray2: '#b5b9bd',
-      backgroundBase: '#F8FAFC',
 
-      //Agreagdos semanticos
+    color: {
+      white: '#FFFFFF',
+      black: '#000000',
+
       ...BrandColors,
-      gray2: '#dfe0e0',
-      gray3: '#d5d7d9',
-      red: '#f10000',
     },
   },
 
   themes: {
     light: {
+      // =========================
+      // SURFACES
+      // =========================
       background: '#FFFFFF',
-      backgroundHeader: '#FFFFFF',
-      backgroundPage: '#F1F5F9',
-      backgroundPage2: '#bcbcbc',
-      card: '#e2dddd',
-      card2: '#FFFFFF',
-      textMuted: '#64748B',
+      backgroundPage: '#F8FAFC',
+      backgroundSurface: '#F1F5F9',
+      backgroundElevated: '#FFFFFF',
+
+      // =========================
+      // TEXT
+      // =========================
+      text: '#0F172A',
+      textSecondary: '#475569',
+      textMuted: '#94A3B8',
+      textDisabled: '#CBD5E1',
+
+      // =========================
+      // BORDERS
+      // =========================
       border: '#E2E8F0',
+      borderColor: '#E2E8F0',
+
+      // =========================
+      // BRAND
+      // =========================
       primary: '#FF551A',
-      primaryOpacity: 'rgba(214, 106, 27, 0.2)',
-      button: '#000000',
-      text: '#0F172A', 
-      borderColor: '#0F172A',
+      primaryOpacity: 'rgba(255, 85, 26, 0.20)',
+      secondary: '#001F3F',
+
+      // =========================
+      // BUTTONS
+      // =========================
       buttonPrimary: '#FF551A',
-      buttonCancel: '#E2E8F0',
-      buttonCancelText: '#0F172A', 
-      textUser: '#e2dddd',
+      buttonPrimaryText: '#FFFFFF',
 
-      
-      
-      colorGradient1:'#f5dad1',
-      colorGradient2:'#c9def4',
-      textWelcome:'#7a2b11',
-      backgroundLoader: 'rgba(0,0,0,0.34)',
+      buttonSecondary: '#F1F5F9',
+      buttonSecondaryText: '#0F172A',
 
+      // =========================
+      // STATUS
+      // =========================
+      success: '#22C55E',
+      warning: '#EAB308',
+      error: '#EF4444',
+      info: '#3B82F6',
+
+      // =========================
+      // OVERLAYS
+      // =========================
+      backgroundLoader: 'rgba(0,0,0,0.35)',
     },
 
     dark: {
-      background: '#0B1220',
-      backgroundHeader: '#000000',
-      backgroundPage: '#070f18',
-      card: '#111827',
-      card2: '#1e3a5f',
-      textMuted: '#94A3B8',
-      border: '#1F2937',
-      primary: '#FF551A',
-      primaryOpacity: 'rgba(214, 106, 27, 0.2)',
-      button: '#ffffff',
-      text: '#FFFFFF', 
-      borderColor: '#c9d8fa', 
-      buttonPrimary: '#FF551A',
-      buttonCancel: '#bcbcbc',
-      buttonCancelText: '#FFFFFF',
-      textUser: '#1e3a5f',
-      colorGradient1:'#FF551A',
-      colorGradient2:'#1561ad',
-      textWelcome:'#f8a88e',
-      backgroundLoader: 'rgba(255, 255, 255, 0.08)'
+      // =========================
+      // SURFACES
+      // =========================
+      background: '#061426',
+      backgroundPage: '#0B1F38',
+      backgroundSurface: '#163B63',
+      backgroundElevated: '#20466E',
 
+      // =========================
+      // TEXT
+      // =========================
+      text: '#F8FAFC',
+      textSecondary: '#CBD5E1',
+      textMuted: '#94A3B8',
+      textDisabled: '#64748B',
+
+      // =========================
+      // BORDERS
+      // =========================
+      border: '#2B537D',
+      borderColor: '#2B537D',
+
+      // =========================
+      // BRAND
+      // =========================
+      primary: '#FF551A',
+      primaryOpacity: 'rgba(255, 85, 26, 0.20)',
+      secondary: '#7292B8',
+
+      // =========================
+      // BUTTONS
+      // =========================
+      buttonPrimary: '#FF551A',
+      buttonPrimaryText: '#FFFFFF',
+
+      buttonSecondary: '#163B63',
+      buttonSecondaryText: '#F8FAFC',
+
+      // =========================
+      // STATUS
+      // =========================
+      success: '#22C55E',
+      warning: '#EAB308',
+      error: '#EF4444',
+      info: '#3B82F6',
+
+      // =========================
+      // OVERLAYS
+      // =========================
+      backgroundLoader: 'rgba(255,255,255,0.08)',
     },
   },
 })

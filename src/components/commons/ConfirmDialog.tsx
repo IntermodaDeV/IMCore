@@ -40,7 +40,7 @@ export default function ConfirmDialog({
                         alignSelf="center"
                         enterStyle={{ y: -12, opacity: 0, scale: 0.94 }}
                         exitStyle={{ y: 8, opacity: 0, scale: 0.96 }}
-                        backgroundColor="$card2"
+                        backgroundColor="$backgroundElevated"
                         borderRadius="$6"
                         paddingHorizontal="$5"
                         paddingVertical="$5"

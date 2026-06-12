@@ -98,11 +98,11 @@ export default function UsersScreen() {
       right: (
         <XStack gap="$2">
           <View onPress={() => getInfo()}>
-            <RotateCw size={18} />
+            <RotateCw size={18} color={theme.text?.val} />
           </View>
 
-          <View onPress={() => openForm()}>
-            <Plus size={18} />
+          <View onPress={() => openForm()}  >
+            <Plus size={18} color={theme.text?.val} />
           </View>
         </XStack>
       )
@@ -272,7 +272,7 @@ export default function UsersScreen() {
     <Page >
       <YStack
         flex={1}
-        backgroundColor="$card2"
+        backgroundColor="$backgroundElevated"
         padding="$3"
       >
         {loading ? (
@@ -615,7 +615,7 @@ export default function UsersScreen() {
                   name="ValidateAD"
                   render={({ field: { value, onChange } }) => (
                     <XStack
-                      backgroundColor={value ? 'rgba(255, 85, 26, 0.06)' : '$card2'}
+                      backgroundColor={value ? 'rgba(255, 85, 26, 0.06)' : '$backgroundElevated'}
                       borderWidth={1.5}
                       borderColor={value ? '$primary' : '$border'}
                       borderRadius="$5"

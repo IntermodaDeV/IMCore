@@ -126,7 +126,7 @@ export default function RolesScreen() {
     <Page > 
       <YStack
         flex={1}
-        backgroundColor="$card2"
+        backgroundColor="$backgroundElevated"
         padding="$3"
       >
         {loading ? (

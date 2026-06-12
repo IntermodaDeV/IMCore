@@ -477,7 +477,7 @@ export default function UsersForm() {
                                                         width={36}
                                                         height={36}
                                                         borderRadius={18}
-                                                        backgroundColor={isChecked ? 'rgba(255, 85, 26, 0.12)' : '$card2'}
+                                                        backgroundColor={isChecked ? 'rgba(255, 85, 26, 0.12)' : '$backgroundElevated'}
                                                         justifyContent="center"
                                                         alignItems="center"
                                                     >
@@ -520,7 +520,7 @@ export default function UsersForm() {
                                                 name="ValidateAD"
                                                 render={({ field: { value, onChange } }) => (
                                                     <XStack
-                                                        backgroundColor={value ? 'rgba(255, 85, 26, 0.06)' : '$card2'}
+                                                        backgroundColor={value ? 'rgba(255, 85, 26, 0.06)' : '$backgroundElevated'}
                                                         borderWidth={1.5}
                                                         borderColor={value ? '$primary' : '$border'}
                                                         borderRadius="$5"
@@ -724,7 +724,7 @@ export default function UsersForm() {
                                         return (
                                             <XStack
                                                 key={i.Id}
-                                                backgroundColor="$card2"
+                                                backgroundColor="$backgroundElevated"
                                                 borderRadius="$4"
                                                 paddingVertical="$3"
                                                 paddingHorizontal="$4"
@@ -824,7 +824,7 @@ export default function UsersForm() {
                                         return (
                                             <XStack
                                                 key={i.Id}
-                                                backgroundColor="$card2"
+                                                backgroundColor="$backgroundElevated"
                                                 borderRadius="$4"
                                                 paddingVertical="$3"
                                                 paddingHorizontal="$4"

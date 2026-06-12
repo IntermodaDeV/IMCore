@@ -87,7 +87,7 @@ export function ImageUploader({ title = 'Imagen', onChange }: Props) {
 
   return (
     <Card
-      backgroundColor="$card2"
+      backgroundColor="$backgroundElevated"
       padding="$4"
       borderRadius={12}
       borderWidth={1}

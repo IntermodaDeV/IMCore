@@ -42,7 +42,7 @@ export default function SearchInput<T extends Record<string, any>>({
 
     return (
         <XStack
-            backgroundColor="$card2"
+            backgroundColor="$backgroundElevated"
             borderRadius="$3"
             paddingHorizontal="$3"
             alignItems="center"

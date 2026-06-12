@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage } from 'react-native'
+import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage, Platform } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
 import { createDrawerNavigator, DrawerContentScrollView, DrawerContentComponentProps } from '@react-navigation/drawer'
@@ -128,7 +128,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   }
 
   return (
-    <View flex={1} backgroundColor="$background">
+    <View flex={1} backgroundColor="$background" marginBottom={Platform.OS === 'ios' ? insets.bottom : 0}  >
       <View
         marginBottom={2}
         borderRadius={14}
