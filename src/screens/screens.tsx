@@ -1,13 +1,19 @@
-import UsersScreen from './Security/UsersScreen'
+
+import { TScreenEntry } from '../navigation/screens.types'
 import HomeScreen from './AdmSys/HomeScreen'
-import BillsScreen from './Gira/Bills/BillsScreen'
 import NotFoundScreen from './AdmSys/NotFoundScreen'
+import { ScreensCadenaSuministro } from './CadenaSuministro'
+import { rootSecurity } from './Security/rootSecurity'
+import ProfileScreen from './Security/Users/ProfileScreen'
 
-export const SCREENS = {
+
+
+export const SCREENS: Record<string, TScreenEntry> = {
   inicio: HomeScreen,
-  usuarios: UsersScreen,
+  Perfil: ProfileScreen,
 
-  gastos: BillsScreen,
+  ...rootSecurity,
+  ...ScreensCadenaSuministro,
 
   not_found: NotFoundScreen,
-}
+};
