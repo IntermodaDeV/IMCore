@@ -10,7 +10,6 @@ import { useAuth } from '../../context/AuthContext'
 import { securityService } from '../../api/modules/security/security.service'
 import { useMenu } from '../../context/MenuContext'
 import { Pressable } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useShowToast } from '../../utils/useShowToast'
 
 type FormData = {
