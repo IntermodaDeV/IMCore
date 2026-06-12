@@ -84,7 +84,6 @@ export default function UsersScreen() {
   }, [])
 
   const openForm = (Id?: number) => {
-    console.log('Opening form for user ID:', Id)
     navigation.navigate('usuario_form', { Id })
   }
 

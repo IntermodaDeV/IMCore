@@ -5,11 +5,11 @@ import { ImageBackground, Image, KeyboardAvoidingView, Platform } from 'react-na
 import { useNavigation } from '@react-navigation/native'
 import { User, Lock, LogIn,Eye, EyeOff } from 'lucide-react-native'
 import { useForm, Controller } from 'react-hook-form'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '../../context/AuthContext'
 import { securityService } from '../../api/modules/security/security.service'
 import { useMenu } from '../../context/MenuContext'
 import { Pressable } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useShowToast } from '../../utils/useShowToast'
 
 type FormData = {
@@ -54,9 +54,15 @@ export default function LoginScreen() {
         return
       }
 
+      // Guardar el token ANTES de pedir el menú (los endpoints [Authorize] lo requieren)
+      if (response.AccessToken) {
+        await AsyncStorage.setItem('accessToken', response.AccessToken)
+      }
+      if (response.RefreshToken) {
+        await AsyncStorage.setItem('refreshToken', response.RefreshToken)
+      }
+
       const user = JSON.parse(response.InfoUser)
-      await AsyncStorage.setItem('accessToken', response.AccessToken)
-      await AsyncStorage.setItem('refreshToken', response.RefreshToken)
       await AsyncStorage.setItem('userCode', user.Code)
       await refreshMenu(user.Code)
       // navigation.navigate('Loading' as never)

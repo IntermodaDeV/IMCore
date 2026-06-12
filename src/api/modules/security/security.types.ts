@@ -10,9 +10,10 @@ export type LoginResponse = {
   Success: boolean
   SuccessMessage: string
   ErrorMessage: string
-  InfoUser: string 
-  AccessToken: string
-  RefreshToken: string
+  InfoUser: string
+  AccessToken?: string
+  RefreshToken?: string
+  ExpireAt?: string
 }
 
 interface RoleDTO {

@@ -250,7 +250,7 @@ export default function RolesForm() {
             updateHeader({
                 center: 
                     <Text>
-                        Editar rol: {getValues('RoleName')}
+                        Editar rol
                     </Text>
                 ,
             })

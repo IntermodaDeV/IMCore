@@ -73,7 +73,6 @@ export default function UsersForm() {
                     if (response.Success) {
                         reset(response.Data[0])
                         setUser_Code(response.Data[0]?.Code)
-                        navigation.setOptions({ title: isEdit ? `Editar usuario: ${getValues('Code')}` : 'Nuevo usuario' })
                     } else {
                         showToast('error', 'Error', response?.ErrorMessage || 'Error al obtener la información', 5000, 'bottom')
                         setLoading(false)
@@ -250,23 +249,25 @@ export default function UsersForm() {
     
     usePageHeader({
         left:(
-                <Icons.ArrowLeft onPress={() => navigation.navigate<any>('usuarios')} />   
+                <Icons.ArrowLeft onPress={() => navigation.goBack()} />   
                 ),
         center: 
-            <Text>{isEdit ? `Editar usuario: ${getValues('Code')}` : 'Nuevo usuario'}</Text>
+            <Text>Nuevo Usuario</Text>
         ,
 
         right: <></>,
     })
 
-    useEffect(() => {                               
-        updateHeader({
-            center: 
-                <Text>
-                    Editar usuario: {getValues('Code')}
-                </Text>
-            ,
-        })
+    useEffect(() => {      
+        if(isEdit){
+            updateHeader({
+                center: 
+                    <Text>
+                        Editar usuario
+                    </Text>
+                ,
+            })
+        }                         
     }, [isEdit])
 
     useEffect(() => {
