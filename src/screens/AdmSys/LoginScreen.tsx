@@ -64,8 +64,6 @@ export default function LoginScreen() {
       }
 
       const user = JSON.parse(response.InfoUser)
-      await AsyncStorage.setItem('accessToken', response.AccessToken)
-      await AsyncStorage.setItem('refreshToken', response.RefreshToken)
       await AsyncStorage.setItem('userCode', user.Code)
       await refreshMenu(user.Code)
       // navigation.navigate('Loading' as never)
