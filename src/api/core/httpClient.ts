@@ -1,4 +1,5 @@
 import Config from 'react-native-config'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 type RequestOptions<TBody = any> = {
@@ -18,8 +19,10 @@ class HttpClient {
 
   async request<TResponse = any, TBody = any>({ method, url, body, params, headers }: RequestOptions<TBody>): Promise<TResponse> {
     const fullUrl = `${this.baseUrl}${url}${this.buildQuery(params)}`
+    const token = await AsyncStorage.getItem('accessToken')
     const finalHeaders: Record<string, string> = {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(headers || {}),
     }
     const res = await fetch(fullUrl, { method, headers: finalHeaders, body: body ? JSON.stringify(body) : undefined })

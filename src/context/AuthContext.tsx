@@ -88,6 +88,8 @@ export const AuthProvider = ({
         AsyncStorage.removeItem('user'),
         AsyncStorage.removeItem('theme'),
         AsyncStorage.removeItem('menu'),
+        AsyncStorage.removeItem('accessToken'),
+        AsyncStorage.removeItem('refreshToken'),
       ])
     } catch (e) {
       console.log('Error logout', e)

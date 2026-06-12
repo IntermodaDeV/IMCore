@@ -7,7 +7,10 @@ export type LoginResponse = {
   Success: boolean
   SuccessMessage: string
   ErrorMessage: string
-  InfoUser: string 
+  InfoUser: string
+  AccessToken?: string
+  RefreshToken?: string
+  ExpireAt?: string
 }
 
 export interface UsersDTO {
