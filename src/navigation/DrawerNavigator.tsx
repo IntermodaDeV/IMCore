@@ -67,7 +67,9 @@ export default function DrawerNavigator({ setTheme }: any) {
   
   const screenTitles = Object.fromEntries((menu ?? []).map(item => [item.Route, item.Name]))
   const insets = useSafeAreaInsets()
-
+  const screens = Object.entries(SCREENS).filter(
+    ([key]) => key !== 'Childs'
+  );
   return (
   <HeaderProvider>
     <Drawer.Navigator
@@ -75,6 +77,7 @@ export default function DrawerNavigator({ setTheme }: any) {
       drawerContent={createDrawerContent(setTheme, menu)}
       screenOptions={{
         header: ({route, options}) => <AppHeader  route={route} options={options} />,
+        headerShown: true,
         drawerType: 'slide',
         drawerStyle: {
           backgroundColor: theme.background?.val,
@@ -84,13 +87,24 @@ export default function DrawerNavigator({ setTheme }: any) {
         drawerInactiveTintColor: theme.textMuted?.val,
       }}
     >
-      {Object.entries(SCREENS).map(([Name, component]) => (
-        <Drawer.Screen
-          key={Name}
-          name={Name}
-          component={component}
-        />
-      ))}
+      
+
+      {Object.entries(SCREENS).map(([Name, route]) => {
+        const Component =
+          typeof route === 'object' &&
+          route !== null &&
+          'Screen' in route
+            ? route.Screen
+            : route;
+
+        return (
+          <Drawer.Screen
+            key={Name}
+            name={Name}
+            component={Component}
+          />
+        );
+      })}
     </Drawer.Navigator>
   </HeaderProvider>
 )

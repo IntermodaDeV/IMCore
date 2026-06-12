@@ -26,6 +26,7 @@ const BrandColors = {
     backgroundHover: '#E2E8F0',
     backgroundPress: '#F8FAFC',
 
+
     foregroundBase: '#0F172A',
     foregroundSecondary: '#475569',
     foregroundMuted: '#94A3B8',
@@ -90,6 +91,8 @@ export const config = createTamagui({
       colorGradient1:'#f5dad1',
       colorGradient2:'#c9def4',
       textWelcome:'#7a2b11',
+      backgroundLoader: 'rgba(0,0,0,0.34)',
+
     },
 
     dark: {
@@ -112,6 +115,8 @@ export const config = createTamagui({
       colorGradient1:'#FF551A',
       colorGradient2:'#1561ad',
       textWelcome:'#f8a88e',
+      backgroundLoader: 'rgba(255, 255, 255, 0.08)'
+
     },
   },
 })

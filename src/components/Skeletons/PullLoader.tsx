@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { Animated, Easing } from 'react-native'
-import { XStack } from 'tamagui'
+import { YStack, XStack } from 'tamagui'
 
 const BALL_SIZE = 20
 const WAVE_HEIGHT = 20
@@ -35,25 +35,39 @@ export function PullLoader() {
     )
 
     animations.forEach(a => a.start())
+
     return () => animations.forEach(a => a.stop())
   }, [])
 
   const colors = ['#FF551A', '#9E9E9E', '#0D1C32']
 
   return (
-    <XStack gap={6} justifyContent="center" alignItems="center" paddingVertical={10} marginTop="$5">
-      {anims.map((anim, i) => (
-        <Animated.View
-          key={i}
-          style={{
-            width: BALL_SIZE,
-            height: BALL_SIZE,
-            borderRadius: BALL_SIZE / 2,
-            backgroundColor: colors[i],
-            transform: [{ translateY: anim }],
-          }}
-        />
-      ))}
-    </XStack>
+    <YStack
+      position="absolute"
+      top={0}
+      right={0}
+      bottom={0}
+      left={0}
+      justifyContent="center"
+      alignItems="center"
+      backgroundColor="$backgroundLoader"
+      zIndex={9999}
+      pointerEvents="none"
+    >
+      <XStack gap={6} justifyContent="center" alignItems="center">
+        {anims.map((anim, i) => (
+          <Animated.View
+            key={i}
+            style={{
+              width: BALL_SIZE,
+              height: BALL_SIZE,
+              borderRadius: BALL_SIZE / 2,
+              backgroundColor: colors[i],
+              transform: [{ translateY: anim }],
+            }}
+          />
+        ))}
+      </XStack>
+    </YStack>
   )
 }

@@ -236,7 +236,7 @@ export default function RolesForm() {
 
     usePageHeader({
         left:(
-                <ArrowLeft onPress={() => navigation.navigate<any>('roles')} />   
+                <ArrowLeft onPress={() => navigation.goBack()} />   
                 ),
         center: 
             <Text>Nuevo rol</Text>

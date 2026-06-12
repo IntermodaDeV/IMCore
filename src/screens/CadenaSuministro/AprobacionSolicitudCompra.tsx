@@ -6,7 +6,6 @@ import {
   XStack,
   Text,
   Button,
-  Input,
   Card,
   View,
   styled,
@@ -24,7 +23,7 @@ export default function AprobacionSolicitudCompra() {
   usePageHeader({
       center: (
       <Text fontSize="$4" fontWeight="700" color="$text">
-          Aprobación de solicitudes de compra
+          Aprobación de SC
       </Text>
       ),
 

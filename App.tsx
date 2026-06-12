@@ -8,14 +8,17 @@ import DrawerNavigator from './src/navigation/DrawerNavigator'
 import { AuthProvider, useAuth } from './src/context/AuthContext'
 import { MenuProvider } from './src/context/MenuContext'
 import LoadingScreen from './src/components/Skeletons/LoadingScreen'
-import AccessForm from './src/screens/Security/Access/AccessForm'
-import MenuForm from './src/screens/Security/Menu/MenuForm'
-import RolesForm from './src/screens/Security/Roles/RolesForm'
-import UsersForm from './src/screens/Security/Users/UsersForm,'
 import { ToastProvider, ToastViewport } from '@tamagui/toast'
 import { CustomToast } from './src/components/commons/CustomToast'
 import { ToastPositionProvider } from './src/context/ToastPositionContext'
 import { useToastPosition } from './src/context/ToastPositionContext'
+import { LoaderProvider } from './src/providers/LoaderProvider'
+import AccessForm from './src/screens/Security/Access/AccessForm'
+import RolesForm from './src/screens/Security/Roles/RolesForm'
+import { HeaderProvider } from './src/context/HeaderContext'
+import { AppHeader } from './src/components/commons/AppHeader'
+import { SCREENS } from './src/screens/screens'
+import { rootSecurity } from './src/screens/Security/rootSecurity'
 
 function Root() {
   const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage } = useAuth()
@@ -64,58 +67,89 @@ function Root() {
 
   return (
     <TamaguiProvider config={config} defaultTheme={theme}>
-      <Theme name={theme}>
+      <LoaderProvider>
+        <HeaderProvider>
 
-        <ToastProvider swipeDirection="horizontal">
-          <NavigationContainer>
-            <Stack.Navigator screenOptions={{ headerShown: false }}> 
-              {user ? (
-                <>
-                  <Stack.Screen name="Main">
-                    {() => <DrawerNavigator />}
-                  </Stack.Screen>
-                  <Stack.Screen name="Loading">
-                    {({ route, navigation }) => (
-                      <LoadingScreen
-                        text="Iniciando sesión..."
-                        duration={1000}
-                        onFinish={() => {
-                          const next = (route.params as any)?.next || 'Main'
-                          navigation.reset({
-                            index: 0,
-                            routes: [{ name: next }],
-                          })
-                        }}
-                      />
-                    )}
-                  </Stack.Screen>
-                </>
-              ) : (
-                <Stack.Screen name="Login" component={LoginScreen} />
-              )
-              }
-            </Stack.Navigator>
+          <Theme name={theme}>
 
-            <View
-              position="absolute"
-              bottom={10}
-              right={12}
-              pointerEvents="none"
-            >
+            <ToastProvider swipeDirection="horizontal">
               
-            </View>
+              
+              <NavigationContainer>
+                <Stack.Navigator screenOptions={{ headerShown: false }}> 
+                  {user ? (
+                    <>
+                      <Stack.Screen name="Main">
+                        {() => <DrawerNavigator />}
+                      </Stack.Screen>
+                      <Stack.Screen name="Loading">
+                        {({ route, navigation }) => (
+                          <LoadingScreen
+                            text="Iniciando sesión..."
+                            duration={1000}
+                            onFinish={() => {
+                              const next = (route.params as any)?.next || 'Main'
+                              navigation.reset({
+                                index: 0,
+                                routes: [{ name: next }],
+                              })
+                            }}
+                          />
+                        )}
+                      </Stack.Screen>
 
-          </NavigationContainer>
 
-          <CustomToast />
+                      {Object.values(SCREENS)
+                        .filter(
+                          (route): route is { Screen: any; Childs: Record<string, any> } =>
+                            typeof route === 'object' &&
+                            route !== null &&
+                            'Childs' in route
+                        )
+                        .flatMap(route => Object.entries(route.Childs))
+                        .map(([Name, Component]) => (
+                          <Stack.Screen
+                            key={Name}
+                            name={Name}
+                            component={Component}
+                            options={{
+                              header: ({ route, options }) => (
+                                <AppHeader route={route} options={options} />
+                              ),
+                              headerShown: true,
+                            }}
+                          />
+                        ))}
 
-          <ToastViewport
-            top={toastPosition === 'top' ? 50 : undefined}
-            bottom={toastPosition === 'bottom' ? 20 : undefined}
-            right={20}
-          />
-        </ToastProvider>
-      </Theme>
+                    </>
+                  ) : (
+                    <Stack.Screen name="Login" component={LoginScreen} />
+                  )
+                  }
+                </Stack.Navigator>
+
+                <View
+                  position="absolute"
+                  bottom={10}
+                  right={12}
+                  pointerEvents="none"
+                >
+                  
+                </View>
+
+              </NavigationContainer>
+
+              <CustomToast />
+
+              <ToastViewport
+                top={toastPosition === 'top' ? 50 : undefined}
+                bottom={toastPosition === 'bottom' ? 20 : undefined}
+                right={20}
+              />
+            </ToastProvider>
+          </Theme>
+        </HeaderProvider>
+      </LoaderProvider>
     </TamaguiProvider>
   )
 }

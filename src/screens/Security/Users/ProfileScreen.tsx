@@ -12,13 +12,13 @@ import { useShowToast } from '../../../utils/useShowToast'
 import { useThemeName } from 'tamagui'
 import { TouchableOpacity } from 'react-native'
 import { UsersSettingsDTO } from '../../../api/modules/security/security.types'
-import { PullLoader } from '../../../components/Skeletons/PullLoader'
 import { shadows } from '../../../theme/shadows'
 import { useHeader } from '../../../context/HeaderContext'
-import { useNavigation, useRoute } from '@react-navigation/native'
+import { useNavigation } from '@react-navigation/native'
 import { usePageHeader } from '../../../hooks/usePageHeader'
+import { useLoader } from '../../../providers/LoaderProvider'
 export default function ProfileScreen() {
-
+    const loader = useLoader();
     const { user } = useAuth()
     const { setHeader } = useHeader();
     const navigation = useNavigation();
@@ -35,7 +35,7 @@ export default function ProfileScreen() {
     const isDark = themeName === 'dark'
 
     const getInfo = async () => {
-        setLoading(true)
+        loader.show();
         setData(menu?.filter((i) => i?.ParentMenu_Id !== null))
         const response: ExecutionResponse<IQuickActions[]> = await securityService.getQuickActions(user?.User_Code)
         if (response.Success) {
@@ -43,7 +43,7 @@ export default function ProfileScreen() {
             let newData = response.Data.filter((i: IQuickActions) => i?.Status_Id === 1)
             setFavorites(newData.map((i: IQuickActions) => i.Menu_Id))
         }
-        setLoading(false)
+        loader.hide();
     }
 
     const toggleFavorite = async (id: number) => {
@@ -105,7 +105,7 @@ export default function ProfileScreen() {
         <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
             <YStack padding="$4" backgroundColor="$background" gap="$4">
 
-                {loading && <PullLoader />}
+                
                 {/* Card perfil */}
                 <YStack
                     backgroundColor="$card2"

@@ -7,15 +7,39 @@ import MenuForm from "./Menu/MenuForm";
 import UsersForm from "./Users/UsersForm,";
 import AccessForm from "./Access/AccessForm";
 import RolesForm from "./Roles/RolesForm";
+import { TScreens } from "../../navigation/screens.types";
 
-export const rootSecurity = {
-    usuarios: UsersScreen,
-    usuario_form: UsersForm,
-    access: AccessScreen,
-    access_form: AccessForm,
-    menu: MenuScreen,
-    menu_form: MenuForm,
-    roles: RolesScreen,
-    roles_form: RolesForm,
-    perfil: ProfileScreen,
-}
+export const rootSecurity: TScreens = {
+  usuarios: {
+    Screen: UsersScreen,
+    Childs: {
+      usuario_form: UsersForm,
+    },
+  },
+
+  access: {
+    Screen: AccessScreen,
+    Childs: {
+      access_form: AccessForm,
+    },
+  },
+
+  menu: {
+    Screen: MenuScreen,
+    Childs: {
+      menuForm: MenuForm,
+    },
+  },
+
+  roles: {
+    Screen: RolesScreen,
+    Childs: {
+      roles_form: RolesForm,
+    },
+  },
+
+  perfil: {
+    Screen: ProfileScreen,
+    Childs: {},
+  },
+};

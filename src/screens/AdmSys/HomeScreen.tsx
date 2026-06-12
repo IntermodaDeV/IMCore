@@ -11,13 +11,11 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import * as Icons from 'lucide-react-native'
 import { Pressable } from 'react-native'
 import { useWindowDimensions } from 'react-native'
-import { PullLoader } from '../../components/Skeletons/PullLoader'
 import { useMenu } from '../../context/MenuContext'
 import { shadows } from '../../theme/shadows'
-import { useHeader } from '../../context/HeaderContext'
 import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage } from 'react-native'
-import {MenuButton} from '../../components/commons/MenuBotton'
 import { usePageHeader } from '../../hooks/usePageHeader'
+import { useLoader } from '../../providers/LoaderProvider'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -27,7 +25,8 @@ function getGreeting() {
 }
 
 export default function HomeScreen() {
-  
+  const loader = useLoader();
+
 
   const { user } = useAuth()
   const theme = useTheme()
@@ -56,17 +55,20 @@ export default function HomeScreen() {
 
   const getInfo = React.useCallback(async () => {
     try {
-      setLoading(true)
+      loader.show();
       setError(null)
       setMenus(menu?.filter((i) => i?.ParentMenu_Id !== null).slice(0, 6))
       const response: ExecutionResponse<IQuickActions[]> = await securityService.getQuickActions(user?.User_Code)
       if (response.Success) {
         setData(response.Data.filter((i: IQuickActions) => i?.Status_Id === 1))
+        
       }
+
+      loader.hide();
     } catch (err) {
       setError(handleError(err))
     } finally {
-      setLoading(false)
+      loader.hide();
     }
   }, [user?.User_Code])
 
@@ -90,7 +92,6 @@ export default function HomeScreen() {
         justifyContent="flex-start"
         alignItems="center"
       >
-        {loading && <PullLoader />}
 
         <ImageBackground
           source={require('../../assets/Banner.png')}
