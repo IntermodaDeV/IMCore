@@ -1,50 +1,69 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { ScrollView } from 'react-native'
 import { Card, Text, XStack, YStack, View } from 'tamagui'
-import { ACCENT, Conteo } from './mantenimiento.helpers'
+import { ChevronRight, Settings2 } from 'lucide-react-native'
+import { ACCENT, Conteo, Escala, shade } from './mantenimiento.helpers'
 
-// ── Tarjeta KPI ──────────────────────────────────────────────────────────────
+// ── Tarjeta KPI (con badge tipo "delta" de Streamlit) ────────────────────────
+interface KpiBadge {
+  text: string
+  color: string
+  up?: boolean
+}
 interface KpiCardProps {
   titulo: string
   valor: string
-  sub?: string
-  subColor?: string
+  badge?: KpiBadge
 }
 
-export function KpiCard({ titulo, valor, sub, subColor }: KpiCardProps) {
+export function KpiCard({ titulo, valor, badge }: KpiCardProps) {
   return (
     <Card
       flex={1}
-      minWidth="30%"
+      minWidth="44%"
       backgroundColor="$card2"
       borderWidth={1}
       borderColor="$border"
       borderRadius="$4"
       padding="$3"
-      gap="$1"
+      gap="$2"
     >
-      <Text fontSize={10} fontWeight="700" color="$foregroundMuted" numberOfLines={1}>
-        {titulo.toUpperCase()}
+      <Text fontSize={11} fontWeight="600" color="$foregroundMuted" numberOfLines={1}>
+        {titulo}
       </Text>
-      <Text fontSize={22} fontWeight="800" color="$text">
+      <Text fontSize={26} fontWeight="800" color="$text">
         {valor}
       </Text>
-      {!!sub && (
-        <Text fontSize={11} fontWeight="600" color={subColor ?? '$foregroundMuted'}>
-          {sub}
-        </Text>
+      {!!badge && (
+        <XStack
+          alignSelf="flex-start"
+          alignItems="center"
+          gap={3}
+          backgroundColor={badge.color + '22'}
+          paddingHorizontal={7}
+          paddingVertical={3}
+          borderRadius={7}
+        >
+          <Text fontSize={10} color={badge.color} fontWeight="800">
+            {badge.up ? '▲' : '▼'}
+          </Text>
+          <Text fontSize={10} color={badge.color} fontWeight="700">
+            {badge.text}
+          </Text>
+        </XStack>
       )}
     </Card>
   )
 }
 
-// ── Tarjeta de sección (título + contenido), reemplaza st.subheader + chart ──
+// ── Tarjeta de sección (título + contenido) ──────────────────────────────────
 interface SectionCardProps {
   titulo: string
+  ejeX?: string
   children: React.ReactNode
 }
 
-export function SectionCard({ titulo, children }: SectionCardProps) {
+export function SectionCard({ titulo, ejeX, children }: SectionCardProps) {
   return (
     <Card
       backgroundColor="$card2"
@@ -54,10 +73,15 @@ export function SectionCard({ titulo, children }: SectionCardProps) {
       padding="$3"
       gap="$3"
     >
-      <Text fontSize={15} fontWeight="700" color="$text">
+      <Text fontSize={16} fontWeight="800" color="$text">
         {titulo}
       </Text>
       {children}
+      {!!ejeX && (
+        <Text fontSize={10} color="$foregroundMuted" alignSelf="center">
+          {ejeX}
+        </Text>
+      )}
     </Card>
   )
 }
@@ -80,11 +104,7 @@ export function TabBar({ tabs, activo, onChange }: TabBarProps) {
         const sel = i === activo
         return (
           <YStack key={t} onPress={() => onChange(i)} paddingVertical="$2">
-            <Text
-              fontSize={14}
-              fontWeight="700"
-              color={sel ? ACCENT : '$foregroundMuted'}
-            >
+            <Text fontSize={14} fontWeight="700" color={sel ? ACCENT : '$foregroundMuted'}>
               {t}
             </Text>
             <View
@@ -100,15 +120,57 @@ export function TabBar({ tabs, activo, onChange }: TabBarProps) {
   )
 }
 
-// ── Lista de barras horizontales (Área, Tipo de Paro, Rankings) ──────────────
-// Robusta y fiel al look de Streamlit: barra proporcional + valor al final.
+// ── Cabecera colapsable de filtros (acordeón "⚙️ Filtros ›", como Python móvil) ─
+interface FiltrosColapsablesProps {
+  resumen: string
+  children: React.ReactNode
+}
+
+export function FiltrosColapsables({ resumen, children }: FiltrosColapsablesProps) {
+  const [abierto, setAbierto] = useState(false)
+  return (
+    <YStack
+      backgroundColor="$card2"
+      borderWidth={1}
+      borderColor="$border"
+      borderRadius="$4"
+      overflow="hidden"
+    >
+      <XStack
+        alignItems="center"
+        gap="$2"
+        padding="$3"
+        pressStyle={{ backgroundColor: '$backgroundPress' }}
+        onPress={() => setAbierto(v => !v)}
+      >
+        <Settings2 size={16} color={ACCENT} />
+        <Text fontSize={14} fontWeight="700" color="$text" flex={1}>
+          Filtros
+        </Text>
+        <Text fontSize={11} color="$foregroundMuted" numberOfLines={1} marginRight="$2">
+          {resumen}
+        </Text>
+        <View rotate={abierto ? '90deg' : '0deg'}>
+          <ChevronRight size={18} color="#94A3B8" />
+        </View>
+      </XStack>
+      {abierto && (
+        <YStack padding="$3" paddingTop={0} gap="$2">
+          {children}
+        </YStack>
+      )}
+    </YStack>
+  )
+}
+
+// ── Lista de barras horizontales con degradado por valor (≈ plotly continuo) ──
 interface HBarListProps {
   datos: Conteo[]
-  color?: string
+  escala: Escala
   vacioMsg?: string
 }
 
-export function HBarList({ datos, color = ACCENT, vacioMsg = 'Sin datos' }: HBarListProps) {
+export function HBarList({ datos, escala, vacioMsg = 'Sin datos' }: HBarListProps) {
   if (!datos.length) {
     return (
       <Text fontSize={12} color="$foregroundMuted">
@@ -117,12 +179,11 @@ export function HBarList({ datos, color = ACCENT, vacioMsg = 'Sin datos' }: HBar
     )
   }
   const max = Math.max(...datos.map(d => d.value), 1)
-  // Mostrar mayor arriba en rankings: invertimos el orden ascendente que llega.
   const ordenado = [...datos].sort((a, b) => b.value - a.value)
   return (
     <YStack gap="$2">
       {ordenado.map(d => (
-        <YStack key={d.label} gap={2}>
+        <YStack key={d.label} gap={3}>
           <XStack justifyContent="space-between">
             <Text fontSize={12} color="$text" numberOfLines={1} flex={1} marginRight="$2">
               {d.label}
@@ -131,11 +192,11 @@ export function HBarList({ datos, color = ACCENT, vacioMsg = 'Sin datos' }: HBar
               {d.value}
             </Text>
           </XStack>
-          <View height={8} borderRadius={999} backgroundColor="$backgroundHover">
+          <View height={9} borderRadius={999} backgroundColor="$backgroundHover">
             <View
-              height={8}
+              height={9}
               borderRadius={999}
-              backgroundColor={color}
+              backgroundColor={shade(escala, d.value / max)}
               width={`${(d.value / max) * 100}%`}
             />
           </View>
