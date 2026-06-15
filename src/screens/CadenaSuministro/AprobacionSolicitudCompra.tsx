@@ -28,6 +28,8 @@ export default function AprobacionSolicitudCompra() {
   const ClipboardListStyled = styled(ClipboardList, { color: '$primary' });
   const CheckStyled = styled(Check, { color: '$white' });
   const XStyled = styled(X, { color: '$error' });
+  const ChevronUpStyled = styled(ChevronUp, { color: '$text' });
+  const ChevronDownStyled = styled(ChevronDown, { color: '$text' });
   const loader = useLoader();
 
   usePageHeader({

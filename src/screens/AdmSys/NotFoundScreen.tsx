@@ -8,7 +8,7 @@ export default function NotFoundScreen({ route }: any) {
   return (
     <View
       flex={1}
-      backgroundColor="$card2"
+      backgroundColor="$backgroundElevated"
       padding="$6"
       justifyContent="space-between"
     >
@@ -18,7 +18,7 @@ export default function NotFoundScreen({ route }: any) {
           width={72}
           height={72}
           borderRadius={18}
-          backgroundColor="$card"
+          backgroundColor="$backgroundSurface"
           justifyContent="center"
           alignItems="center"
           borderWidth={1}
@@ -48,7 +48,7 @@ export default function NotFoundScreen({ route }: any) {
 
       {/* INFO BOX */}
       <View
-        backgroundColor="$card"
+        backgroundColor="$backgroundSurface"
         borderRadius={16}
         padding="$4"
         borderWidth={1}

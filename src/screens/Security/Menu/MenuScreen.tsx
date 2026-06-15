@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Pencil, Plus, RotateCw } from 'lucide-react-native'
-import { YStack, Text, ScrollView, useTheme, Card, XStack, View } from 'tamagui'
+import { YStack, Text, ScrollView, useTheme, Card, XStack, View, styled} from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { MenuDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
@@ -25,7 +25,11 @@ type NavProps = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MenuScreen() {
   const navigation = useNavigation<NavProps>();
-  const theme = useTheme()
+  
+  const theme = useTheme();
+  const RotateCwStyled = styled(RotateCw, { color: '$text' });
+  const PlusStyled = styled(Plus, { color: '$text' });
+
   const [loading, setLoading] = useState(false)
   const [filtered, setFiltered] = useState<MenuDTO[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -109,11 +113,11 @@ export default function MenuScreen() {
       right: (
         <XStack gap="$2">
           <View onPress={() => getInfo()}>
-            <RotateCw size={18} />
+            <RotateCwStyled size={18} />
           </View>
 
           <View onPress={() => createMenu()}>
-            <Plus size={18} />
+            <PlusStyled size={18} />
           </View>
         </XStack>
       )
@@ -124,7 +128,7 @@ export default function MenuScreen() {
     <Page>
       <YStack
         flex={1}
-        backgroundColor="$card2"
+        backgroundColor="$backgroundPage"
         padding="$3"
       >
         {loading ? (
@@ -157,7 +161,7 @@ export default function MenuScreen() {
                   return (
                     <Card
                       key={item.Id}
-                      backgroundColor="$backgroundPage"
+                      backgroundColor="$backgroundElevated"
                       borderRadius={10}
                       padding="$3"
                       marginBottom="$2"

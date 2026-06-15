@@ -4,7 +4,7 @@ import RolesScreen from "./Roles/RolesScreen";
 import UsersScreen from "./Users/UsersScreen";
 import ProfileScreen from "./Users/ProfileScreen";
 import MenuForm from "./Menu/MenuForm";
-import UsersForm from "./Users/UsersForm,";
+import UsersForm from "./Users/UsersForm";
 import AccessForm from "./Access/AccessForm";
 import RolesForm from "./Roles/RolesForm";
 import { TScreens } from "../../navigation/screens.types";

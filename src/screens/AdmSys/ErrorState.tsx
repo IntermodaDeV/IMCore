@@ -137,7 +137,7 @@ export default function ErrorState({
             marginBottom="$3"
           />
           <View
-            backgroundColor="$card"
+            backgroundColor="$backgroundSurface"
             paddingHorizontal="$3"
             paddingVertical={4}
             borderRadius={6}

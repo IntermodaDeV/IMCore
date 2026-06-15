@@ -34,7 +34,7 @@ export function SkeletonBox({
       width={width}
       height={height}
       borderRadius={radius}
-      backgroundColor="$card"
+      backgroundColor="$backgroundSurface"
       overflow="hidden"
     >
       <Animated.View

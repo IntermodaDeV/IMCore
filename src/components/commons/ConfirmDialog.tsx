@@ -40,7 +40,7 @@ export default function ConfirmDialog({
                         alignSelf="center"
                         enterStyle={{ y: -12, opacity: 0, scale: 0.94 }}
                         exitStyle={{ y: 8, opacity: 0, scale: 0.96 }}
-                        backgroundColor="$card2"
+                        backgroundColor="$backgroundElevated"
                         borderRadius="$6"
                         paddingHorizontal="$5"
                         paddingVertical="$5"
@@ -94,7 +94,7 @@ export default function ConfirmDialog({
                                     flex={1}
                                     height={42}
                                     borderRadius="$4"
-                                    backgroundColor="$buttonCancel"
+                                    backgroundColor="$buttonSecondary"
                                     borderWidth={0}
                                     pressStyle={{ opacity: 0.7 }}
                                     onPress={() => {
@@ -102,7 +102,7 @@ export default function ConfirmDialog({
                                         onOpenChange(false)
                                     }}
                                 >
-                                    <Text fontSize={14} fontWeight="600" color="$buttonCancelText">
+                                    <Text fontSize={14} fontWeight="600" color="$text">
                                         Cancelar
                                     </Text>
                                 </Button>
