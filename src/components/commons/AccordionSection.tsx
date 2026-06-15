@@ -22,7 +22,7 @@ export default function AccordionSection({
 
     return (
         <YStack
-            backgroundColor="$card2"
+            backgroundColor="$backgroundElevated"
             borderRadius="$5"
             borderWidth={1}
             borderColor="$border"
@@ -49,7 +49,7 @@ export default function AccordionSection({
                     )}
 
                     {subtitleError && (
-                        <Text fontSize={12} color="$red">
+                        <Text fontSize={12} color="$error">
                             {subtitleError}
                         </Text>
                     )}
@@ -59,7 +59,7 @@ export default function AccordionSection({
                     width={28}
                     height={28}
                     borderRadius={14}
-                    backgroundColor="$card"
+                    backgroundColor="$backgroundSurface"
                     justifyContent="center"
                     alignItems="center"
                 >

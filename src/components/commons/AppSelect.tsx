@@ -48,7 +48,7 @@ export default function AppSelect({
         top={floating ? -6 : 17}
         fontSize={floating ? 11 : 14}
         color="$textMuted"
-        backgroundColor="$card2"
+        backgroundColor="$backgroundElevated"
         paddingHorizontal={floating ? 6 : 0}
         paddingVertical={floating ? 2 : 0}
         borderRadius={floating ? 6 : 0}
@@ -64,7 +64,7 @@ export default function AppSelect({
           borderWidth={1}
           borderRadius={6}
           borderColor={error ? 'red' : '$border'}
-          backgroundColor="$card2"
+          backgroundColor="$backgroundElevated"
           justifyContent="center"
           paddingHorizontal="$3"
         >
@@ -85,7 +85,7 @@ export default function AppSelect({
           top={46}
           left={0}
           right={0}
-          backgroundColor="$card2"
+          backgroundColor="$backgroundElevated"
           borderWidth={1}
           borderTopWidth={0}
           borderColor="$border"

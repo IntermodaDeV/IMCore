@@ -1,6 +1,6 @@
 import { useShowToast } from '../../../utils/useShowToast'
 import React, { useEffect, useState } from 'react'
-import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox } from 'tamagui'
+import { YStack, Button, Text, XStack, View, ScrollView, Spinner, styled } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import Page from '../../../components/commons/Page'
 import { Controller, useForm } from 'react-hook-form'
@@ -22,7 +22,8 @@ type TabType = 'general' | 'usuarios' | 'roles'
 
 export default function MenuForm() {
     const { updateHeader } = useUpdatePageHeader()
-    
+  
+    const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' });
     const navigation = useNavigation()
     const route = useRoute()
     const { Id } = route.params as { Id?: number }
@@ -245,10 +246,10 @@ export default function MenuForm() {
 
     usePageHeader({
         left:(
-                <ArrowLeft onPress={() => navigation.goBack()} />   
+                <ArrowLeftStyled onPress={() => navigation.goBack()} />   
                 ),
         center: 
-            <Text>Nuevo menú</Text>
+            <Text color="$text" >Nuevo menú</Text>
         ,
 
         right: <></>,
@@ -258,7 +259,7 @@ export default function MenuForm() {
         if(isEdit){
             updateHeader({
                 center: 
-                    <Text>
+                    <Text color="$text" >
                         Editar Menú
                     </Text>
                 ,
@@ -288,7 +289,7 @@ export default function MenuForm() {
 
     return (
         <Page>
-            <YStack backgroundColor="$white" flex={1}>
+            <YStack backgroundColor="$backgroundPage" flex={1}>
 
                 {loading ? (
                     <SkeletonForm />
@@ -297,7 +298,7 @@ export default function MenuForm() {
                         {/* TABS */}
                         {Id && (
                             <XStack
-                                backgroundColor="$gray3"
+                                backgroundColor="$backgroundSurface"
                                 borderRadius="$3"
                                 marginHorizontal="$4"
                                 marginTop="$3"
@@ -316,15 +317,12 @@ export default function MenuForm() {
                                             pressStyle={{ opacity: 0.8 }}
                                             onPress={() => setActiveTab(tab.key)}
                                             borderWidth={0}
-                                            shadowColor={isActive ? 'rgba(0,0,0,0.15)' : 'transparent'}
-                                            shadowOffset={isActive ? { width: 0, height: 1 } : { width: 0, height: 0 }}
-                                            shadowOpacity={isActive ? 1 : 0}
-                                            shadowRadius={isActive ? 3 : 0}
+                                            {...(isActive ? shadows.sm : {})}
                                         >
                                             <Text
                                                 fontSize={13}
                                                 fontWeight={isActive ? '700' : '400'}
-                                                color={isActive ? '$white' : '$gray10'}
+                                                color={isActive ? '$white' : '$textMuted'}
                                             >
                                                 {tab.label}
                                             </Text>
@@ -437,7 +435,7 @@ export default function MenuForm() {
                                 >
                                     <Button
                                         flex={1}
-                                        backgroundColor="$buttonCancel"
+                                        backgroundColor="$buttonSecondary"
                                         height={45}
                                         borderRadius="$3"
                                         justifyContent="center"
@@ -447,7 +445,7 @@ export default function MenuForm() {
                                         disabled={loadingSave}
                                         opacity={loadingSave ? 0.5 : 1}
                                     >
-                                        <Text color="black" fontWeight="700">Cancelar</Text>
+                                        <Text color="$text" fontWeight="700">Cancelar</Text>
                                     </Button>
 
                                     <Button
@@ -489,7 +487,7 @@ export default function MenuForm() {
                                             return (
                                                 <XStack
                                                     key={user.Id}
-                                                    backgroundColor="$card2"
+                                                    backgroundColor="$backgroundElevated"
                                                     borderRadius="$4"
                                                     paddingVertical="$3"
                                                     paddingHorizontal="$4"
@@ -521,7 +519,7 @@ export default function MenuForm() {
                                                         width={40}
                                                         height={40}
                                                         borderRadius={20}
-                                                        backgroundColor={hasMenu ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                        backgroundColor={hasMenu ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
                                                         justifyContent="center"
                                                         alignItems="center"
                                                     >
@@ -585,7 +583,7 @@ export default function MenuForm() {
                                             return (
                                                 <XStack
                                                     key={item.Id}
-                                                    backgroundColor="$card2"
+                                                    backgroundColor="$backgroundElevated"
                                                     borderRadius="$4"
                                                     paddingVertical="$3"
                                                     paddingHorizontal="$4"
@@ -615,7 +613,7 @@ export default function MenuForm() {
                                                         width={40}
                                                         height={40}
                                                         borderRadius={20}
-                                                        backgroundColor={hasMenu ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                        backgroundColor={hasMenu ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
                                                         justifyContent="center"
                                                         alignItems="center"
                                                     >

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { YStack, Text, XStack } from 'tamagui'
+import { YStack, Text, XStack, View, useThemeName, styled } from 'tamagui'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from 'tamagui'
 import { AppError, handleError } from '../../utils/errorHandler'
@@ -27,9 +27,16 @@ function getGreeting() {
 export default function HomeScreen() {
   const loader = useLoader();
 
+  const BellStyled = styled(Icons.Bell, {
+    color: '$text',
+  })
 
+  const UserRoundStyled = styled(Icons.UserRound, {
+    color: '$text',
+  })
   const { user } = useAuth()
   const theme = useTheme()
+  const themeName = useThemeName();
   const greeting = getGreeting()
   const navigation = useNavigation<any>()
   const { height } = useWindowDimensions()
@@ -38,6 +45,7 @@ export default function HomeScreen() {
   const [error, setError] = useState<AppError | null>(null)
   const [data, setData] = useState<IQuickActions[]>([])
   const [menus, setMenus] = useState<any[]>([])
+  const [urlBanner, setUrlBanner] = useState(require('../../assets/Banner.png'))
 
   usePageHeader({
     center: (
@@ -50,7 +58,16 @@ export default function HomeScreen() {
       />
     ),
 
-    right: <Icons.Bell size={20} color={theme.textWelcome?.val} />,
+    right: (
+      <XStack gap="$3">
+        <View>
+          <UserRoundStyled onPress={() => navigation.navigate('Perfil')} size={20} />
+        </View>
+        <View>
+          <BellStyled size={20} />
+        </View>
+      </XStack>
+    ),
   })
 
   const getInfo = React.useCallback(async () => {
@@ -78,6 +95,13 @@ export default function HomeScreen() {
     }, [getInfo])
   )
 
+  useEffect(() => {
+    if (themeName === 'dark') {
+      setUrlBanner(require('../../assets/banner-dark.png'))
+    } else {
+      setUrlBanner(require('../../assets/Banner.png'))
+    }
+  }, [themeName])
 
 
   return (
@@ -88,29 +112,23 @@ export default function HomeScreen() {
       <YStack
         flex={1}
         padding="$4"
-        backgroundColor="$background"
+        backgroundColor="$backgroundPage"
         justifyContent="flex-start"
         alignItems="center"
       >
 
         <ImageBackground
-          source={require('../../assets/Banner.png')}
+          source={urlBanner}
           style={{ width: '100%', borderRadius: 16, overflow: 'hidden' }}
           imageStyle={{ borderRadius: 16 }}
           resizeMode="cover"
         >
           <YStack padding={20}>
-            <Pressable
-              onPress={() => navigation.navigate('Perfil')}
-              style={({ pressed }) => [{ position: 'absolute', top: 14, right: 14 }, pressed && { opacity: 0.7, transform: [{ scale: 0.96 }] }]}
-            >
-              <Icons.Settings size={20} color={theme.textWelcome?.val} />
-            </Pressable>
 
             <Text
               fontSize={16}
               fontWeight="700"
-              color="$textWelcome"
+              color={theme.primary?.val}
               letterSpacing={1.2}
               textTransform="uppercase"
               marginBottom="$1"
@@ -119,20 +137,20 @@ export default function HomeScreen() {
             </Text>
 
             <XStack alignItems="center" marginBottom="$2">
-              <Text fontSize={25} fontWeight="700" color="$text">
+              <Text fontSize={25} fontWeight="700" color={theme.text?.val}>
                 Hola, {user?.Name ?? 'Usuario'}
               </Text>
               <Text fontSize={22} marginLeft="$2">👋</Text>
             </XStack>
 
-            <Text fontSize={14} color="$textMuted" lineHeight={22}>
+            <Text fontSize={14} color={theme.textMuted?.val} lineHeight={22}>
               Tu centro de operaciones IMCORE está listo. Aquí tienes lo más importante para hoy.
             </Text>
           </YStack>
         </ImageBackground>
 
         <YStack width="100%" marginTop="$4">
-          <Text fontSize={18} fontWeight="700" marginBottom="$3" color="$text">
+          <Text fontSize={18} fontWeight="700" marginBottom="$3" color={theme.text?.val}>
             Acciones Rápidas
           </Text>
           
@@ -160,12 +178,12 @@ export default function HomeScreen() {
                     width={55}
                     height={55}
                     borderRadius={32}
-                    backgroundColor="$card2"
+                    backgroundColor="$backgroundElevated"
                     justifyContent="center"
                     alignItems="center"
                     {...shadows.sm}
                   >
-                    <IconComponent size={26} color="#FF551A" />
+                    <IconComponent size={26} color={theme.primary?.val} />
                   </YStack>
                   {/* label */}
                   <Text
@@ -173,7 +191,7 @@ export default function HomeScreen() {
                     fontSize={12}
                     fontWeight="600"
                     textAlign="center"
-                    color="$textBlack"
+                    color="$text"
                   >
                     {item.Name}
                   </Text>
@@ -184,7 +202,7 @@ export default function HomeScreen() {
         </YStack>
 
         <YStack width="100%" marginTop="$4">
-          <Text fontSize={18} fontWeight="700" color="$text" marginBottom="$1">
+          <Text fontSize={18} fontWeight="700" color={theme.text?.val} marginBottom="$1">
             ¿Qué quieres hacer hoy?
           </Text>
           <Text fontSize={13} color="$textMuted" marginBottom="$6">
@@ -207,7 +225,7 @@ export default function HomeScreen() {
                 >
                   <YStack
                     {...shadows.sm}
-                    backgroundColor="$card2"
+                    backgroundColor="$backgroundElevated"
                     borderRadius={16}
                     padding={12}
                     height={100}
@@ -219,11 +237,11 @@ export default function HomeScreen() {
                       width={36}
                       height={36}
                       borderRadius={10}
-                      backgroundColor="rgba(255,85,26,0.15)"
+                      backgroundColor="$primaryOpacity"
                       justifyContent="center"
                       alignItems="center"
                     >
-                      <IconComponent size={18} color="#FF551A" />
+                      <IconComponent size={18} color={theme.primary?.val} />
                     </YStack>
 
                     <Text fontSize={11} fontWeight="700" color="$text" numberOfLines={2} lineHeight={16}>

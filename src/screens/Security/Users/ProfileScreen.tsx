@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { ScrollView } from 'react-native'
-import { YStack, XStack, Text } from 'tamagui'
+import { YStack, XStack, Text, useTheme } from 'tamagui'
 import { useAuth } from '../../../context/AuthContext'
 import * as Icons from 'lucide-react-native'
 import { useMenu } from '../../../context/MenuContext'
@@ -33,7 +33,8 @@ export default function ProfileScreen() {
     const themeName = useThemeName()
     const [loading, setLoading] = useState(false)
     const isDark = themeName === 'dark'
-
+    const theme = useTheme()
+    
     const getInfo = async () => {
         loader.show();
         setData(menu?.filter((i) => i?.ParentMenu_Id !== null))
@@ -68,7 +69,7 @@ export default function ProfileScreen() {
 
     usePageHeader({
         left:(
-        <Icons.ArrowLeft onPress={() => navigation.goBack()} />   
+        <Icons.ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />   
         ),
             center: (
             <Text fontSize={16} fontWeight="700" color="$text">
@@ -103,12 +104,12 @@ export default function ProfileScreen() {
 
     return (
         <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-            <YStack padding="$4" backgroundColor="$background" gap="$4">
+            <YStack padding="$4" backgroundColor="$backgroundPage" gap="$4">
 
                 
                 {/* Card perfil */}
                 <YStack
-                    backgroundColor="$card2"
+                    backgroundColor="$backgroundElevated"
                     borderRadius="$6"
                     padding="$5"
                     alignItems="center"
@@ -150,7 +151,7 @@ export default function ProfileScreen() {
                 </YStack>
 
                 {/* Info Personal */}
-                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" {...shadows.sm}>
+                <YStack backgroundColor="$backgroundElevated" borderRadius="$6" padding="$4" gap="$3" {...shadows.sm}>
                     <XStack alignItems="center" gap="$2">
                         <Icons.User size={16} color={'#FF551A'} />
                         <Text fontSize={15} fontWeight="700" color="$text">Información Personal</Text>
@@ -170,7 +171,7 @@ export default function ProfileScreen() {
                 </YStack>
 
                 {/* Accesos rápidos */}
-                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" {...shadows.sm}>
+                <YStack backgroundColor="$backgroundElevated" borderRadius="$6" padding="$4" gap="$3" {...shadows.sm}>
 
                     {/* Header */}
                     <XStack alignItems="center" justifyContent="space-between">
@@ -218,7 +219,7 @@ export default function ProfileScreen() {
                                     gap="$3"
                                     padding="$3"
                                     borderRadius="$4"
-                                    backgroundColor={isFav ? 'rgba(255, 85, 26, 0.04)' : '$card2'}
+                                    backgroundColor={isFav ? 'rgba(255, 85, 26, 0.04)' : '$backgroundElevated'}
                                     borderWidth={1}
                                     borderColor={isFav ? 'rgba(255, 85, 26, 0.2)' : 'transparent'}
                                 >
@@ -258,7 +259,7 @@ export default function ProfileScreen() {
                 </YStack>
 
                 {/* Tema */}
-                <YStack backgroundColor="$card2" borderRadius="$6" padding="$4" gap="$3" marginBottom="$3" {...shadows.sm}>
+                <YStack backgroundColor="$backgroundElevated" borderRadius="$6" padding="$4" gap="$3" marginBottom="$3" {...shadows.sm}>
                     <XStack alignItems="center" gap="$2">
                         <Icons.Palette size={16} color={'#FF551A'} />
                         <Text fontSize={15} fontWeight="700" color="$text">Apariencia</Text>
@@ -297,7 +298,7 @@ export default function ProfileScreen() {
                                 height={30}
                                 borderRadius={999}
                                 padding={3}
-                                backgroundColor="$card"
+                                backgroundColor="$backgroundSurface"
                                 justifyContent="center"
                                 alignItems={isDark ? 'flex-end' : 'flex-start'}
                             >

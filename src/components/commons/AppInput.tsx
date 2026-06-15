@@ -59,7 +59,7 @@ export default function AppInput({
           paddingRight={rightElement ? 44 : suffix ? 50 : '$3'}
           borderWidth={1}
           borderColor={error ? 'red' : '$border'}
-          backgroundColor="$card2"
+          backgroundColor="$backgroundElevated"
           borderRadius={6}
           color="$text"
           fontSize={13}
@@ -91,7 +91,7 @@ export default function AppInput({
           top={floating ? -2 : 17}
           fontSize={floating ? 11 : 14}
           color="$text"
-          backgroundColor="$card2"
+          backgroundColor="$backgroundElevated"
           paddingHorizontal={floating ? 6 : 0}
           paddingVertical={floating ? 2 : 0}
           borderRadius={floating ? 6 : 0}
