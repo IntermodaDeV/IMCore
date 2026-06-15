@@ -1,6 +1,7 @@
 
 import { Check, X, ChevronUp, ClipboardList, ChevronDown } from 'lucide-react-native'
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native'
 import {
   YStack,
   XStack,
@@ -12,6 +13,14 @@ import {
   ScrollView,
 } from 'tamagui'
 import { usePageHeader } from '../../hooks/usePageHeader';
+import { ISolicitudCompraUsuario } from '../../api/modules/CadenaSuministro/cadenaSuministro.types';
+import { AppError, handleError } from '../../utils/errorHandler';
+import { ExecutionResponse } from '../../api/modules/response.type';
+import { cadenaSuministroService } from '../../api/modules/CadenaSuministro/cadenaSuministro.service';
+import { useLoader } from '../../providers/LoaderProvider';
+import ErrorState from '../AdmSys/ErrorState';
+import SkeletonList from '../../components/Skeletons/SkeletonList';
+import SearchInput from '../../components/commons/SearchInput';
 
 export default function AprobacionSolicitudCompra() {
 
@@ -21,6 +30,7 @@ export default function AprobacionSolicitudCompra() {
   const XStyled = styled(X, { color: '$error' });
   const ChevronUpStyled = styled(ChevronUp, { color: '$text' });
   const ChevronDownStyled = styled(ChevronDown, { color: '$text' });
+  const loader = useLoader();
 
   usePageHeader({
       center: (
@@ -32,254 +42,269 @@ export default function AprobacionSolicitudCompra() {
   })
 
   //Estados
-  const [solicitudes, setSolicitudes] = useState([
-    {
-      id: 1,
-      codigo: 'SC-000001',
-      preparadoPor: 'Gustavo Meza',
-      totalImporte: 100.0,
-      moneda: 'HNL',
-      tipo: 'Mantenimiento',
-      expandido: true,
-      justificacion: '',
-      productos: [
-        {
-          id: 1,
-          nombre: 'Toma 220 volt',
-          cantidad: 2,
-          precioUnitario: 50.0,
-          total: 100.0,
-          moneda: 'HNL',
-        },
-      ],
-    },
-    {
-      id: 2,
-      codigo: 'SC-000002',
-      preparadoPor: 'Gustavo Meza',
-      totalImporte: 1485.0,
-      moneda: 'HNL',
-      tipo: 'Instalación',
-      expandido: false,
-      justificacion: '',
-      productos: [
-        {
-          id: 1,
-          nombre: 'Cable eléctrico',
-          cantidad: 5,
-          precioUnitario: 50.0,
-          total: 250.0,
-          moneda: 'HNL',
-        },
-        {
-          id: 2,
-          nombre: 'Tomacorriente doble',
-          cantidad: 8,
-          precioUnitario: 35.0,
-          total: 280.0,
-          moneda: 'HNL',
-        },
-        {
-          id: 3,
-          nombre: 'Interruptor sencillo',
-          cantidad: 6,
-          precioUnitario: 45.0,
-          total: 270.0,
-          moneda: 'HNL',
-        },
-        {
-          id: 4,
-          nombre: 'Tubería PVC 1/2"',
-          cantidad: 10,
-          precioUnitario: 22.5,
-          total: 225.0,
-          moneda: 'HNL',
-        },
-        {
-          id: 5,
-          nombre: 'Caja octagonal',
-          cantidad: 4,
-          precioUnitario: 40.0,
-          total: 160.0,
-          moneda: 'HNL',
-        },
-        {
-          id: 6,
-          nombre: 'Breaker 20A',
-          cantidad: 2,
-          precioUnitario: 150.0,
-          total: 300.0,
-          moneda: 'HNL',
-        },
-      ],
-    },
-  ]);
+  const [data, setData] = useState<ISolicitudCompraUsuario[]>([])
+  const [filtered, setFiltered] = useState<ISolicitudCompraUsuario[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<AppError | null>(null)
 
-  const toggleDetalle = (id: number) => {
-    setSolicitudes((prev) =>
-      prev.map((item) =>
-        item.id === id
+  const getInfo = React.useCallback(async () => {
+    try {
+      loader.show()
+      setLoading(true)
+      setError(null)
+      const response: ExecutionResponse<ISolicitudCompraUsuario[]> = await cadenaSuministroService.getSolicitudesCompras('lkchinchilla')
+
+      if (response.Success) {
+        const solicitudes = response.Data.map(item => ({
+          ...item,
+          expandido: false,
+          justificacion: '',
+        }))
+        setData(solicitudes)
+        setFiltered(solicitudes)
+      }
+      setLoading(false)
+    } catch (err) {
+      setError(handleError(err))
+      setLoading(false)
+      loader.hide();
+    } finally {
+      setLoading(false)
+      loader.hide();
+    }
+  }, [])
+  
+
+  const toggleDetalle = (solicitud: string) => {
+    setFiltered(prev =>
+      prev.map(item =>
+        item.Solicitud === solicitud
           ? { ...item, expandido: !item.expandido }
           : item
       )
-    );
-  };
+    )
+  }
 
-  const handleJustificacionChange = (id: number, value: string) => {
-    setSolicitudes((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, justificacion: value }
-          : item
-      )
-    );
-  };
+  // useFocusEffect(
+  //   React.useCallback(() => {
+  //     getInfo()
+  //   }, [getInfo])
+  // )
+  const formatMoney = (value: number) =>
+    new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)
+
+  useEffect(() => {
+    getInfo()
+  }, [])
+
+  useEffect(() => {
+    setFiltered(data)
+  }, [data])
+
 
   return (
-    <ScrollView
+    <YStack
       flex={1}
-      backgroundColor="$backgroundPage"
-      showsVerticalScrollIndicator={false}
-    > 
-      <YStack flex={1}  padding="$4" gap="$4">
-
-        {solicitudes.map((solicitud) => (
-          <Card
-            key={solicitud.id}
-            borderRadius="$4"
-            backgroundColor="$backgroundElevated"
-            overflow="hidden"
-          >
-
-            <XStack padding="$3" justifyContent="space-between" backgroundColor="$backgroundSurface">
-              <XStack  gap="$3" alignItems="center" >
-                <View
-                  width={34}
-                  height={34}
-                  borderRadius="$3"
-                  backgroundColor="$primaryOpacity"
-                  alignItems="center"
-                  justifyContent="center"
-                >
-
-                  <ClipboardListStyled size={18} />
-                </View>
-
-                <YStack>
-                  <Text fontWeight="700" color="$text">
-                    {solicitud.codigo}
-                  </Text>
-                  <Text fontSize="$1" color="$textMuted">
-                    Preparado por: {solicitud.preparadoPor}
-                  </Text>
-                </YStack>
-              </XStack>
-
-              <XStack gap="$4" marginTop="$1">
-
-                <Button
-                  height={32}
-                  width={32}
-                  borderRadius="$3"
-                  backgroundColor="transparent"
-                  borderWidth={1.5}
-                  borderColor="$error"
-                  >
-                  <XStyled size={15} />
-                </Button>
-                <Button
-                  height={32}
-                  width={32}
-                  borderRadius="$3"
-                  backgroundColor="$success"
-                >
-                  <CheckStyled size={15} />
-                </Button>
-              </XStack>
-            </XStack>
-
-            <YStack padding="$3" gap="$2">
+      backgroundColor="$card2"
+      padding="$3"
+    >
+      {loading ? (
+        <SkeletonList/>
+      ) : error ? (
+        <ErrorState
+          type="server"
+          title={error.title}
+          message={error.message}
+          errorCode={error.status}
+          onRetry={getInfo}
+        />
+      ) : (
+        <ScrollView
+          flex={1}
+          backgroundColor="$background"
+          showsVerticalScrollIndicator={false}
+        >
+        <>
+          <SearchInput
+            data={data}
+            searchKeys={['Solicitud', 'Categoria', 'Preparador', 'ImporteNeto']}
+            onResults={setFiltered}
+            placeholder="Buscar..."
+          />
+          {filtered.map((solicitud, index) => (
+            <Card
+              key={`${solicitud.Solicitud}-${index}`}
+              borderRadius="$4"
+              backgroundColor="$backgroundElevated"
+              borderWidth={1}
+              borderColor="#E2E8F0"
+              overflow="hidden"
+              marginBottom="$2"
+            >
               <XStack
-                borderWidth={1}
-                borderColor="$border"
-                borderRadius="$3"
                 padding="$3"
+                alignItems="center"
                 justifyContent="space-between"
+                backgroundColor="$backgroundSurface"
               >
-                <YStack>
-                  <Text fontSize={9} color="$textMuted" fontWeight="700">
-                    TOTAL IMPORTE
-                  </Text>
-                  <Text fontSize="$5" fontWeight="800" color="$text">
-                    {solicitud.totalImporte.toFixed(2)} {solicitud.moneda}
-                  </Text>
-                </YStack>
+                <XStack gap="$3" alignItems="center" flex={1}>
+                  <View
+                    width={38}
+                    height={38}
+                    borderRadius="$4"
+                    backgroundColor="$primaryOpacity"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <ClipboardListStyled size={18} />
+                  </View>
 
-                <YStack alignItems="flex-end">
-                  <Text fontSize={9} color="$textMuted" fontWeight="700">
-                    TIPO
-                  </Text>
-                  <Text fontSize="$3" fontWeight="700" color="$text">
-                    {solicitud.tipo}
-                  </Text>
-                </YStack>
+                  <YStack flex={1}>
+                    <Text
+                      fontWeight="800"
+                      color="#0F172A"
+                      numberOfLines={1}
+                    >
+                      {solicitud.Solicitud}
+                    </Text>
+
+                    <Text
+                      fontSize="$1"
+                      color="$foregroundMuted"
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {solicitud.Preparador}
+                    </Text>
+                  </YStack>
+                </XStack>
+
+                <XStack gap="$2" flexShrink={0}>
+                  <Button
+                    height={34}
+                    width={34}
+                    borderRadius="$3"
+                    backgroundColor="transparent"
+                    borderWidth={1.5}
+                    borderColor="$error"
+                  >
+                    <XStyled size={15} />
+                  </Button>
+
+                  <Button
+                    height={34}
+                    width={34}
+                    borderRadius="$3"
+                    backgroundColor="$success"
+                  >
+                    <CheckStyled size={15} />
+                  </Button>
+                </XStack>
               </XStack>
 
-              <XStack   
-                  alignItems="center" padding="$2" borderRadius="$2" justifyContent="space-between" gap="$1" marginTop="$3" 
+              <YStack padding="$3" gap="$2">
+                <XStack
+                  borderWidth={1}
+                  borderColor="$backgroundHover"
+                  borderRadius="$3"
+                  padding="$3"
+                  justifyContent="space-between"
+                >
+                  <YStack>
+                    <Text fontSize={9} color="#94A3B8" fontWeight="700">
+                      CATEGORÍA
+                    </Text>
+
+                    <Text
+                      fontSize="$3"
+                      fontWeight="700"
+                      color="#1E293B"
+                      maxWidth={180}
+                    >
+                      {solicitud.Categoria}
+                    </Text>
+                  </YStack>
+
+                  <YStack alignItems="flex-end">
+                    <Text fontSize={9} color="#94A3B8" fontWeight="700">
+                      TOTAL IMPORTE
+                    </Text>
+
+                    <Text fontSize="$5" fontWeight="800" color="#0F172A">
+                      {formatMoney(solicitud.ImporteNeto)}
+                    </Text>
+                  </YStack>
+                </XStack>
+
+                <XStack
+                  alignItems="center"
+                  padding="$2"
+                  borderRadius="$2"
+                  justifyContent="space-between"
+                  gap="$1"
+                  marginTop="$3"
                   pressStyle={{
                     backgroundColor: '$backgroundPress',
                   }}
-                  onPress={() => toggleDetalle(solicitud.id)} >
-                <Text fontSize="$2" fontWeight="800" color="$text">
-                  DETALLE DE PRODUCTOS ({solicitud.productos.length})
-                </Text>
-                {solicitud.expandido ? (
-                  <ChevronUpStyled size={14} />
-                ) : (
-                  <ChevronDownStyled size={14} />
-                )}
-              </XStack>
+                  onPress={() => toggleDetalle(solicitud.Solicitud)}
+                >
+                  <Text fontSize="$2" fontWeight="800" color="#1E293B">
+                    DETALLE DE PRODUCTOS ({solicitud.Articulos.length})
+                  </Text>
 
-              {solicitud.expandido === true && (
-                solicitud.productos.map((producto) => (
-                  <YStack
-                    key={producto.id}
-                    padding="$2"
-                    borderRadius="$4"
-                    borderWidth={1}
-                    borderColor="$border"
-                    gap="$2"
-                  >
-                    <XStack justifyContent="space-between" alignItems="center">
-                      <Text fontSize="$3" fontWeight="700" color="$text">
-                        {producto.nombre}
-                      </Text>
+                  {solicitud.expandido ? (
+                    <ChevronUp size={14} />
+                  ) : (
+                    <ChevronDown size={14} />
+                  )}
+                </XStack>
 
-                      <Text fontSize="$2" color="$textMuted">
-                        Cant. {producto.cantidad} 
-                      </Text>
-                    </XStack>
+                {solicitud.expandido &&
+                  solicitud.Articulos.map((producto, index) => (
+                    <YStack
+                      key={`${solicitud.Solicitud}-${index}`}
+                      padding="$2"
+                      borderRadius="$4"
+                      borderWidth={1}
+                      borderColor="$backgroundHover"
+                      gap="$2"
+                    >
+                      <XStack justifyContent="space-between" alignItems="center">
+                        <Text
+                          flex={1}
+                          fontSize="$3"
+                          fontWeight="700"
+                          color="$black"
+                        >
+                          {producto.NombreProducto}
+                        </Text>
 
-                    <XStack justifyContent="space-between" alignItems="center">
-                      <Text fontSize="$2" color="$textMuted">
-                        Precio unitario: {producto.precioUnitario} {producto.moneda}
-                      </Text>
+                        <Text fontSize="$2" color="$gray10">
+                          Cant. {producto.Cantidad}
+                        </Text>
+                      </XStack>
 
-                      <Text fontSize="$2" fontWeight="800" color="$text">
-                        {producto.total} {producto.moneda}
-                      </Text>
-                    </XStack>
-                  </YStack>
-                )
-              ))}
+                      <XStack justifyContent="space-between" alignItems="center">
+                        <Text fontSize="$2" color="$gray10">
+                          Precio unitario: {formatMoney(producto.Precio)}{' '}
+                          {producto.Moneda}
+                        </Text>
 
-              
-            </YStack>
-          </Card>
-        ))}
-        
-      </YStack>
-    </ScrollView>
+                        <Text fontSize="$2" fontWeight="800" color="$black">
+                          {formatMoney(producto.ImporteNeto)} {producto.Moneda}
+                        </Text>
+                      </XStack>
+                    </YStack>
+                ))}
+              </YStack>
+            </Card>
+          ))}
+        </>
+        </ScrollView>
+      )}
+    </YStack>
   )
 }
