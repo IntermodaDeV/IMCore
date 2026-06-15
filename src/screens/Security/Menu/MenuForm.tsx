@@ -245,7 +245,7 @@ export default function MenuForm() {
 
     usePageHeader({
         left:(
-                <ArrowLeft onPress={() => navigation.navigate<any>('menu')} />   
+                <ArrowLeft onPress={() => navigation.goBack()} />   
                 ),
         center: 
             <Text>Nuevo menú</Text>
@@ -259,12 +259,11 @@ export default function MenuForm() {
             updateHeader({
                 center: 
                     <Text>
-                        Editar Menú: {getValues('Name')}
+                        Editar Menú
                     </Text>
                 ,
             })
-        }
-        console.log('isEdit', isEdit)                               
+        }                             
     }, [isEdit])
 
     useEffect(() => {
