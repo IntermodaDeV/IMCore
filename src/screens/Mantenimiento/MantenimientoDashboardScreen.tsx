@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshControl, useWindowDimensions } from 'react-native'
-import { ScrollView, Text, XStack, YStack, View, Spinner, Button } from 'tamagui'
+import { ScrollView, Text, XStack, YStack, View, Spinner, Button, useTheme } from 'tamagui'
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts'
 import { RefreshCw } from 'lucide-react-native'
 
@@ -13,6 +13,10 @@ import {
   MESES,
   FILTROS_FINOS_DEFAULT,
   FiltrosFinos,
+  ESCALA_AZUL,
+  ESCALA_NARANJA,
+  ESCALA_VERDE,
+  ESCALA_ROJA,
   aplicarFiltrosFinos,
   calcularKpis,
   conteoArea,
@@ -24,7 +28,7 @@ import {
   tendenciaPorDia,
   topN,
 } from './mantenimiento.helpers'
-import { HBarList, KpiCard, SectionCard, TabBar } from './components'
+import { FiltrosColapsables, HBarList, KpiCard, SectionCard, TabBar } from './components'
 
 const TABS = ['📊 Resumen', '📈 Análisis', '🏆 Rankings', '📋 Detalle']
 
@@ -191,15 +195,8 @@ export default function MantenimientoDashboardScreen() {
           </Text>
         </YStack>
 
-        {/* ── Barra de filtros ── */}
-        <YStack
-          backgroundColor="$card2"
-          borderWidth={1}
-          borderColor="$border"
-          borderRadius="$4"
-          padding="$3"
-          gap="$2"
-        >
+        {/* ── Filtros colapsables (acordeón, como Python móvil) ── */}
+        <FiltrosColapsables resumen={periodoTxt}>
           <XStack gap="$2">
             <View flex={1}>
               <AppSelect
@@ -263,7 +260,7 @@ export default function MantenimientoDashboardScreen() {
               <RefreshCw size={18} color="white" />
             </Button>
           </XStack>
-        </YStack>
+        </FiltrosColapsables>
 
         {/* ── Tabs ── */}
         <TabBar tabs={TABS} activo={tab} onChange={setTab} />
@@ -307,8 +304,13 @@ export default function MantenimientoDashboardScreen() {
 
 // ════════ TAB: Resumen ════════
 function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
+  const theme = useTheme()
+  const txt = theme.text?.val ?? '#0F172A'
+  const muted = theme.foregroundMuted?.val ?? '#94A3B8'
+  const grid = theme.border?.val ?? '#E2E8F0'
   const fmtMin = (n: number | null) => (n != null ? `${Math.round(n)} min` : '—')
   const pct = (n: number) => (kpis.total ? `${Math.round((n / kpis.total) * 100)}%` : '')
+  const totalEstado = estado.reduce((a: number, d: any) => a + d.value, 0) || 1
   return (
     <YStack gap="$3">
       <XStack flexWrap="wrap" gap="$2">
@@ -316,34 +318,43 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
         <KpiCard
           titulo="Sin Atender"
           valor={kpis.sinAtender.toLocaleString()}
-          sub={pct(kpis.sinAtender) + ' del total'}
-          subColor="$error"
+          badge={{ text: pct(kpis.sinAtender) + ' del total', color: '#ef4444', up: true }}
         />
         <KpiCard
           titulo="Completados"
           valor={kpis.completados.toLocaleString()}
-          sub={pct(kpis.completados)}
-          subColor="$success"
+          badge={{ text: pct(kpis.completados), color: '#22c55e', up: true }}
         />
         <KpiCard titulo="En Proceso" valor={kpis.enProceso.toLocaleString()} />
-        <KpiCard titulo="T. Respuesta" valor={fmtMin(kpis.tRespProm)} />
-        <KpiCard titulo="T. Resolución" valor={fmtMin(kpis.tResolProm)} />
+        <KpiCard titulo="T. Respuesta Prom." valor={fmtMin(kpis.tRespProm)} />
+        <KpiCard titulo="T. Resolución Prom." valor={fmtMin(kpis.tResolProm)} />
       </XStack>
 
       <SectionCard titulo="Estado de Tickets">
         <YStack alignItems="center" gap="$3">
           <PieChart
             donut
-            data={estado.map((d: any) => ({ value: d.value, color: colorEstado(d.label) }))}
-            radius={chartWidth / 3.2}
-            innerRadius={chartWidth / 6}
+            data={estado.map((d: any) => ({
+              value: d.value,
+              color: colorEstado(d.label),
+              text: `${((d.value / totalEstado) * 100).toFixed(1)}%`,
+            }))}
+            radius={chartWidth / 3.4}
+            innerRadius={chartWidth / 7}
+            showText
+            textColor={txt}
+            textSize={11}
+            labelsPosition="outward"
           />
-          <YStack gap="$1" width="100%">
+          <YStack gap="$1.5" width="100%">
             {estado.map((d: any) => (
               <XStack key={d.label} alignItems="center" gap="$2">
                 <View width={12} height={12} borderRadius={3} backgroundColor={colorEstado(d.label)} />
                 <Text fontSize={12} color="$text" flex={1}>
                   {d.label}
+                </Text>
+                <Text fontSize={12} color="$foregroundMuted" marginRight="$2">
+                  {((d.value / totalEstado) * 100).toFixed(1)}%
                 </Text>
                 <Text fontSize={12} fontWeight="700" color="$text">
                   {d.value}
@@ -354,20 +365,30 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
         </YStack>
       </SectionCard>
 
-      <SectionCard titulo="Tickets por Prioridad">
+      <SectionCard titulo="Tickets por Prioridad" ejeX="Cantidad">
         <BarChart
           data={prioridad.map((d: any) => ({
             value: d.value,
             label: d.label,
             frontColor: colorPrioridad(d.label),
+            topLabelComponent: () => (
+              <Text fontSize={11} fontWeight="700" color="$text">
+                {d.value}
+              </Text>
+            ),
           }))}
           barWidth={chartWidth / 7}
-          spacing={chartWidth / 7}
+          spacing={chartWidth / 6}
+          initialSpacing={chartWidth / 12}
           width={chartWidth}
           noOfSections={4}
           yAxisThickness={0}
-          xAxisThickness={0}
-          hideRules
+          xAxisThickness={1}
+          xAxisColor={grid}
+          rulesColor={grid}
+          rulesType="dashed"
+          yAxisTextStyle={{ color: muted, fontSize: 10 }}
+          xAxisLabelTextStyle={{ color: txt, fontSize: 11 }}
         />
       </SectionCard>
     </YStack>
@@ -376,13 +397,17 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
 
 // ════════ TAB: Análisis ════════
 function TabAnalisis({ areas, tiposParo, tendencia, chartWidth }: any) {
+  const theme = useTheme()
+  const txt = theme.text?.val ?? '#0F172A'
+  const muted = theme.foregroundMuted?.val ?? '#94A3B8'
+  const grid = theme.border?.val ?? '#E2E8F0'
   return (
     <YStack gap="$3">
-      <SectionCard titulo="Tickets por Área">
-        <HBarList datos={areas} color="#3b82f6" />
+      <SectionCard titulo="Tickets por Área" ejeX="Cantidad">
+        <HBarList datos={areas} escala={ESCALA_AZUL} />
       </SectionCard>
-      <SectionCard titulo="Tipo de Paro">
-        <HBarList datos={tiposParo} color="#f97316" />
+      <SectionCard titulo="Tipo de Paro" ejeX="Cantidad">
+        <HBarList datos={tiposParo} escala={ESCALA_NARANJA} />
       </SectionCard>
       <SectionCard titulo="Tendencia (por día)">
         {tendencia.length > 1 ? (
@@ -393,8 +418,12 @@ function TabAnalisis({ areas, tiposParo, tendencia, chartWidth }: any) {
             width={chartWidth}
             noOfSections={4}
             yAxisThickness={0}
-            xAxisThickness={0}
-            hideRules
+            xAxisThickness={1}
+            xAxisColor={grid}
+            rulesColor={grid}
+            rulesType="dashed"
+            yAxisTextStyle={{ color: muted, fontSize: 10 }}
+            xAxisLabelTextStyle={{ color: txt, fontSize: 10 }}
             dataPointsColor={ACCENT}
             curved
           />
@@ -412,11 +441,11 @@ function TabAnalisis({ areas, tiposParo, tendencia, chartWidth }: any) {
 function TabRankings({ topMecanicos, topFallas }: any) {
   return (
     <YStack gap="$3">
-      <SectionCard titulo="Top 10 Mecánicos">
-        <HBarList datos={topMecanicos} color="#22c55e" />
+      <SectionCard titulo="Top 10 Mecánicos" ejeX="Tickets atendidos">
+        <HBarList datos={topMecanicos} escala={ESCALA_VERDE} />
       </SectionCard>
-      <SectionCard titulo="Top 10 Tipos de Falla">
-        <HBarList datos={topFallas} color="#ef4444" />
+      <SectionCard titulo="Top 10 Tipos de Falla" ejeX="Cantidad">
+        <HBarList datos={topFallas} escala={ESCALA_ROJA} />
       </SectionCard>
     </YStack>
   )

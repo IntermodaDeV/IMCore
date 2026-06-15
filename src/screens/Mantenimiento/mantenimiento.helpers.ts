@@ -26,6 +26,26 @@ const COLOR_FALLBACK = '#94A3B8'
 export const colorEstado = (e: string) => PALETA_ESTADO[e] ?? COLOR_FALLBACK
 export const colorPrioridad = (p: string) => COLORES_PRIO[p] ?? COLOR_FALLBACK
 
+// Escalas de degradado [claro, oscuro] (≈ color_continuous_scale de plotly).
+export type Escala = [string, string]
+export const ESCALA_AZUL: Escala = ['#bfdbfe', '#1e40af']
+export const ESCALA_NARANJA: Escala = ['#fed7aa', '#c2410c']
+export const ESCALA_VERDE: Escala = ['#bbf7d0', '#15803d']
+export const ESCALA_ROJA: Escala = ['#fecaca', '#b91c1c']
+
+const hexToRgb = (h: string) => {
+  const n = parseInt(h.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+const toHex = (n: number) => Math.round(n).toString(16).padStart(2, '0')
+
+// Mezcla lineal entre el extremo claro y el oscuro según t∈[0,1].
+export function shade(escala: Escala, t: number): string {
+  const [a, b] = [hexToRgb(escala[0]), hexToRgb(escala[1])]
+  const c = a.map((v, i) => v + (b[i] - v) * Math.max(0, Math.min(1, t)))
+  return `#${toHex(c[0])}${toHex(c[1])}${toHex(c[2])}`
+}
+
 // ── Filtros finos (Área / Prioridad / Tipo de Paro) ──────────────────────────
 export interface FiltrosFinos {
   area: string // 'Todas' = sin filtro
