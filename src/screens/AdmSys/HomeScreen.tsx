@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { YStack, Text, XStack, View, useThemeName } from 'tamagui'
+import { YStack, Text, XStack, View, useThemeName, styled } from 'tamagui'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from 'tamagui'
 import { AppError, handleError } from '../../utils/errorHandler'
@@ -27,7 +27,13 @@ function getGreeting() {
 export default function HomeScreen() {
   const loader = useLoader();
 
+  const BellStyled = styled(Icons.Bell, {
+    color: '$text',
+  })
 
+  const UserRoundStyled = styled(Icons.UserRound, {
+    color: '$text',
+  })
   const { user } = useAuth()
   const theme = useTheme()
   const themeName = useThemeName();
@@ -55,10 +61,10 @@ export default function HomeScreen() {
     right: (
       <XStack gap="$3">
         <View>
-          <Icons.UserRound onPress={() => navigation.navigate('Perfil')} size={20} color={theme.text?.val} />
+          <UserRoundStyled onPress={() => navigation.navigate('Perfil')} size={20} />
         </View>
         <View>
-          <Icons.Bell size={20}  />
+          <BellStyled size={20} />
         </View>
       </XStack>
     ),
@@ -106,7 +112,7 @@ export default function HomeScreen() {
       <YStack
         flex={1}
         padding="$4"
-        backgroundColor="$background"
+        backgroundColor="$backgroundPage"
         justifyContent="flex-start"
         alignItems="center"
       >

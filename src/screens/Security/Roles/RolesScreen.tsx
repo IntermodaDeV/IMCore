@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Plus, RotateCw, Pencil } from 'lucide-react-native'
-import { YStack, Text, ScrollView, Card, XStack, View, useTheme } from 'tamagui'
+import { YStack, Text, ScrollView, Card, XStack, View, useTheme, styled } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { RolesDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
@@ -27,7 +27,11 @@ type NavProps = NativeStackNavigationProp<RootStackParamList>;
 
 export default function RolesScreen() {
   const navigation = useNavigation<NavProps>();
+
   const theme = useTheme()
+  const RotateCwStyled = styled(RotateCw, { color: '$text' });
+  const PlusStyled = styled(Plus, { color: '$text' });
+
   const [loading, setLoading] = useState(false)
   const [filtered, setFiltered] = useState<RolesDTO[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -111,11 +115,11 @@ export default function RolesScreen() {
       right: (
         <XStack gap="$2">
           <View onPress={() => getInfo()}>
-            <RotateCw size={18} />
+            <RotateCwStyled size={18} />
           </View>
 
           <View onPress={() => openForm()}>
-            <Plus size={18} />
+            <PlusStyled size={18} />
           </View>
         </XStack>
       )
@@ -127,7 +131,7 @@ export default function RolesScreen() {
     <Page > 
       <YStack
         flex={1}
-        backgroundColor="$backgroundElevated"
+        backgroundColor="$backgroundPage"
         padding="$3"
       >
         {loading ? (
@@ -162,7 +166,7 @@ export default function RolesScreen() {
                 return (
                   <Card
                     key={item.Id}
-                    backgroundColor="$backgroundPage"
+                    backgroundColor="$backgroundElevated"
                     borderRadius={10}
                     padding="$3"
                     marginBottom="$2"

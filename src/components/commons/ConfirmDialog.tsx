@@ -94,7 +94,7 @@ export default function ConfirmDialog({
                                     flex={1}
                                     height={42}
                                     borderRadius="$4"
-                                    backgroundColor="$buttonCancel"
+                                    backgroundColor="$buttonSecondary"
                                     borderWidth={0}
                                     pressStyle={{ opacity: 0.7 }}
                                     onPress={() => {
@@ -102,7 +102,7 @@ export default function ConfirmDialog({
                                         onOpenChange(false)
                                     }}
                                 >
-                                    <Text fontSize={14} fontWeight="600" color="$buttonCancelText">
+                                    <Text fontSize={14} fontWeight="600" color="$text">
                                         Cancelar
                                     </Text>
                                 </Button>

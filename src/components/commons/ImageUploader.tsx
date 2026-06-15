@@ -133,7 +133,7 @@ export function ImageUploader({ title = 'Imagen', onChange }: Props) {
 
             <Button
               flex={1}
-              backgroundColor="$buttonCancel"
+              backgroundColor="$buttonSecondary"
               height={45}
               borderRadius="$3"
               justifyContent="center"

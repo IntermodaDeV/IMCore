@@ -136,7 +136,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
         marginLeft={14}
         marginRight={14}
         marginTop={16 +  insets.top}
-        backgroundColor="$textUser"
+        backgroundColor="$backgroundElevated"
         {...shadows.sm}
       >
         {/* Botón refrescar */}
@@ -176,11 +176,11 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
               width={42}
               height={42}
               borderRadius={21}
-              backgroundColor="$gray"
+              backgroundColor="$text"
               justifyContent="center"
               alignItems="center"
             >
-              <Text color="white" fontSize={16} fontWeight="700">
+              <Text color="$background" fontSize={16} fontWeight="700">
                 {initials}
               </Text>
             </View>
@@ -408,9 +408,9 @@ function TreeItem({
 
           <View flexDirection="row" alignItems="center" gap={12}>
             {IconComp ? (
-              <IconComp size={18} color={'#FF551A'} />
+              <IconComp size={18} color={theme.primary?.val} />
             ) : (
-              level > 0 && <FileText size={14} color={'#FF551A'} />
+              level > 0 && <FileText size={14} color={theme.primary?.val} />
             )}
 
             <Text
@@ -485,7 +485,7 @@ function ThemeToggle() {
         height={30}
         borderRadius={999}
         padding={3}
-        backgroundColor="$card"
+        backgroundColor="$borderColor"
         justifyContent="center"
         alignItems={isDark ? 'flex-end' : 'flex-start'}
       >

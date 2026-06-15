@@ -104,7 +104,7 @@ export default function ProfileScreen() {
 
     return (
         <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-            <YStack padding="$4" backgroundColor="$background" gap="$4">
+            <YStack padding="$4" backgroundColor="$backgroundPage" gap="$4">
 
                 
                 {/* Card perfil */}
@@ -298,7 +298,7 @@ export default function ProfileScreen() {
                                 height={30}
                                 borderRadius={999}
                                 padding={3}
-                                backgroundColor="$card"
+                                backgroundColor="$backgroundSurface"
                                 justifyContent="center"
                                 alignItems={isDark ? 'flex-end' : 'flex-start'}
                             >

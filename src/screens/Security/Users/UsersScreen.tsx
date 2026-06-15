@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Plus, RotateCw, Pencil, KeyRound, Eye, EyeOff, ChevronDown, ChevronUp, Trash2  } from 'lucide-react-native'
-import { YStack, Text, ScrollView, Card, XStack, View, useTheme, Button, Dialog, Spinner } from 'tamagui'
+import { YStack, Text, ScrollView, Card, XStack, View, useTheme, Button, Dialog, Spinner, styled } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { IUserExternalCodes, UsersDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
@@ -35,6 +35,10 @@ type NavProps = NativeStackNavigationProp<RootStackParamList>;
 export default function UsersScreen() {
   const navigation = useNavigation<NavProps>();
   const theme = useTheme()
+
+  const RotateCwStyled = styled(RotateCw, { color: '$text' });
+  const PlusStyled = styled(Plus, { color: '$text' });
+
   const [loading, setLoading] = useState(false)
   const [loadingSave, setLoadingSave] = useState(false)
   const [data, setData] = useState<UsersDTO[]>([])
@@ -97,11 +101,11 @@ export default function UsersScreen() {
       right: (
         <XStack gap="$2">
           <View onPress={() => getInfo()}>
-            <RotateCw size={18} color={theme.text?.val} />
+            <RotateCwStyled size={18}  />
           </View>
 
           <View onPress={() => openForm()}  >
-            <Plus size={18} color={theme.text?.val} />
+            <PlusStyled size={18}  />
           </View>
         </XStack>
       )
@@ -271,7 +275,7 @@ export default function UsersScreen() {
     <Page >
       <YStack
         flex={1}
-        backgroundColor="$backgroundElevated"
+        backgroundColor="$backgroundPage"
         padding="$3"
       >
         {loading ? (
@@ -311,7 +315,7 @@ export default function UsersScreen() {
                   return (
                     <Card
                       key={item.Id}
-                      backgroundColor="$backgroundPage"
+                      backgroundColor="$backgroundElevated"
                       borderRadius={10}
                       marginBottom="$2"
                       overflow="hidden"
@@ -333,7 +337,7 @@ export default function UsersScreen() {
                               {visibleRoles.map((role, index) => (
                                 <View
                                   key={`${role}-${index}`}
-                                  backgroundColor="$card"
+                                  backgroundColor="$backgroundSurface"
                                   paddingHorizontal={7}
                                   paddingVertical={2}
                                   borderRadius={999}
@@ -343,7 +347,7 @@ export default function UsersScreen() {
                               ))}
                               {remainingRoles > 0 && (
                                 <View
-                                  backgroundColor="$card"
+                                  backgroundColor="$backgroundSurface"
                                   paddingHorizontal={7}
                                   paddingVertical={2}
                                   borderRadius={999}
@@ -460,7 +464,7 @@ export default function UsersScreen() {
                                   key={keyVar}
                                   alignItems="center"
                                   gap="$2"
-                                  backgroundColor="$card"
+                                  backgroundColor="$backgroundSurface"
                                   borderRadius="$2"
                                   paddingHorizontal="$2.5"
                                   paddingVertical="$1.5"
@@ -760,7 +764,7 @@ export default function UsersScreen() {
                 <Dialog.Close asChild>
                   <Button
                     flex={1}
-                    backgroundColor="$buttonCancel"
+                    backgroundColor="$buttonSecondary"
                     height={45}
                     borderRadius="$3"
                     justifyContent="center"
@@ -770,7 +774,7 @@ export default function UsersScreen() {
                     opacity={loadingSave ? 0.5 : 1}
                     onPress={() => reset(defaultValues)}
                   >
-                    <Text color="black" fontWeight="700">Cancelar</Text>
+                    <Text color="$text" fontWeight="700">Cancelar</Text>
                   </Button>
                 </Dialog.Close>
 
@@ -826,8 +830,8 @@ export default function UsersScreen() {
 
               <XStack gap="$2" marginTop="$4">
                 <Dialog.Close asChild>
-                  <Button flex={1} backgroundColor="$buttonCancel" height={45} borderRadius="$3" pressStyle={{ opacity: 0.7 }}>
-                    <Text color="black" fontWeight="700">Cancelar</Text>
+                  <Button flex={1} backgroundColor="$buttonSecondary" height={45} borderRadius="$3" pressStyle={{ opacity: 0.7 }}>
+                    <Text color="$text" fontWeight="700">Cancelar</Text>
                   </Button>
                 </Dialog.Close>
 

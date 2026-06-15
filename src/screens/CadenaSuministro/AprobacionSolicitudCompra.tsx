@@ -19,6 +19,8 @@ export default function AprobacionSolicitudCompra() {
   const ClipboardListStyled = styled(ClipboardList, { color: '$primary' });
   const CheckStyled = styled(Check, { color: '$white' });
   const XStyled = styled(X, { color: '$error' });
+  const ChevronUpStyled = styled(ChevronUp, { color: '$text' });
+  const ChevronDownStyled = styled(ChevronDown, { color: '$text' });
 
   usePageHeader({
       center: (
@@ -136,7 +138,7 @@ export default function AprobacionSolicitudCompra() {
   return (
     <ScrollView
       flex={1}
-      backgroundColor="$background"
+      backgroundColor="$backgroundPage"
       showsVerticalScrollIndicator={false}
     > 
       <YStack flex={1}  padding="$4" gap="$4">
@@ -146,8 +148,6 @@ export default function AprobacionSolicitudCompra() {
             key={solicitud.id}
             borderRadius="$4"
             backgroundColor="$backgroundElevated"
-            borderWidth={1}
-            borderColor="#E2E8F0"
             overflow="hidden"
           >
 
@@ -166,10 +166,10 @@ export default function AprobacionSolicitudCompra() {
                 </View>
 
                 <YStack>
-                  <Text fontWeight="700" color="#1E293B">
+                  <Text fontWeight="700" color="$text">
                     {solicitud.codigo}
                   </Text>
-                  <Text fontSize="$1" color="$foregroundMuted">
+                  <Text fontSize="$1" color="$textMuted">
                     Preparado por: {solicitud.preparadoPor}
                   </Text>
                 </YStack>
@@ -201,25 +201,25 @@ export default function AprobacionSolicitudCompra() {
             <YStack padding="$3" gap="$2">
               <XStack
                 borderWidth={1}
-                borderColor="$backgroundHover"
+                borderColor="$border"
                 borderRadius="$3"
                 padding="$3"
                 justifyContent="space-between"
               >
                 <YStack>
-                  <Text fontSize={9} color="#94A3B8" fontWeight="700">
+                  <Text fontSize={9} color="$textMuted" fontWeight="700">
                     TOTAL IMPORTE
                   </Text>
-                  <Text fontSize="$5" fontWeight="800" color="#0F172A">
+                  <Text fontSize="$5" fontWeight="800" color="$text">
                     {solicitud.totalImporte.toFixed(2)} {solicitud.moneda}
                   </Text>
                 </YStack>
 
                 <YStack alignItems="flex-end">
-                  <Text fontSize={9} color="#94A3B8" fontWeight="700">
+                  <Text fontSize={9} color="$textMuted" fontWeight="700">
                     TIPO
                   </Text>
-                  <Text fontSize="$3" fontWeight="700" color="#1E293B">
+                  <Text fontSize="$3" fontWeight="700" color="$text">
                     {solicitud.tipo}
                   </Text>
                 </YStack>
@@ -231,13 +231,13 @@ export default function AprobacionSolicitudCompra() {
                     backgroundColor: '$backgroundPress',
                   }}
                   onPress={() => toggleDetalle(solicitud.id)} >
-                <Text fontSize="$2" fontWeight="800" color="#1E293B">
+                <Text fontSize="$2" fontWeight="800" color="$text">
                   DETALLE DE PRODUCTOS ({solicitud.productos.length})
                 </Text>
                 {solicitud.expandido ? (
-                  <ChevronUp size={14} />
+                  <ChevronUpStyled size={14} />
                 ) : (
-                  <ChevronDown size={14} />
+                  <ChevronDownStyled size={14} />
                 )}
               </XStack>
 
@@ -248,25 +248,25 @@ export default function AprobacionSolicitudCompra() {
                     padding="$2"
                     borderRadius="$4"
                     borderWidth={1}
-                    borderColor="$backgroundHover"
+                    borderColor="$border"
                     gap="$2"
                   >
                     <XStack justifyContent="space-between" alignItems="center">
-                      <Text fontSize="$3" fontWeight="700" color="$black">
+                      <Text fontSize="$3" fontWeight="700" color="$text">
                         {producto.nombre}
                       </Text>
 
-                      <Text fontSize="$2" color="$gray10">
+                      <Text fontSize="$2" color="$textMuted">
                         Cant. {producto.cantidad} 
                       </Text>
                     </XStack>
 
                     <XStack justifyContent="space-between" alignItems="center">
-                      <Text fontSize="$2" color="$gray10">
+                      <Text fontSize="$2" color="$textMuted">
                         Precio unitario: {producto.precioUnitario} {producto.moneda}
                       </Text>
 
-                      <Text fontSize="$2" fontWeight="800" color="$black">
+                      <Text fontSize="$2" fontWeight="800" color="$text">
                         {producto.total} {producto.moneda}
                       </Text>
                     </XStack>

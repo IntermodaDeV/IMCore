@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { ArrowLeft, Pencil, Plus, RotateCw } from 'lucide-react-native'
-import { YStack, Text, ScrollView, useTheme, XStack, View  } from 'tamagui'
+import { YStack, Text, ScrollView, useTheme, XStack, View, styled } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { AccessDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
@@ -26,6 +26,10 @@ type NavProps = NativeStackNavigationProp<RootStackParamList>;
 export default function AccessScreen() {
   const navigation = useNavigation<NavProps>();
   const theme = useTheme()
+  const RotateCwStyled = styled(RotateCw, { color: '$text' });
+  const PlusStyled = styled(Plus, { color: '$text' });
+
+
   const [loading, setLoading] = useState(false)
   const [filtered, setFiltered] = useState<AccessDTO[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -96,11 +100,11 @@ export default function AccessScreen() {
       right: (
         <XStack gap="$2">
           <View onPress={() => getInfo()}>
-            <RotateCw size={18} />
+            <RotateCwStyled size={18} />
           </View>
 
           <View onPress={() => createAccess()}>
-            <Plus size={18} />
+            <PlusStyled size={18} />
           </View>
         </XStack>
       )
@@ -126,7 +130,7 @@ export default function AccessScreen() {
     <Page >
       <YStack
         flex={1}
-        backgroundColor="$backgroundElevated"
+        backgroundColor="$backgroundPage"
         padding="$3"
       >
         {loading ? (
@@ -164,7 +168,7 @@ export default function AccessScreen() {
                     return (
                       <YStack
                         key={item.Id}
-                        backgroundColor="$backgroundPage"
+                        backgroundColor="$backgroundElevated"
                         padding="$3"
                         borderRadius={10}
                         marginBottom="$2"

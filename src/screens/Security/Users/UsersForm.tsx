@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox } from 'tamagui'
+import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox,styled } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import Page from '../../../components/commons/Page'
 import { Controller, useForm } from 'react-hook-form'
@@ -10,7 +10,7 @@ import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import { useShowToast } from '../../../utils/useShowToast'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
-import { Check as CheckIcon, Shield, Eye, EyeOff, User} from 'lucide-react-native'
+import { Check as CheckIcon, Shield, Eye, EyeOff, User, ArrowLeft} from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
 import AppSelect from '../../../components/commons/AppSelect'
 import AccordionSection from '../../../components/commons/AccordionSection'
@@ -18,6 +18,7 @@ import { handleError } from '../../../utils/errorHandler'
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import * as Icons from 'lucide-react-native'
 import { useUpdatePageHeader } from '../../../hooks/useUpdatePageHeader'
+import { shadows } from '../../../theme/shadows'
 
 type TabType = 'general' | 'accesos' | 'permisos'
 
@@ -43,7 +44,7 @@ export default function UsersForm() {
     const { user } = useAuth()
     const { showToast } = useShowToast()
     const isEdit = !!Id
-    
+    const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' });
 
 
     const defaultValues: UsersDTO = {
@@ -249,10 +250,10 @@ export default function UsersForm() {
     
     usePageHeader({
         left:(
-                <Icons.ArrowLeft onPress={() => navigation.goBack()} />   
+                <ArrowLeftStyled onPress={() => navigation.goBack()} />   
                 ),
         center: 
-            <Text>Nuevo Usuario</Text>
+            <Text color="$text" >Nuevo Usuario</Text>
         ,
 
         right: <></>,
@@ -262,7 +263,7 @@ export default function UsersForm() {
         if(isEdit){
             updateHeader({
                 center: 
-                    <Text>
+                    <Text color="$text" >
                         Editar usuario
                     </Text>
                 ,
@@ -303,7 +304,7 @@ export default function UsersForm() {
                     {/* TABS */}
                     {Id && (
                         <XStack
-                            backgroundColor="$gray3"
+                            backgroundColor="$backgroundSurface"
                             borderRadius="$3"
                             marginHorizontal="$4"
                             marginTop="$3"
@@ -322,15 +323,12 @@ export default function UsersForm() {
                                         pressStyle={{ opacity: 0.8 }}
                                         onPress={() => setActiveTab(tab.key)}
                                         borderWidth={0}
-                                        shadowColor={isActive ? 'rgba(0,0,0,0.15)' : 'transparent'}
-                                        shadowOffset={isActive ? { width: 0, height: 1 } : { width: 0, height: 0 }}
-                                        shadowOpacity={isActive ? 1 : 0}
-                                        shadowRadius={isActive ? 3 : 0}
+                                        {...(isActive ? shadows.sm : {})}
                                     >
                                         <Text
                                             fontSize={13}
                                             fontWeight={isActive ? '700' : '400'}
-                                            color={isActive ? '$white' : '$gray10'}
+                                            color={isActive ? '$white' : '$textMuted'}
                                         >
                                             {tab.label}
                                         </Text>
@@ -454,7 +452,7 @@ export default function UsersForm() {
                                             return (
                                                 <XStack
                                                     key={rol.Id}
-                                                    backgroundColor="$card"
+                                                    backgroundColor="$backgroundSurface"
                                                     borderRadius="$4"
                                                     paddingVertical="$3"
                                                     paddingHorizontal="$4"
@@ -542,7 +540,7 @@ export default function UsersForm() {
                                                             width={38}
                                                             height={38}
                                                             borderRadius={22}
-                                                            backgroundColor={value ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                            backgroundColor={value ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
                                                             justifyContent="center"
                                                             alignItems="center"
                                                         >
@@ -670,7 +668,7 @@ export default function UsersForm() {
                             >
                                 <Button
                                     flex={1}
-                                    backgroundColor="$buttonCancel"
+                                    backgroundColor="$buttonSecondary"
                                     height={45}
                                     borderRadius="$3"
                                     justifyContent="center"
@@ -680,7 +678,7 @@ export default function UsersForm() {
                                     disabled={loadingSave}
                                     opacity={loadingSave ? 0.5 : 1}
                                 >
-                                    <Text color="black" fontWeight="700">Cancelar</Text>
+                                    <Text color="$text" fontWeight="700">Cancelar</Text>
                                 </Button>
 
                                 <Button
@@ -757,7 +755,7 @@ export default function UsersForm() {
                                                     width={40}
                                                     height={40}
                                                     borderRadius={20}
-                                                    backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                    backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
                                                     justifyContent="center"
                                                     alignItems="center"
                                                 >
@@ -857,7 +855,7 @@ export default function UsersForm() {
                                                     width={40}
                                                     height={40}
                                                     borderRadius={20}
-                                                    backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$card'}
+                                                    backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
                                                     justifyContent="center"
                                                     alignItems="center"
                                                 >

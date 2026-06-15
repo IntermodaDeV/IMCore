@@ -102,7 +102,7 @@ export const config = createTamagui({
       background: '#061426',
       backgroundPage: '#0B1F38',
       backgroundSurface: '#163B63',
-      backgroundElevated: '#20466E',
+      backgroundElevated: '#12304F',
 
       // =========================
       // TEXT
