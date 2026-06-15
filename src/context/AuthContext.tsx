@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { UsersDTO } from '../api/modules/security/security.types'
 import { securityService } from '../api/modules/security/security.service'
+import { sessionManager } from '../api/core/sessionManager'
 
 type AuthContextType = {
   user: UsersDTO | null
@@ -15,6 +16,8 @@ type AuthContextType = {
   setTransitioning: (value: boolean) => void
   transitionMessage: string | null
   setTransitionMessage: (value: string | null) => void
+  sessionExpired: boolean
+  setSessionExpired: (value: boolean) => void
 }
 
 const AuthContext = createContext<AuthContextType>(
@@ -31,6 +34,7 @@ export const AuthProvider = ({
   const [loading, setLoading] = useState(true)
   const [transitioning, setTransitioning] = useState(false)
   const [transitionMessage, setTransitionMessage] = useState<string | null>(null)
+  const [sessionExpired, setSessionExpired] = useState(false)
 
   useEffect(() => {
     const loadSession = async () => {
@@ -58,6 +62,14 @@ export const AuthProvider = ({
     loadSession()
   }, [])
 
+  useEffect(() => {
+    const unsubscribe = sessionManager.subscribe(() => {
+      setSessionExpired(true)
+    })
+
+    return unsubscribe
+  }, [])
+
   const setTheme = async (
     newTheme: 'light' | 'dark'
   ) => {
@@ -75,11 +87,27 @@ export const AuthProvider = ({
 
   const login = async (userData: UsersDTO) => {
     try {
+      setSessionExpired(false)
+
       setUser(userData)
-      const userTheme = userData?.Theme === 'dark' ? 'dark' : 'light'
+
+      const userTheme =
+        userData?.Theme === 'dark'
+          ? 'dark'
+          : 'light'
+
       setThemeState(userTheme)
-      await AsyncStorage.setItem('user', JSON.stringify(userData))
-      await AsyncStorage.setItem('theme', userTheme)
+
+      await AsyncStorage.setItem(
+        'user',
+        JSON.stringify(userData)
+      )
+
+      await AsyncStorage.setItem(
+        'theme',
+        userTheme
+      )
+
       setTransitionMessage('Iniciando sesión...')
       setTransitioning(true)
     } catch (error) {
@@ -91,15 +119,20 @@ export const AuthProvider = ({
     try {
       setTransitionMessage('Cerrando sesión...')
       setTransitioning(true)
+
       if (user?.Code) {
         try {
           await securityService.logout(user.Code)
         } catch (serverError) {
-          console.log('Error logout en servidor (continuando con limpieza local)', serverError)
+          console.log(
+            'Error logout en servidor (continuando con limpieza local)',
+            serverError
+          )
         }
       }
 
       setUser(null)
+
       await Promise.all([
         AsyncStorage.removeItem('user'),
         AsyncStorage.removeItem('theme'),
@@ -127,6 +160,8 @@ export const AuthProvider = ({
         setTransitioning,
         transitionMessage,
         setTransitionMessage,
+        sessionExpired,
+        setSessionExpired,
       }}
     >
       {children}

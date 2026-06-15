@@ -50,7 +50,7 @@ export default function AprobacionSolicitudCompra() {
       loader.show()
       setLoading(true)
       setError(null)
-      const response: ExecutionResponse<ISolicitudCompraUsuario[]> = await cadenaSuministroService.getSolicitudesCompras('lkchinchilla')
+      const response: ExecutionResponse<ISolicitudCompraUsuario[]> = await cadenaSuministroService.getSolicitudesCompras('dguerra')
 
       if (response.Success) {
         const solicitudes = response.Data.map(item => ({
