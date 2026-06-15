@@ -1,7 +1,6 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import { YStack, Text, View, XStack } from 'tamagui'
-import { ScrollView } from 'react-native'
-import { Pressable } from 'react-native'
+import { ScrollView, Modal, Pressable, Dimensions } from 'react-native'
 import { Check, ChevronDown } from 'lucide-react-native'
 
 type Option = {
@@ -18,6 +17,8 @@ type Props = {
   placeholder?: string
 }
 
+const DROPDOWN_MAX_HEIGHT = 220
+
 export default function AppSelect({
   label,
   value,
@@ -27,15 +28,26 @@ export default function AppSelect({
   placeholder = '',
 }: Props) {
   const [open, setOpen] = useState(false)
-  const [scrollY, setScrollY] = useState(0)
-  const [contentHeight, setContentHeight] = useState(0)
-  const [layoutHeight, setLayoutHeight] = useState(0)
+  const [layout, setLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
+  const triggerRef = useRef<any>(null)
 
   const selectedLabel = useMemo(() => {
     return options.find(o => o.value === value)?.label || ''
   }, [value, options])
 
   const floating = open || !!value
+
+  const openDropdown = () => {
+    triggerRef.current?.measureInWindow((x: number, y: number, width: number, height: number) => {
+      setLayout({ x, y, width, height })
+      setOpen(true)
+    })
+  }
+
+  const screenHeight = Dimensions.get('window').height
+  const estimatedHeight = Math.min(DROPDOWN_MAX_HEIGHT, options.length * 44 + 8)
+  const spaceBelow = layout ? screenHeight - (layout.y + layout.height) : 0
+  const openUpward = layout ? spaceBelow < estimatedHeight && layout.y > estimatedHeight : false
 
   return (
     <YStack gap="$1" marginTop="$2">
@@ -58,8 +70,9 @@ export default function AppSelect({
       </Text>
 
       {/* INPUT */}
-      <Pressable onPress={() => setOpen(!open)}>
+      <Pressable onPress={() => (open ? setOpen(false) : openDropdown())}>
         <View
+          ref={triggerRef}
           height={40}
           borderWidth={1}
           borderRadius={6}
@@ -72,71 +85,66 @@ export default function AppSelect({
             <Text color={value ? '$text' : '$textMuted'}>
               {selectedLabel || placeholder}
             </Text>
-
             <ChevronDown size={18} color="#666" />
           </XStack>
         </View>
       </Pressable>
 
-      {/* DROPDOWN */}
-      {open && (
-        <View
-          position="absolute"
-          top={46}
-          left={0}
-          right={0}
-          backgroundColor="$backgroundElevated"
-          borderWidth={1}
-          borderTopWidth={0}
-          borderColor="$border"
-          borderBottomLeftRadius={10}
-          borderBottomRightRadius={10}
-          zIndex={9999}
-          elevation={10}
-          maxHeight={220}
-          overflow="hidden"
+      {/* DROPDOWN — en Modal para que no se corte con overflow del padre */}
+      {open && layout && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={() => setOpen(false)}
         >
-          <ScrollView
-            nestedScrollEnabled
-            showsVerticalScrollIndicator={false}
-            style={{ maxHeight: 220 }}
-            contentContainerStyle={{ paddingVertical: 4 }}
-            onScroll={(e) => {
-              const y = e.nativeEvent.contentOffset.y
-              setScrollY(y)
-            }}
-            onContentSizeChange={(_, h) => {
-              setContentHeight(h)
-            }}
-            onLayout={(e) => {
-              setLayoutHeight(e.nativeEvent.layout.height)
-            }}
-            scrollEventThrottle={16}
+          {/* Backdrop: cierra al tocar fuera */}
+          <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
+
+          <View
+            position="absolute"
+            left={layout.x}
+            top={
+              openUpward
+                ? layout.y - estimatedHeight - 4
+                : layout.y + layout.height + 4
+            }
+            width={layout.width}
+            backgroundColor="$backgroundElevated"
+            borderWidth={1}
+            borderColor="$border"
+            borderRadius={10}
+            maxHeight={DROPDOWN_MAX_HEIGHT}
+            overflow="hidden"
+            elevation={10}
+            shadowColor="#000"
+            shadowOpacity={0.15}
+            shadowRadius={8}
+            shadowOffset={{ width: 0, height: 4 }}
           >
-            {options.map((option) => (
-              <Pressable
-                key={option.value}
-                onPress={() => {
-                  onValueChange?.(option.value)
-                  setOpen(false)
-                }}
-              >
-                <XStack
-                  padding="$3"
-                  justifyContent="space-between"
-                  alignItems="center"
+            <ScrollView
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingVertical: 4 }}
+            >
+              {options.map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    onValueChange?.(option.value)
+                    setOpen(false)
+                  }}
                 >
-                  <Text color="$text">
-                    {option.label}
-                  </Text>
-                  {value === option.value && (
-                    <Check size={16} color="green"/>
-                  )}
-                </XStack>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
+                  <XStack padding="$3" justifyContent="space-between" alignItems="center">
+                    <Text color="$text">{option.label}</Text>
+                    {value === option.value && <Check size={16} color="green" />}
+                  </XStack>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Modal>
       )}
 
       {/* ERROR */}

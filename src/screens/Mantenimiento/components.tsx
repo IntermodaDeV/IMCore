@@ -3,6 +3,7 @@ import { ScrollView } from 'react-native'
 import { Card, Text, XStack, YStack, View } from 'tamagui'
 import { ChevronRight, Settings2 } from 'lucide-react-native'
 import { ACCENT, Conteo, Escala, shade } from './mantenimiento.helpers'
+import { shadows } from '../../theme/shadows'
 
 // ── Tarjeta KPI (con badge tipo "delta" de Streamlit) ────────────────────────
 interface KpiBadge {
@@ -21,14 +22,13 @@ export function KpiCard({ titulo, valor, badge }: KpiCardProps) {
     <Card
       flex={1}
       minWidth="44%"
-      backgroundColor="$card2"
-      borderWidth={1}
-      borderColor="$border"
+      {...shadows.sm}
+      backgroundColor="$backgroundElevated"
       borderRadius="$4"
       padding="$3"
       gap="$2"
     >
-      <Text fontSize={11} fontWeight="600" color="$foregroundMuted" numberOfLines={1}>
+      <Text fontSize={11} fontWeight="600" color="$text" numberOfLines={1}>
         {titulo}
       </Text>
       <Text fontSize={26} fontWeight="800" color="$text">
@@ -66,9 +66,8 @@ interface SectionCardProps {
 export function SectionCard({ titulo, ejeX, children }: SectionCardProps) {
   return (
     <Card
-      backgroundColor="$card2"
-      borderWidth={1}
-      borderColor="$border"
+      {...shadows.sm}
+      backgroundColor="$backgroundElevated"
       borderRadius="$4"
       padding="$3"
       gap="$3"
@@ -78,7 +77,7 @@ export function SectionCard({ titulo, ejeX, children }: SectionCardProps) {
       </Text>
       {children}
       {!!ejeX && (
-        <Text fontSize={10} color="$foregroundMuted" alignSelf="center">
+        <Text fontSize={10} color="$textMuted" alignSelf="center">
           {ejeX}
         </Text>
       )}
@@ -104,7 +103,7 @@ export function TabBar({ tabs, activo, onChange }: TabBarProps) {
         const sel = i === activo
         return (
           <YStack key={t} onPress={() => onChange(i)} paddingVertical="$2">
-            <Text fontSize={14} fontWeight="700" color={sel ? ACCENT : '$foregroundMuted'}>
+            <Text fontSize={14} fontWeight="700" color={sel ? ACCENT : '$textMuted'}>
               {t}
             </Text>
             <View
@@ -130,9 +129,9 @@ export function FiltrosColapsables({ resumen, children }: FiltrosColapsablesProp
   const [abierto, setAbierto] = useState(false)
   return (
     <YStack
-      backgroundColor="$card2"
-      borderWidth={1}
-      borderColor="$border"
+      borderWidth={0}
+      {...shadows.sm}
+      backgroundColor="$backgroundElevated"
       borderRadius="$4"
       overflow="hidden"
     >
@@ -147,7 +146,7 @@ export function FiltrosColapsables({ resumen, children }: FiltrosColapsablesProp
         <Text fontSize={14} fontWeight="700" color="$text" flex={1}>
           Filtros
         </Text>
-        <Text fontSize={11} color="$foregroundMuted" numberOfLines={1} marginRight="$2">
+        <Text fontSize={11} color="$textMuted" numberOfLines={1} marginRight="$2">
           {resumen}
         </Text>
         <View rotate={abierto ? '90deg' : '0deg'}>
