@@ -108,7 +108,7 @@ export default function AprobacionSolicitudCompra() {
   return (
     <YStack
       flex={1}
-      backgroundColor="$card2"
+      backgroundColor="$backgroundPage"
       padding="$3"
     >
       {loading ? (
@@ -124,7 +124,7 @@ export default function AprobacionSolicitudCompra() {
       ) : (
         <ScrollView
           flex={1}
-          backgroundColor="$background"
+          backgroundColor="$backgroundPage"
           showsVerticalScrollIndicator={false}
         >
         <>
@@ -139,10 +139,8 @@ export default function AprobacionSolicitudCompra() {
               key={`${solicitud.Solicitud}-${index}`}
               borderRadius="$4"
               backgroundColor="$backgroundElevated"
-              borderWidth={1}
-              borderColor="#E2E8F0"
               overflow="hidden"
-              marginBottom="$2"
+              marginBottom="$4"
             >
               <XStack
                 padding="$3"
@@ -165,7 +163,7 @@ export default function AprobacionSolicitudCompra() {
                   <YStack flex={1}>
                     <Text
                       fontWeight="800"
-                      color="#0F172A"
+                      color="$text"
                       numberOfLines={1}
                     >
                       {solicitud.Solicitud}
@@ -173,7 +171,7 @@ export default function AprobacionSolicitudCompra() {
 
                     <Text
                       fontSize="$1"
-                      color="$foregroundMuted"
+                      color="$textMuted"
                       numberOfLines={1}
                       ellipsizeMode="tail"
                     >
@@ -208,20 +206,21 @@ export default function AprobacionSolicitudCompra() {
               <YStack padding="$3" gap="$2">
                 <XStack
                   borderWidth={1}
-                  borderColor="$backgroundHover"
+                  borderColor="$backgroundSurface"
                   borderRadius="$3"
+                  border="$border"
                   padding="$3"
                   justifyContent="space-between"
                 >
                   <YStack>
-                    <Text fontSize={9} color="#94A3B8" fontWeight="700">
+                    <Text fontSize={9} color="$textMuted" fontWeight="700">
                       CATEGORÍA
                     </Text>
 
                     <Text
                       fontSize="$3"
                       fontWeight="700"
-                      color="#1E293B"
+                      color="$text"
                       maxWidth={180}
                     >
                       {solicitud.Categoria}
@@ -229,11 +228,11 @@ export default function AprobacionSolicitudCompra() {
                   </YStack>
 
                   <YStack alignItems="flex-end">
-                    <Text fontSize={9} color="#94A3B8" fontWeight="700">
+                    <Text fontSize={9} color="$textMuted" fontWeight="700">
                       TOTAL IMPORTE
                     </Text>
 
-                    <Text fontSize="$5" fontWeight="800" color="#0F172A">
+                    <Text fontSize="$5" fontWeight="800" color="$text">
                       {formatMoney(solicitud.ImporteNeto)}
                     </Text>
                   </YStack>
@@ -251,54 +250,66 @@ export default function AprobacionSolicitudCompra() {
                   }}
                   onPress={() => toggleDetalle(solicitud.Solicitud)}
                 >
-                  <Text fontSize="$2" fontWeight="800" color="#1E293B">
+                  <Text fontSize="$2" fontWeight="800" color="$text">
                     DETALLE DE PRODUCTOS ({solicitud.Articulos.length})
                   </Text>
 
                   {solicitud.expandido ? (
-                    <ChevronUp size={14} />
+                    <ChevronUpStyled size={14} />
                   ) : (
-                    <ChevronDown size={14} />
+                    <ChevronDownStyled size={14} />
                   )}
                 </XStack>
 
-                {solicitud.expandido &&
-                  solicitud.Articulos.map((producto, index) => (
-                    <YStack
-                      key={`${solicitud.Solicitud}-${index}`}
-                      padding="$2"
-                      borderRadius="$4"
-                      borderWidth={1}
-                      borderColor="$backgroundHover"
-                      gap="$2"
-                    >
-                      <XStack justifyContent="space-between" alignItems="center">
-                        <Text
-                          flex={1}
-                          fontSize="$3"
-                          fontWeight="700"
-                          color="$black"
+                <ScrollView
+
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingVertical: 8 }}
+                  maxHeight={solicitud.expandido ? 200 : 0}
+                  
+                >
+
+                  <YStack gap="$2">
+                    {solicitud.expandido &&
+                      solicitud.Articulos.map((producto, index) => (
+                        <YStack
+                          key={`${solicitud.Solicitud}-${index}`}
+                          padding="$2"
+                          borderRadius="$4"
+                          borderWidth={1}
+                          borderColor="$border"
+                          gap="$2"
                         >
-                          {producto.NombreProducto}
-                        </Text>
+                          <XStack justifyContent="space-between" alignItems="center">
+                            <Text
+                              flex={1}
+                              fontSize="$3"
+                              fontWeight="700"
+                              color="$text"
+                            >
+                              {producto.NombreProducto}
+                            </Text>
 
-                        <Text fontSize="$2" color="$gray10">
-                          Cant. {producto.Cantidad}
-                        </Text>
-                      </XStack>
+                            <Text fontSize="$2" color="$text">
+                              Cant. {producto.Cantidad}
+                            </Text>
+                          </XStack>
 
-                      <XStack justifyContent="space-between" alignItems="center">
-                        <Text fontSize="$2" color="$gray10">
-                          Precio unitario: {formatMoney(producto.Precio)}{' '}
-                          {producto.Moneda}
-                        </Text>
+                          <XStack justifyContent="space-between" alignItems="center">
+                            <Text fontSize="$2" color="$text">
+                              Precio unitario: {formatMoney(producto.Precio)}{' '}
+                              {producto.Moneda}
+                            </Text>
 
-                        <Text fontSize="$2" fontWeight="800" color="$black">
-                          {formatMoney(producto.ImporteNeto)} {producto.Moneda}
-                        </Text>
-                      </XStack>
-                    </YStack>
-                ))}
+                            <Text fontSize="$2" fontWeight="800" color="$text">
+                              {formatMoney(producto.ImporteNeto)} {producto.Moneda}
+                            </Text>
+                          </XStack>
+                        </YStack>
+                    ))}
+                  </YStack>
+
+                </ScrollView>
               </YStack>
             </Card>
           ))}
