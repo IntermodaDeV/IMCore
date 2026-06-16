@@ -15,3 +15,9 @@ export interface ISolicitudCompraUsuario {
   expandido?: boolean
   justificacion?: string
 }
+
+export interface ISolicitud {
+  Solicitud: string
+  Usuario: string
+  Estado: string
+}
