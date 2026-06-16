@@ -90,12 +90,12 @@ export default function AprobacionSolicitudCompra() {
       const response = await cadenaSuministroService.aprobarSolicitud(info)
       if (response?.Success) {
         showToast('success', 'Éxito', response.SuccessMessage, 5000, 'top')
-        getInfo()
-        cerrarDialog()
       } else {
         showToast('error', 'Error', response.ErrorMessage, 5000, 'top')
       }
     } finally {
+      getInfo()
+      cerrarDialog()
       setLoadingDialog(false)
     }
   }
