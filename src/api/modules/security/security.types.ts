@@ -44,6 +44,15 @@ export interface UsersDTO {
   [key: string]: any
 }
 
+export interface IRegister {
+  Code: string
+  Name: string
+  LastName: string
+  Email?: string
+  PasswordHash?: string | null,
+  ConfirmPassword?: string
+}
+
 export interface IUserExternalCodes {
   Id?: number
   User_Code: string

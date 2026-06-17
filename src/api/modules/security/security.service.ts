@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO, UsersSettingsDTO, IAccessControl, ITypes, IMenuControl, IUserExternalCodes, IQuickActions } from './security.types'
+import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO, UsersSettingsDTO, IAccessControl, ITypes, IMenuControl, IUserExternalCodes, IQuickActions, IRegister } from './security.types'
 
 const schema = 'Security'
 export const securityService = {
@@ -12,6 +12,7 @@ export const securityService = {
   changePassword: (data: any[]) => httpClient.post<ExecutionResponse<any[]>>(`${schema}/UsersPassword`, data),
   getUserById: (Id: number) => httpClient.get<ExecutionResponse<UsersDTO[]>>(`${schema}/UserById?Id=${Id}`),
   saveUserExternalCodes: (data: IUserExternalCodes[]) => httpClient.post<ExecutionResponse<IUserExternalCodes[]>>(`${schema}/UserExternalCodes`, data),
+  saveUsersRegister: (data: IRegister[]) => httpClient.post<ExecutionResponse<IRegister[]>>(`${schema}/Register`, data),
   
   getMenus: () => httpClient.get<ExecutionResponse<MenuDTO[]>>(`${schema}/Menus`),
   saveMenu: (data: MenuDTO[]) => httpClient.post<ExecutionResponse<MenuDTO[]>>(`${schema}/Menus`, data),

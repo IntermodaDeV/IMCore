@@ -1,5 +1,5 @@
 import React from 'react'
-import { AlertDialog, Button, XStack, YStack, Text, Sheet  } from 'tamagui'
+import { AlertDialog, Button, XStack, YStack, Text, Spinner  } from 'tamagui'
 import { TriangleAlert } from 'lucide-react-native'
 import { shadows } from '../../theme/shadows'
 
@@ -12,6 +12,7 @@ interface ConfirmDialogProps {
     confirmLabel?: string
     onConfirm: () => void
     onCancel?: () => void
+    loading?: boolean
 }
 
 export default function ConfirmDialog({
@@ -22,9 +23,17 @@ export default function ConfirmDialog({
     confirmColor = '#FF551A',
     onConfirm,
     onCancel,
+    confirmLabel = 'Aceptar',
+    loading
 }: ConfirmDialogProps) {
     return (
-        <AlertDialog open={open} onOpenChange={onOpenChange}>
+        <AlertDialog 
+            open={open}   
+            onOpenChange={(value) => {
+            if (!loading) {
+                onOpenChange(value)
+            }
+        }}>
             <AlertDialog.Portal>
                 <AlertDialog.Overlay
                     key="overlay"
@@ -36,7 +45,7 @@ export default function ConfirmDialog({
                     <AlertDialog.Content
                         elevate
                         key="content"
-                        width="80%"
+                        width="85%"
                         alignSelf="center"
                         enterStyle={{ y: -12, opacity: 0, scale: 0.94 }}
                         exitStyle={{ y: 8, opacity: 0, scale: 0.96 }}
@@ -89,43 +98,52 @@ export default function ConfirmDialog({
 
                         {/* Botones */}
                         <XStack gap="$3" width="100%" marginTop="$1">
-                            <AlertDialog.Cancel asChild>
-                                <Button
-                                    flex={1}
-                                    height={42}
-                                    borderRadius="$4"
-                                    backgroundColor="$buttonSecondary"
-                                    borderWidth={0}
-                                    pressStyle={{ opacity: 0.7 }}
-                                    onPress={() => {
-                                        onCancel?.()
-                                        onOpenChange(false)
-                                    }}
-                                >
-                                    <Text fontSize={14} fontWeight="600" color="$text">
-                                        Cancelar
-                                    </Text>
-                                </Button>
-                            </AlertDialog.Cancel>
+                        <AlertDialog.Cancel asChild>
+                            <Button
+                                flex={1}
+                                height={42}
+                                borderRadius="$4"
+                                backgroundColor="$buttonSecondary"
+                                borderWidth={0}
+                                disabled={loading}
+                                opacity={loading ? 0.6 : 1}
+                                pressStyle={{ opacity: 0.7 }}
+                                onPress={() => {
+                                if (loading) return
+                                    onCancel?.()
+                                    onOpenChange(false)
+                                }}
+                            >
+                                <Text fontSize={14} fontWeight="600" color="$text">
+                                Cancelar
+                                </Text>
+                            </Button>
+                        </AlertDialog.Cancel>
 
-                            <AlertDialog.Action asChild>
-                                <Button
-                                    flex={1}
-                                    height={42}
-                                    borderRadius="$4"
-                                    backgroundColor={'$primary'}
-                                    borderWidth={0}
-                                    pressStyle={{ opacity: 0.7 }}
-                                    onPress={() => {
-                                        onConfirm()
-                                        onOpenChange(false)
-                                    }}
-                                >
-                                    <Text fontSize={14} fontWeight="600" color="white">
-                                        Aceptar
-                                    </Text>
-                                </Button>
-                            </AlertDialog.Action>
+                        {/* <AlertDialog.Action asChild> */}
+                        <Button
+                            flex={1}
+                            height={42}
+                            borderRadius="$4"
+                            backgroundColor="$primary"
+                            borderWidth={0}
+                            disabled={loading}
+                            opacity={loading ? 0.8 : 1}
+                            pressStyle={{ opacity: 0.7 }}
+                            onPress={() => {
+                            if (loading) return
+                                onConfirm()
+                            }}
+                        >
+                            <XStack gap="$2" alignItems="center">
+                            {loading && <Spinner size="small" color="white" />}
+
+                            <Text fontSize={14} fontWeight="600" color="white">
+                                {loading ? 'Guardando...' : confirmLabel}
+                            </Text>
+                            </XStack>
+                        </Button>
+                        {/* </AlertDialog.Action> */}
                         </XStack>
 
                     </YStack>

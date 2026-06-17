@@ -99,10 +99,10 @@ export const config = createTamagui({
       // =========================
       // SURFACES
       // =========================
-      background: '#061426',
-      backgroundPage: '#0B1F38',
-      backgroundSurface: '#163B63',
-      backgroundElevated: '#12304F',
+      background: '#0E1117',
+      backgroundPage: '#12161D',      
+      backgroundSurface: '#171C24', 
+      backgroundElevated: '#1D232D',
 
       // =========================
       // TEXT
@@ -115,8 +115,8 @@ export const config = createTamagui({
       // =========================
       // BORDERS
       // =========================
-      border: '#2B537D',
-      borderColor: '#2B537D',
+      border: '#888888',
+      borderColor: '#1F252E',
 
       // =========================
       // BRAND
@@ -131,7 +131,7 @@ export const config = createTamagui({
       buttonPrimary: '#FF551A',
       buttonPrimaryText: '#FFFFFF',
 
-      buttonSecondary: '#163B63',
+      buttonSecondary: '#232B36',
       buttonSecondaryText: '#F8FAFC',
 
       // =========================

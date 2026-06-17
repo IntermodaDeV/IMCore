@@ -19,9 +19,11 @@ import { HeaderProvider } from './src/context/HeaderContext'
 import { AppHeader } from './src/components/commons/AppHeader'
 import { SCREENS } from './src/screens/screens'
 import { rootSecurity } from './src/screens/Security/rootSecurity'
+import SessionExpiredScreen from './src/navigation/SessionExpiredScreen'
+import RegisterScreen from './src/screens/Auth/RegistroScreen'
 
 function Root() {
-  const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage } = useAuth()
+  const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired } = useAuth()
   const Stack = createNativeStackNavigator()
   const { position: toastPosition } = useToastPosition()
   
@@ -37,6 +39,7 @@ function Root() {
       primary: '#FF551A',
     },
   }
+
   const navColors = navigationTheme[theme]
   if (loading) {
     return (
@@ -60,6 +63,16 @@ function Root() {
               setTransitionMessage(null)
             }}
           />
+        </Theme>
+      </TamaguiProvider>
+    )
+  }
+
+  if (sessionExpired) {
+    return (
+      <TamaguiProvider config={config} defaultTheme={theme}>
+        <Theme name={theme}>
+          <SessionExpiredScreen />
         </Theme>
       </TamaguiProvider>
     )
@@ -123,7 +136,10 @@ function Root() {
 
                     </>
                   ) : (
-                    <Stack.Screen name="Login" component={LoginScreen} />
+                    <>                    
+                      <Stack.Screen name="Login" component={LoginScreen} />
+                      <Stack.Screen name="Register" component={RegisterScreen} />
+                    </>
                   )
                   }
                 </Stack.Navigator>

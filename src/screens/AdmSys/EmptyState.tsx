@@ -90,7 +90,7 @@ export default function EmptyState({
       {/* Botón reutilizando estilo del error */}
       {onAction && (
         <TouchableOpacity onPress={onAction} activeOpacity={0.75} style={styles.button}>
-          <RefreshCw size={15} color="$white" style={{ marginRight: 6 }} />
+          <RefreshCw size={15} color="white" style={{ marginRight: 6 }} />
           <Text fontSize={13} fontWeight="700" color="white">
             {actionLabel}
           </Text>

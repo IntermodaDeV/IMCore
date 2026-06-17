@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Button, useTheme } from 'tamagui'
@@ -148,7 +149,7 @@ export default function MantenimientoDashboardScreen() {
     return (
       <YStack flex={1} backgroundColor="$background" alignItems="center" justifyContent="center" gap="$3">
         <Spinner size="large" color={ACCENT} />
-        <Text color="$foregroundMuted" fontSize={13}>
+        <Text color="$textMuted" fontSize={13}>
           Conectando con SharePoint…
         </Text>
       </YStack>
@@ -161,7 +162,7 @@ export default function MantenimientoDashboardScreen() {
         <Text color="$error" fontSize={14} textAlign="center">
           No se pudo conectar a SharePoint:
         </Text>
-        <Text color="$foregroundMuted" fontSize={12} textAlign="center">
+        <Text color="$textMuted" fontSize={12} textAlign="center">
           {error}
         </Text>
         <Button backgroundColor={ACCENT} color="white" onPress={() => cambiarPeriodo({})}>
@@ -171,13 +172,12 @@ export default function MantenimientoDashboardScreen() {
     )
   }
 
-  const periodoTxt =
-    `${MESES[mes ?? 1]} ${anio ?? ''}` + (semana ? ` · Semana ${semana}` : '')
+  const periodoTxt = `${MESES[mes ?? 1]} ${anio ?? ''}` + (semana ? ` · Semana ${semana}` : '')
 
   return (
     <ScrollView
       flex={1}
-      backgroundColor="$background"
+      backgroundColor="$backgroundPage"
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />
@@ -189,7 +189,7 @@ export default function MantenimientoDashboardScreen() {
           <Text fontSize={18} fontWeight="800" color="$text">
             🔧 Dashboard de Mantenimiento
           </Text>
-          <Text fontSize={12} color="$foregroundMuted">
+          <Text fontSize={12} color="$text">
             📅 {periodoTxt} · {filtros.area} · {filtros.prioridad} ·{' '}
             <Text fontWeight="700">{data?.Total ?? 0}</Text> registros
           </Text>
@@ -271,7 +271,7 @@ export default function MantenimientoDashboardScreen() {
           </YStack>
         ) : registros.length === 0 ? (
           <YStack height={160} alignItems="center" justifyContent="center">
-            <Text color="$foregroundMuted" fontSize={13}>
+            <Text color="$textMuted" fontSize={13}>
               No hay registros para los filtros seleccionados.
             </Text>
           </YStack>
@@ -306,7 +306,7 @@ export default function MantenimientoDashboardScreen() {
 function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
   const theme = useTheme()
   const txt = theme.text?.val ?? '#0F172A'
-  const muted = theme.foregroundMuted?.val ?? '#94A3B8'
+  const muted = theme.textMuted?.val ?? '#94A3B8'
   const grid = theme.border?.val ?? '#E2E8F0'
   const fmtMin = (n: number | null) => (n != null ? `${Math.round(n)} min` : '—')
   const pct = (n: number) => (kpis.total ? `${Math.round((n / kpis.total) * 100)}%` : '')
@@ -341,10 +341,11 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
             }))}
             radius={chartWidth / 3.4}
             innerRadius={chartWidth / 7}
-            showText
+            // showText
             textColor={txt}
             textSize={11}
             labelsPosition="outward"
+            textBackgroundRadius={0}
           />
           <YStack gap="$1.5" width="100%">
             {estado.map((d: any) => (
@@ -353,7 +354,7 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
                 <Text fontSize={12} color="$text" flex={1}>
                   {d.label}
                 </Text>
-                <Text fontSize={12} color="$foregroundMuted" marginRight="$2">
+                <Text fontSize={12} color="$textMuted" marginRight="$2">
                   {((d.value / totalEstado) * 100).toFixed(1)}%
                 </Text>
                 <Text fontSize={12} fontWeight="700" color="$text">
@@ -399,7 +400,7 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
 function TabAnalisis({ areas, tiposParo, tendencia, chartWidth }: any) {
   const theme = useTheme()
   const txt = theme.text?.val ?? '#0F172A'
-  const muted = theme.foregroundMuted?.val ?? '#94A3B8'
+  const muted = theme.textMuted?.val ?? '#94A3B8'
   const grid = theme.border?.val ?? '#E2E8F0'
   return (
     <YStack gap="$3">
@@ -428,7 +429,7 @@ function TabAnalisis({ areas, tiposParo, tendencia, chartWidth }: any) {
             curved
           />
         ) : (
-          <Text fontSize={12} color="$foregroundMuted">
+          <Text fontSize={12} color="$textMuted">
             Se necesitan al menos 2 días con registros para la tendencia.
           </Text>
         )}
@@ -483,7 +484,7 @@ function TabDetalle({ registros }: any) {
               </Text>
             </View>
           </XStack>
-          <Text fontSize={11} color="$foregroundMuted">
+          <Text fontSize={11} color="$textMuted">
             {(r.Fecha ?? '').slice(0, 10)} · {r.Area} · {r.TipoFalla}
           </Text>
           <XStack gap="$3" flexWrap="wrap">

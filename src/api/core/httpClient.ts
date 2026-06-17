@@ -2,7 +2,12 @@ import Config from 'react-native-config'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { refreshAccessToken } from '../auth/refreshToken'
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+type HttpMethod =
+  | 'GET'
+  | 'POST'
+  | 'PUT'
+  | 'PATCH'
+  | 'DELETE'
 
 type RequestOptions<TBody = any> = {
   method: HttpMethod
@@ -25,7 +30,9 @@ export class HttpError extends Error {
 }
 
 export class NetworkError extends Error {
-  constructor(message = 'No se pudo conectar con el servidor') {
+  constructor(
+    message = 'No se pudo conectar con el servidor'
+  ) {
     super(message)
     this.name = 'NetworkError'
   }
@@ -34,9 +41,14 @@ export class NetworkError extends Error {
 class HttpClient {
   private baseUrl = Config.API_URL
 
-  private async fetchRequest<TResponse>( fullUrl: string, options: RequestInit): Promise<TResponse> {
+  private async fetchRequest<TResponse>(
+    fullUrl: string,
+    options: RequestInit
+  ): Promise<TResponse> {
     const response = await fetch(fullUrl, options)
+
     const text = await response.text()
+
     if (!response.ok) {
       throw new HttpError(response.status, text)
     }
@@ -44,47 +56,84 @@ class HttpClient {
     return text ? JSON.parse(text) : null
   }
 
-  private buildQuery(params?: Record<string, any>) {
+  private buildQuery(
+    params?: Record<string, any>
+  ) {
     if (!params) return ''
 
     const query = new URLSearchParams()
 
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        query.append(key, String(value))
+    Object.entries(params).forEach(
+      ([key, value]) => {
+        if (
+          value !== undefined &&
+          value !== null
+        ) {
+          query.append(
+            key,
+            String(value)
+          )
+        }
       }
-    })
+    )
 
-    return query.toString() ? `?${query.toString()}` : ''
+    return query.toString()
+      ? `?${query.toString()}`
+      : ''
   }
 
-  async request<TResponse = any, TBody = any>({
+  async request<
+    TResponse = any,
+    TBody = any
+  >({
     method,
     url,
     body,
     params,
     headers,
   }: RequestOptions<TBody>): Promise<TResponse> {
-    const fullUrl = `${this.baseUrl}${url}${this.buildQuery(params)}`
-    const token = await AsyncStorage.getItem('accessToken')
+    const fullUrl =
+      `${this.baseUrl}${url}${this.buildQuery(params)}`
+
+    const token =
+      await AsyncStorage.getItem('accessToken')
 
     const options: RequestInit = {
       method,
       headers: {
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(body
+          ? {
+              'Content-Type':
+                'application/json',
+            }
+          : {}),
         ...(headers || {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body
+        ? JSON.stringify(body)
+        : undefined,
     }
 
     try {
-      return await this.fetchRequest<TResponse>(fullUrl, options)
+      return await this.fetchRequest<TResponse>(
+        fullUrl,
+        options
+      )
     } catch (error: any) {
-      if (error instanceof HttpError && error.status === 401) {
-        const newToken = await refreshAccessToken()
+      if (
+        error instanceof HttpError &&
+        error.status === 401
+      ) {
+        const newToken =
+          await refreshAccessToken()
+
         if (!newToken) {
-          throw error 
+          throw error
         }
 
         const retryOptions: RequestInit = {
@@ -95,14 +144,20 @@ class HttpClient {
           },
         }
 
-        return await this.fetchRequest<TResponse>(fullUrl, retryOptions)
+        return await this.fetchRequest<TResponse>(
+          fullUrl,
+          retryOptions
+        )
       }
 
       throw error
     }
   }
 
-  get<T>(url: string, params?: Record<string, any>) {
+  get<T>(
+    url: string,
+    params?: Record<string, any>
+  ) {
     return this.request<T>({
       method: 'GET',
       url,
@@ -110,7 +165,10 @@ class HttpClient {
     })
   }
 
-  post<T, B = any>(url: string, body?: B) {
+  post<T, B = any>(
+    url: string,
+    body?: B
+  ) {
     return this.request<T, B>({
       method: 'POST',
       url,
@@ -118,7 +176,10 @@ class HttpClient {
     })
   }
 
-  put<T, B = any>(url: string, body?: B) {
+  put<T, B = any>(
+    url: string,
+    body?: B
+  ) {
     return this.request<T, B>({
       method: 'PUT',
       url,
@@ -126,7 +187,10 @@ class HttpClient {
     })
   }
 
-  patch<T, B = any>(url: string, body?: B) {
+  patch<T, B = any>(
+    url: string,
+    body?: B
+  ) {
     return this.request<T, B>({
       method: 'PATCH',
       url,
@@ -134,7 +198,10 @@ class HttpClient {
     })
   }
 
-  delete<T>(url: string, params?: Record<string, any>) {
+  delete<T>(
+    url: string,
+    params?: Record<string, any>
+  ) {
     return this.request<T>({
       method: 'DELETE',
       url,

@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Config from 'react-native-config'
+import { sessionManager } from '../core/sessionManager'
 
 export async function refreshAccessToken() {
+  
   try {
     const refreshToken = await AsyncStorage.getItem('refreshToken')
     if (!refreshToken) {
@@ -19,12 +21,15 @@ export async function refreshAccessToken() {
     })
 
     const data = await response.json()
-
     if (!response.ok) {
       if (response.status === 401 || response.status === 400) {
+
         await AsyncStorage.removeItem('refreshToken')
         await AsyncStorage.removeItem('accessToken')
+
+        sessionManager.notifyExpired()
       }
+
       return null
     }
 

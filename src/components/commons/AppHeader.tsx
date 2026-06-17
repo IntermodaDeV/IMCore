@@ -21,7 +21,7 @@ export function AppHeader({ route, options }: { route: any; options: any }) {
       position="relative"
       zIndex={100}
     >
-      <Text fontSize="$1" color={theme.textMuted?.val} position="absolute" bottom={ Platform.OS === 'ios' ? insets.top - 14 : 0 } right={16}>
+      <Text fontSize="$1" color={theme.textMuted?.val} position="absolute" bottom={ Platform.OS === 'ios' ? insets.top - 14 : 35 } right={16}>
         1.0.0
       </Text>
       <XStack
