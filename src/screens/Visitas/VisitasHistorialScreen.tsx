@@ -7,6 +7,7 @@ import Share from 'react-native-share'
 import ViewShot, { captureRef } from 'react-native-view-shot'
 import { CameraRoll } from '@react-native-camera-roll/camera-roll'
 import Page from '../../components/commons/Page'
+import SearchInput from '../../components/commons/SearchInput'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
@@ -35,6 +36,7 @@ export default function VisitasHistorialScreen() {
   const { showToast } = useShowToast()
 
   const [data, setData] = useState<IHistorial[]>([])
+  const [filtered, setFiltered] = useState<IHistorial[]>([])
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [selected, setSelected] = useState<IHistorial | null>(null)
@@ -64,6 +66,11 @@ export default function VisitasHistorialScreen() {
   useEffect(() => {
     load()
   }, [])
+
+  // Mantener la lista filtrada en sync cuando se recarga la data
+  useEffect(() => {
+    setFiltered(data)
+  }, [data])
 
   const capturarQr = async (): Promise<string | null> => {
     try {
@@ -158,6 +165,14 @@ export default function VisitasHistorialScreen() {
             }
           >
             <YStack padding="$4" gap="$3">
+              {data.length > 0 && (
+                <SearchInput
+                  data={data}
+                  searchKeys={['Personas', 'VisitTo']}
+                  onResults={setFiltered}
+                  placeholder="Buscar por visitante o a quién visita..."
+                />
+              )}
               {data.length === 0 ? (
                 <YStack alignItems="center" paddingVertical="$10" gap="$3">
                   <ClipboardList size={48} color="#94A3B8" />
@@ -165,8 +180,15 @@ export default function VisitasHistorialScreen() {
                     Aún no hay pases generados
                   </Text>
                 </YStack>
+              ) : filtered.length === 0 ? (
+                <YStack alignItems="center" paddingVertical="$10" gap="$3">
+                  <ClipboardList size={48} color="#94A3B8" />
+                  <Text color="$textMuted" fontSize={14}>
+                    Sin resultados para la búsqueda
+                  </Text>
+                </YStack>
               ) : (
-                data.map((h) => {
+                filtered.map((h) => {
                   const motivo = h.Motivo === 'Otros' && h.VisitReasonOther ? h.VisitReasonOther : h.Motivo
                   return (
                     <YStack
