@@ -20,6 +20,7 @@ import { AppHeader } from './src/components/commons/AppHeader'
 import { SCREENS } from './src/screens/screens'
 import { rootSecurity } from './src/screens/Security/rootSecurity'
 import SessionExpiredScreen from './src/navigation/SessionExpiredScreen'
+import RegisterScreen from './src/screens/Auth/RegistroScreen'
 
 function Root() {
   const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired } = useAuth()
@@ -135,7 +136,10 @@ function Root() {
 
                     </>
                   ) : (
-                    <Stack.Screen name="Login" component={LoginScreen} />
+                    <>                    
+                      <Stack.Screen name="Login" component={LoginScreen} />
+                      <Stack.Screen name="Register" component={RegisterScreen} />
+                    </>
                   )
                   }
                 </Stack.Navigator>

@@ -171,8 +171,9 @@ export default function AprobacionSolicitudCompra() {
           />
 
           <ScrollView
-            showsVerticalScrollIndicator={false}
             style={{ flex: 1 }}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={false}
           >
             {(filtered?.length ?? 0) === 0 ? (
               <EmptyState onAction={getInfo} />
@@ -319,6 +320,7 @@ export default function AprobacionSolicitudCompra() {
 
                     {solicitud.expandido && (
                       <ScrollView
+                        nestedScrollEnabled={true}
                         showsVerticalScrollIndicator={false}
                         style={{ maxHeight: 200 }}
                         contentContainerStyle={{ paddingVertical: 8 }}

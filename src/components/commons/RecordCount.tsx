@@ -1,4 +1,5 @@
 import React from 'react'
+import { Platform } from 'react-native'
 import { XStack, Text } from 'tamagui'
 
 type RecordCountProps = {
@@ -6,15 +7,13 @@ type RecordCountProps = {
   label?: string
 }
 
-export default function RecordCount({
-  count,
-  label = 'Registros',
-}: RecordCountProps) {
+export default function RecordCount({ count, label = 'Registros' }: RecordCountProps) {
   return (
     <XStack
       alignItems="center"
       justifyContent="space-between"
       paddingTop="$2"
+      marginBottom={Platform.OS === 'ios' ? '$2' : 0}
     >
       <Text
         fontSize="$2"
