@@ -4,6 +4,7 @@ import HomeScreen from './AdmSys/HomeScreen'
 import NotFoundScreen from './AdmSys/NotFoundScreen'
 import { ScreensCadenaSuministro } from './CadenaSuministro'
 import { ScreensMantenimiento } from './Mantenimiento'
+import { ScreensVisitas } from './Visitas'
 import { rootSecurity } from './Security/rootSecurity'
 import ProfileScreen from './Security/Users/ProfileScreen'
 
@@ -16,6 +17,7 @@ export const SCREENS: Record<string, TScreenEntry> = {
   ...rootSecurity,
   ...ScreensCadenaSuministro,
   ...ScreensMantenimiento,
+  ...ScreensVisitas,
 
   not_found: NotFoundScreen,
 };
