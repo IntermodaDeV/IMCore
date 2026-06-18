@@ -15,7 +15,20 @@ type RequestOptions<TBody = any> = {
   body?: TBody
   params?: Record<string, any>
   headers?: Record<string, string>
+  // Tiempo máximo de espera en ms. Por defecto DEFAULT_TIMEOUT.
+  // Usar 0 para desactivar el timeout (peticiones largas tipo SharePoint).
+  timeoutMs?: number
 }
+
+// Opciones extra por petición (ej. timeout). Permite que llamadas largas
+// (SharePoint) suban el tiempo de espera sin afectar al resto de la app.
+export type RequestConfig = {
+  timeoutMs?: number
+}
+
+// Timeout por defecto: una petición normal nunca debería tardar más de esto.
+// Evita que un fetch estancado deje un loader girando para siempre.
+const DEFAULT_TIMEOUT = 30000
 
 export class HttpError extends Error {
   status: number
@@ -43,17 +56,43 @@ class HttpClient {
 
   private async fetchRequest<TResponse>(
     fullUrl: string,
-    options: RequestInit
+    options: RequestInit,
+    timeoutMs: number = DEFAULT_TIMEOUT
   ): Promise<TResponse> {
-    const response = await fetch(fullUrl, options)
+    // timeoutMs <= 0 => sin límite (peticiones largas tipo SharePoint).
+    const controller =
+      timeoutMs > 0 ? new AbortController() : null
+    const timer =
+      controller != null
+        ? setTimeout(() => controller.abort(), timeoutMs)
+        : null
 
-    const text = await response.text()
+    try {
+      const response = await fetch(fullUrl, {
+        ...options,
+        signal: controller?.signal,
+      })
 
-    if (!response.ok) {
-      throw new HttpError(response.status, text)
+      const text = await response.text()
+
+      if (!response.ok) {
+        throw new HttpError(response.status, text)
+      }
+
+      return (text ? JSON.parse(text) : null) as TResponse
+    } catch (error: any) {
+      // Un fetch abortado por timeout llega como AbortError.
+      if (error?.name === 'AbortError') {
+        throw new NetworkError(
+          'La solicitud tardó demasiado y se canceló'
+        )
+      }
+      throw error
+    } finally {
+      if (timer != null) {
+        clearTimeout(timer)
+      }
     }
-
-    return text ? JSON.parse(text) : null
   }
 
   private buildQuery(
@@ -91,6 +130,7 @@ class HttpClient {
     body,
     params,
     headers,
+    timeoutMs,
   }: RequestOptions<TBody>): Promise<TResponse> {
     const fullUrl =
       `${this.baseUrl}${url}${this.buildQuery(params)}`
@@ -122,7 +162,8 @@ class HttpClient {
     try {
       return await this.fetchRequest<TResponse>(
         fullUrl,
-        options
+        options,
+        timeoutMs
       )
     } catch (error: any) {
       if (
@@ -146,7 +187,8 @@ class HttpClient {
 
         return await this.fetchRequest<TResponse>(
           fullUrl,
-          retryOptions
+          retryOptions,
+          timeoutMs
         )
       }
 
@@ -156,56 +198,66 @@ class HttpClient {
 
   get<T>(
     url: string,
-    params?: Record<string, any>
+    params?: Record<string, any>,
+    config?: RequestConfig
   ) {
     return this.request<T>({
       method: 'GET',
       url,
       params,
+      timeoutMs: config?.timeoutMs,
     })
   }
 
   post<T, B = any>(
     url: string,
-    body?: B
+    body?: B,
+    config?: RequestConfig
   ) {
     return this.request<T, B>({
       method: 'POST',
       url,
       body,
+      timeoutMs: config?.timeoutMs,
     })
   }
 
   put<T, B = any>(
     url: string,
-    body?: B
+    body?: B,
+    config?: RequestConfig
   ) {
     return this.request<T, B>({
       method: 'PUT',
       url,
       body,
+      timeoutMs: config?.timeoutMs,
     })
   }
 
   patch<T, B = any>(
     url: string,
-    body?: B
+    body?: B,
+    config?: RequestConfig
   ) {
     return this.request<T, B>({
       method: 'PATCH',
       url,
       body,
+      timeoutMs: config?.timeoutMs,
     })
   }
 
   delete<T>(
     url: string,
-    params?: Record<string, any>
+    params?: Record<string, any>,
+    config?: RequestConfig
   ) {
     return this.request<T>({
       method: 'DELETE',
       url,
       params,
+      timeoutMs: config?.timeoutMs,
     })
   }
 }
