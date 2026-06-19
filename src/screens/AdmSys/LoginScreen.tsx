@@ -184,6 +184,7 @@ export default function LoginScreen() {
                       value={value}
                       onChangeText={onChange}
                       size="$4"
+                      color="$black"
                       borderWidth={0}
                       backgroundColor="transparent"
                       autoCapitalize="none"
@@ -221,6 +222,7 @@ export default function LoginScreen() {
                       onChangeText={onChange}
                       size="$4"
                       borderWidth={0}
+                      color="$black"
                       backgroundColor="transparent"
                     />
 
