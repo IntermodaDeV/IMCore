@@ -58,7 +58,7 @@ export default function UsersScreen() {
   const [deleteCodeDialog, setDeleteCodeDialog] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
   const [deletingCode, setDeletingCode] = useState<{ userId: number; keyVar: string } | null>(null) 
-  const { user } = useAuth()
+  const { user, companyId } = useAuth()
   const { showToast } = useShowToast()
 
   const defaultValues: ChangePasswordForm = {

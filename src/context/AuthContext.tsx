@@ -6,6 +6,8 @@ import { sessionManager } from '../api/core/sessionManager'
 
 type AuthContextType = {
   user: UsersDTO | null
+  companyId: number | null
+  setCompanyId: (companyId: number | null) => Promise<void>
   login: (user: UsersDTO) => Promise<void>
   logout: () => Promise<void>
   isAuthenticated: boolean
@@ -30,6 +32,7 @@ export const AuthProvider = ({
   children: React.ReactNode
 }) => {
   const [user, setUser] = useState<UsersDTO | null>(null)
+  const [companyId, setCompanyIdState] = useState<number | null>(null)
   const [themeState, setThemeState] = useState<'light' | 'dark'>('light')
   const [loading, setLoading] = useState(true)
   const [transitioning, setTransitioning] = useState(false)
@@ -41,9 +44,17 @@ export const AuthProvider = ({
       try {
         const savedUser = await AsyncStorage.getItem('user')
         const savedTheme = await AsyncStorage.getItem('theme')
+        const savedCompanyId = await AsyncStorage.getItem('companyId')
 
         if (savedUser) {
-          setUser(JSON.parse(savedUser))
+          const parsedUser = JSON.parse(savedUser)
+          setUser(parsedUser)
+
+          if (savedCompanyId != null) {
+            setCompanyIdState(Number(savedCompanyId))
+          } else if (parsedUser?.DefaultCompany != null) {
+            setCompanyIdState(Number(parsedUser.DefaultCompany))
+          }
         }
 
         if (
@@ -85,11 +96,32 @@ export const AuthProvider = ({
     }
   }
 
+  const setCompanyId = async (newCompanyId: number | null) => {
+    try {
+      setCompanyIdState(newCompanyId)
+
+      if (newCompanyId == null) {
+        await AsyncStorage.removeItem('companyId')
+      } else {
+        await AsyncStorage.setItem('companyId', String(newCompanyId))
+      }
+    } catch (error) {
+      console.log('CompanyId error', error)
+    }
+  }
+
   const login = async (userData: UsersDTO) => {
     try {
       setSessionExpired(false)
 
       setUser(userData)
+
+      const defaultCompany =
+        userData?.DefaultCompany != null
+          ? Number(userData.DefaultCompany)
+          : null
+
+      setCompanyIdState(defaultCompany)
 
       const userTheme =
         userData?.Theme === 'dark'
@@ -107,6 +139,12 @@ export const AuthProvider = ({
         'theme',
         userTheme
       )
+
+      if (defaultCompany != null) {
+        await AsyncStorage.setItem('companyId', String(defaultCompany))
+      } else {
+        await AsyncStorage.removeItem('companyId')
+      }
 
       setTransitionMessage('Iniciando sesión...')
       setTransitioning(true)
@@ -132,6 +170,7 @@ export const AuthProvider = ({
       }
 
       setUser(null)
+      setCompanyIdState(null)
 
       await Promise.all([
         AsyncStorage.removeItem('user'),
@@ -139,10 +178,12 @@ export const AuthProvider = ({
         AsyncStorage.removeItem('menu'),
         AsyncStorage.removeItem('accessToken'),
         AsyncStorage.removeItem('refreshToken'),
+        AsyncStorage.removeItem('companyId'),
       ])
     } catch (e) {
       console.log('Error logout', e)
       setUser(null)
+      setCompanyIdState(null)
     }
   }
 
@@ -150,6 +191,8 @@ export const AuthProvider = ({
     <AuthContext.Provider
       value={{
         user,
+        companyId,
+        setCompanyId,
         login,
         logout,
         isAuthenticated: !!user,

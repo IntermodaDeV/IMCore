@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox,styled } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
-import Page from '../../../components/commons/Page'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
-import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
+import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, IUserCompanies, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
 import { securityService } from '../../../api/modules/security/security.service'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
@@ -16,7 +15,6 @@ import AppSelect from '../../../components/commons/AppSelect'
 import AccordionSection from '../../../components/commons/AccordionSection'
 import { handleError } from '../../../utils/errorHandler'
 import { usePageHeader } from '../../../hooks/usePageHeader'
-import * as Icons from 'lucide-react-native'
 import { useUpdatePageHeader } from '../../../hooks/useUpdatePageHeader'
 import { shadows } from '../../../theme/shadows'
 
@@ -78,8 +76,18 @@ export default function UsersForm() {
                 if (Id) {
                     const response: ExecutionResponse<UsersDTO[]> = await securityService.getUserById(Id)
                     if (response.Success) {
-                        reset(response.Data[0])
-                        setUser_Code(response.Data[0]?.Code)
+                        const userData = response.Data[0]
+                        reset(userData)
+                        setUser_Code(userData?.Code)
+
+                        // Cargar los países asignados al usuario y marcar el predeterminado
+                        const respCompanies: ExecutionResponse<IUserCompanies[]> = await securityService.getCompaniesByUser(userData?.Code)
+                        if (respCompanies.Success) {
+                            const userCompanies = (respCompanies.Data ?? []).filter((c) => c.Status_Id === 1)
+                            setValue('Companies', userCompanies.map((c) => String(c.Company_Id)).join(','))
+                            const defaultCompany = userCompanies.find((c) => c.IsDefault)
+                            setValue('DefaultCompany_Id', defaultCompany ? Number(defaultCompany.Company_Id) : null)
+                        }
                     } else {
                         showToast('error', 'Error', response?.ErrorMessage || 'Error al obtener la información', 5000, 'bottom')
                         setLoading(false)
@@ -122,6 +130,16 @@ export default function UsersForm() {
         setLoadingSave(true)
 
         try {
+            // El SP espera Companies como un string JSON con [{ Company_Id, IsDefault }]
+            const companyIds = (data?.Companies ?? '')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            const companiesPayload = companyIds.map((id) => ({
+                Company_Id: Number(id),
+                IsDefault: Number(id) === Number(data?.DefaultCompany_Id),
+            }))
+
             let Info: UsersDTO = {
                 Id: Id ? Id : -1,
                 Code: data?.Code,
@@ -132,7 +150,7 @@ export default function UsersForm() {
                 ValidateAD: data?.ValidateAD,
                 PasswordHash: data?.ValidateAD ? '' : data?.PasswordHash,
                 Roles: data?.Roles,
-                Companies: data?.Companies,
+                Companies: JSON.stringify(companiesPayload),
                 DefaultCompany_Id: data?.DefaultCompany_Id ?? null,
                 Create_By: user?.Code,
             }

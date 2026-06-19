@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO, UsersSettingsDTO, IAccessControl, ITypes, IMenuControl, IUserExternalCodes, IQuickActions, IRegister, CompaniesDTO } from './security.types'
+import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO, UsersSettingsDTO, IAccessControl, ITypes, IMenuControl, IUserExternalCodes, IUserCompanies, IQuickActions, IRegister, CompaniesDTO } from './security.types'
 
 const schema = 'Security'
 export const securityService = {
@@ -42,6 +42,7 @@ export const securityService = {
   getRolById: (Id: number) => httpClient.get<ExecutionResponse<RolesDTO[]>>(`${schema}/RolById?Id=${Id}`),
 
   getCompanies: () => httpClient.get<ExecutionResponse<CompaniesDTO[]>>(`${schema}/Companies`),
+  getCompaniesByUser: (User_Code: string) => httpClient.get<ExecutionResponse<IUserCompanies[]>>(`${schema}/CompaniesByUser?User_Code=${User_Code}`),
 
   getTypesByCategory: (Category: string) => httpClient.get<ExecutionResponse<ITypes[]>>(`${schema}/TypesByCategory?Category=${Category}`),
   getQuickActions: (User_Code: string) => httpClient.get<ExecutionResponse<IQuickActions[]>>(`${schema}/QuickActions?User_Code=${User_Code}`),
