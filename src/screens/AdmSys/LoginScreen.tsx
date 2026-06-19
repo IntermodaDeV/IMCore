@@ -185,7 +185,7 @@ export default function LoginScreen() {
                       onChangeText={onChange}
                       size="$4"
                       color="$black"
-                      placeholderTextColor="$black"
+                      placeholderTextColor="$gray"
                       borderWidth={0}
                       backgroundColor="transparent"
                       autoCapitalize="none"
@@ -224,7 +224,7 @@ export default function LoginScreen() {
                       size="$4"
                       borderWidth={0}
                       color="$black"
-                      placeholderTextColor='$black'
+                      placeholderTextColor='$gray'
                       backgroundColor="transparent"
                     />
 
