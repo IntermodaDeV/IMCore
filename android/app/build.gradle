@@ -79,7 +79,7 @@ android {
 
     namespace "com.IMCore"
     defaultConfig {
-        applicationId "com.IMCore"
+        applicationId "hn.com.intermoda.imcore"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
