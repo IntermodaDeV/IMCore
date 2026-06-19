@@ -491,7 +491,7 @@ function TabDetalle({ registros }: any) {
         >
           <XStack justifyContent="space-between" alignItems="center">
             <Text fontSize={13} fontWeight="700" color="$text">
-              {r.IDMantenimiento || '—'}
+              {r.CodigoTicket || '—'}
             </Text>
             <View
               paddingHorizontal="$2"
