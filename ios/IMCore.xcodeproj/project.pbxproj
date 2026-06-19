@@ -271,6 +271,8 @@
 				DEVELOPMENT_TEAM = 73JHK876Z7;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = IMCore/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = IMCore;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -282,7 +284,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "hn.com.intermoda.imcore";
+				PRODUCT_BUNDLE_IDENTIFIER = hn.com.intermoda.imcore;
 				PRODUCT_NAME = IMCore;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -301,6 +303,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 73JHK876Z7;
 				INFOPLIST_FILE = IMCore/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = IMCore;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -312,7 +316,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "hn.com.intermoda.imcore";
+				PRODUCT_BUNDLE_IDENTIFIER = hn.com.intermoda.imcore;
 				PRODUCT_NAME = IMCore;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
