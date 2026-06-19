@@ -4,13 +4,13 @@ import { useNavigation, useRoute } from '@react-navigation/native'
 import Page from '../../../components/commons/Page'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
-import { AccessDTO, IAccessControl, IMenuControl, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
+import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
 import { securityService } from '../../../api/modules/security/security.service'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import { useShowToast } from '../../../utils/useShowToast'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
-import { Check as CheckIcon, Shield, Eye, EyeOff, User, ArrowLeft, ChevronDown, ChevronRight} from 'lucide-react-native'
+import { Check as CheckIcon, Shield, Eye, EyeOff, User, ArrowLeft, ChevronDown, ChevronRight, Globe, Star} from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
 import AppSelect from '../../../components/commons/AppSelect'
 import AccordionSection from '../../../components/commons/AccordionSection'
@@ -31,6 +31,7 @@ export default function UsersForm() {
     const [loadingSave, setLoadingSave] = useState(false)
     const [activeTab, setActiveTab] = useState<TabType>('general')
     const [roles, setRoles] = useState<RolesDTO[]>([])
+    const [companies, setCompanies] = useState<CompaniesDTO[]>([])
     const [user_Code, setUser_Code] = useState<string>([])
     const [access, setAccess] = useState<AccessDTO[]>([])
     const [permisos, setPermisos] = useState<MenuDTO[]>([])
@@ -57,6 +58,8 @@ export default function UsersForm() {
         Status_Id: 1,
         Create_By: '',
         Roles: '',
+        Companies: '',
+        DefaultCompany_Id: null,
         PasswordHash: '',
         ValidateAD: false,
     }
@@ -70,6 +73,8 @@ export default function UsersForm() {
             if(activeTab === 'general'){
                 const responseRoles: ExecutionResponse<RolesDTO[]> = await securityService.getRoles()
                 setRoles(responseRoles.Data.filter((i: RolesDTO) => i?.Status_Id === 1))
+                const responseCompanies: ExecutionResponse<CompaniesDTO[]> = await securityService.getCompanies()
+                setCompanies(responseCompanies.Data?.filter((i: CompaniesDTO) => i?.Status_Id === 1) ?? [])
                 if (Id) {
                     const response: ExecutionResponse<UsersDTO[]> = await securityService.getUserById(Id)
                     if (response.Success) {
@@ -127,6 +132,8 @@ export default function UsersForm() {
                 ValidateAD: data?.ValidateAD,
                 PasswordHash: data?.ValidateAD ? '' : data?.PasswordHash,
                 Roles: data?.Roles,
+                Companies: data?.Companies,
+                DefaultCompany_Id: data?.DefaultCompany_Id ?? null,
                 Create_By: user?.Code,
             }
 
@@ -635,6 +642,177 @@ export default function UsersForm() {
                                             )
                                         })}
                                     </AccordionSection>
+
+                                    <Controller
+                                        control={control}
+                                        name="Companies"
+                                        rules={{
+                                            validate: (value) => {
+                                                const list = (value ?? '')
+                                                    .split(',')
+                                                    .map((r) => r.trim())
+                                                    .filter(Boolean)
+
+                                                return list.length > 0 || 'Debe asignar al menos un país'
+                                            }
+                                        }}
+                                        render={() => null}
+                                    />
+
+                                    <Controller
+                                        control={control}
+                                        name="DefaultCompany_Id"
+                                        rules={{
+                                            validate: (value) => {
+                                                const list = (watch('Companies') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+                                                if (list.length === 0) return true
+                                                if (value === null || value === undefined) return 'Debe elegir un país por defecto'
+                                                return list.includes(String(value)) || 'El país por defecto debe estar entre los asignados'
+                                            }
+                                        }}
+                                        render={() => null}
+                                    />
+
+                                    <AccordionSection
+                                        title="Países asignados"
+                                        subtitle={
+                                            (watch('Companies') ?? '').split(',').map((s) => s.trim()).filter(Boolean).length + ' países activos'
+                                        }
+                                        subtitleError={errors.Companies?.message || errors.DefaultCompany_Id?.message}
+                                    >
+                                        {companies.map((company) => {
+                                            const assigned = (watch('Companies') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+                                            const idStr = String(company.Id)
+                                            const isChecked = assigned.includes(idStr)
+                                            const defaultId = watch('DefaultCompany_Id')
+                                            const isDefault = defaultId !== null && defaultId !== undefined && String(defaultId) === idStr
+
+                                            const toggleCompany = () => {
+                                                let updated: string[]
+
+                                                if (isChecked) {
+                                                    updated = assigned.filter((id) => id !== idStr)
+                                                    if (isDefault) {
+                                                        setValue('DefaultCompany_Id', updated.length ? Number(updated[0]) : null, {
+                                                            shouldValidate: true
+                                                        })
+                                                    }
+                                                } else {
+                                                    updated = [...assigned, idStr]
+                                                    if (defaultId === null || defaultId === undefined || (defaultId as any) === '') {
+                                                        setValue('DefaultCompany_Id', company.Id, { shouldValidate: true })
+                                                    }
+                                                }
+
+                                                setValue('Companies', updated.join(','), {
+                                                    shouldValidate: true
+                                                })
+                                            }
+
+                                            const setAsDefault = () => {
+                                                if (!isChecked) {
+                                                    setValue('Companies', [...assigned, idStr].join(','), {
+                                                        shouldValidate: true
+                                                    })
+                                                }
+                                                setValue('DefaultCompany_Id', company.Id, { shouldValidate: true })
+                                            }
+
+                                            return (
+                                                <XStack
+                                                    key={company.Id}
+                                                    backgroundColor="$backgroundSurface"
+                                                    borderRadius="$4"
+                                                    paddingVertical="$3"
+                                                    paddingHorizontal="$4"
+                                                    alignItems="center"
+                                                    borderWidth={0}
+                                                    overflow="hidden"
+                                                    onPress={toggleCompany}
+                                                    pressStyle={{ opacity: 0.75, scale: 0.99 }}
+                                                    gap="$3"
+                                                >
+                                                    {/* Franja izquierda */}
+                                                    <View
+                                                        position="absolute"
+                                                        left={0} top={0} bottom={0}
+                                                        width={4}
+                                                        backgroundColor={isChecked ? '$primary' : 'transparent'}
+                                                    />
+
+                                                    {/* Ícono */}
+                                                    <View
+                                                        width={36}
+                                                        height={36}
+                                                        borderRadius={18}
+                                                        backgroundColor={isChecked ? 'rgba(255, 85, 26, 0.12)' : '$backgroundElevated'}
+                                                        justifyContent="center"
+                                                        alignItems="center"
+                                                    >
+                                                        <Globe size={18} color={isChecked ? '#FF551A' : '#94A3B8'} />
+                                                    </View>
+
+                                                    {/* Info */}
+                                                    <YStack flex={1} gap="$0.5">
+                                                        <Text fontSize={13} fontWeight="700" color="$text">
+                                                            {company.Name}
+                                                        </Text>
+                                                        <XStack alignItems="center" gap="$2">
+                                                            <Text fontSize={11} color="$textMuted" numberOfLines={1}>
+                                                                {company.Code}
+                                                            </Text>
+                                                            {isDefault && (
+                                                                <View
+                                                                    backgroundColor="rgba(255, 85, 26, 0.12)"
+                                                                    paddingHorizontal="$2"
+                                                                    paddingVertical={2}
+                                                                    borderRadius="$10"
+                                                                >
+                                                                    <Text fontSize={9} color="$primary" fontWeight="700">
+                                                                        Predeterminado
+                                                                    </Text>
+                                                                </View>
+                                                            )}
+                                                        </XStack>
+                                                    </YStack>
+
+                                                    {/* Botón predeterminado */}
+                                                    <View
+                                                        onPress={(e: any) => {
+                                                            e?.stopPropagation?.()
+                                                            setAsDefault()
+                                                        }}
+                                                        pressStyle={{ opacity: 0.6 }}
+                                                        padding="$1.5"
+                                                        hitSlop={8}
+                                                        alignItems="center"
+                                                        justifyContent="center"
+                                                    >
+                                                        <Star
+                                                            size={20}
+                                                            color={isDefault ? '#FF551A' : '#94A3B8'}
+                                                            fill={isDefault ? '#FF551A' : 'transparent'}
+                                                        />
+                                                    </View>
+
+                                                    {/* Checkbox */}
+                                                    <Checkbox
+                                                        id={`company-${company.Id}`}
+                                                        size="$4"
+                                                        checked={isChecked}
+                                                        onCheckedChange={toggleCompany}
+                                                        backgroundColor={isChecked ? '$primary' : 'transparent'}
+                                                        borderColor={isChecked ? '$primary' : '$textMuted'}
+                                                    >
+                                                        <Checkbox.Indicator>
+                                                            <CheckIcon size={13} color="#FF551A" />
+                                                        </Checkbox.Indicator>
+                                                    </Checkbox>
+                                                </XStack>
+                                            )
+                                        })}
+                                    </AccordionSection>
+
 
 
                                     {!Id && (
