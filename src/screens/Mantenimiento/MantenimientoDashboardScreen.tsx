@@ -473,13 +473,25 @@ function TabRankings({ topMecanicos, topFallas }: any) {
 }
 
 // ════════ TAB: Detalle ════════
+const DETALLE_PAGINA = 30
+
 function TabDetalle({ registros }: any) {
+  const [visibles, setVisibles] = useState(DETALLE_PAGINA)
+
+  // Reiniciar la paginación cuando cambian los registros (filtros, período).
+  useEffect(() => {
+    setVisibles(DETALLE_PAGINA)
+  }, [registros])
+
+  const mostrados = registros.slice(0, visibles)
+  const hayMas = visibles < registros.length
+
   return (
     <YStack gap="$2">
       <Text fontSize={15} fontWeight="700" color="$text">
         📋 Detalle de Tickets ({registros.length})
       </Text>
-      {registros.map((r: any, i: number) => (
+      {mostrados.map((r: any, i: number) => (
         <YStack
           key={r.IDMantenimiento || i}
           backgroundColor="$card2"
@@ -491,7 +503,7 @@ function TabDetalle({ registros }: any) {
         >
           <XStack justifyContent="space-between" alignItems="center">
             <Text fontSize={13} fontWeight="700" color="$text">
-              {r.IDMantenimiento || '—'}
+              {r.CodigoTicket || '—'}
             </Text>
             <View
               paddingHorizontal="$2"
@@ -520,6 +532,20 @@ function TabDetalle({ registros }: any) {
           </XStack>
         </YStack>
       ))}
+
+      {hayMas && (
+        <Button
+          marginTop="$2"
+          backgroundColor="$card2"
+          borderWidth={1}
+          borderColor="$border"
+          onPress={() => setVisibles(v => v + DETALLE_PAGINA)}
+        >
+          <Text fontSize={13} fontWeight="700" color={ACCENT}>
+            Ver más ({registros.length - visibles} restantes)
+          </Text>
+        </Button>
+      )}
     </YStack>
   )
 }

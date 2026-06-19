@@ -36,6 +36,7 @@ export const config = createTamagui({
     color: {
       white: '#FFFFFF',
       black: '#000000',
+      gray: '#c1baba',
 
       ...BrandColors,
     },
