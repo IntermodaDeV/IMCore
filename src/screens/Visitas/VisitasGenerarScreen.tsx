@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Platform, PermissionsAndroid } from 'react-native'
 import { YStack, XStack, Text, Button, View, ScrollView, Spinner } from 'tamagui'
-import { Plus, X, QrCode, Share2, RotateCcw, Users, TriangleAlert, Calendar, Download } from 'lucide-react-native'
+import { Plus, X, QrCode, Share2, RotateCcw, Users, TriangleAlert, Calendar, Download, Repeat, CalendarRange } from 'lucide-react-native'
 import QRCode from 'react-native-qrcode-svg'
 import Share from 'react-native-share'
 import ViewShot, { captureRef } from 'react-native-view-shot'
@@ -27,6 +27,8 @@ type Generated = {
   visitTo: string
   motivo: string
   entryDate: string
+  isRecurrent: boolean
+  dias: string[]
 }
 
 const fmtDate = (d: Date) =>
@@ -36,6 +38,15 @@ const fmtDate = (d: Date) =>
 const prettyDate = (iso: string) => {
   const [y, m, d] = iso.split('-')
   return y && m && d ? `${d}/${m}/${y}` : iso
+}
+
+// Texto de vigencia para un pase ya generado
+const vigenciaTexto = (g: Generated) => {
+  if (g.isRecurrent && g.dias.length > 1) {
+    const sorted = [...g.dias].sort()
+    return `${prettyDate(sorted[0])} – ${prettyDate(sorted[sorted.length - 1])}`
+  }
+  return prettyDate(g.dias[0] ?? g.entryDate)
 }
 
 export default function VisitasGenerarScreen() {
@@ -48,7 +59,15 @@ export default function VisitasGenerarScreen() {
   const [motivoId, setMotivoId] = useState<number | undefined>(undefined)
   const [visitReasonOther, setVisitReasonOther] = useState('')
   const [entryDate, setEntryDate] = useState<Date>(new Date())
-  const [showPicker, setShowPicker] = useState(false)
+  // Recurrente
+  const [isRecurrent, setIsRecurrent] = useState(false)
+  const [recurMode, setRecurMode] = useState<'rango' | 'dias'>('rango')
+  const [startDate, setStartDate] = useState<Date>(new Date())
+  const [endDate, setEndDate] = useState<Date>(new Date())
+  const [diasList, setDiasList] = useState<string[]>([])
+  // Qué picker está abierto: 'single' | 'start' | 'end' | 'add' | null
+  const [pickerFor, setPickerFor] = useState<'single' | 'start' | 'end' | 'add' | null>(null)
+  const [addTemp, setAddTemp] = useState<Date>(new Date()) // día en edición (modo "agregar día" en iOS)
   const [motivos, setMotivos] = useState<IMotivo[]>([])
   const [loadingGen, setLoadingGen] = useState(false)
   const [result, setResult] = useState<Generated | null>(null)
@@ -85,6 +104,29 @@ export default function VisitasGenerarScreen() {
   const removePersona = (i: number) =>
     setPersonas((prev) => prev.filter((_, idx) => idx !== i))
 
+  // Construye la lista de días permitidos según el modo
+  const buildDias = (): string[] => {
+    if (!isRecurrent) return [fmtDate(entryDate)]
+    if (recurMode === 'rango') {
+      const out: string[] = []
+      const cur = new Date(startDate); cur.setHours(0, 0, 0, 0)
+      const end = new Date(endDate); end.setHours(0, 0, 0, 0)
+      while (cur <= end) {
+        out.push(fmtDate(cur))
+        cur.setDate(cur.getDate() + 1)
+      }
+      return out
+    }
+    return [...diasList].sort()
+  }
+
+  // Agrega un día a la lista (modo días específicos), sin duplicar
+  const addDia = (d: Date) => {
+    const iso = fmtDate(d)
+    setDiasList((prev) => (prev.includes(iso) ? prev : [...prev, iso].sort()))
+  }
+  const removeDia = (iso: string) => setDiasList((prev) => prev.filter((x) => x !== iso))
+
   // ── Generar ───────────────────────────────────────────────
   const generar = async () => {
     const cleanPersonas = personas.map((p) => p.trim()).filter(Boolean)
@@ -96,6 +138,12 @@ export default function VisitasGenerarScreen() {
       return showToast('error', 'Validación', 'Selecciona el motivo de la visita', 4000, 'bottom')
     if (isOtros && !visitReasonOther.trim())
       return showToast('error', 'Validación', 'Especifica el motivo de la visita', 4000, 'bottom')
+    if (isRecurrent && recurMode === 'rango' && endDate < startDate)
+      return showToast('error', 'Validación', 'La fecha "Hasta" no puede ser anterior a "Desde"', 4000, 'bottom')
+    if (isRecurrent && recurMode === 'dias' && diasList.length === 0)
+      return showToast('error', 'Validación', 'Selecciona al menos un día', 4000, 'bottom')
+
+    const dias = buildDias()
 
     setLoadingGen(true)
     try {
@@ -103,7 +151,9 @@ export default function VisitasGenerarScreen() {
         VisitTo: visitTo.trim(),
         Motivo_Id: motivoId,
         VisitReasonOther: isOtros ? visitReasonOther.trim() : null,
-        EntryDate: fmtDate(entryDate),
+        EntryDate: dias[0],
+        IsRecurrent: isRecurrent,
+        Dias: dias,
         Create_By: user?.Code ?? '',
         Personas: cleanPersonas,
       }
@@ -114,7 +164,9 @@ export default function VisitasGenerarScreen() {
           personas: cleanPersonas,
           visitTo: visitTo.trim(),
           motivo: isOtros ? visitReasonOther.trim() : selectedMotivo?.Name ?? '',
-          entryDate: fmtDate(entryDate),
+          entryDate: dias[0],
+          isRecurrent,
+          dias,
         })
       } else {
         showToast('error', 'Error', resp.ErrorMessage || 'No se pudo generar el pase', 5000, 'bottom')
@@ -153,7 +205,10 @@ export default function VisitasGenerarScreen() {
         return
       }
       const personasList = result.personas.join(', ')
-      const message = `🔐 Pase de acceso para: ${personasList}\n📅 Fecha: ${result.entryDate}\n⚠️ Código de uso único`
+      const vig = vigenciaTexto(result)
+      const message = result.isRecurrent
+        ? `🔐 Pase de acceso para: ${personasList}\n📅 Vigencia: ${vig} (${result.dias.length} días)`
+        : `🔐 Pase de acceso para: ${personasList}\n📅 Fecha: ${prettyDate(result.entryDate)}`
       await Share.open({ title: 'Pase de Acceso QR', message, url: uri, type: 'image/png', failOnCancel: false })
     } catch {
       // cancelar la hoja de compartir no es error
@@ -194,6 +249,12 @@ export default function VisitasGenerarScreen() {
     setMotivoId(undefined)
     setVisitReasonOther('')
     setEntryDate(new Date())
+    setIsRecurrent(false)
+    setRecurMode('rango')
+    setStartDate(new Date())
+    setEndDate(new Date())
+    setDiasList([])
+    setPickerFor(null)
   }
 
   // Cierra el resultado: limpia el formulario y regresa a la pantalla anterior
@@ -258,8 +319,13 @@ export default function VisitasGenerarScreen() {
                     quietZone={6}
                   />
                   <Text color="#1A1A2E" fontWeight="700" fontSize={15}>
-                    Ingreso: {prettyDate(result.entryDate)}
+                    {result.isRecurrent ? 'Vigencia: ' : 'Ingreso: '}{vigenciaTexto(result)}
                   </Text>
+                  {result.isRecurrent && (
+                    <Text color="#FF551A" fontWeight="700" fontSize={11} letterSpacing={1}>
+                      PASE RECURRENTE · {result.dias.length} DÍAS
+                    </Text>
+                  )}
                 </YStack>
               </ViewShot>
 
@@ -285,13 +351,25 @@ export default function VisitasGenerarScreen() {
 
                 <InfoRow label="Visita a" value={result.visitTo} />
                 <InfoRow label="Motivo" value={result.motivo} />
-                <InfoRow label="Fecha de ingreso" value={result.entryDate} />
+                <InfoRow label={result.isRecurrent ? 'Vigencia' : 'Fecha de ingreso'} value={vigenciaTexto(result)} />
+                {result.isRecurrent && <InfoRow label="Días habilitados" value={`${result.dias.length}`} />}
 
                 <XStack alignItems="center" gap="$2" marginTop="$2">
-                  <TriangleAlert size={15} color="#E53935" />
-                  <Text fontSize={12} color="#E53935" fontWeight="700">
-                    Código de uso único
-                  </Text>
+                  {result.isRecurrent ? (
+                    <>
+                      <Repeat size={15} color="#2E9E5B" />
+                      <Text fontSize={12} color="#2E9E5B" fontWeight="700">
+                        Pase recurrente · registra entrada/salida cada día
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Calendar size={15} color="#FF551A" />
+                      <Text fontSize={12} color="$primary" fontWeight="700">
+                        Registra entrada y salida del día
+                      </Text>
+                    </>
+                  )}
                 </XStack>
               </YStack>
             </YStack>
@@ -405,10 +483,33 @@ export default function VisitasGenerarScreen() {
             />
           )}
 
-          {/* Fecha de ingreso */}
-          <YStack gap="$1">
+          {/* Tipo de pase: único o recurrente */}
+          <XStack alignItems="center" justifyContent="space-between" marginTop="$1" gap="$2">
+            <XStack alignItems="center" gap="$2" flex={1}>
+              <Repeat size={16} color="#94A3B8" />
+              <YStack flex={1}>
+                <Text fontSize={14} fontWeight="700" color="$text">Pase recurrente</Text>
+                <Text fontSize={11} color="$textMuted">Para visitas de varios días (consultores, etc.)</Text>
+              </YStack>
+            </XStack>
             <View
-              onPress={() => setShowPicker((s) => !s)}
+              onPress={() => setIsRecurrent((v) => !v)}
+              pressStyle={{ opacity: 0.8 }}
+              width={48}
+              height={28}
+              borderRadius={14}
+              backgroundColor={isRecurrent ? '$primary' : '$border'}
+              padding={3}
+              justifyContent="center"
+            >
+              <View width={22} height={22} borderRadius={11} backgroundColor="white" alignSelf={isRecurrent ? 'flex-end' : 'flex-start'} />
+            </View>
+          </XStack>
+
+          {/* ÚNICO: una sola fecha */}
+          {!isRecurrent && (
+            <View
+              onPress={() => setPickerFor((p) => (p === 'single' ? null : 'single'))}
               pressStyle={{ opacity: 0.7 }}
               backgroundColor="$background"
               borderWidth={1}
@@ -421,46 +522,148 @@ export default function VisitasGenerarScreen() {
               justifyContent="space-between"
             >
               <YStack>
-                <Text fontSize={11} color="$textMuted">
-                  Fecha de ingreso
-                </Text>
-                <Text fontSize={15} color="$text">
-                  {entryDate.toLocaleDateString('es-HN')}
-                </Text>
+                <Text fontSize={11} color="$textMuted">Fecha de ingreso</Text>
+                <Text fontSize={15} color="$text">{entryDate.toLocaleDateString('es-HN')}</Text>
               </YStack>
               <Calendar size={18} color="#94A3B8" />
             </View>
-            {showPicker && (
-              <View backgroundColor="$backgroundElevated" borderRadius="$4" padding="$2" marginTop="$2">
-                <DateTimePicker
-                  value={entryDate}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                  minimumDate={new Date()}
-                  themeVariant={theme === 'dark' ? 'dark' : 'light'}
-                  accentColor="#FF551A"
-                  onChange={(_, d) => {
-                    if (Platform.OS !== 'ios') setShowPicker(false)
-                    if (d) setEntryDate(d)
-                  }}
-                />
-                {Platform.OS === 'ios' && (
+          )}
+
+          {/* RECURRENTE: rango o días específicos */}
+          {isRecurrent && (
+            <YStack gap="$2">
+              <XStack borderRadius="$3" borderWidth={1} borderColor="$border" overflow="hidden">
+                {(['rango', 'dias'] as const).map((m) => (
+                  <View
+                    key={m}
+                    flex={1}
+                    onPress={() => { setRecurMode(m); setPickerFor(null) }}
+                    pressStyle={{ opacity: 0.7 }}
+                    backgroundColor={recurMode === m ? '$primary' : 'transparent'}
+                    paddingVertical="$2.5"
+                    alignItems="center"
+                  >
+                    <Text color={recurMode === m ? 'white' : '$text'} fontWeight="700" fontSize={13}>
+                      {m === 'rango' ? 'Rango de fechas' : 'Días específicos'}
+                    </Text>
+                  </View>
+                ))}
+              </XStack>
+
+              {recurMode === 'rango' ? (
+                <XStack gap="$2">
+                  <View
+                    flex={1}
+                    onPress={() => setPickerFor((p) => (p === 'start' ? null : 'start'))}
+                    pressStyle={{ opacity: 0.7 }}
+                    backgroundColor="$background" borderWidth={1} borderColor="$border" borderRadius={6}
+                    height={46} paddingHorizontal="$3" flexDirection="row" alignItems="center" justifyContent="space-between"
+                  >
+                    <YStack>
+                      <Text fontSize={11} color="$textMuted">Desde</Text>
+                      <Text fontSize={14} color="$text">{startDate.toLocaleDateString('es-HN')}</Text>
+                    </YStack>
+                    <CalendarRange size={16} color="#94A3B8" />
+                  </View>
+                  <View
+                    flex={1}
+                    onPress={() => setPickerFor((p) => (p === 'end' ? null : 'end'))}
+                    pressStyle={{ opacity: 0.7 }}
+                    backgroundColor="$background" borderWidth={1} borderColor="$border" borderRadius={6}
+                    height={46} paddingHorizontal="$3" flexDirection="row" alignItems="center" justifyContent="space-between"
+                  >
+                    <YStack>
+                      <Text fontSize={11} color="$textMuted">Hasta</Text>
+                      <Text fontSize={14} color="$text">{endDate.toLocaleDateString('es-HN')}</Text>
+                    </YStack>
+                    <CalendarRange size={16} color="#94A3B8" />
+                  </View>
+                </XStack>
+              ) : (
+                <YStack gap="$2">
                   <Button
-                    alignSelf="flex-end"
-                    height={34}
-                    backgroundColor="$primary"
+                    alignSelf="flex-start"
+                    height={36}
+                    backgroundColor="transparent"
+                    borderWidth={1}
+                    borderColor="$primary"
                     borderRadius="$3"
                     pressStyle={{ opacity: 0.7 }}
-                    onPress={() => setShowPicker(false)}
+                    onPress={() => { setAddTemp(new Date()); setPickerFor('add') }}
+                    icon={<Plus size={16} color="#FF551A" />}
                   >
-                    <Text color="white" fontWeight="700" fontSize={13}>
-                      Listo
-                    </Text>
+                    <Text color="$primary" fontWeight="700" fontSize={13}>Agregar día</Text>
                   </Button>
-                )}
-              </View>
-            )}
-          </YStack>
+                  <XStack flexWrap="wrap" gap="$2">
+                    {diasList.length === 0 ? (
+                      <Text fontSize={12} color="$textMuted">Aún no has agregado días.</Text>
+                    ) : (
+                      diasList.map((d) => (
+                        <XStack key={d} backgroundColor="rgba(255,85,26,0.12)" paddingHorizontal="$3" paddingVertical="$1.5" borderRadius="$10" alignItems="center" gap="$1.5">
+                          <Text fontSize={12} color="$primary" fontWeight="700">{prettyDate(d)}</Text>
+                          <View onPress={() => removeDia(d)} pressStyle={{ opacity: 0.6 }}>
+                            <X size={13} color="#FF551A" />
+                          </View>
+                        </XStack>
+                      ))
+                    )}
+                  </XStack>
+                </YStack>
+              )}
+
+              <Text fontSize={11} color="$textMuted">
+                {buildDias().length} día(s) habilitado(s)
+              </Text>
+            </YStack>
+          )}
+
+          {/* Picker de fecha compartido */}
+          {pickerFor && (
+            <View backgroundColor="$backgroundElevated" borderRadius="$4" padding="$2" marginTop="$2">
+              <DateTimePicker
+                value={
+                  pickerFor === 'single' ? entryDate
+                    : pickerFor === 'start' ? startDate
+                    : pickerFor === 'end' ? endDate
+                    : addTemp
+                }
+                mode="date"
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                minimumDate={new Date()}
+                themeVariant={theme === 'dark' ? 'dark' : 'light'}
+                accentColor="#FF551A"
+                onChange={(_, d) => {
+                  const isIOS = Platform.OS === 'ios'
+                  if (!isIOS) setPickerFor(null)
+                  if (!d) return
+                  if (pickerFor === 'single') setEntryDate(d)
+                  else if (pickerFor === 'start') { setStartDate(d); if (endDate < d) setEndDate(d) }
+                  else if (pickerFor === 'end') setEndDate(d)
+                  else if (pickerFor === 'add') {
+                    if (isIOS) setAddTemp(d)
+                    else addDia(d)
+                  }
+                }}
+              />
+              {Platform.OS === 'ios' && (
+                <Button
+                  alignSelf="flex-end"
+                  height={34}
+                  backgroundColor="$primary"
+                  borderRadius="$3"
+                  pressStyle={{ opacity: 0.7 }}
+                  onPress={() => {
+                    if (pickerFor === 'add') addDia(addTemp)
+                    setPickerFor(null)
+                  }}
+                >
+                  <Text color="white" fontWeight="700" fontSize={13}>
+                    {pickerFor === 'add' ? 'Agregar' : 'Listo'}
+                  </Text>
+                </Button>
+              )}
+            </View>
+          )}
 
           <Button
             marginTop="$3"
