@@ -49,7 +49,7 @@ export default function LoginScreen() {
       const systemVersion = DeviceInfo.getSystemVersion()
 
       let info = {
-        Code: data.Code, 
+        Code: data.Code.replace(/\s+/g, ''), // el usuario nunca lleva espacios
         password: data.password,
         IPAddress: ipAddress,
         Device: `${brand} ${device} (${systemName} ${systemVersion})`,
@@ -182,13 +182,15 @@ export default function LoginScreen() {
                       flex={1}
                       placeholder="Usuario"
                       value={value}
-                      onChangeText={onChange}
+                      onChangeText={(t) => onChange(t.replace(/\s/g, ''))}
                       size="$4"
                       color="$black"
                       placeholderTextColor="$gray"
                       borderWidth={0}
                       backgroundColor="transparent"
                       autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="off"
                     />
                   </XStack>
                 )}
@@ -226,6 +228,10 @@ export default function LoginScreen() {
                       color="$black"
                       placeholderTextColor='$gray'
                       backgroundColor="transparent"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="off"
+                      textContentType="password"
                     />
 
                     <Pressable onPress={() => setShowPassword(!showPassword)}>
