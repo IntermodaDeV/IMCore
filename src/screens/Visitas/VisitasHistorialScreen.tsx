@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Modal, RefreshControl, Platform, PermissionsAndroid } from 'react-native'
 import { YStack, XStack, Text, View, ScrollView, Spinner, Button } from 'tamagui'
-import { Users, ClipboardList, Clock, TriangleAlert, Eye, X, Share2, Download } from 'lucide-react-native'
+import { Users, ClipboardList, Clock, CheckCircle2, CalendarDays, Eye, X, Share2, Download, LogIn, LogOut, DoorOpen, Repeat } from 'lucide-react-native'
 import QRCode from 'react-native-qrcode-svg'
 import Share from 'react-native-share'
 import ViewShot, { captureRef } from 'react-native-view-shot'
@@ -12,14 +12,34 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
 import { visitasService } from '../../api/modules/visitas/visitas.service'
-import { IHistorial } from '../../api/modules/visitas/visitas.types'
+import { IHistorial, IVisitaAcceso } from '../../api/modules/visitas/visitas.types'
 import { handleError } from '../../utils/errorHandler'
 
 const LOGO = require('../../assets/logo.png')
 
-const prettyDate = (iso: string) => {
+const prettyDate = (iso?: string | null) => {
   const [y, m, d] = (iso ?? '').split('-')
-  return y && m && d ? `${d}/${m}/${y}` : iso
+  return y && m && d ? `${d}/${m}/${y}` : (iso ?? '')
+}
+
+// Vigencia legible: rango si es recurrente con varios días, si no el día único
+const vigenciaTexto = (h: IHistorial) => {
+  if (h.IsRecurrent && h.StartDate && h.EndDate && h.StartDate !== h.EndDate) {
+    return `${prettyDate(h.StartDate)} – ${prettyDate(h.EndDate)}`
+  }
+  return prettyDate(h.StartDate || h.EntryDate)
+}
+
+// Estilo del estado del pase (por ventana de vigencia)
+const estadoStyle = (h: IHistorial) => {
+  switch (h.EstadoPase) {
+    case 'finalizado':
+      return { color: '#64748B', bg: 'rgba(100,116,139,0.16)', label: 'Finalizado', Icon: CheckCircle2 }
+    case 'pendiente':
+      return { color: '#FF551A', bg: 'rgba(255,85,26,0.12)', label: 'Pendiente', Icon: Clock }
+    default:
+      return { color: '#2E9E5B', bg: 'rgba(46,158,91,0.14)', label: 'Vigente', Icon: CalendarDays }
+  }
 }
 
 const fmtDateTime = (iso?: string | null) => {
@@ -31,6 +51,13 @@ const fmtDateTime = (iso?: string | null) => {
   })
 }
 
+const fmtTime = (iso?: string | null) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' })
+}
+
 export default function VisitasHistorialScreen() {
   const { user } = useAuth()
   const { showToast } = useShowToast()
@@ -40,6 +67,8 @@ export default function VisitasHistorialScreen() {
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [selected, setSelected] = useState<IHistorial | null>(null)
+  const [accesos, setAccesos] = useState<IVisitaAcceso[]>([])
+  const [loadingAccesos, setLoadingAccesos] = useState(false)
   const [busyAction, setBusyAction] = useState<'share' | 'save' | null>(null)
   const viewShotRef = useRef<any>(null)
 
@@ -71,6 +100,24 @@ export default function VisitasHistorialScreen() {
   useEffect(() => {
     setFiltered(data)
   }, [data])
+
+  // Cargar los movimientos (entradas/salidas) del pase seleccionado
+  useEffect(() => {
+    if (!selected) {
+      setAccesos([])
+      return
+    }
+    ;(async () => {
+      setLoadingAccesos(true)
+      try {
+        const resp = await visitasService.getAccesos(selected.Id)
+        if (resp.Success) setAccesos(resp.Data ?? [])
+      } catch {
+        setAccesos([])
+      }
+      setLoadingAccesos(false)
+    })()
+  }, [selected])
 
   const capturarQr = async (): Promise<string | null> => {
     try {
@@ -126,18 +173,19 @@ export default function VisitasHistorialScreen() {
   }
 
   const renderEstadoBadge = (h: IHistorial) => {
-    if (h.Used) {
-      return (
-        <XStack backgroundColor="rgba(229,57,53,0.14)" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius="$10" alignItems="center" gap="$1">
-          <TriangleAlert size={12} color="#E53935" />
-          <Text fontSize={10} fontWeight="700" color="#E53935">Pase usado</Text>
-        </XStack>
-      )
-    }
+    const e = estadoStyle(h)
     return (
-      <XStack backgroundColor="rgba(255,85,26,0.12)" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius="$10" alignItems="center" gap="$1">
-        <Clock size={12} color="#FF551A" />
-        <Text fontSize={10} fontWeight="700" color="#FF551A">Pendiente</Text>
+      <XStack alignItems="center" gap="$1.5">
+        {h.DentroAhora && (
+          <XStack backgroundColor="rgba(46,158,91,0.16)" paddingHorizontal="$2" paddingVertical="$1" borderRadius="$10" alignItems="center" gap="$1">
+            <DoorOpen size={11} color="#2E9E5B" />
+            <Text fontSize={10} fontWeight="700" color="#2E9E5B">Dentro</Text>
+          </XStack>
+        )}
+        <XStack backgroundColor={e.bg} paddingHorizontal="$2.5" paddingVertical="$1" borderRadius="$10" alignItems="center" gap="$1">
+          <e.Icon size={12} color={e.color} />
+          <Text fontSize={10} fontWeight="700" color={e.color}>{e.label}</Text>
+        </XStack>
       </XStack>
     )
   }
@@ -221,9 +269,12 @@ export default function VisitasHistorialScreen() {
 
                       <Row label="Visita a" value={h.VisitTo} />
                       <Row label="Motivo" value={motivo} />
-                      <Row label="Fecha de ingreso" value={prettyDate(h.EntryDate)} />
-                      {h.Used && (
-                        <Row label="Ingresó" value={fmtDateTime(h.UsedAt)} highlight />
+                      <Row
+                        label={h.IsRecurrent ? 'Vigencia' : 'Fecha'}
+                        value={vigenciaTexto(h) + (h.IsRecurrent && (h.DiasCount ?? 0) > 1 ? ` · ${h.DiasCount} días` : '')}
+                      />
+                      {(h.AccesosCount ?? 0) > 0 && (
+                        <Row label="Movimientos" value={`${h.AccesosCount}`} />
                       )}
                     </YStack>
                   )
@@ -257,57 +308,87 @@ export default function VisitasHistorialScreen() {
                       </Text>
                       <QRCode value={selected.Token} size={210} logo={LOGO} logoSize={44} logoBackgroundColor="white" logoBorderRadius={8} quietZone={6} />
                       <Text color="#1A1A2E" fontWeight="700" fontSize={15}>
-                        Ingreso: {prettyDate(selected.EntryDate)}
+                        {selected.IsRecurrent ? 'Vigencia: ' : 'Ingreso: '}{vigenciaTexto(selected)}
                       </Text>
+                      {selected.IsRecurrent && (
+                        <Text color="#FF551A" fontWeight="700" fontSize={11} letterSpacing={1}>
+                          PASE RECURRENTE
+                        </Text>
+                      )}
                     </YStack>
                   </ViewShot>
 
-                  {/* Banner de estado */}
-                  {selected.Used ? (
-                    <YStack
-                      width="100%"
-                      backgroundColor="rgba(229,57,53,0.12)"
-                      borderColor="#E53935"
-                      borderWidth={1}
-                      borderRadius="$4"
-                      padding="$3"
-                      gap="$1"
-                    >
-                      <XStack alignItems="center" gap="$2">
-                        <TriangleAlert size={18} color="#E53935" />
-                        <Text fontWeight="800" fontSize={14} color="#E53935">
-                          Pase usado
+                  {/* Banner de estado (por ventana de vigencia) */}
+                  {(() => {
+                    const e = estadoStyle(selected)
+                    return (
+                      <XStack
+                        width="100%"
+                        backgroundColor={e.bg}
+                        borderRadius="$4"
+                        padding="$3"
+                        alignItems="center"
+                        gap="$2"
+                      >
+                        <e.Icon size={18} color={e.color} />
+                        <Text fontWeight="800" fontSize={14} color={e.color}>
+                          {selected.DentroAhora ? 'Dentro ahora' : e.label}
                         </Text>
                       </XStack>
-                      <Text fontSize={12} color="#E53935">
-                        La persona ya ingresó el {fmtDateTime(selected.UsedAt)}
-                      </Text>
-                    </YStack>
-                  ) : (
-                    <XStack
-                      width="100%"
-                      backgroundColor="rgba(255,85,26,0.10)"
-                      borderRadius="$4"
-                      padding="$3"
-                      alignItems="center"
-                      gap="$2"
-                    >
-                      <Clock size={18} color="#FF551A" />
-                      <Text fontWeight="700" fontSize={14} color="$primary">
-                        Pendiente de ingreso
-                      </Text>
-                    </XStack>
-                  )}
+                    )
+                  })()}
 
                   <YStack width="100%" gap="$1.5">
                     <Row label="Personas" value={selected.Personas} />
                     <Row label="Visita a" value={selected.VisitTo} />
                     <Row label="Motivo" value={selected.Motivo === 'Otros' && selected.VisitReasonOther ? selected.VisitReasonOther : selected.Motivo} />
-                    <Row label="Fecha de ingreso" value={prettyDate(selected.EntryDate)} />
+                    <Row label={selected.IsRecurrent ? 'Vigencia' : 'Fecha'} value={vigenciaTexto(selected)} />
+                    {selected.IsRecurrent && (
+                      <Row label="Días habilitados" value={`${selected.DiasCount ?? 0}`} />
+                    )}
                   </YStack>
 
-                  {/* Acciones solo si el pase sigue pendiente */}
-                  {!selected.Used && (
+                  {/* Movimientos (entradas/salidas por día) */}
+                  <YStack width="100%" gap="$2" marginTop="$1">
+                    <XStack alignItems="center" gap="$2">
+                      <CalendarDays size={15} color="#94A3B8" />
+                      <Text fontSize={13} fontWeight="800" color="$text">Entradas y salidas</Text>
+                    </XStack>
+                    {loadingAccesos ? (
+                      <Spinner color="$primary" />
+                    ) : accesos.length === 0 ? (
+                      <Text fontSize={12} color="$textMuted">Aún sin registros de acceso.</Text>
+                    ) : (
+                      accesos.map((a) => (
+                        <XStack
+                          key={a.Id}
+                          backgroundColor="$backgroundElevated"
+                          borderRadius="$3"
+                          padding="$2.5"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          gap="$2"
+                        >
+                          <Text fontSize={12} fontWeight="700" color="$text">{prettyDate(a.AccessDate)}</Text>
+                          <XStack gap="$3" alignItems="center">
+                            <XStack alignItems="center" gap="$1">
+                              <LogIn size={13} color="#2E9E5B" />
+                              <Text fontSize={11} color="#2E9E5B">{fmtTime(a.EntradaAt)}</Text>
+                            </XStack>
+                            <XStack alignItems="center" gap="$1">
+                              <LogOut size={13} color={a.SalidaAt ? '#2563EB' : '#94A3B8'} />
+                              <Text fontSize={11} color={a.SalidaAt ? '#2563EB' : '#94A3B8'}>
+                                {a.SalidaAt ? fmtTime(a.SalidaAt) : 'dentro'}
+                              </Text>
+                            </XStack>
+                          </XStack>
+                        </XStack>
+                      ))
+                    )}
+                  </YStack>
+
+                  {/* Acciones mientras el pase siga vigente (no finalizado) */}
+                  {selected.EstadoPase !== 'finalizado' && (
                     <XStack width="100%" gap="$3">
                       <Button
                         flex={1}

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Platform, PermissionsAndroid, StyleSheet, Modal } from 'react-native'
 import { YStack, XStack, Text, View, Button, Spinner } from 'tamagui'
 import { Camera } from 'react-native-camera-kit'
-import { CheckCircle2, XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, Users, X } from 'lucide-react-native'
+import { XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, Users, X, LogIn, LogOut } from 'lucide-react-native'
 import { useNavigation } from '@react-navigation/native'
 import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
@@ -103,8 +103,9 @@ export default function VisitasValidarScreen() {
   // ── Estilo del resultado ──
   const estado = (() => {
     if (!result) return null
-    if (result.Valid) return { color: '#2E9E5B', bg: 'rgba(46,158,91,0.12)', Icon: CheckCircle2, title: 'Acceso validado' }
-    if (result.Reason === 'used') return { color: '#E53935', bg: 'rgba(229,57,53,0.12)', Icon: TriangleAlert, title: 'Pase ya utilizado' }
+    if (result.Reason === 'entrada') return { color: '#2E9E5B', bg: 'rgba(46,158,91,0.12)', Icon: LogIn, title: 'Entrada registrada' }
+    if (result.Reason === 'salida') return { color: '#2563EB', bg: 'rgba(37,99,235,0.12)', Icon: LogOut, title: 'Salida registrada' }
+    if (result.Reason === 'outofrange') return { color: '#E58E26', bg: 'rgba(229,142,38,0.12)', Icon: TriangleAlert, title: 'Pase no válido hoy' }
     return { color: '#E53935', bg: 'rgba(229,57,53,0.12)', Icon: XCircle, title: 'Pase no encontrado' }
   })()
 
@@ -156,8 +157,15 @@ export default function VisitasValidarScreen() {
                 </XStack>
                 <Row label="Visita a" value={result.VisitTo} />
                 <Row label="Motivo" value={result.Motivo === 'Otros' && result.VisitReasonOther ? result.VisitReasonOther : result.Motivo} />
-                <Row label="Fecha de ingreso" value={prettyDate(result.EntryDate)} />
-                {result.Reason === 'used' && <Row label="Ingresó" value={fmtDateTime(result.UsedAt)} highlight />}
+                {(result.Reason === 'entrada' || result.Reason === 'salida') && (
+                  <Row label="Entrada" value={fmtDateTime(result.UsedAt)} valueColor="#2E9E5B" />
+                )}
+                {result.Reason === 'salida' && (
+                  <Row label="Salida" value={fmtDateTime(result.ExitAt)} valueColor="#2563EB" />
+                )}
+                {result.Reason === 'outofrange' && (
+                  <Row label="Vigente desde" value={prettyDate(result.EntryDate)} />
+                )}
               </YStack>
             )}
 
@@ -266,13 +274,13 @@ export default function VisitasValidarScreen() {
   )
 }
 
-function Row({ label, value, highlight }: { label: string; value?: string | null; highlight?: boolean }) {
+function Row({ label, value, valueColor }: { label: string; value?: string | null; valueColor?: string }) {
   return (
     <XStack justifyContent="space-between" gap="$2">
       <Text fontSize={12} color="$textMuted">
         {label}
       </Text>
-      <Text fontSize={12} color={highlight ? '#E53935' : '$text'} fontWeight={highlight ? '700' : '600'} flexShrink={1} textAlign="right">
+      <Text fontSize={12} color={valueColor ?? '$text'} fontWeight={valueColor ? '700' : '600'} flexShrink={1} textAlign="right">
         {value || '—'}
       </Text>
     </XStack>

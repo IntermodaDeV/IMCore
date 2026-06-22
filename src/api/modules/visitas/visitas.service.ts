@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { IGenerarVisita, IHistorial, IMotivo, IValidarResult, IVisitaResult } from './visitas.types'
+import { IGenerarVisita, IHistorial, IMotivo, IValidarResult, IVisitaResult, IVisitaAcceso } from './visitas.types'
 
 const schema = 'Visitas'
 
@@ -21,6 +21,9 @@ export const visitasService = {
 
   getHistorial: (userCode: string) =>
     httpClient.get<ExecutionResponse<IHistorial[]>>(`${schema}/Historial?user_Code=${userCode}`),
+
+  getAccesos: (visitaId: number) =>
+    httpClient.get<ExecutionResponse<IVisitaAcceso[]>>(`${schema}/Accesos?visita_Id=${visitaId}`),
 
   validar: (token: string, userCode: string) =>
     httpClient.post<ExecutionResponse<IValidarResult>, { Token: string; Create_By: string }>(
