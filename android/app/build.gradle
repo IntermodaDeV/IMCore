@@ -126,3 +126,6 @@ dependencies {
 }
 
 apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
+
+// Firebase (notificaciones push) — debe ir al final, después de la config del módulo.
+apply plugin: "com.google.gms.google-services"

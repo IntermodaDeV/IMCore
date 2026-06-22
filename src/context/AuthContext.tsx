@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { UsersDTO } from '../api/modules/security/security.types'
 import { securityService } from '../api/modules/security/security.service'
 import { sessionManager } from '../api/core/sessionManager'
+import { registerForUser, unregisterCurrent } from '../services/pushNotifications'
 
 type AuthContextType = {
   user: UsersDTO | null
@@ -110,6 +111,11 @@ export const AuthProvider = ({
 
       setTransitionMessage('Iniciando sesión...')
       setTransitioning(true)
+
+      // Registra el dispositivo para notificaciones push (best-effort)
+      if (userData?.Code) {
+        registerForUser(userData.Code)
+      }
     } catch (error) {
       console.log('Login error', error)
     }
@@ -119,6 +125,11 @@ export const AuthProvider = ({
     try {
       setTransitionMessage('Cerrando sesión...')
       setTransitioning(true)
+
+      // Da de baja el token de notificaciones (best-effort, antes de limpiar)
+      try {
+        await unregisterCurrent()
+      } catch {}
 
       if (user?.Code) {
         try {
