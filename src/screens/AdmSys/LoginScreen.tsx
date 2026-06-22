@@ -54,9 +54,11 @@ export default function LoginScreen() {
         IPAddress: ipAddress,
         Device: `${brand} ${device} (${systemName} ${systemVersion})`,
       }
+      console.log('LOGIN_DEBUG payload=', JSON.stringify(info))
       const response = await securityService.login(info)
+      console.log('LOGIN_DEBUG response=', JSON.stringify(response))
       if (!response?.Success) {
-        showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
+        showToast('error', 'Error', response?.ErrorMessage || 'Ocurrió un problema al iniciar sesión', 5000, 'top')
         return
       }
 
@@ -75,7 +77,8 @@ export default function LoginScreen() {
       login(user)
 
     } catch (error) {
-      showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
+      console.log('LOGIN_DEBUG catch error=', error?.message || String(error), JSON.stringify(error))
+      showToast('error', 'Error', `DBG: ${error?.message || String(error)}`, 6000, 'top')
     } finally {
       setLoading(false)
     }

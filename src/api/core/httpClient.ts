@@ -135,6 +135,8 @@ class HttpClient {
     const fullUrl =
       `${this.baseUrl}${url}${this.buildQuery(params)}`
 
+    console.log('HTTP_DEBUG baseUrl=', JSON.stringify(this.baseUrl), 'fullUrl=', fullUrl)
+
     const token =
       await AsyncStorage.getItem('accessToken')
 
