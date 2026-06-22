@@ -54,9 +54,11 @@ export default function LoginScreen() {
         IPAddress: ipAddress,
         Device: `${brand} ${device} (${systemName} ${systemVersion})`,
       }
+
+      console.log(info)
       const response = await securityService.login(info)
       if (!response?.Success) {
-        showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
+        showToast('error', 'Error', response?.ErrorMessage ?? 'Ocurrió un problema al iniciar sesión.', 5000, 'top')
         return
       }
 
