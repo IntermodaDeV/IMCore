@@ -13,6 +13,7 @@ import { CustomToast } from './src/components/commons/CustomToast'
 import { ToastPositionProvider } from './src/context/ToastPositionContext'
 import { useToastPosition } from './src/context/ToastPositionContext'
 import { LoaderProvider } from './src/providers/LoaderProvider'
+import { RightDrawerProvider } from './src/providers/RightDrawerProvider'
 import AccessForm from './src/screens/Security/Access/AccessForm'
 import RolesForm from './src/screens/Security/Roles/RolesForm'
 import { HeaderProvider } from './src/context/HeaderContext'
@@ -81,6 +82,7 @@ function Root() {
   return (
     <TamaguiProvider config={config} defaultTheme={theme}>
       <LoaderProvider>
+        <RightDrawerProvider>
         <HeaderProvider>
 
           <Theme name={theme}>
@@ -165,6 +167,7 @@ function Root() {
             </ToastProvider>
           </Theme>
         </HeaderProvider>
+        </RightDrawerProvider>
       </LoaderProvider>
     </TamaguiProvider>
   )
