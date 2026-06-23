@@ -35,6 +35,9 @@ export interface UsersDTO {
 
   Create_By?: string
   Roles?: RoleDTO[]
+  Companies?: string
+  DefaultCompany?: number | null
+  DefaultCompany_Id?: number | null
   Creation_Date?: string | Date
   ValidateAD?: boolean | null
 
@@ -139,6 +142,24 @@ export type RolesDTO = {
   Modified_By: string | null;
   Modification_Date: string | Date | null;
 };
+
+export type CompaniesDTO = {
+  Id: number;
+  Name: string;
+  Code: string;
+  Direccion?: string;
+  Status_Id: number;
+  CodeIcon?: string;
+};
+
+export type IUserCompanies = {
+  Id: number;
+  User_Code: string;
+  Company_Id: string;
+  IsDefault?: boolean;
+  Status_Id: number;
+};
+
 
 export type ITypes = {
   Id: number;
