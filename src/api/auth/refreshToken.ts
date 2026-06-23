@@ -10,15 +10,26 @@ export async function refreshAccessToken() {
       return null
     }
 
-    const response = await fetch(`${Config.API_URL}Security/refreshToken`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        refreshToken,
-      }),
-    })
+    // Timeout para que un refresh estancado no deje colgado el reintento
+    // de la petición original (y con él un loader girando para siempre).
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 30000)
+
+    let response: Response
+    try {
+      response = await fetch(`${Config.API_URL}Security/refreshToken`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          refreshToken,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
 
     const data = await response.json()
     if (!response.ok) {

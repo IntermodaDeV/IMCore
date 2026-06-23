@@ -14,6 +14,7 @@ import { ToastPositionProvider } from './src/context/ToastPositionContext'
 import { useToastPosition } from './src/context/ToastPositionContext'
 import { LoaderProvider } from './src/providers/LoaderProvider'
 import { RightDrawerProvider } from './src/providers/RightDrawerProvider'
+import { NotificationsProvider } from './src/context/NotificationsContext'
 import AccessForm from './src/screens/Security/Access/AccessForm'
 import RolesForm from './src/screens/Security/Roles/RolesForm'
 import { HeaderProvider } from './src/context/HeaderContext'
@@ -91,7 +92,8 @@ function Root() {
               
               
               <NavigationContainer>
-                <Stack.Navigator screenOptions={{ headerShown: false }}> 
+                <RightDrawerProvider>
+                <Stack.Navigator screenOptions={{ headerShown: false }}>
                   {user ? (
                     <>
                       <Stack.Screen name="Main">
@@ -152,9 +154,10 @@ function Root() {
                   right={12}
                   pointerEvents="none"
                 >
-                  
+
                 </View>
 
+                </RightDrawerProvider>
               </NavigationContainer>
 
               <CustomToast />
@@ -178,7 +181,9 @@ export default function App() {
     <AuthProvider>
       <MenuProvider>
         <ToastPositionProvider>
-          <Root />
+          <NotificationsProvider>
+            <Root />
+          </NotificationsProvider>
         </ToastPositionProvider>
       </MenuProvider>
     </AuthProvider>

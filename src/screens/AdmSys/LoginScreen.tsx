@@ -49,14 +49,14 @@ export default function LoginScreen() {
       const systemVersion = DeviceInfo.getSystemVersion()
 
       let info = {
-        Code: data.Code, 
+        Code: data.Code.replace(/\s+/g, ''), // el usuario nunca lleva espacios
         password: data.password,
         IPAddress: ipAddress,
         Device: `${brand} ${device} (${systemName} ${systemVersion})`,
       }
       const response = await securityService.login(info)
       if (!response?.Success) {
-        showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
+        showToast('error', 'Error', response?.ErrorMessage || 'Ocurrió un problema al iniciar sesión', 5000, 'top')
         return
       }
 
@@ -182,11 +182,15 @@ export default function LoginScreen() {
                       flex={1}
                       placeholder="Usuario"
                       value={value}
-                      onChangeText={onChange}
+                      onChangeText={(t) => onChange(t.replace(/\s/g, ''))}
                       size="$4"
+                      color="$black"
+                      placeholderTextColor="$gray"
                       borderWidth={0}
                       backgroundColor="transparent"
                       autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="off"
                     />
                   </XStack>
                 )}
@@ -221,7 +225,13 @@ export default function LoginScreen() {
                       onChangeText={onChange}
                       size="$4"
                       borderWidth={0}
+                      color="$black"
+                      placeholderTextColor='$gray'
                       backgroundColor="transparent"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="off"
+                      textContentType="password"
                     />
 
                     <Pressable onPress={() => setShowPassword(!showPassword)}>

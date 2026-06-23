@@ -8,6 +8,10 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
+# Firebase (notificaciones push): enlaza Firebase como framework estático.
+# Solo tiene efecto si se usa use_frameworks!; inofensivo en caso contrario.
+$RNFirebaseAsStaticFramework = true
+
 linkage = ENV['USE_FRAMEWORKS']
 if linkage != nil
   Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
@@ -16,6 +20,14 @@ end
 
 target 'IMCore' do
   config = use_native_modules!
+
+  # Firebase (RNFirebase): GoogleUtilities necesita modular headers para
+  # integrarse con los pods Swift de Firebase como librería estática.
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'FirebaseCoreInternal', :modular_headers => true
+  pod 'FirebaseCore', :modular_headers => true
+  pod 'FirebaseInstallations', :modular_headers => true
+  pod 'FirebaseMessaging', :modular_headers => true
 
   use_react_native!(
     :path => config[:reactNativePath],

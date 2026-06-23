@@ -311,6 +311,12 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
   const fmtMin = (n: number | null) => (n != null ? `${Math.round(n)} min` : '—')
   const pct = (n: number) => (kpis.total ? `${Math.round((n / kpis.total) * 100)}%` : '')
   const totalEstado = estado.reduce((a: number, d: any) => a + d.value, 0) || 1
+
+  const barWidth = 40;
+  const spacing = 25;
+  const initialSpacing = 25;
+
+  const graphWidth = prioridad.length * (barWidth + spacing) + initialSpacing;
   return (
     <YStack gap="$3">
       <XStack flexWrap="wrap" gap="$2">
@@ -367,30 +373,32 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
       </SectionCard>
 
       <SectionCard titulo="Tickets por Prioridad" ejeX="Cantidad">
-        <BarChart
-          data={prioridad.map((d: any) => ({
-            value: d.value,
-            label: d.label,
-            frontColor: colorPrioridad(d.label),
-            topLabelComponent: () => (
-              <Text fontSize={11} fontWeight="700" color="$text">
-                {d.value}
-              </Text>
-            ),
-          }))}
-          barWidth={chartWidth / 7}
-          spacing={chartWidth / 6}
-          initialSpacing={chartWidth / 12}
-          width={chartWidth}
-          noOfSections={4}
-          yAxisThickness={0}
-          xAxisThickness={1}
-          xAxisColor={grid}
-          rulesColor={grid}
-          rulesType="dashed"
-          yAxisTextStyle={{ color: muted, fontSize: 10 }}
-          xAxisLabelTextStyle={{ color: txt, fontSize: 11 }}
-        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <BarChart
+            data={prioridad.map((d: any) => ({
+              value: d.value,
+              label: d.label,
+              frontColor: colorPrioridad(d.label),
+              topLabelComponent: () => (
+                <Text fontSize={11} fontWeight="700" color="$text">
+                  {d.value}
+                </Text>
+              ),
+            }))}
+            width={Math.max(chartWidth, graphWidth)}
+            barWidth={barWidth}
+            spacing={spacing}
+            initialSpacing={initialSpacing}
+            noOfSections={4}
+            yAxisThickness={0}
+            xAxisThickness={1}
+            xAxisColor={grid}
+            rulesColor={grid}
+            rulesType="dashed"
+            yAxisTextStyle={{ color: muted, fontSize: 10 }}
+            xAxisLabelTextStyle={{ color: txt, fontSize: 11 }}
+          />
+        </ScrollView>
       </SectionCard>
     </YStack>
   )
@@ -402,6 +410,13 @@ function TabAnalisis({ areas, tiposParo, tendencia, chartWidth }: any) {
   const txt = theme.text?.val ?? '#0F172A'
   const muted = theme.textMuted?.val ?? '#94A3B8'
   const grid = theme.border?.val ?? '#E2E8F0'
+
+  const spacing = 40;
+  const initialSpacing = 25;
+  const endSpacing = 25;
+
+  const graphWidth = tendencia.length * spacing + initialSpacing + endSpacing;
+
   return (
     <YStack gap="$3">
       <SectionCard titulo="Tickets por Área" ejeX="Cantidad">
@@ -412,22 +427,27 @@ function TabAnalisis({ areas, tiposParo, tendencia, chartWidth }: any) {
       </SectionCard>
       <SectionCard titulo="Tendencia (por día)">
         {tendencia.length > 1 ? (
-          <LineChart
-            data={tendencia.map((d: any) => ({ value: d.value, label: d.label.slice(8) }))}
-            color={ACCENT}
-            thickness={2}
-            width={chartWidth}
-            noOfSections={4}
-            yAxisThickness={0}
-            xAxisThickness={1}
-            xAxisColor={grid}
-            rulesColor={grid}
-            rulesType="dashed"
-            yAxisTextStyle={{ color: muted, fontSize: 10 }}
-            xAxisLabelTextStyle={{ color: txt, fontSize: 10 }}
-            dataPointsColor={ACCENT}
-            curved
-          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <LineChart
+              data={tendencia.map((d: any) => ({ value: d.value, label: d.label.slice(8) }))}
+              color={ACCENT}
+              thickness={2}
+              width={Math.max(chartWidth, graphWidth)}
+              spacing={spacing}
+              initialSpacing={initialSpacing}
+              endSpacing={endSpacing}
+              noOfSections={4}
+              yAxisThickness={0}
+              xAxisThickness={1}
+              xAxisColor={grid}
+              rulesColor={grid}
+              rulesType="dashed"
+              yAxisTextStyle={{ color: muted, fontSize: 10 }}
+              xAxisLabelTextStyle={{ color: txt, fontSize: 10 }}
+              dataPointsColor={ACCENT}
+              curved
+            />
+          </ScrollView>
         ) : (
           <Text fontSize={12} color="$textMuted">
             Se necesitan al menos 2 días con registros para la tendencia.
@@ -453,13 +473,25 @@ function TabRankings({ topMecanicos, topFallas }: any) {
 }
 
 // ════════ TAB: Detalle ════════
+const DETALLE_PAGINA = 30
+
 function TabDetalle({ registros }: any) {
+  const [visibles, setVisibles] = useState(DETALLE_PAGINA)
+
+  // Reiniciar la paginación cuando cambian los registros (filtros, período).
+  useEffect(() => {
+    setVisibles(DETALLE_PAGINA)
+  }, [registros])
+
+  const mostrados = registros.slice(0, visibles)
+  const hayMas = visibles < registros.length
+
   return (
     <YStack gap="$2">
       <Text fontSize={15} fontWeight="700" color="$text">
         📋 Detalle de Tickets ({registros.length})
       </Text>
-      {registros.map((r: any, i: number) => (
+      {mostrados.map((r: any, i: number) => (
         <YStack
           key={r.IDMantenimiento || i}
           backgroundColor="$card2"
@@ -471,7 +503,7 @@ function TabDetalle({ registros }: any) {
         >
           <XStack justifyContent="space-between" alignItems="center">
             <Text fontSize={13} fontWeight="700" color="$text">
-              {r.IDMantenimiento || '—'}
+              {r.CodigoTicket || '—'}
             </Text>
             <View
               paddingHorizontal="$2"
@@ -484,22 +516,36 @@ function TabDetalle({ registros }: any) {
               </Text>
             </View>
           </XStack>
-          <Text fontSize={11} color="$textMuted">
+          <Text fontSize={11} color="$text">
             {(r.Fecha ?? '').slice(0, 10)} · {r.Area} · {r.TipoFalla}
           </Text>
           <XStack gap="$3" flexWrap="wrap">
-            <Text fontSize={11} color="$foregroundSecondary">
+            <Text fontSize={11} color="$textMuted">
               Máquina: {r.NumeroMaquina || '—'}
             </Text>
-            <Text fontSize={11} color="$foregroundSecondary">
+            <Text fontSize={11} color="$textMuted">
               Prioridad: {r.Prioridad || '—'}
             </Text>
-            <Text fontSize={11} color="$foregroundSecondary">
+            <Text fontSize={11} color="$textMuted">
               Mecánico: {r.Mecanico || '—'}
             </Text>
           </XStack>
         </YStack>
       ))}
+
+      {hayMas && (
+        <Button
+          marginTop="$2"
+          backgroundColor="$card2"
+          borderWidth={1}
+          borderColor="$border"
+          onPress={() => setVisibles(v => v + DETALLE_PAGINA)}
+        >
+          <Text fontSize={13} fontWeight="700" color={ACCENT}>
+            Ver más ({registros.length - visibles} restantes)
+          </Text>
+        </Button>
+      )}
     </YStack>
   )
 }
