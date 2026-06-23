@@ -16,6 +16,12 @@ let currentUserCode: string | null = null
 let unsubscribeTokenRefresh: (() => void) | null = null
 let unsubscribeForeground: (() => void) | null = null
 
+// Callback que la app registra para refrescar la bandeja cuando llega un push.
+let onPushReceived: ((remoteMessage?: any) => void) | null = null
+export function setOnPushReceived(cb: ((remoteMessage?: any) => void) | null) {
+  onPushReceived = cb
+}
+
 // Pide permiso de notificaciones (iOS + Android 13+).
 async function requestPermission(): Promise<boolean> {
   try {
@@ -71,6 +77,9 @@ async function displayForeground(remoteMessage: any) {
     })
   } catch (e) {
     console.log('[push] displayForeground error', e)
+  } finally {
+    // Avisa a la bandeja para que actualice el conteo / la lista.
+    try { onPushReceived?.(remoteMessage) } catch {}
   }
 }
 

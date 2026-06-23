@@ -11,6 +11,8 @@ import SearchInput from '../../components/commons/SearchInput'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
+import { NotificationBell } from '../../components/notifications/NotificationBell'
+import { subscribeOpenPass } from '../../services/passNavigation'
 import { visitasService } from '../../api/modules/visitas/visitas.service'
 import { IHistorial, IVisitaAcceso } from '../../api/modules/visitas/visitas.types'
 import { handleError } from '../../utils/errorHandler'
@@ -78,6 +80,7 @@ export default function VisitasHistorialScreen() {
         Historial
       </Text>
     ),
+    right: <NotificationBell size={20} />,
   })
 
   const load = async (silent = false) => {
@@ -100,6 +103,22 @@ export default function VisitasHistorialScreen() {
   useEffect(() => {
     setFiltered(data)
   }, [data])
+
+  // Abrir el detalle de un pase cuando se solicita desde una notificación.
+  // Se trae el pase por Id directamente (funciona aunque el destinatario no sea
+  // el creador y aunque la pantalla ya esté montada/enfocada). Siempre abre,
+  // sin importar si la notificación estaba leída.
+  useEffect(() => {
+    const unsubscribe = subscribeOpenPass(async (visitaId) => {
+      try {
+        const resp = await visitasService.getVisitaById(visitaId)
+        if (resp?.Success && resp.Data) setSelected(resp.Data)
+      } catch {
+        /* noop */
+      }
+    })
+    return unsubscribe
+  }, [])
 
   // Cargar los movimientos (entradas/salidas) del pase seleccionado
   useEffect(() => {

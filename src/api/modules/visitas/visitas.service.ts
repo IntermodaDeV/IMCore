@@ -25,6 +25,10 @@ export const visitasService = {
   getAccesos: (visitaId: number) =>
     httpClient.get<ExecutionResponse<IVisitaAcceso[]>>(`${schema}/Accesos?visita_Id=${visitaId}`),
 
+  // Detalle de un pase por Id (para abrir desde una notificación)
+  getVisitaById: (visitaId: number) =>
+    httpClient.get<ExecutionResponse<IHistorial>>(`${schema}/Detalle?visita_Id=${visitaId}`),
+
   validar: (token: string, userCode: string) =>
     httpClient.post<ExecutionResponse<IValidarResult>, { Token: string; Create_By: string }>(
       `${schema}/Validar`,
