@@ -82,8 +82,8 @@ android {
         applicationId "hn.com.intermoda.imcore"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1.0"
     }
     signingConfigs {
         debug {
@@ -126,3 +126,6 @@ dependencies {
 }
 
 apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
+
+// Firebase (notificaciones push) — debe ir al final, después de la config del módulo.
+apply plugin: "com.google.gms.google-services"

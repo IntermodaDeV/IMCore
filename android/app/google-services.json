@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "76826109033",
+    "project_id": "imcore-fcf0f",
+    "storage_bucket": "imcore-fcf0f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:76826109033:android:e2f0ccab2204ce0d156ef8",
+        "android_client_info": {
+          "package_name": "hn.com.intermoda.imcore"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBLHAQ3FQMPf8QMb2VzRdUzl4uc9E5XpeY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

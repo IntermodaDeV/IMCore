@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">IMCore</string>
+    <!-- react-native-config lee BuildConfig por reflexión. Como el applicationId
+         (hn.com.intermoda.imcore) difiere del namespace donde se genera BuildConfig
+         (com.IMCore), hay que indicarle el paquete real o Config llega vacío. -->
+    <string name="build_config_package" translatable="false">com.IMCore</string>
 </resources>

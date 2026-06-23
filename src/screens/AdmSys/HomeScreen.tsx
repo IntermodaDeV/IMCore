@@ -16,6 +16,7 @@ import { shadows } from '../../theme/shadows'
 import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage } from 'react-native'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useLoader } from '../../providers/LoaderProvider'
+import { NotificationBell } from '../../components/notifications/NotificationBell'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -26,10 +27,6 @@ function getGreeting() {
 
 export default function HomeScreen() {
   const loader = useLoader();
-
-  const BellStyled = styled(Icons.Bell, {
-    color: '$text',
-  })
 
   const UserRoundStyled = styled(Icons.UserRound, {
     color: '$text',
@@ -63,9 +60,7 @@ export default function HomeScreen() {
         <View>
           <UserRoundStyled onPress={() => navigation.navigate('Perfil')} size={20} />
         </View>
-        <View>
-          <BellStyled size={20} />
-        </View>
+        <NotificationBell size={20} />
       </XStack>
     ),
   })
