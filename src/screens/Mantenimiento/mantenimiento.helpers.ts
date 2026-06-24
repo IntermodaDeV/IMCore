@@ -11,6 +11,7 @@ export const PALETA_ESTADO: Record<string, string> = {
   Completado: '#22c55e',
   'En Proceso': '#3b82f6',
   Pendiente: '#f59e0b',
+  Cancelado: '#dc2626',
 }
 
 export const COLORES_PRIO: Record<string, string> = {

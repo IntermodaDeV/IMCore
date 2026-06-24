@@ -126,8 +126,7 @@ export default function TicketsListScreen() {
   }, [cargarTickets])
 
   const irADetalle = (t: ITicket) => {
-    // TODO (siguiente paso): navegar a la pantalla de Detalle.
-    showToast('info', t.CodigoTicket, 'Detalle del ticket — próximamente')
+    navigation.navigate('mantenimientoTicketDetalle', { id: t.Id })
   }
 
   const irANuevo = () => {
@@ -351,7 +350,7 @@ function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; th
       </XStack>
 
       {!!t.Mecanico && (
-        <Text fontSize="$2" color="$textMuted">Mecánico: <Text color="$text">{t.Mecanico}</Text></Text>
+        <Text fontSize="$2" color="$textMuted">Asignado a: <Text color="$text">{t.Mecanico}</Text></Text>
       )}
     </View>
   )

@@ -45,6 +45,10 @@ export const ticketsService = {
   anular: (id: number) =>
     httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Anular?id=${id}`),
 
+  // Cancelar (solo Pendiente; el backend valida creador o admin).
+  cancelar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Cancelar?id=${id}`),
+
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>
     httpClient.get<ExecutionResponse<IMecanico[]>>(`${schema}/Mecanicos`),
