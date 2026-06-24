@@ -6,10 +6,11 @@ import { useNavigation } from '@react-navigation/native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
+import { useAuth } from '../../../context/AuthContext'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { IArea, IOperacion, IModelo, ITipoParo, IPrioridad, ITicketManage } from '../../../api/modules/mantenimiento/tickets.types'
-import { ACCENT } from '../mantenimiento.helpers'
+import { ACCENT, puedeCrearMaquina } from '../mantenimiento.helpers'
 
 type Opt = { label: string; value: string }
 const toOpts = <T,>(arr: T[], val: (t: T) => string | number, lab: (t: T) => string): Opt[] =>
@@ -35,6 +36,7 @@ export default function NewTicketScreen() {
   const theme = useTheme()
   const navigation = useNavigation<any>()
   const { showToast } = useShowToast()
+  const { user } = useAuth()
 
   // Pantalla "push": botón de regresar (vuelve al listado; si no se guardó, el
   // ticket queda cancelado). El ☰ del drawer no aplica aquí.
@@ -45,6 +47,9 @@ export default function NewTicketScreen() {
   const { width } = useWindowDimensions()
   const FORM_MAX = 680
 
+  // ¿Puede crear tickets de máquina? Si no, solo podrá reportar áreas.
+  const puedeMaquina = puedeCrearMaquina(user?.Roles, user?.Access)
+
   const [areas, setAreas] = useState<IArea[]>([])
   const [operaciones, setOperaciones] = useState<IOperacion[]>([])
   const [modelos, setModelos] = useState<IModelo[]>([])
@@ -52,7 +57,7 @@ export default function NewTicketScreen() {
   const [prioridades, setPrioridades] = useState<IPrioridad[]>([])
   const [cargandoCat, setCargandoCat] = useState(true)
 
-  const [tipo, setTipo] = useState<Tipo>('MAQUINA')
+  const [tipo, setTipo] = useState<Tipo>(puedeMaquina ? 'MAQUINA' : 'AREA')
 
   const [areaId, setAreaId] = useState<number | undefined>()
   const [operacionId, setOperacionId] = useState<number | undefined>()
@@ -167,11 +172,15 @@ export default function NewTicketScreen() {
         keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <YStack width="100%" maxWidth={FORM_MAX} alignSelf="center">
 
-          <Text fontSize="$3" fontWeight="700" color="$text" marginBottom="$2">¿Qué vas a reportar?</Text>
-          <XStack borderWidth={1} borderColor="$border" borderRadius="$4" padding="$1" marginBottom="$5" backgroundColor="$backgroundElevated">
-            <SegBtn active={esMaquina} onPress={() => setTipo('MAQUINA')} icon={<Wrench size={18} color={esMaquina ? '#fff' : theme.textMuted?.val} />} label="Máquina" />
-            <SegBtn active={!esMaquina} onPress={() => setTipo('AREA')} icon={<MapPin size={18} color={!esMaquina ? '#fff' : theme.textMuted?.val} />} label="Área / General" />
-          </XStack>
+          {puedeMaquina && (
+            <>
+              <Text fontSize="$3" fontWeight="700" color="$text" marginBottom="$2">¿Qué vas a reportar?</Text>
+              <XStack borderWidth={1} borderColor="$border" borderRadius="$4" padding="$1" marginBottom="$5" backgroundColor="$backgroundElevated">
+                <SegBtn active={esMaquina} onPress={() => setTipo('MAQUINA')} icon={<Wrench size={18} color={esMaquina ? '#fff' : theme.textMuted?.val} />} label="Máquina" />
+                <SegBtn active={!esMaquina} onPress={() => setTipo('AREA')} icon={<MapPin size={18} color={!esMaquina ? '#fff' : theme.textMuted?.val} />} label="Área / General" />
+              </XStack>
+            </>
+          )}
 
           <Field label="Área *" error={intentado && areaId == null}>
             <AppSelect label="" placeholder={esMaquina ? 'Selecciona el área de producción' : 'Selecciona el área'}

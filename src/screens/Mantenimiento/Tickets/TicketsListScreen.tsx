@@ -10,10 +10,7 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT } from '../mantenimiento.helpers'
-
-// Roles que pueden reportar un paro (crear ticket).
-const ROLES_CREAR = ['Supervisor de Producción', 'Administrador']
+import { colorEstado, colorPrioridad, ACCENT, puedeCrearTickets } from '../mantenimiento.helpers'
 
 const fmtFecha = (iso: string | null): string => {
   if (!iso) return ''
@@ -60,7 +57,7 @@ export default function TicketsListScreen() {
   const [search, setSearch] = useState('')
 
   const puedeCrear = useMemo(
-    () => (user?.Roles ?? []).some(r => ROLES_CREAR.includes(r.RoleName)),
+    () => puedeCrearTickets(user?.Roles, user?.Access),
     [user],
   )
 
