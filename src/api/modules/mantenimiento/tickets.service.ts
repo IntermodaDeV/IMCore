@@ -49,8 +49,8 @@ export const ticketsService = {
   getMecanicos: () =>
     httpClient.get<ExecutionResponse<IMecanico[]>>(`${schema}/Mecanicos`),
 
-  getAreas: (onlyActive: boolean = true) =>
-    httpClient.get<ExecutionResponse<IArea[]>>(`${schema}/Areas`, { onlyActive }),
+  getAreas: (onlyActive: boolean = true, categoria?: string) =>
+    httpClient.get<ExecutionResponse<IArea[]>>(`${schema}/Areas`, { onlyActive, categoria }),
 
   getOperaciones: (areaId: number) =>
     httpClient.get<ExecutionResponse<IOperacion[]>>(`${schema}/Operaciones`, { area_Id: areaId }),

@@ -8,6 +8,9 @@ export interface ITicket {
   CodigoTicket: string
   Fecha: string | null
 
+  TipoDestino: string | null   // MAQUINA | AREA
+  Objeto: string | null         // ¿qué reparar? (tickets de Área)
+
   Area_Id: number | null
   Area: string | null
   Operacion_Id: number | null
@@ -55,6 +58,8 @@ export interface ITicket {
 export interface ITicketManage {
   Id?: number
   Fecha?: string | null
+  TipoDestino?: string         // MAQUINA | AREA (default MAQUINA)
+  Objeto?: string | null        // ¿qué reparar? (tickets de Área)
   Area_Id?: number | null
   Operacion_Id?: number | null
   Modelo?: string | null
@@ -94,7 +99,7 @@ export interface ITicketFiltros {
 }
 
 // ── Catálogos / cascadas ─────────────────────────────────────────────────────
-export interface IArea { Id: number; Name: string; Status_Id: number }
+export interface IArea { Id: number; Name: string; Categoria?: string | null; Status_Id: number }
 export interface IOperacion { Id: number; Area_Id: number; Name: string }
 export interface IEstado { Id: number; Code: string; Name: string; Orden: number }
 export interface IPrioridad { Id: number; Name: string; Orden: number; Color?: string | null }
