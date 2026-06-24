@@ -10,6 +10,8 @@ export const securityService = {
   saveUsers: (data: UsersDTO[]) => httpClient.post<ExecutionResponse<UsersDTO[]>>(`${schema}/Users`, data),
   saveUsersSettings: (data: UsersSettingsDTO[]) => httpClient.post<ExecutionResponse<UsersSettingsDTO[]>>(`${schema}/UserSettings`, data),
   changePassword: (data: any[]) => httpClient.post<ExecutionResponse<any[]>>(`${schema}/UsersPassword`, data),
+  deleteAccount: (data: { Id?: number; Code?: string; Password: string; Modified_By?: string }) =>
+    httpClient.post<ExecutionResponse<any>>(`${schema}/DeleteAccount`, data),
   getUserById: (Id: number) => httpClient.get<ExecutionResponse<UsersDTO[]>>(`${schema}/UserById?Id=${Id}`),
   saveUserExternalCodes: (data: IUserExternalCodes[]) => httpClient.post<ExecutionResponse<IUserExternalCodes[]>>(`${schema}/UserExternalCodes`, data),
   saveUsersRegister: (data: IRegister[]) => httpClient.post<ExecutionResponse<IRegister[]>>(`${schema}/Register`, data),

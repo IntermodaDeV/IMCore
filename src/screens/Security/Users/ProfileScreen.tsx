@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { ScrollView } from 'react-native'
-import { YStack, XStack, Text, useTheme } from 'tamagui'
+import { YStack, XStack, Text, useTheme, Button, AlertDialog, Spinner, View } from 'tamagui'
+import AppInput from '../../../components/commons/AppInput'
 import { useAuth } from '../../../context/AuthContext'
 import * as Icons from 'lucide-react-native'
 import { useMenu } from '../../../context/MenuContext'
@@ -19,9 +20,16 @@ import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useLoader } from '../../../providers/LoaderProvider'
 export default function ProfileScreen() {
     const loader = useLoader();
-    const { user } = useAuth()
+    const { user, logout } = useAuth()
     const { setHeader } = useHeader();
     const navigation = useNavigation();
+
+    // Eliminar cuenta
+    const [deleteOpen, setDeleteOpen] = useState(false)
+    const [deletePassword, setDeletePassword] = useState('')
+    const [showDeletePassword, setShowDeletePassword] = useState(false)
+    const [deletePasswordError, setDeletePasswordError] = useState('')
+    const [deleting, setDeleting] = useState(false)
 
     const [data, setData] = useState<any[]>([])
     const initials = `${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
@@ -96,10 +104,44 @@ export default function ProfileScreen() {
         }
     }
 
+    const openDeleteDialog = () => {
+        setDeletePassword('')
+        setDeletePasswordError('')
+        setShowDeletePassword(false)
+        setDeleteOpen(true)
+    }
+
+    const handleDeleteAccount = async () => {
+        if (!deletePassword) {
+            setDeletePasswordError('Ingresa tu contraseña para continuar')
+            return
+        }
+        setDeletePasswordError('')
+        setDeleting(true)
+        try {
+            const info = {
+                Id: user?.Id,
+                Code: user?.Code,
+                Password: deletePassword,
+                Modified_By: user?.Code,
+            }
+            const response: ExecutionResponse<any> = await securityService.deleteAccount(info)
+            if (response.Success) {
+                setDeleteOpen(false)
+                showToast('success', 'Cuenta eliminada', response.SuccessMessage || 'Tu cuenta fue eliminada correctamente', 4000, 'top')
+                // Cerrar sesión y volver al login
+                setTimeout(async () => { await logout() }, 600)
+            } else {
+                setDeletePasswordError(response.ErrorMessage || 'No se pudo eliminar la cuenta')
+            }
+        } catch (error) {
+            setDeletePasswordError('Ocurrió un error inesperado. Intenta de nuevo.')
+        }
+        setDeleting(false)
+    }
+
     useEffect(() => {
         getInfo();
-
-        
     }, [])
 
     return (
@@ -320,7 +362,157 @@ export default function ProfileScreen() {
                     </XStack>
                 </YStack>
 
+                {/* Zona de peligro */}
+                <YStack
+                    backgroundColor="$backgroundElevated"
+                    borderRadius="$6"
+                    padding="$4"
+                    gap="$3"
+                    marginBottom="$5"
+                    borderWidth={1}
+                    borderColor="rgba(239, 68, 68, 0.25)"
+                    {...shadows.sm}
+                >
+                    <XStack alignItems="center" gap="$2">
+                        <Icons.TriangleAlert size={16} color={'#ef4444'} />
+                        <Text fontSize={15} fontWeight="700" color="#ef4444">Zona de peligro</Text>
+                    </XStack>
+
+                    <YStack height={1} backgroundColor="$border" />
+
+                    <Text fontSize={13} color="$textMuted" lineHeight={19}>
+                        Al eliminar tu cuenta se desactivará tu acceso a la aplicación. Esta acción cierra tu sesión.
+                    </Text>
+
+                    <Button
+                        height={44}
+                        borderRadius="$4"
+                        backgroundColor="rgba(239, 68, 68, 0.10)"
+                        borderWidth={1}
+                        borderColor="rgba(239, 68, 68, 0.35)"
+                        pressStyle={{ opacity: 0.7 }}
+                        onPress={openDeleteDialog}
+                    >
+                        <XStack gap="$2" alignItems="center">
+                            <Icons.Trash2 size={18} color="#ef4444" />
+                            <Text fontSize={14} fontWeight="600" color="#ef4444">Eliminar mi cuenta</Text>
+                        </XStack>
+                    </Button>
+                </YStack>
+
             </YStack>
+
+            {/* Diálogo: confirmar eliminación con contraseña */}
+            <AlertDialog
+                open={deleteOpen}
+                onOpenChange={(value) => { if (!deleting) setDeleteOpen(value) }}
+            >
+                <AlertDialog.Portal>
+                    <AlertDialog.Overlay
+                        key="overlay"
+                        enterStyle={{ opacity: 0 }}
+                        exitStyle={{ opacity: 0 }}
+                        opacity={0.6}
+                        backgroundColor="black"
+                    />
+                    <AlertDialog.Content
+                        elevate
+                        key="content"
+                        width="85%"
+                        alignSelf="center"
+                        enterStyle={{ y: -12, opacity: 0, scale: 0.94 }}
+                        exitStyle={{ y: 8, opacity: 0, scale: 0.96 }}
+                        backgroundColor="$backgroundElevated"
+                        borderRadius="$6"
+                        paddingHorizontal="$5"
+                        paddingVertical="$5"
+                        marginHorizontal="$5"
+                        x={0} y={0} scale={1} opacity={1}
+                        {...shadows.lg}
+                    >
+                        <YStack gap="$3">
+                            <YStack gap="$2" alignItems="center">
+                                <YStack
+                                    width={56}
+                                    height={56}
+                                    borderRadius={28}
+                                    backgroundColor="rgba(239, 68, 68, 0.10)"
+                                    justifyContent="center"
+                                    alignItems="center"
+                                >
+                                    <Icons.TriangleAlert size={26} color="#ef4444" />
+                                </YStack>
+
+                                <AlertDialog.Title>
+                                    <Text fontSize={16} fontWeight="700" color="$text" textAlign="center">
+                                        Eliminar mi cuenta
+                                    </Text>
+                                </AlertDialog.Title>
+
+                                <AlertDialog.Description>
+                                    <Text fontSize={13} color="$textMuted" lineHeight={20} textAlign="center">
+                                        Confirma tu contraseña para desactivar tu cuenta. Se cerrará tu sesión.
+                                    </Text>
+                                </AlertDialog.Description>
+                            </YStack>
+
+                            <AppInput
+                                label="Contraseña"
+                                value={deletePassword}
+                                onChangeText={(text) => { setDeletePassword(text); if (deletePasswordError) setDeletePasswordError('') }}
+                                secureTextEntry={!showDeletePassword}
+                                autoCapitalize="none"
+                                error={deletePasswordError}
+                                disabled={deleting}
+                                rightElement={
+                                    <View onPress={() => setShowDeletePassword(p => !p)} padding="$2">
+                                        {showDeletePassword
+                                            ? <Icons.EyeOff size={18} color="#94A3B8" />
+                                            : <Icons.Eye size={18} color="#94A3B8" />}
+                                    </View>
+                                }
+                            />
+
+                            <XStack gap="$3" width="100%" marginTop="$1">
+                                <AlertDialog.Cancel asChild>
+                                    <Button
+                                        flex={1}
+                                        height={42}
+                                        borderRadius="$4"
+                                        backgroundColor="$buttonSecondary"
+                                        borderWidth={0}
+                                        disabled={deleting}
+                                        opacity={deleting ? 0.6 : 1}
+                                        pressStyle={{ opacity: 0.7 }}
+                                        onPress={() => { if (!deleting) setDeleteOpen(false) }}
+                                    >
+                                        <Text fontSize={14} fontWeight="600" color="$text">Cancelar</Text>
+                                    </Button>
+                                </AlertDialog.Cancel>
+
+                                <Button
+                                    flex={1}
+                                    height={42}
+                                    borderRadius="$4"
+                                    backgroundColor="#ef4444"
+                                    borderWidth={0}
+                                    disabled={deleting}
+                                    opacity={deleting ? 0.8 : 1}
+                                    pressStyle={{ opacity: 0.7 }}
+                                    onPress={handleDeleteAccount}
+                                >
+                                    <XStack gap="$2" alignItems="center">
+                                        {deleting && <Spinner size="small" color="white" />}
+                                        <Text fontSize={14} fontWeight="600" color="white">
+                                            {deleting ? 'Eliminando...' : 'Eliminar'}
+                                        </Text>
+                                    </XStack>
+                                </Button>
+                            </XStack>
+                        </YStack>
+                    </AlertDialog.Content>
+                </AlertDialog.Portal>
+            </AlertDialog>
         </ScrollView>
     )
 }
