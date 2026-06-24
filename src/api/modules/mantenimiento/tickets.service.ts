@@ -49,6 +49,12 @@ export const ticketsService = {
   cancelar: (id: number) =>
     httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Cancelar?id=${id}`),
 
+  // Asignar mecánico/técnico (el backend valida rol o acceso 'AsignarTickets').
+  asignar: (id: number, mecanicoUserCode: string) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(
+      `${schema}/Asignar?id=${id}&mecanico_UserCode=${encodeURIComponent(mecanicoUserCode)}`,
+    ),
+
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>
     httpClient.get<ExecutionResponse<IMecanico[]>>(`${schema}/Mecanicos`),

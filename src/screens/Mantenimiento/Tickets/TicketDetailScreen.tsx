@@ -7,9 +7,13 @@ import { useNavigation, useRoute } from '@react-navigation/native'
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useAuth } from '../../../context/AuthContext'
 import { useShowToast } from '../../../utils/useShowToast'
+import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
-import { ITicket } from '../../../api/modules/mantenimiento/tickets.types'
+import { ITicket, IMecanico } from '../../../api/modules/mantenimiento/tickets.types'
 import { colorEstado, colorPrioridad, ACCENT } from '../mantenimiento.helpers'
+
+const ACCESO_ASIGNAR = 'AsignarTickets'
+const ROLES_ASIGNAR = ['Administrador', 'Supervisor de Mantenimiento']
 
 const fmtFecha = (iso: string | null): string => {
   if (!iso) return '—'
@@ -37,6 +41,14 @@ export default function TicketDetailScreen() {
   const MAX = 760
   const [cancelando, setCancelando] = useState(false)
 
+  // ¿Puede asignar? rol Sup. Mantenimiento/Admin o acceso 'AsignarTickets'
+  const accesos = (user?.Access ?? '').split(',').map(s => s.trim())
+  const puedeAsignar = (user?.Roles ?? []).some(r => ROLES_ASIGNAR.includes(r.RoleName)) || accesos.includes(ACCESO_ASIGNAR)
+
+  const [mecanicos, setMecanicos] = useState<IMecanico[]>([])
+  const [selMec, setSelMec] = useState<string | undefined>()
+  const [asignando, setAsignando] = useState(false)
+
   usePageHeader({
     left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
     center: <Text fontSize="$4" fontWeight="700" color="$text">Detalle del ticket</Text>,
@@ -53,6 +65,7 @@ export default function TicketDetailScreen() {
       const res = await ticketsService.getTicketById(id)
       if (!res.Success || !res.Data) { setError(res.ErrorMessage || 'No se encontró el ticket'); setT(null); return }
       setT(res.Data)
+      setSelMec(res.Data.Mecanico_UserCode ?? undefined)
     } catch (e: any) {
       setError(e?.message || 'Error de conexión'); setT(null)
     }
@@ -61,6 +74,12 @@ export default function TicketDetailScreen() {
   useEffect(() => { (async () => { setCargando(true); await cargar(); setCargando(false) })() }, [cargar])
 
   const onRefresh = useCallback(async () => { setRefrescando(true); await cargar(); setRefrescando(false) }, [cargar])
+
+  // Carga la lista de mecánicos/técnicos solo si el usuario puede asignar.
+  useEffect(() => {
+    if (!puedeAsignar) return
+    ticketsService.getMecanicos().then(r => setMecanicos(r.Data ?? [])).catch(() => {})
+  }, [puedeAsignar])
 
   if (cargando) {
     return (
@@ -112,6 +131,23 @@ export default function TicketDetailScreen() {
       `¿Seguro que deseas cancelar el ticket ${t.CodigoTicket}? Esta acción no se puede deshacer.`,
       [{ text: 'No', style: 'cancel' }, { text: 'Sí, cancelar', style: 'destructive', onPress: doCancelar }],
     )
+  }
+
+  // Asignación: disponible si puede asignar y el ticket no está terminado
+  const puedeAsignarAqui = puedeAsignar && t.EstadoCode !== 'COMPLETADO' && t.EstadoCode !== 'CANCELADO'
+  const mecOpts = mecanicos.map(m => ({ value: m.User_Code, label: m.Nombre || m.User_Code }))
+  const asignar = async () => {
+    if (!selMec) { showToast('warning', 'Selecciona', 'Elige a quién asignar'); return }
+    setAsignando(true)
+    try {
+      const res = await ticketsService.asignar(id, selMec)
+      if (res.Success && res.Data?.Success) { showToast('success', 'Asignado', t.CodigoTicket); await cargar() }
+      else showToast('error', 'No se pudo asignar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo asignar')
+    } finally {
+      setAsignando(false)
+    }
   }
 
   return (
@@ -186,6 +222,22 @@ export default function TicketDetailScreen() {
                 {t.Mecanico && t.Mecanico.trim() ? t.Mecanico : <Text color="$textMuted">Sin asignar</Text>}
               </Text>
             </XStack>
+
+            {puedeAsignarAqui && (
+              <YStack gap="$2.5" marginTop="$2" paddingTop="$3" borderTopWidth={1} borderTopColor="$border">
+                <Text fontSize="$2" color="$textMuted">Asignar a un mecánico / técnico:</Text>
+                <AppSelect label="" placeholder="Selecciona mecánico/técnico"
+                  value={selMec} options={mecOpts} onValueChange={v => setSelMec(v ? String(v) : undefined)} />
+                <View onPress={asignando ? undefined : asignar} pressStyle={{ opacity: 0.85 }}
+                  opacity={asignando ? 0.6 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
+                  alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+                  {asignando ? <Spinner color="#fff" /> : <User size={18} color="#fff" />}
+                  <Text color="#fff" fontWeight="800" fontSize="$3">
+                    {asignando ? 'Asignando…' : (t.Mecanico_UserCode ? 'Reasignar' : 'Asignar')}
+                  </Text>
+                </View>
+              </YStack>
+            )}
           </Section>
 
           {/* Observaciones */}
