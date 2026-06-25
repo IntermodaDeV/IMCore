@@ -14,6 +14,7 @@ import {
   ITipoFalla,
   ICausa,
   IMecanico,
+  ITicketEvento,
 } from './tickets.types'
 
 // Consume los endpoints de api/Tickets. baseUrl (API_URL) ya incluye /api/,
@@ -45,12 +46,43 @@ export const ticketsService = {
   anular: (id: number) =>
     httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Anular?id=${id}`),
 
+  // Cancelar (solo Pendiente; el backend valida creador o admin).
+  cancelar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Cancelar?id=${id}`),
+
+  // Asignar mecánico/técnico (el backend valida rol o acceso 'AsignarTickets').
+  asignar: (id: number, mecanicoUserCode: string) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(
+      `${schema}/Asignar?id=${id}&mecanico_UserCode=${encodeURIComponent(mecanicoUserCode)}`,
+    ),
+
+  // ── Acciones del mecánico (el backend valida: asignado o Admin/Sup. Mtto) ────
+  iniciar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Iniciar?id=${id}`),
+
+  pausar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Pausar?id=${id}`),
+
+  reanudar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Reanudar?id=${id}`),
+
+  // Completar; datos de cierre (causa/observaciones) opcionales.
+  completar: (id: number, cierre?: { Causa?: string | null; Observaciones?: string | null }) =>
+    httpClient.post<ExecutionResponse<ITicketResult>, { Causa?: string | null; Observaciones?: string | null }>(
+      `${schema}/Completar?id=${id}`,
+      cierre ?? {},
+    ),
+
+  // Bitácora de acciones (línea de tiempo).
+  getEventos: (id: number) =>
+    httpClient.get<ExecutionResponse<ITicketEvento[]>>(`${schema}/Eventos`, { id }),
+
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>
     httpClient.get<ExecutionResponse<IMecanico[]>>(`${schema}/Mecanicos`),
 
-  getAreas: (onlyActive: boolean = true) =>
-    httpClient.get<ExecutionResponse<IArea[]>>(`${schema}/Areas`, { onlyActive }),
+  getAreas: (onlyActive: boolean = true, categoria?: string) =>
+    httpClient.get<ExecutionResponse<IArea[]>>(`${schema}/Areas`, { onlyActive, categoria }),
 
   getOperaciones: (areaId: number) =>
     httpClient.get<ExecutionResponse<IOperacion[]>>(`${schema}/Operaciones`, { area_Id: areaId }),

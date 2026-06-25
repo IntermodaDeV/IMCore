@@ -39,6 +39,7 @@ export default function UsersForm() {
     const [menuControl, setMenuControl] = useState<IMenuControl[]>([])
     const [loadingToggle, setLoadingToggle] = useState<string | number |  null>(null)
     const [expandedParents, setExpandedParents] = useState<Record<number, boolean>>({})
+    const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({})
     const [showPassword, setShowPassword] = useState(false)
     const [showConfirmPassword, setShowConfirmPassword] = useState(false)
     const { user } = useAuth()
@@ -1032,89 +1033,88 @@ export default function UsersForm() {
                             </View>
                             <ScrollView flex={1} showsVerticalScrollIndicator={false}>
                                 <YStack paddingHorizontal="$4" paddingBottom="$4" gap="$3">
-                                    {filteredAccess.map((i) => {
-                                        const hasAccess = (accessControl ?? []).some(
-                                            (ac) => ac.Access_Id === i?.Id && ac.Status_Id === 1
-                                        )
-                                        const id = `checkbox-user-${i.Id}`
-
-                                        const isLoadingThis = loadingToggle === i.Id
-                                        const isDisabled = loadingToggle !== null && !isLoadingThis
-
-                                        return (
-                                            <XStack
-                                                key={i.Id}
-                                                backgroundColor="$backgroundElevated"
-                                                borderRadius="$4"
-                                                paddingVertical="$3"
-                                                paddingHorizontal="$4"
-                                                alignItems="center"
-                                                borderWidth={0}
-                                                overflow="hidden"
-                                                gap="$3"
-                                                shadowColor="#000"
-                                                shadowOffset={{ width: 0, height: 2 }}
-                                                shadowOpacity={0.07}
-                                                shadowRadius={6}
-                                                elevation={2}
-                                                onPress={() => !isDisabled && !isLoadingThis && toggleRolAccess(i)}
-                                                opacity={isDisabled ? 0.4 : 1}
-                                                pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
-                                            >
-                                                {/* Franja izquierda */}
-                                                <View
-                                                    position="absolute"
-                                                    left={0}
-                                                    top={0}
-                                                    bottom={0}
-                                                    width={4}
-                                                    backgroundColor={hasAccess ? '$primary' : 'transparent'}
-                                                />
-
-                                                {/* Ícono usuario */}
-                                                <View
-                                                    width={40}
-                                                    height={40}
-                                                    borderRadius={20}
-                                                    backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
-                                                    justifyContent="center"
+                                    {(() => {
+                                        // Tarjeta de acceso (reutilizada por categoría)
+                                        const renderAccessCard = (i: AccessDTO) => {
+                                            const hasAccess = (accessControl ?? []).some(
+                                                (ac) => ac.Access_Id === i?.Id && ac.Status_Id === 1
+                                            )
+                                            const isLoadingThis = loadingToggle === i.Id
+                                            const isDisabled = loadingToggle !== null && !isLoadingThis
+                                            return (
+                                                <XStack
+                                                    key={i.Id}
+                                                    backgroundColor="$backgroundElevated"
+                                                    borderRadius="$4"
+                                                    paddingVertical="$3"
+                                                    paddingHorizontal="$4"
                                                     alignItems="center"
+                                                    borderWidth={0}
+                                                    overflow="hidden"
+                                                    gap="$3"
+                                                    shadowColor="#000"
+                                                    shadowOffset={{ width: 0, height: 2 }}
+                                                    shadowOpacity={0.07}
+                                                    shadowRadius={6}
+                                                    elevation={2}
+                                                    onPress={() => !isDisabled && !isLoadingThis && toggleRolAccess(i)}
+                                                    opacity={isDisabled ? 0.4 : 1}
+                                                    pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
                                                 >
-                                                    {isLoadingThis ? (
-                                                        <Spinner size="small" color="$primary" />
-                                                    ) : (
-                                                        <User size={20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
-                                                    )}
-                                                </View>
-
-                                                {/* Info */}
-                                                <YStack flex={1} gap="$0.5">
-                                                    <Text fontWeight="700" fontSize={14} color="$text">
-                                                        {i.Name}
-                                                    </Text>
-                                                    <Text fontSize={12} color="$textMuted">
-                                                        {i.KeyVar} - {i.Description}
-                                                    </Text>
-                                                </YStack>
-
-                                                {/* Badge + Checkbox */}
-                                                <XStack alignItems="center" gap="$2">
+                                                    <View position="absolute" left={0} top={0} bottom={0} width={4}
+                                                        backgroundColor={hasAccess ? '$primary' : 'transparent'} />
+                                                    <View width={40} height={40} borderRadius={20}
+                                                        backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
+                                                        justifyContent="center" alignItems="center">
+                                                        {isLoadingThis ? (
+                                                            <Spinner size="small" color="$primary" />
+                                                        ) : (
+                                                            <User size={20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
+                                                        )}
+                                                    </View>
+                                                    <YStack flex={1} gap="$0.5">
+                                                        <Text fontWeight="700" fontSize={14} color="$text">{i.Name}</Text>
+                                                        <Text fontSize={12} color="$textMuted">{i.KeyVar} - {i.Description}</Text>
+                                                    </YStack>
                                                     {hasAccess && (
-                                                        <View
-                                                            backgroundColor="rgba(255, 85, 26, 0.12)"
-                                                            paddingHorizontal="$2"
-                                                            paddingVertical={3}
-                                                            borderRadius="$10"
-                                                        >
-                                                            <Text fontSize={10} color="$primary" fontWeight="700">
-                                                                Activo
-                                                            </Text>
+                                                        <View backgroundColor="rgba(255, 85, 26, 0.12)" paddingHorizontal="$2"
+                                                            paddingVertical={3} borderRadius="$10">
+                                                            <Text fontSize={10} color="$primary" fontWeight="700">Activo</Text>
                                                         </View>
                                                     )}
                                                 </XStack>
-                                            </XStack>
-                                        )
-                                    })}
+                                            )
+                                        }
+
+                                        // Agrupar por categoría ('Otros' al final)
+                                        const grupos = new Map<string, AccessDTO[]>()
+                                        filteredAccess.forEach((a) => {
+                                            const cat = a.Category && a.Category.trim() ? a.Category : 'Otros'
+                                            if (!grupos.has(cat)) grupos.set(cat, [])
+                                            grupos.get(cat)!.push(a)
+                                        })
+                                        const cats = [...grupos.keys()].sort((a, b) =>
+                                            a === 'Otros' ? 1 : b === 'Otros' ? -1 : a.localeCompare(b))
+
+                                        const rows: React.ReactNode[] = []
+                                        cats.forEach((cat) => {
+                                            const items = grupos.get(cat)!
+                                            const isExp = expandedCats[cat] ?? false
+                                            rows.push(
+                                                <XStack key={`cat-${cat}`} alignItems="center" gap="$2"
+                                                    paddingVertical="$2" paddingHorizontal="$1" marginTop="$1"
+                                                    onPress={() => setExpandedCats((p) => ({ ...p, [cat]: !isExp }))}
+                                                    pressStyle={{ opacity: 0.7 }}>
+                                                    {isExp ? <ChevronDown size={18} color="#94A3B8" /> : <ChevronRight size={18} color="#94A3B8" />}
+                                                    <Text fontWeight="800" fontSize={13} color="$textMuted"
+                                                        textTransform="uppercase" letterSpacing={0.5}>{cat}</Text>
+                                                    <Text fontSize={12} color="$textMuted">· {items.length}</Text>
+                                                </XStack>
+                                            )
+                                            if (isExp) items.forEach((i) => rows.push(renderAccessCard(i)))
+                                        })
+                                        return rows
+                                    })()}
                                 </YStack>
                             </ScrollView>
                         </>

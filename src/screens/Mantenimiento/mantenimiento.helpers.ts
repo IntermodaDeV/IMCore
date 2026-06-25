@@ -1,5 +1,32 @@
 import { MantenimientoRegistro } from '../../api/modules/sharepoint/mantenimiento.types'
 
+// ── Capacidades de tickets (rol por defecto o acceso por usuario) ────────────
+type RoleLike = { RoleName: string }
+const ROLES_CREAR_DEFAULT = ['Supervisor de Producción', 'Administrador']
+const hasAccess = (access: string | undefined | null, key: string) =>
+  (access ?? '').split(',').map(s => s.trim()).includes(key)
+const hasRole = (roles: RoleLike[] | undefined | null, names: string[]) =>
+  (roles ?? []).some(r => names.includes(r.RoleName))
+
+// Crear tickets / ver listado: Sup. Producción o Admin, o acceso 'CrearTickets'.
+export const puedeCrearTickets = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_CREAR_DEFAULT) || hasAccess(access, 'CrearTickets')
+
+// Crear tickets de máquina: Sup. Producción o Admin, o acceso 'CrearTicketsMaquinas'.
+export const puedeCrearMaquina = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_CREAR_DEFAULT) || hasAccess(access, 'CrearTicketsMaquinas')
+
+// Operar un ticket (Iniciar/Pausar/Reanudar/Completar): el mecánico asignado,
+// o un Administrador / Supervisor de Mantenimiento. (El backend revalida.)
+const ROLES_OPERAR = ['Administrador', 'Supervisor de Mantenimiento']
+export const puedeOperarTicket = (
+  roles?: RoleLike[] | null,
+  userCode?: string | null,
+  mecanicoUserCode?: string | null,
+) =>
+  (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
+  hasRole(roles, ROLES_OPERAR)
+
 // ── Paletas (mismas del dashboard de Streamlit) ──────────────────────────────
 export const MESES: Record<number, string> = {
   1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -10,7 +37,9 @@ export const MESES: Record<number, string> = {
 export const PALETA_ESTADO: Record<string, string> = {
   Completado: '#22c55e',
   'En Proceso': '#3b82f6',
+  Pausado: '#a855f7',
   Pendiente: '#f59e0b',
+  Cancelado: '#dc2626',
 }
 
 export const COLORES_PRIO: Record<string, string> = {

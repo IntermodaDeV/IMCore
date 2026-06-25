@@ -101,6 +101,7 @@ export type AccessDTO = {
   KeyVar?: string;
   Name?: string;
   Description?: string;
+  Category?: string | null;
   Status_Id?: number;
   Create_By?: string;
   Creation_Date?: string;

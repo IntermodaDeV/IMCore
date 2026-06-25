@@ -1,6 +1,8 @@
 import { TScreens } from '../../navigation/screens.types'
 import MantenimientoDashboardScreen from './MantenimientoDashboardScreen'
 import TicketsListScreen from './Tickets/TicketsListScreen'
+import NewTicketScreen from './Tickets/NewTicketScreen'
+import TicketDetailScreen from './Tickets/TicketDetailScreen'
 
 // La key debe coincidir con el `Route` del item de menú en la BD de seguridad.
 export const ScreensMantenimiento: TScreens = {
@@ -10,7 +12,10 @@ export const ScreensMantenimiento: TScreens = {
   },
   mantenimientoTickets: {
     Screen: TicketsListScreen,
-    // Detalle y formularios (Nuevo/Editar) se agregan en el siguiente paso.
-    Childs: {},
+    Childs: {
+      // Pantallas internas (navegadas desde la lista).
+      mantenimientoTicketNuevo: NewTicketScreen,
+      mantenimientoTicketDetalle: TicketDetailScreen,
+    },
   },
 }

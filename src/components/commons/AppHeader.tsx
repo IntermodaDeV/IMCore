@@ -6,7 +6,10 @@ import { useHeader } from '../../context/HeaderContext'
 import { MenuButton } from './MenuBotton'
 import { shadows } from '../../theme/shadows';
 import { Platform } from 'react-native';
+import DeviceInfo from 'react-native-device-info';
 
+// Versión real del build nativo (Info.plist en iOS / versionName en Android).
+const APP_VERSION = DeviceInfo.getVersion()
 
 export function AppHeader({ route, options }: { route: any; options: any }) {
   const theme = useTheme()
@@ -22,7 +25,7 @@ export function AppHeader({ route, options }: { route: any; options: any }) {
       zIndex={100}
     >
       <Text fontSize="$1" color={theme.textMuted?.val} position="absolute" bottom={ Platform.OS === 'ios' ? insets.top - 14 : 35 } right={16}>
-        1.0.0
+        {APP_VERSION}
       </Text>
       <XStack
         height={50}

@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Icons from 'lucide-react-native'
 import { HeaderProvider } from '../context/HeaderContext'
 import { AppHeader } from '../components/commons/AppHeader'
+import { puedeCrearTickets } from '../screens/Mantenimiento/mantenimiento.helpers'
 
 const Drawer = createDrawerNavigator()
 
@@ -120,7 +121,16 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const theme = useTheme()
   const currentRoute = useNavigationState(state => state?.routes?.[state.index]?.name)
   const [openId, setOpenId] = useState<number | null>(null)
-  const MENU = buildMenuTree(props.menu ?? [])
+  // El acceso 'CrearTickets' (o rol Sup. Producción/Admin) hace visible el módulo
+  // de Tickets aunque el menú del servidor no lo incluya (se inyecta en el árbol).
+  const baseMenu = props.menu ?? []
+  const inject: MenuDTO[] = []
+  if (puedeCrearTickets(user?.Roles, user?.Access) && !baseMenu.some(m => m.Route === 'mantenimientoTickets')) {
+    const grupo = baseMenu.find(m => m.Route === 'mantenimiento')
+    if (!grupo) inject.push({ Id: -901, Name: 'Mantenimiento', Route: 'mantenimiento', Icon: 'SquareMenu', ParentMenu_Id: null, MenuOrder: 99 })
+    inject.push({ Id: -902, Name: 'Tickets', Route: 'mantenimientoTickets', Icon: 'Wrench', ParentMenu_Id: grupo?.Id ?? -901, MenuOrder: 1 })
+  }
+  const MENU = buildMenuTree([...baseMenu, ...inject])
   const insets = useSafeAreaInsets()
 
   const logoutUser = async () => {

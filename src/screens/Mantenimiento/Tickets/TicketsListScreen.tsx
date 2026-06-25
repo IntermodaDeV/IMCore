@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { RefreshControl } from 'react-native'
+import { RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
 import { Search, Plus, Wrench, RefreshCw } from 'lucide-react-native'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useAuth } from '../../../context/AuthContext'
@@ -10,10 +10,7 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT } from '../mantenimiento.helpers'
-
-// Roles que pueden reportar un paro (crear ticket).
-const ROLES_CREAR = ['Supervisor de Producción', 'Administrador']
+import { colorEstado, colorPrioridad, ACCENT, puedeCrearTickets } from '../mantenimiento.helpers'
 
 const fmtFecha = (iso: string | null): string => {
   if (!iso) return ''
@@ -37,6 +34,12 @@ export default function TicketsListScreen() {
   const { user } = useAuth()
   const { showToast } = useShowToast()
 
+  // Responsive: en tablets/pantallas anchas centramos el contenido y usamos
+  // grid de 2 columnas para aprovechar el espacio.
+  const { width } = useWindowDimensions()
+  const isWide = width >= 700
+  const CONTENT_MAX = 1000
+
   const [tickets, setTickets] = useState<ITicket[]>([])
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
@@ -54,7 +57,7 @@ export default function TicketsListScreen() {
   const [search, setSearch] = useState('')
 
   const puedeCrear = useMemo(
-    () => (user?.Roles ?? []).some(r => ROLES_CREAR.includes(r.RoleName)),
+    () => puedeCrearTickets(user?.Roles, user?.Access),
     [user],
   )
 
@@ -120,28 +123,40 @@ export default function TicketsListScreen() {
   }, [cargarTickets])
 
   const irADetalle = (t: ITicket) => {
-    // TODO (siguiente paso): navegar a la pantalla de Detalle.
-    showToast('info', t.CodigoTicket, 'Detalle del ticket — próximamente')
+    navigation.navigate('mantenimientoTicketDetalle', { id: t.Id })
   }
 
   const irANuevo = () => {
-    // TODO (siguiente paso): navegar al formulario de Nuevo ticket.
-    showToast('info', 'Reportar un paro', 'Formulario de nuevo ticket — próximamente')
+    navigation.navigate('mantenimientoTicketNuevo')
   }
 
+  // Recarga la lista al volver de crear/editar (sin spinner; silencioso).
+  const primerFoco = React.useRef(true)
+  useFocusEffect(
+    useCallback(() => {
+      if (primerFoco.current) {
+        primerFoco.current = false
+        return
+      }
+      cargarTickets()
+    }, [cargarTickets]),
+  )
+
+  // El valor "todas" usa un centinela no vacío ('all') para que el label de
+  // AppSelect flote (con value vacío el label se encimaría con el placeholder).
   const opcionesArea = useMemo(
-    () => [{ label: 'Todas las áreas', value: '' }, ...areas.map(a => ({ label: a.Name, value: String(a.Id) }))],
+    () => [{ label: 'Todas las áreas', value: 'all' }, ...areas.map(a => ({ label: a.Name, value: String(a.Id) }))],
     [areas],
   )
   const opcionesPrioridad = useMemo(
-    () => [{ label: 'Toda prioridad', value: '' }, ...prioridades.map(p => ({ label: p.Name, value: String(p.Id) }))],
+    () => [{ label: 'Todas las prioridades', value: 'all' }, ...prioridades.map(p => ({ label: p.Name, value: String(p.Id) }))],
     [prioridades],
   )
 
   return (
     <View flex={1} backgroundColor="$background">
       {/* Filtros */}
-      <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2">
+      <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
         {/* Buscador */}
         <XStack
           alignItems="center"
@@ -185,17 +200,17 @@ export default function TicketsListScreen() {
           <View flex={1}>
             <AppSelect
               label="Área"
-              value={areaId !== undefined ? String(areaId) : ''}
+              value={areaId !== undefined ? String(areaId) : 'all'}
               options={opcionesArea}
-              onValueChange={v => setAreaId(v === '' || v == null ? undefined : Number(v))}
+              onValueChange={v => setAreaId(v === 'all' || v == null ? undefined : Number(v))}
             />
           </View>
           <View flex={1}>
             <AppSelect
               label="Prioridad"
-              value={prioridadId !== undefined ? String(prioridadId) : ''}
+              value={prioridadId !== undefined ? String(prioridadId) : 'all'}
               options={opcionesPrioridad}
-              onValueChange={v => setPrioridadId(v === '' || v == null ? undefined : Number(v))}
+              onValueChange={v => setPrioridadId(v === 'all' || v == null ? undefined : Number(v))}
             />
           </View>
         </XStack>
@@ -209,7 +224,7 @@ export default function TicketsListScreen() {
         </YStack>
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: 12, paddingBottom: 96, gap: 10 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 96 }}
           refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />}
         >
           {error ? (
@@ -225,7 +240,20 @@ export default function TicketsListScreen() {
               subtitle="No hay tickets que coincidan con los filtros."
             />
           ) : (
-            tickets.map(t => <TicketCard key={t.Id} t={t} onPress={() => irADetalle(t)} theme={theme} />)
+            <View
+              width="100%"
+              maxWidth={CONTENT_MAX}
+              alignSelf="center"
+              flexDirection="row"
+              flexWrap="wrap"
+              justifyContent="space-between"
+            >
+              {tickets.map(t => (
+                <View key={t.Id} width={isWide ? '49%' : '100%'} marginBottom="$2.5">
+                  <TicketCard t={t} onPress={() => irADetalle(t)} theme={theme} />
+                </View>
+              ))}
+            </View>
           )}
         </ScrollView>
       )}
@@ -250,7 +278,7 @@ export default function TicketsListScreen() {
             shadowOffset={{ width: 0, height: 4 }}
           >
             <Plus size={22} color="#fff" />
-            <Text color="#fff" fontWeight="700" fontSize="$3">Reportar paro</Text>
+            <Text color="#fff" fontWeight="700" fontSize="$3">Crear ticket</Text>
           </View>
         </View>
       )}
@@ -310,14 +338,16 @@ function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; th
       </XStack>
 
       <XStack alignItems="center" justifyContent="space-between">
-        <Text fontSize="$2" color="$text">
-          {[t.Modelo, t.NumeroMaquina].filter(Boolean).join('  ·  ') || 'Sin máquina'}
+        <Text fontSize="$2" color="$text" flex={1} numberOfLines={1}>
+          {t.TipoDestino === 'AREA'
+            ? `🛠 ${t.Objeto || 'Trabajo de área'}`
+            : ([t.Modelo, t.NumeroMaquina].filter(Boolean).join('  ·  ') || 'Sin máquina')}
         </Text>
         <Text fontSize="$1" color="$textMuted">{fmtFecha(t.Fecha)}</Text>
       </XStack>
 
       {!!t.Mecanico && (
-        <Text fontSize="$2" color="$textMuted">Mecánico: <Text color="$text">{t.Mecanico}</Text></Text>
+        <Text fontSize="$2" color="$textMuted">Asignado a: <Text color="$text">{t.Mecanico}</Text></Text>
       )}
     </View>
   )
