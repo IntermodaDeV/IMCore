@@ -6,14 +6,26 @@ import { IArea, IOperacion, ITipoParo } from './tickets.types'
 // permiso de menú de cada pantalla; el backend solo exige autenticación.
 const schema = 'Catalogos'
 
-export interface IAreaManage { Id?: number; Name: string; Categoria?: string | null }
-export interface IOperacionManage { Id?: number; Area_Id: number; Name: string }
+export interface IAreaPrincipal { Id: number; Name: string; PermiteMaquinas: boolean; Orden: number; Status_Id: number }
+export interface IAreaPrincipalManage { Id?: number; Name: string; PermiteMaquinas: boolean; Status_Id?: number }
+export interface IAreaManage { Id?: number; Name: string; AreaPrincipal_Id: number; Status_Id?: number }
+export interface IOperacionManage { Id?: number; Area_Id: number; Name: string; Status_Id?: number }
 export interface ITipoParoManage { Id?: number; Name: string }
 
 export const catalogosService = {
+  // ── Áreas principales ─────────────────────────────────────────────────────
+  getAreasPrincipales: (onlyActive = false) =>
+    httpClient.get<ExecutionResponse<IAreaPrincipal[]>>(`${schema}/AreasPrincipales`, { onlyActive }),
+  crearAreaPrincipal: (data: IAreaPrincipalManage) =>
+    httpClient.post<ExecutionResponse<null>, IAreaPrincipalManage>(`${schema}/AreasPrincipales`, data),
+  editarAreaPrincipal: (data: IAreaPrincipalManage) =>
+    httpClient.put<ExecutionResponse<null>, IAreaPrincipalManage>(`${schema}/AreasPrincipales`, data),
+  toggleAreaPrincipal: (id: number) =>
+    httpClient.post<ExecutionResponse<null>>(`${schema}/AreasPrincipales/Toggle?id=${id}`),
+
   // ── Áreas ───────────────────────────────────────────────────────────────
-  getAreas: (onlyActive = false, categoria?: string) =>
-    httpClient.get<ExecutionResponse<IArea[]>>(`${schema}/Areas`, { onlyActive, categoria }),
+  getAreas: (onlyActive = false, areaPrincipalId?: number, soloMaquinas?: boolean) =>
+    httpClient.get<ExecutionResponse<IArea[]>>(`${schema}/Areas`, { onlyActive, areaPrincipal_Id: areaPrincipalId, soloMaquinas }),
   crearArea: (data: IAreaManage) =>
     httpClient.post<ExecutionResponse<null>, IAreaManage>(`${schema}/Areas`, data),
   editarArea: (data: IAreaManage) =>

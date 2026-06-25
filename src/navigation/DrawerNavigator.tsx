@@ -116,6 +116,17 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const { user, logout, refreshUser } = useAuth()
   const { refreshMenu } = useMenu()
   const [refreshing, setRefreshing] = useState(false)
+
+  // Auto-refresca el menú y los permisos una vez al iniciar (el cache local puede
+  // estar desactualizado tras cambios de menú/accesos en el servidor).
+  const didAutoRefresh = useRef(false)
+  useEffect(() => {
+    if (!didAutoRefresh.current && user?.Code) {
+      didAutoRefresh.current = true
+      refreshMenu(user.Code).catch(() => {})
+      refreshUser().catch(() => {})
+    }
+  }, [user?.Code])
   const [navLoading, setNavLoading] = useState<string | null>(null)
   const initials =`${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
   const theme = useTheme()

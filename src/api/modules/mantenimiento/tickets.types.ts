@@ -100,7 +100,11 @@ export interface ITicketFiltros {
 }
 
 // ── Catálogos / cascadas ─────────────────────────────────────────────────────
-export interface IArea { Id: number; Name: string; Categoria?: string | null; Status_Id: number }
+export interface IArea {
+  Id: number; Name: string; Categoria?: string | null
+  AreaPrincipal_Id?: number | null; AreaPrincipal?: string | null; PermiteMaquinas?: boolean
+  Status_Id: number
+}
 export interface IOperacion { Id: number; Area_Id: number; Name: string; Status_Id?: number }
 export interface IEstado { Id: number; Code: string; Name: string; Orden: number }
 export interface IPrioridad { Id: number; Name: string; Orden: number; Color?: string | null }
