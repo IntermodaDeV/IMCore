@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Modal, RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, TextArea, useTheme } from 'tamagui'
 import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2 } from 'lucide-react-native'
-import { useNavigation, useRoute } from '@react-navigation/native'
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
+import { NotificationBell } from '../../../components/notifications/NotificationBell'
 import { useAuth } from '../../../context/AuthContext'
 import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
@@ -64,6 +65,7 @@ export default function TicketDetailScreen() {
   usePageHeader({
     left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
     center: <Text fontSize="$4" fontWeight="700" color="$text">Detalle del ticket</Text>,
+    right: <NotificationBell size={20} />,
   })
 
   const [t, setT] = useState<ITicket | null>(null)
@@ -85,6 +87,14 @@ export default function TicketDetailScreen() {
   }, [id])
 
   useEffect(() => { (async () => { setCargando(true); await cargar(); setCargando(false) })() }, [cargar])
+
+  // Recarga silenciosa al volver a enfocar (p. ej. al entrar por una notificación
+  // tras completar/iniciar el ticket); el mount ya hace la primera carga.
+  const primerFoco = useRef(true)
+  useFocusEffect(useCallback(() => {
+    if (primerFoco.current) { primerFoco.current = false; return }
+    cargar()
+  }, [cargar]))
 
   const onRefresh = useCallback(async () => { setRefrescando(true); await cargar(); setRefrescando(false) }, [cargar])
 

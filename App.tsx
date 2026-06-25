@@ -1,7 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button, TamaguiProvider, Text, Theme, View } from 'tamagui'
 import { config } from './src/theme/tamagui.config'
 import { NavigationContainer } from '@react-navigation/native'
+import { navigationRef } from './src/navigation/navigationRef'
+import { setupNotificationOpenHandlers } from './src/services/pushNotifications'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import LoginScreen from './src/screens/AdmSys/LoginScreen'
 import DrawerNavigator from './src/navigation/DrawerNavigator'
@@ -28,6 +30,9 @@ function Root() {
   const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired } = useAuth()
   const Stack = createNativeStackNavigator()
   const { position: toastPosition } = useToastPosition()
+
+  // Engancha el tap de notificaciones (deep-link al detalle) una sola vez.
+  useEffect(() => { setupNotificationOpenHandlers() }, [])
   
   const navigationTheme = {
     light: {
@@ -90,7 +95,7 @@ function Root() {
             <ToastProvider swipeDirection="horizontal">
               
               
-              <NavigationContainer>
+              <NavigationContainer ref={navigationRef}>
                 <RightDrawerProvider>
                 <Stack.Navigator screenOptions={{ headerShown: false }}>
                   {user ? (

@@ -2,12 +2,11 @@ import React, { useEffect } from 'react'
 import { FlatList, RefreshControl, Pressable } from 'react-native'
 import { YStack, XStack, Text, View, Spinner, useTheme } from 'tamagui'
 import { BellOff, CheckCheck } from 'lucide-react-native'
-import { useNavigation } from '@react-navigation/native'
 import { useNotifications } from '../../context/NotificationsContext'
 import { useRightDrawer } from '../../providers/RightDrawerProvider'
 import { getCategoryMeta } from '../../config/notificationCategories'
 import { INotification } from '../../api/modules/notifications/notifications.service'
-import { requestOpenPass } from '../../services/passNavigation'
+import { routeNotification } from '../../services/notificationRouter'
 
 // Tiempo relativo legible ("hace 5 min", "hace 2 h", "ayer", fecha).
 function timeAgo(iso?: string): string {
@@ -37,7 +36,6 @@ function parseData(raw?: string | null): any {
 
 export default function NotificationsInbox() {
   const theme = useTheme()
-  const navigation = useNavigation<any>()
   const { closeDrawer } = useRightDrawer()
   const { items, loading, refreshing, refresh, markRead, markAllRead, unreadCount } =
     useNotifications()
@@ -49,22 +47,11 @@ export default function NotificationsInbox() {
   const onPressItem = (n: INotification) => {
     if (!n.IsRead) markRead(n.Id)
 
-    // Acción según la categoría
-    if (n.Category === 'visita_acceso') {
-      const data = parseData(n.Data)
-      const visitaId = Number(data?.visitaId)
-      if (visitaId > 0) {
-        // 1) Cierra el drawer (es un Modal). En iOS no se pueden presentar dos
-        //    Modals a la vez, así que esperamos a que termine de cerrarse antes
-        //    de abrir el detalle del pase (otro Modal).
-        closeDrawer()
-        setTimeout(() => {
-          requestOpenPass(visitaId)
-          navigation.navigate('visitasHistorial')
-        }, 350)
-      }
-    }
-    // (futuro) solicitud_compra -> navegar a la pantalla de aprobación
+    // Enruta por categoría (mismo router que usa el tap de push).
+    // Cierra primero el drawer (es un Modal) y luego navega.
+    const data = { ...parseData(n.Data), category: n.Category }
+    closeDrawer()
+    setTimeout(() => routeNotification(data), 350)
   }
 
   const renderItem = ({ item }: { item: INotification }) => {
