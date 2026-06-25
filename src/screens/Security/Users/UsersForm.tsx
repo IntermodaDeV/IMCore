@@ -1099,7 +1099,7 @@ export default function UsersForm() {
                                         const rows: React.ReactNode[] = []
                                         cats.forEach((cat) => {
                                             const items = grupos.get(cat)!
-                                            const isExp = expandedCats[cat] ?? true
+                                            const isExp = expandedCats[cat] ?? false
                                             rows.push(
                                                 <XStack key={`cat-${cat}`} alignItems="center" gap="$2"
                                                     paddingVertical="$2" paddingHorizontal="$1" marginTop="$1"

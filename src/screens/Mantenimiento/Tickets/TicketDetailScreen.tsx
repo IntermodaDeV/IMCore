@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Alert, RefreshControl, useWindowDimensions } from 'react-native'
-import { ScrollView, Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
-import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban } from 'lucide-react-native'
+import { Alert, Modal, RefreshControl, useWindowDimensions } from 'react-native'
+import { ScrollView, Text, XStack, YStack, View, Spinner, TextArea, useTheme } from 'tamagui'
+import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2 } from 'lucide-react-native'
 import { useNavigation, useRoute } from '@react-navigation/native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -9,11 +9,16 @@ import { useAuth } from '../../../context/AuthContext'
 import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
-import { ITicket, IMecanico } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT } from '../mantenimiento.helpers'
+import { ITicket, IMecanico, ITicketEvento } from '../../../api/modules/mantenimiento/tickets.types'
+import { colorEstado, colorPrioridad, ACCENT, puedeOperarTicket } from '../mantenimiento.helpers'
 
 const ACCESO_ASIGNAR = 'AsignarTickets'
 const ROLES_ASIGNAR = ['Administrador', 'Supervisor de Mantenimiento']
+
+// Etiqueta legible de cada evento de la bitácora.
+const EVENTO_LABEL: Record<string, string> = {
+  INICIAR: 'Iniciado', PAUSAR: 'Pausado', REANUDAR: 'Reanudado', COMPLETAR: 'Completado',
+}
 
 const fmtFecha = (iso: string | null): string => {
   if (!iso) return '—'
@@ -49,6 +54,13 @@ export default function TicketDetailScreen() {
   const [selMec, setSelMec] = useState<string | undefined>()
   const [asignando, setAsignando] = useState(false)
 
+  // Acciones del mecánico + bitácora
+  const [eventos, setEventos] = useState<ITicketEvento[]>([])
+  const [accionando, setAccionando] = useState(false)
+  const [showCompletar, setShowCompletar] = useState(false)
+  const [cierreCausa, setCierreCausa] = useState('')
+  const [cierreObs, setCierreObs] = useState('')
+
   usePageHeader({
     left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
     center: <Text fontSize="$4" fontWeight="700" color="$text">Detalle del ticket</Text>,
@@ -66,6 +78,7 @@ export default function TicketDetailScreen() {
       if (!res.Success || !res.Data) { setError(res.ErrorMessage || 'No se encontró el ticket'); setT(null); return }
       setT(res.Data)
       setSelMec(res.Data.Mecanico_UserCode ?? undefined)
+      ticketsService.getEventos(id).then(r => setEventos(r.Data ?? [])).catch(() => {})
     } catch (e: any) {
       setError(e?.message || 'Error de conexión'); setT(null)
     }
@@ -150,6 +163,50 @@ export default function TicketDetailScreen() {
     }
   }
 
+  // ── Acciones del mecánico ──────────────────────────────────────────────────
+  // Puede operar: el mecánico asignado, o un Administrador / Supervisor de Mtto.
+  const puedeOperar = puedeOperarTicket(user?.Roles, user?.Code, t.Mecanico_UserCode)
+
+  const doAccion = async (
+    fn: (id: number) => Promise<any>,
+    okMsg: string,
+  ) => {
+    setAccionando(true)
+    try {
+      const res = await fn(id)
+      if (res.Success && res.Data?.Success) { showToast('success', okMsg, t.CodigoTicket); await cargar() }
+      else showToast('error', 'No se pudo', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'Operación fallida')
+    } finally {
+      setAccionando(false)
+    }
+  }
+
+  const doCompletar = async () => {
+    setAccionando(true)
+    try {
+      const res = await ticketsService.completar(id, {
+        Causa: cierreCausa.trim() || null,
+        Observaciones: cierreObs.trim() || null,
+      })
+      if (res.Success && res.Data?.Success) {
+        showToast('success', 'Ticket completado', t.CodigoTicket)
+        setShowCompletar(false); setCierreCausa(''); setCierreObs('')
+        await cargar()
+      } else {
+        showToast('error', 'No se pudo completar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+      }
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo completar')
+    } finally {
+      setAccionando(false)
+    }
+  }
+
+  const estado = t.EstadoCode
+  const mostrarAcciones = puedeOperar && (estado === 'PENDIENTE' || estado === 'EN_PROCESO' || estado === 'PAUSADO')
+
   return (
     <View flex={1} backgroundColor="$background">
       <ScrollView
@@ -188,13 +245,41 @@ export default function TicketDetailScreen() {
               <>
                 <Step label="En Proceso" date={fmtFecha(t.HoraInicio)} color={colorEstado('En Proceso')} done={orden >= 2} />
                 <Step label="Completado" date={fmtFecha(t.HoraFinal)} color={colorEstado('Completado')} done={orden >= 3} last />
-                <XStack gap="$4" marginTop="$2" paddingTop="$2" borderTopWidth={1} borderTopColor="$border">
+                <XStack gap="$4" marginTop="$2" paddingTop="$2" borderTopWidth={1} borderTopColor="$border" flexWrap="wrap">
                   <TimeStat label="T. respuesta" value={fmtMin(t.TiempoRespuestaMin)} />
                   <TimeStat label="T. resolución" value={fmtMin(t.TiempoResolucionMin)} />
+                  <TimeStat label="T. neto" value={fmtMin(t.TiempoNetoMin)} />
                 </XStack>
               </>
             )}
           </Section>
+
+          {/* Acciones del mecánico (contextuales por estado) */}
+          {mostrarAcciones && (
+            <Section title="Acciones">
+              <XStack gap="$2.5" flexWrap="wrap">
+                {estado === 'PENDIENTE' && (
+                  <ActionBtn icon={<Play size={18} color="#fff" />} label="Iniciar" color={colorEstado('En Proceso')}
+                    loading={accionando} onPress={() => doAccion(ticketsService.iniciar, 'Ticket iniciado')} />
+                )}
+                {estado === 'EN_PROCESO' && (
+                  <ActionBtn icon={<Pause size={18} color="#fff" />} label="Pausar" color={colorEstado('Pausado')}
+                    loading={accionando} onPress={() => doAccion(ticketsService.pausar, 'Ticket pausado')} />
+                )}
+                {estado === 'PAUSADO' && (
+                  <ActionBtn icon={<RotateCcw size={18} color="#fff" />} label="Reanudar" color={colorEstado('En Proceso')}
+                    loading={accionando} onPress={() => doAccion(ticketsService.reanudar, 'Ticket reanudado')} />
+                )}
+                {(estado === 'EN_PROCESO' || estado === 'PAUSADO') && (
+                  <ActionBtn icon={<CheckCircle2 size={18} color="#fff" />} label="Completar" color={colorEstado('Completado')}
+                    loading={accionando} onPress={() => setShowCompletar(true)} />
+                )}
+              </XStack>
+              {estado === 'PENDIENTE' && !t.Mecanico_UserCode && (
+                <Text fontSize="$2" color="$textMuted">Asigna un mecánico antes de iniciar.</Text>
+              )}
+            </Section>
+          )}
 
           {/* Detalle */}
           <Section title="Detalle">
@@ -247,6 +332,30 @@ export default function TicketDetailScreen() {
             </Section>
           )}
 
+          {/* Bitácora de acciones */}
+          {eventos.length > 0 && (
+            <Section title="Bitácora">
+              <YStack gap="$2.5">
+                {eventos.map((ev, i) => (
+                  <XStack key={ev.Id} gap="$3" alignItems="flex-start">
+                    <YStack alignItems="center">
+                      <View width={10} height={10} borderRadius={5} backgroundColor={colorEstado(ev.EstadoNuevo ?? '')} marginTop={4} />
+                      {i < eventos.length - 1 && <View width={2} flex={1} minHeight={16} backgroundColor="$border" />}
+                    </YStack>
+                    <YStack flex={1} paddingBottom={i < eventos.length - 1 ? 4 : 0}>
+                      <XStack justifyContent="space-between" gap="$2">
+                        <Text fontSize="$3" fontWeight="700" color="$text">{EVENTO_LABEL[ev.Evento ?? ''] ?? ev.Evento}</Text>
+                        <Text fontSize="$2" color="$textMuted">{fmtFecha(ev.Fecha)}</Text>
+                      </XStack>
+                      {!!ev.Usuario && ev.Usuario.trim() && <Text fontSize="$2" color="$textMuted">por {ev.Usuario}</Text>}
+                      {!!ev.Comentario && ev.Comentario.trim() && <Text fontSize="$2" color="$text" marginTop="$1">{ev.Comentario}</Text>}
+                    </YStack>
+                  </XStack>
+                ))}
+              </YStack>
+            </Section>
+          )}
+
           {/* Cancelar ticket (solo Pendiente; creador o admin) */}
           {puedeCancelar && (
             <View onPress={cancelando ? undefined : confirmarCancelar} pressStyle={{ opacity: 0.85 }}
@@ -265,6 +374,53 @@ export default function TicketDetailScreen() {
           </Text>
         </YStack>
       </ScrollView>
+
+      {/* Modal de cierre al completar (datos opcionales) */}
+      <Modal visible={showCompletar} transparent animationType="fade" onRequestClose={() => setShowCompletar(false)}>
+        <View flex={1} backgroundColor="rgba(0,0,0,0.45)" alignItems="center" justifyContent="center" padding="$4">
+          <YStack width="100%" maxWidth={480} backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3">
+            <Text fontSize="$5" fontWeight="900" color="$text">Completar ticket</Text>
+            <Text fontSize="$2" color="$textMuted">Puedes registrar la causa y observaciones de la reparación (opcional).</Text>
+
+            <YStack gap="$1.5">
+              <Text fontSize="$2" color="$textMuted">Causa / solución</Text>
+              <TextArea value={cierreCausa} onChangeText={setCierreCausa} placeholder="Ej. Se reemplazó el rodamiento"
+                minHeight={70} backgroundColor="$backgroundHover" borderColor="$border" color="$text" />
+            </YStack>
+            <YStack gap="$1.5">
+              <Text fontSize="$2" color="$textMuted">Observaciones</Text>
+              <TextArea value={cierreObs} onChangeText={setCierreObs} placeholder="Notas adicionales"
+                minHeight={70} backgroundColor="$backgroundHover" borderColor="$border" color="$text" />
+            </YStack>
+
+            <XStack gap="$2.5" marginTop="$1">
+              <View flex={1} onPress={accionando ? undefined : () => setShowCompletar(false)} pressStyle={{ opacity: 0.85 }}
+                borderWidth={1.5} borderColor="$border" borderRadius="$4" height={46} alignItems="center" justifyContent="center">
+                <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
+              </View>
+              <View flex={1} onPress={accionando ? undefined : doCompletar} pressStyle={{ opacity: 0.85 }}
+                opacity={accionando ? 0.6 : 1} backgroundColor={colorEstado('Completado')} borderRadius="$4" height={46}
+                alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+                {accionando ? <Spinner color="#fff" /> : <CheckCircle2 size={18} color="#fff" />}
+                <Text color="#fff" fontWeight="800" fontSize="$3">Completar</Text>
+              </View>
+            </XStack>
+          </YStack>
+        </View>
+      </Modal>
+    </View>
+  )
+}
+
+function ActionBtn({ icon, label, color, loading, onPress }: {
+  icon: React.ReactNode; label: string; color: string; loading?: boolean; onPress: () => void
+}) {
+  return (
+    <View onPress={loading ? undefined : onPress} pressStyle={{ opacity: 0.85 }} opacity={loading ? 0.6 : 1}
+      backgroundColor={color} borderRadius="$4" height={48} flexGrow={1} flexBasis={120} minWidth={120}
+      alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+      {loading ? <Spinner color="#fff" /> : icon}
+      <Text color="#fff" fontWeight="800" fontSize="$3">{label}</Text>
     </View>
   )
 }

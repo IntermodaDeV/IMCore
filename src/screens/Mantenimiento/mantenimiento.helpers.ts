@@ -16,6 +16,17 @@ export const puedeCrearTickets = (roles?: RoleLike[] | null, access?: string | n
 export const puedeCrearMaquina = (roles?: RoleLike[] | null, access?: string | null) =>
   hasRole(roles, ROLES_CREAR_DEFAULT) || hasAccess(access, 'CrearTicketsMaquinas')
 
+// Operar un ticket (Iniciar/Pausar/Reanudar/Completar): el mecánico asignado,
+// o un Administrador / Supervisor de Mantenimiento. (El backend revalida.)
+const ROLES_OPERAR = ['Administrador', 'Supervisor de Mantenimiento']
+export const puedeOperarTicket = (
+  roles?: RoleLike[] | null,
+  userCode?: string | null,
+  mecanicoUserCode?: string | null,
+) =>
+  (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
+  hasRole(roles, ROLES_OPERAR)
+
 // ── Paletas (mismas del dashboard de Streamlit) ──────────────────────────────
 export const MESES: Record<number, string> = {
   1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -26,6 +37,7 @@ export const MESES: Record<number, string> = {
 export const PALETA_ESTADO: Record<string, string> = {
   Completado: '#22c55e',
   'En Proceso': '#3b82f6',
+  Pausado: '#a855f7',
   Pendiente: '#f59e0b',
   Cancelado: '#dc2626',
 }

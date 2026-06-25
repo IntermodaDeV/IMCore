@@ -41,6 +41,7 @@ export interface ITicket {
   HoraFinal: string | null
   TiempoRespuestaMin: number | null
   TiempoResolucionMin: number | null
+  TiempoNetoMin: number | null   // tiempo activo neto (excluye pausas)
 
   Observaciones: string | null
   Vigente: boolean
@@ -108,3 +109,18 @@ export interface IModelo { Modelo: string }
 export interface ITipoFalla { TipoFalla: string }
 export interface ICausa { Causa: string }
 export interface IMecanico { User_Code: string; Nombre?: string | null; Email?: string | null }
+
+// Bitácora de acciones del mecánico (línea de tiempo).
+export interface ITicketEvento {
+  Id: number
+  Ticket_Id: number
+  Evento: string | null          // INICIAR | PAUSAR | REANUDAR | COMPLETAR
+  Fecha: string | null
+  EstadoAnterior_Id: number | null
+  EstadoAnterior: string | null
+  EstadoNuevo_Id: number | null
+  EstadoNuevo: string | null
+  User_Code: string | null
+  Usuario: string | null
+  Comentario: string | null
+}

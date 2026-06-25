@@ -14,6 +14,7 @@ import {
   ITipoFalla,
   ICausa,
   IMecanico,
+  ITicketEvento,
 } from './tickets.types'
 
 // Consume los endpoints de api/Tickets. baseUrl (API_URL) ya incluye /api/,
@@ -54,6 +55,27 @@ export const ticketsService = {
     httpClient.post<ExecutionResponse<ITicketResult>>(
       `${schema}/Asignar?id=${id}&mecanico_UserCode=${encodeURIComponent(mecanicoUserCode)}`,
     ),
+
+  // ── Acciones del mecánico (el backend valida: asignado o Admin/Sup. Mtto) ────
+  iniciar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Iniciar?id=${id}`),
+
+  pausar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Pausar?id=${id}`),
+
+  reanudar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Reanudar?id=${id}`),
+
+  // Completar; datos de cierre (causa/observaciones) opcionales.
+  completar: (id: number, cierre?: { Causa?: string | null; Observaciones?: string | null }) =>
+    httpClient.post<ExecutionResponse<ITicketResult>, { Causa?: string | null; Observaciones?: string | null }>(
+      `${schema}/Completar?id=${id}`,
+      cierre ?? {},
+    ),
+
+  // Bitácora de acciones (línea de tiempo).
+  getEventos: (id: number) =>
+    httpClient.get<ExecutionResponse<ITicketEvento[]>>(`${schema}/Eventos`, { id }),
 
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>

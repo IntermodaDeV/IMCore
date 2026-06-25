@@ -5,7 +5,8 @@ import { useNavigation, useRoute } from '@react-navigation/native'
 import Page from '../../../components/commons/Page'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
-import { AccessDTO, IAccessControl, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
+import AppSelect from '../../../components/commons/AppSelect'
+import { AccessDTO, IAccessControl, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
 import { securityService } from '../../../api/modules/security/security.service'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
@@ -34,6 +35,7 @@ export default function AccessForm() {
     const [filteredUsers, setFilteredUsers] = useState<UsersDTO[]>([])
     const [filteredRoles, setFilteredRoles] = useState<RolesDTO[]>([])
     const [loadingToggle, setLoadingToggle] = useState<string | number |  null>(null)
+    const [categorias, setCategorias] = useState<{ label: string; value: string }[]>([])
     const { user } = useAuth()
     const { showToast } = useShowToast()
     const isEdit = !!Id
@@ -47,6 +49,7 @@ export default function AccessForm() {
         Status_Id: 1,
         Create_By: '',
         Creation_Date: '',
+        Category: '',
         Modified_By: null,
         Modification_Date: null,
         Status_Name: ''
@@ -62,6 +65,7 @@ export default function AccessForm() {
                 Name: data.Name,
                 KeyVar: data.KeyVar,
                 Description: data.Description,
+                Category: data.Category ?? '',
                 Create_By: user?.Code ?? '',
                 Status_Id: data.Status_Id,
                 Status_Name: '',
@@ -236,7 +240,23 @@ export default function AccessForm() {
         setLoadingToggle(null)
     }
 
-    useEffect(() => { getInfo() }, [])
+    const loadCategorias = async () => {
+        try {
+            const response = await securityService.getMenus()
+            if (response.Success) {
+                // Los menús padre (grupos) llegan con ParentMenu_Id = 0 (o null).
+                const grupos = (response.Data ?? [])
+                    .filter((m: MenuDTO) => (m.ParentMenu_Id == null || m.ParentMenu_Id === 0) && (m.Status_Id ?? 1) === 1)
+                    .map((m: MenuDTO) => m.Name)
+                const unicas = Array.from(new Set(grupos)).sort((a, b) => a.localeCompare(b))
+                setCategorias(unicas.map((c) => ({ label: c, value: c })))
+            }
+        } catch {
+            // categorias opcionales; si falla, el selector queda vacio
+        }
+    }
+
+    useEffect(() => { getInfo(); loadCategorias() }, [])
 
     usePageHeader({
         left:(
@@ -365,6 +385,19 @@ export default function AccessForm() {
                                                     label="Descripción"
                                                     value={value}
                                                     onChangeText={onChange}
+                                                />
+                                            )}
+                                        />
+                                        <Controller
+                                            control={control}
+                                            name="Category"
+                                            render={({ field: { onChange, value } }) => (
+                                                <AppSelect
+                                                    label="Categoría"
+                                                    value={value ?? ''}
+                                                    onValueChange={(v) => onChange(v as string)}
+                                                    options={categorias}
+                                                    placeholder="Selecciona una categoría"
                                                 />
                                             )}
                                         />
