@@ -110,6 +110,22 @@ export interface ITipoFalla { TipoFalla: string }
 export interface ICausa { Causa: string }
 export interface IMecanico { User_Code: string; Nombre?: string | null; Email?: string | null }
 
+// Resumen de tickets por período (SP_GetTicketsResumen).
+// EsGlobal=true => totales del período; EsGlobal=false => fila por mecánico/técnico.
+export interface ITicketResumen {
+  EsGlobal: boolean
+  Mecanico_UserCode: string | null
+  Mecanico: string | null
+  Total: number
+  Pendientes: number
+  EnProceso: number
+  Pausados: number
+  Completados: number
+  Cancelados: number
+  TiempoRespuestaProm: number | null
+  TiempoResolucionProm: number | null
+}
+
 // Bitácora de acciones del mecánico (línea de tiempo).
 export interface ITicketEvento {
   Id: number
