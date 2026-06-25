@@ -13,6 +13,7 @@ import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/manten
 import { colorEstado, colorPrioridad, ACCENT, puedeCrearTickets } from '../mantenimiento.helpers'
 import TicketsResumen from './TicketsResumen'
 import { shadows } from '../../../theme/shadows'
+import { NotificationBell } from '../../../components/notifications/NotificationBell'
 
 type Vista = 'resumen' | 'listado'
 
@@ -31,6 +32,7 @@ export default function TicketsListScreen() {
         Tickets de Mantenimiento
       </Text>
     ),
+    right: <NotificationBell size={20} />,
   })
 
   const theme = useTheme()

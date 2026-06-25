@@ -1,7 +1,8 @@
 import { Platform, PermissionsAndroid } from 'react-native'
 import messaging from '@react-native-firebase/messaging'
-import notifee, { AndroidImportance } from '@notifee/react-native'
+import notifee, { AndroidImportance, EventType } from '@notifee/react-native'
 import { notificationsService } from '../api/modules/notifications/notifications.service'
+import { routeNotification } from './notificationRouter'
 
 /**
  * Notificaciones push (Firebase Cloud Messaging).
@@ -69,6 +70,8 @@ async function displayForeground(remoteMessage: any) {
     await notifee.displayNotification({
       title,
       body,
+      // Conserva el data del push para poder enrutar al tocar la notificación.
+      data: remoteMessage?.data ?? {},
       android: {
         channelId: ANDROID_CHANNEL_ID,
         smallIcon: 'ic_launcher',
@@ -135,6 +138,38 @@ export async function registerForUser(userCode: string): Promise<void> {
     unsubscribeForeground = messaging().onMessage(displayForeground)
   } catch (e) {
     console.log('[push] registerForUser no disponible (¿falta config nativa de Firebase?)', e)
+  }
+}
+
+let openHandlersReady = false
+/**
+ * Engancha el tap de notificaciones para hacer deep-link al detalle:
+ *  - App en primer plano (notif local de notifee) -> onForegroundEvent PRESS
+ *  - App en segundo plano -> onNotificationOpenedApp
+ *  - App cerrada (abierta desde la notif) -> getInitialNotification
+ * Se llama una sola vez al iniciar la app.
+ */
+export function setupNotificationOpenHandlers(): void {
+  if (openHandlersReady) return
+  openHandlersReady = true
+  try {
+    // Tap en la notificación local (primer plano)
+    notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.PRESS) routeNotification(detail.notification?.data)
+    })
+    // Tap con la app en segundo plano
+    messaging().onNotificationOpenedApp((rm) => {
+      if (rm?.data) routeNotification(rm.data)
+    })
+    // App abierta desde una notificación (estaba cerrada)
+    messaging()
+      .getInitialNotification()
+      .then((rm) => {
+        if (rm?.data) routeNotification(rm.data)
+      })
+      .catch(() => {})
+  } catch (e) {
+    console.log('[push] setupNotificationOpenHandlers no disponible', e)
   }
 }
 
