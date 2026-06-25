@@ -82,8 +82,10 @@ export default function AppSelect({
           paddingHorizontal="$3"
         >
           <XStack justifyContent="space-between" alignItems="center">
-            <Text color={value ? '$text' : '$textMuted'}>
-              {selectedLabel || placeholder}
+            {/* El label hace de placeholder cuando está colapsado; el placeholder
+                real solo aparece cuando el label ya flotó (evita que se encimen). */}
+            <Text color={value ? '$text' : '$textMuted'} numberOfLines={1} flex={1}>
+              {selectedLabel || (floating ? placeholder : '')}
             </Text>
             <ChevronDown size={18} color="#666" />
           </XStack>

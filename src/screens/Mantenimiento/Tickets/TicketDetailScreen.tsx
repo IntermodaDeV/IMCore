@@ -285,7 +285,10 @@ export default function TicketDetailScreen() {
           <Section title="Detalle">
             <InfoRow label="Área" value={t.Area} />
             {esArea ? (
-              <InfoRow label="¿Qué reparar?" value={t.Objeto} />
+              <>
+                <InfoRow label="Operación" value={t.Operacion} />
+                {!!t.Objeto && <InfoRow label="Detalle" value={t.Objeto} />}
+              </>
             ) : (
               <>
                 <InfoRow label="Operación" value={t.Operacion} />

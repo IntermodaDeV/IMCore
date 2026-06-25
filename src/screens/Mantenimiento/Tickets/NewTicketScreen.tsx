@@ -98,9 +98,10 @@ export default function NewTicketScreen() {
 
   useEffect(() => {
     setOperacionId(undefined); setOperaciones([]); setModelo(undefined); setModelos([])
-    if (!esMaquina || areaId == null) return
+    if (areaId == null) return
+    // La operación aplica a ambos tipos (máquina y área/general).
     ticketsService.getOperaciones(areaId).then(r => setOperaciones(r.Data ?? [])).catch(() => {})
-  }, [areaId, esMaquina])
+  }, [areaId])
 
   useEffect(() => {
     setModelo(undefined); setModelos([])
@@ -113,7 +114,7 @@ export default function NewTicketScreen() {
 
   const puedeGuardar = esMaquina
     ? (areaId != null && operacionId != null && numeroOk && !!modelo && operadorOk && tipoParoId != null && prioridadId != null)
-    : (areaId != null && !!objeto.trim() && prioridadId != null)
+    : (areaId != null && operacionId != null && prioridadId != null)
 
   const guardar = useCallback(async () => {
     setIntentado(true)
@@ -130,7 +131,8 @@ export default function NewTicketScreen() {
             IdOperador: Number(idOperador), Observaciones: observaciones.trim() || undefined,
           }
         : {
-            TipoDestino: 'AREA', Area_Id: areaId, Objeto: objeto.trim(),
+            TipoDestino: 'AREA', Area_Id: areaId, Operacion_Id: operacionId,
+            Objeto: objeto.trim() || undefined,
             Prioridad_Id: prioridadId, Observaciones: observaciones.trim() || undefined,
           }
       const res = await ticketsService.create(payload)
@@ -147,8 +149,10 @@ export default function NewTicketScreen() {
     }
   }, [puedeGuardar, esMaquina, areaId, operacionId, modelo, numero, objeto, tipoParoId, prioridadId, idOperador, observaciones])
 
+  // Máquina: solo áreas que permiten máquinas (producción).
+  // Área/General: solo áreas que NO permiten máquinas (administrativas / generales).
   const areasFiltradas = useMemo(
-    () => esMaquina ? areas.filter(a => (a.Categoria ?? 'Produccion') === 'Produccion') : areas,
+    () => areas.filter(a => esMaquina ? a.PermiteMaquinas : !a.PermiteMaquinas),
     [areas, esMaquina],
   )
   const optsArea = useMemo(() => toOpts(areasFiltradas, a => a.Id, a => a.Name), [areasFiltradas])
@@ -236,12 +240,20 @@ export default function NewTicketScreen() {
               </Field>
             </>
           ) : (
-            <Field label="¿Qué reparar? *" hint="objeto / trabajo" error={intentado && !objeto.trim()}>
-              <Input height={50} borderWidth={1} borderColor={intentado && !objeto.trim() ? ERR : '$border'}
-                borderRadius={8} backgroundColor="$backgroundElevated" paddingHorizontal="$3" fontSize="$5" color="$text"
-                placeholder="Ej. Lámpara de pasillo, Aire acondicionado…" placeholderTextColor={theme.textMuted?.val}
-                value={objeto} onChangeText={setObjeto} />
-            </Field>
+            <>
+              <Field label="Operación *" error={intentado && operacionId == null}>
+                <AppSelect label="" placeholder={areaId == null ? 'Primero selecciona un área' : 'Selecciona la operación'}
+                  value={operacionId != null ? String(operacionId) : undefined} options={optsOp}
+                  onValueChange={v => setOperacionId(v ? Number(v) : undefined)} />
+              </Field>
+
+              <Field label="Detalle / ¿qué reparar?" hint="opcional">
+                <Input height={50} borderWidth={1} borderColor="$border"
+                  borderRadius={8} backgroundColor="$backgroundElevated" paddingHorizontal="$3" fontSize="$5" color="$text"
+                  placeholder="Ej. Lámpara de pasillo, Aire acondicionado…" placeholderTextColor={theme.textMuted?.val}
+                  value={objeto} onChangeText={setObjeto} />
+              </Field>
+            </>
           )}
 
           <Field label="Prioridad *" error={intentado && prioridadId == null}>
