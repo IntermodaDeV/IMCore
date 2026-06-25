@@ -15,6 +15,7 @@ import {
   ICausa,
   IMecanico,
   ITicketEvento,
+  ITicketResumen,
 } from './tickets.types'
 
 // Consume los endpoints de api/Tickets. baseUrl (API_URL) ya incluye /api/,
@@ -76,6 +77,10 @@ export const ticketsService = {
   // Bitácora de acciones (línea de tiempo).
   getEventos: (id: number) =>
     httpClient.get<ExecutionResponse<ITicketEvento[]>>(`${schema}/Eventos`, { id }),
+
+  // Resumen por período (KPIs + desglose por mecánico). desde/hasta en ISO.
+  getResumen: (desde: string, hasta: string) =>
+    httpClient.get<ExecutionResponse<ITicketResumen[]>>(`${schema}/Resumen`, { desde, hasta }),
 
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>

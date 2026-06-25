@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { RefreshControl, useWindowDimensions } from 'react-native'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Animated, RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
 import { Search, Plus, Wrench, RefreshCw } from 'lucide-react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
@@ -11,6 +11,10 @@ import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/mantenimiento/tickets.types'
 import { colorEstado, colorPrioridad, ACCENT, puedeCrearTickets } from '../mantenimiento.helpers'
+import TicketsResumen from './TicketsResumen'
+import { shadows } from '../../../theme/shadows'
+
+type Vista = 'resumen' | 'listado'
 
 const fmtFecha = (iso: string | null): string => {
   if (!iso) return ''
@@ -39,6 +43,25 @@ export default function TicketsListScreen() {
   const { width } = useWindowDimensions()
   const isWide = width >= 700
   const CONTENT_MAX = 1000
+
+  // Vista por defecto: Resumen (home de tickets); se alterna con el listado.
+  const [vista, setVista] = useState<Vista>('resumen')
+
+  // Pager con swipe nativo: Resumen (página 0) ⇄ Listado (página 1).
+  const pagerRef = useRef<any>(null)
+  const scrollX = useRef(new Animated.Value(0)).current
+  // 0 en Resumen, 1 en Listado; sigue el gesto en tiempo real (FAB + toggle).
+  const slide = scrollX.interpolate({ inputRange: [0, width || 1], outputRange: [0, 1], extrapolate: 'clamp' })
+
+  const irAVista = useCallback((v: Vista) => {
+    setVista(v)
+    pagerRef.current?.scrollTo({ x: v === 'listado' ? width : 0, animated: true })
+  }, [width])
+
+  const onPagerScrollEnd = useCallback((e: any) => {
+    const page = Math.round(e.nativeEvent.contentOffset.x / (width || 1))
+    setVista(page === 1 ? 'listado' : 'resumen')
+  }, [width])
 
   const [tickets, setTickets] = useState<ITicket[]>([])
   const [cargando, setCargando] = useState(true)
@@ -155,6 +178,41 @@ export default function TicketsListScreen() {
 
   return (
     <View flex={1} backgroundColor="$background">
+      {/* Toggle Resumen | Listado */}
+      <XStack
+        gap="$2"
+        paddingHorizontal="$3"
+        paddingTop="$3"
+        width="100%"
+        maxWidth={CONTENT_MAX}
+        alignSelf="center"
+      >
+        <VistaTab label="Resumen" active={vista === 'resumen'} onPress={() => irAVista('resumen')} />
+        <VistaTab label="Listado" active={vista === 'listado'} onPress={() => irAVista('listado')} />
+      </XStack>
+
+      {/* Pager horizontal con swipe nativo (paginado) */}
+      <Animated.ScrollView
+        ref={pagerRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: true },
+        )}
+        onMomentumScrollEnd={onPagerScrollEnd}
+        style={{ flex: 1 }}
+      >
+
+      {/* Página: Resumen */}
+      <View width={width} height="100%">
+        <TicketsResumen />
+      </View>
+
+      {/* Página: Listado */}
+      <View width={width} height="100%">
       {/* Filtros */}
       <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
         {/* Buscador */}
@@ -224,6 +282,7 @@ export default function TicketsListScreen() {
         </YStack>
       ) : (
         <ScrollView
+          flex={1}
           contentContainerStyle={{ padding: 12, paddingBottom: 96 }}
           refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />}
         >
@@ -257,10 +316,21 @@ export default function TicketsListScreen() {
           )}
         </ScrollView>
       )}
+      </View>
+      </Animated.ScrollView>
 
-      {/* FAB Reportar paro (según rol) */}
+      {/* FAB Crear ticket: solo en Listado, con fade + slide */}
       {puedeCrear && (
-        <View position="absolute" right={20} bottom={24}>
+        <Animated.View
+          pointerEvents={vista === 'listado' ? 'auto' : 'none'}
+          style={{
+            position: 'absolute',
+            right: 20,
+            bottom: 24,
+            opacity: slide,
+            transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }],
+          }}
+        >
           <View
             onPress={irANuevo}
             pressStyle={{ opacity: 0.85 }}
@@ -280,8 +350,25 @@ export default function TicketsListScreen() {
             <Plus size={22} color="#fff" />
             <Text color="#fff" fontWeight="700" fontSize="$3">Crear ticket</Text>
           </View>
-        </View>
+        </Animated.View>
       )}
+    </View>
+  )
+}
+
+function VistaTab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <View
+      onPress={onPress}
+      pressStyle={{ opacity: 0.8 }}
+      flex={1}
+      height={32}
+      borderRadius="$3"
+      alignItems="center"
+      justifyContent="center"
+      backgroundColor={active ? ACCENT : '$backgroundHover'}
+    >
+      <Text fontSize="$2" fontWeight="800" color={active ? '#fff' : '$textMuted'}>{label}</Text>
     </View>
   )
 }
@@ -312,12 +399,15 @@ function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; th
     <View
       onPress={onPress}
       pressStyle={{ opacity: 0.9, scale: 0.997 }}
-      backgroundColor="$backgroundHover"
+      backgroundColor="$backgroundElevated"
       borderRadius="$5"
       borderLeftWidth={4}
       borderLeftColor={estadoC}
+      borderWidth={1}
+      borderColor="$border"
       padding="$3"
       gap="$2"
+      {...shadows.sm}
     >
       <XStack alignItems="center" justifyContent="space-between">
         <Text fontSize="$4" fontWeight="800" color="$text">{t.CodigoTicket}</Text>
