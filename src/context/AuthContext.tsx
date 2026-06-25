@@ -10,6 +10,7 @@ type AuthContextType = {
   companyId: number | null
   setCompanyId: (companyId: number | null) => Promise<void>
   login: (user: UsersDTO) => Promise<void>
+  refreshUser: () => Promise<void>
   logout: () => Promise<void>
   isAuthenticated: boolean
   theme: 'light' | 'dark'
@@ -159,6 +160,23 @@ export const AuthProvider = ({
     }
   }
 
+  // Re-obtiene la sesión (Access/Roles frescos) del usuario actual sin re-loguear,
+  // usando la misma fuente que el login (InfoUser de Security.Login_User opción 2),
+  // para que los permisos otorgados/quitados se reflejen al instante en la UI.
+  const refreshUser = async () => {
+    if (!user?.Code) return
+    try {
+      const resp = await securityService.getSessionInfo()
+      if (!resp?.Success || !resp.Data) return
+      const fresh = JSON.parse(resp.Data) as UsersDTO
+      if (!fresh?.Code) return
+      setUser(fresh)
+      await AsyncStorage.setItem('user', JSON.stringify(fresh))
+    } catch (e) {
+      console.log('refreshUser error', e)
+    }
+  }
+
   const logout = async () => {
     try {
       setTransitionMessage('Cerrando sesión...')
@@ -205,6 +223,7 @@ export const AuthProvider = ({
         companyId,
         setCompanyId,
         login,
+        refreshUser,
         logout,
         isAuthenticated: !!user,
         theme: themeState,

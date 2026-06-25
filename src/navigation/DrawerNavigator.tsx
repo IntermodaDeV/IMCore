@@ -113,7 +113,7 @@ export default function DrawerNavigator({ setTheme }: any) {
 
 function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: any; menu: MenuDTO[] }) {
   const navigation = useNavigation()
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const { refreshMenu } = useMenu()
   const [refreshing, setRefreshing] = useState(false)
   const [navLoading, setNavLoading] = useState<string | null>(null)
@@ -162,7 +162,9 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
 
             try {
               setRefreshing(true)
-              await refreshMenu(user.Code)
+              // Refresca menú + accesos/roles del usuario (para reflejar permisos
+              // recién otorgados sin necesidad de cerrar sesión).
+              await Promise.all([refreshMenu(user.Code), refreshUser()])
             } finally {
               setRefreshing(false)
             }
