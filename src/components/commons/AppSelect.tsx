@@ -91,7 +91,25 @@ export default function AppSelect({
             </XStack>
           </View>
         </Pressable>
-        </View>
+
+
+        {/* Floating label */}
+        <Text
+          pointerEvents="none"
+          position="absolute"
+          left={12}
+          top={floating ? 0 : 20}
+          fontSize={floating ? 11 : 14}
+          color={labelColor}
+          backgroundColor={floating ? (disabled ? '$backgroundSurface' : '$backgroundElevated') : 'transparent'}
+          paddingHorizontal={floating ? 6 : 0}
+          paddingVertical={floating ? 2 : 0}
+          borderRadius={floating ? 6 : 0}
+          style={{ zIndex: 10 }}
+        >
+          {label}
+        </Text>
+      </View>
 
       {/* Error message */}
       {error && (
