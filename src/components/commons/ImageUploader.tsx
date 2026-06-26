@@ -1,191 +1,174 @@
 import React, { useState } from 'react'
-import { Button, YStack, XStack, Image, Text, Card, View } from 'tamagui'
+import { Button, YStack, XStack, Text, Card, View, styled } from 'tamagui'
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker'
 import { Camera, Image as ImageIcon, Trash2 } from 'lucide-react-native'
-import { PermissionsAndroid, Platform } from 'react-native'
+import { Image, PermissionsAndroid, Platform, Pressable } from 'react-native'
+import ImageViewing from 'react-native-image-viewing'
 
 type Props = {
   title?: string
   onChange?: (uri: string | null) => void
+  onChangeWithBase64?: (uri: string | null, base64: string | null) => void
 }
 
-export function ImageUploader({ title = 'Imagen', onChange }: Props) {
+export function ImageUploader({ title = 'Imagen', onChange, onChangeWithBase64 }: Props) {
   const [imageUri, setImageUri] = useState<string | null>(null)
+  const [zoomVisible, setZoomVisible] = useState(false)
+
+  const ImageIconStyled = styled(ImageIcon, {color:"$buttonSecondaryText"});
+  const CameraStyled = styled(Camera, {color:"$buttonSecondaryText"});
+
+  const handleResult = (uri: string | null, base64: string | null) => {
+    setImageUri(uri)
+    onChange?.(uri)
+    onChangeWithBase64?.(uri, base64)
+  }
 
   const pickImage = () => {
     launchImageLibrary(
-      {
-        mediaType: 'photo',
-        quality: 0.8,
-        selectionLimit: 1,
-      },
+      { mediaType: 'photo', quality: 0.8, selectionLimit: 1, includeBase64: true },
       (res) => {
-        console.log('IMAGE RESPONSE:', res)
-        
-
         if (res.didCancel || res.errorCode) return
-
         const asset = res.assets?.[0]
-        const uri = asset?.uri
-        console.log('URI:', uri)
-
-        if (uri) {
-          setImageUri(uri)
-        }
-
-        if (uri) {
-          setImageUri(uri)
-          onChange?.(uri)
-        }
+        if (asset?.uri) handleResult(asset.uri, asset.base64 ?? null)
       }
     )
   }
 
   const requestCameraPermission = async () => {
     if (Platform.OS !== 'android') return true
-
-    const granted = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.CAMERA,
-      {
-        title: 'Permiso de Cámara',
-        message: 'La app necesita acceso a la cámara',
-        buttonPositive: 'OK',
-      }
-    )
-
+    const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+      title: 'Permiso de Cámara',
+      message: 'La app necesita acceso a la cámara',
+      buttonPositive: 'OK',
+    })
     return granted === PermissionsAndroid.RESULTS.GRANTED
   }
 
   const takePhoto = async () => {
     const hasPermission = await requestCameraPermission()
     if (!hasPermission) return
-
     launchCamera(
-      {
-        mediaType: 'photo',
-        quality: 0.8,
-        cameraType: 'back',
-      },
+      { mediaType: 'photo', quality: 0.8, cameraType: 'back', includeBase64: true },
       (res) => {
-        console.log('CAMERA RESPONSE:', res)
-
         if (res.didCancel || res.errorCode) return
-
-        const uri = res.assets?.[0]?.uri
-        if (uri) {
-          setImageUri(uri)
-          onChange?.(uri)
-        }
+        const asset = res.assets?.[0]
+        if (asset?.uri) handleResult(asset.uri, asset.base64 ?? null)
       }
     )
   }
 
-  const removeImage = () => {
-    setImageUri(null)
-    onChange?.(null)
-  }
+  const removeImage = () => handleResult(null, null)
 
   return (
-    <Card
-      backgroundColor="$backgroundElevated"
-      padding="$4"
-      borderRadius={12}
-      borderWidth={1}
-      borderColor="$border"
-      gap="$3"
-    >
-      {!imageUri ? (
-        <YStack gap="$3">
-          <YStack
-            alignItems="center"
-            justifyContent="center"
-            padding="$4"
-            gap="$2"
-            borderRadius="$2"
-            backgroundColor="$backgroundHover"
-          >
-            <ImageIcon size={22} opacity={0.4} />
-
-            <Text fontSize={13} color="$text" opacity={0.5}>
-              Sin imagen seleccionada
-            </Text>
-          </YStack>
-
-          {/* Botones */}
-          <XStack gap="$3">
-            <Button
-              flex={1}
-              backgroundColor="$blue10"
-              height={45}
-              borderRadius="$3"
-              justifyContent="center"
+    <>
+      <Card
+        backgroundColor="$backgroundElevated"
+        padding="$4"
+        borderRadius={12}
+        borderWidth={1}
+        borderColor="$border"
+        gap="$3"
+      >
+        {!imageUri ? (
+          <YStack gap="$3">
+            <YStack
               alignItems="center"
-              pressStyle={{ opacity: 0.7 }}
-              onPress={takePhoto}
+              justifyContent="center"
+              padding="$4"
+              gap="$2"
+              borderRadius="$2"
+              backgroundColor="$backgroundHover"
             >
-              <XStack gap="$2" alignItems="center">
-                <Camera size={18} color="black" />
-                <Text color="black" fontWeight="700">
-                  Cámara
+              <CameraStyled size={28} opacity={0.35} />
+              <Text fontSize={13} color="$text" opacity={0.6} fontWeight="600">
+                Toma una foto de la factura
+              </Text>
+              <XStack alignItems="center" gap="$1">
+                <ImageIcon size={13} opacity={0.4} />
+                <Text fontSize={12} color="$textMuted">
+                  o sube una imagen desde tu galería
                 </Text>
               </XStack>
-            </Button>
+            </YStack>
+
+            <XStack gap="$3">
+              <Button
+                flex={1}
+                backgroundColor="$buttonSecondary"
+                height={45}
+                borderRadius="$3"
+                pressStyle={{ opacity: 0.7 }}
+                onPress={takePhoto}
+              >
+                <XStack gap="$2" alignItems="center">
+                  <CameraStyled size={18} color="$buttonSecondaryText" />
+                  <Text color="$buttonSecondaryText" fontWeight="700">Cámara</Text>
+                </XStack>
+              </Button>
+
+              <Button
+                flex={1}
+                backgroundColor="transparent"
+                height={45}
+                border="$border"
+                borderRadius="$3"
+                pressStyle={{ opacity: 0.7 }}
+                onPress={pickImage}
+              >
+                <XStack gap="$2" alignItems="center">
+                  <ImageIconStyled size={18}  />
+                  <Text color="$buttonSecondaryText" fontWeight="700">Galería</Text>
+                </XStack>
+              </Button>
+            </XStack>
+          </YStack>
+        ) : (
+          <YStack gap="$3">
+            <YStack position="relative" borderRadius="$3" overflow="hidden" backgroundColor="$backgroundHover">
+              <Pressable onPress={() => setZoomVisible(true)}>
+                <Image source={{ uri: imageUri }} style={{ width: '100%', height: 220 }} resizeMode="cover" />
+              </Pressable>
+
+              <View position="absolute" bottom={10} right={10} flexDirection="row" gap="$2">
+                <Button
+                  width={34}
+                  height={34}
+                  borderRadius={999}
+                  backgroundColor="rgba(220, 38, 38, 0.85)"
+                  justifyContent="center"
+                  alignItems="center"
+                  pressStyle={{ opacity: 0.7 }}
+                  onPress={removeImage}
+                  padding={0}
+                >
+                  <Trash2 size={16} color="white" />
+                </Button>
+              </View>
+            </YStack>
 
             <Button
-              flex={1}
               backgroundColor="$buttonSecondary"
-              height={45}
+              height={38}
               borderRadius="$3"
-              justifyContent="center"
-              alignItems="center"
               pressStyle={{ opacity: 0.7 }}
               onPress={pickImage}
             >
               <XStack gap="$2" alignItems="center">
-                <ImageIcon size={18} color="black" />
-                <Text color="black" fontWeight="700">
-                  Galería
-                </Text>
+                <ImageIconStyled size={15} />
+                <Text color="$buttonSecondaryText" fontWeight="600" fontSize={13}>Reemplazar imagen</Text>
               </XStack>
             </Button>
-          </XStack>
-        </YStack>
-      ) : (
-        <YStack gap="$3">
-          {/* Contenedor de imagen */}
-          <YStack
-            position="relative"
-            borderRadius="$3"
-            overflow="hidden"
-            backgroundColor="$backgroundHover"
-          >
-            <Image
-              source={{ uri: imageUri }}
-              width="100%"
-              height={220}
-              resizeMode="cover"
-            />
-
-            {/* Botón eliminar flotante */}
-            <Button
-              position="absolute"
-              top={10}
-              right={10}
-              width={34}
-              height={34}
-              borderRadius={999}
-              backgroundColor="rgba(255, 0, 0, 0.85)"
-              justifyContent="center"
-              alignItems="center"
-              pressStyle={{ opacity: 0.7, scale: 0.95 }}
-              onPress={removeImage}
-              padding={0}
-            >
-              <Trash2 size={16} color="white" />
-            </Button>
           </YStack>
-        </YStack>
-      )}
-    </Card>
+        )}
+      </Card>
+
+      <ImageViewing
+        images={imageUri ? [{ uri: imageUri }] : []}
+        imageIndex={0}
+        visible={zoomVisible}
+        onRequestClose={() => setZoomVisible(false)}
+      />
+    </>
   )
 }

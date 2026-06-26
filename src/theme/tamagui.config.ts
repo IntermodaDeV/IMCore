@@ -15,7 +15,7 @@ const BrandColors = {
   success: '#22C55E',
   successOpacity: 'rgba(34, 197, 94, 0.20)',
 
-  warning: '#EAB308',
+  warning: '#f59e0b',
   warningOpacity: 'rgba(234, 179, 8, 0.20)',
 
   error: '#EF4444',
@@ -86,7 +86,7 @@ export const config = createTamagui({
       // STATUS
       // =========================
       success: '#22C55E',
-      warning: '#EAB308',
+      warning: '#f59e0b',
       error: '#EF4444',
       info: '#3B82F6',
 
@@ -139,7 +139,7 @@ export const config = createTamagui({
       // STATUS
       // =========================
       success: '#22C55E',
-      warning: '#EAB308',
+      warning: '#f59e0b',
       error: '#EF4444',
       info: '#3B82F6',
 

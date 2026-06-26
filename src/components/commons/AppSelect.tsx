@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useRef } from 'react'
-import { YStack, Text, View, XStack } from 'tamagui'
+import { YStack, Text, View, XStack, useTheme } from 'tamagui'
 import { ScrollView, Modal, Pressable, Dimensions } from 'react-native'
 import { Check, ChevronDown } from 'lucide-react-native'
 
 type Option = {
   label: string
   value: string
+  key?: string
 }
 
 type Props = {
@@ -15,6 +16,7 @@ type Props = {
   options: Option[]
   error?: string
   placeholder?: string
+  disabled?: boolean
 }
 
 const DROPDOWN_MAX_HEIGHT = 220
@@ -26,18 +28,35 @@ export default function AppSelect({
   options,
   error,
   placeholder = '',
+  disabled = false,
 }: Props) {
+  const theme = useTheme()
   const [open, setOpen] = useState(false)
   const [layout, setLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const triggerRef = useRef<any>(null)
 
-  const selectedLabel = useMemo(() => {
-    return options.find(o => o.value === value)?.label || ''
-  }, [value, options])
+  const selectedLabel = useMemo(
+    () => options.find(o => String(o.value) === String(value))?.label ?? '',
+    [value, options]
+  )
 
   const floating = open || !!value
 
+  const borderColor = disabled
+    ? '$border'
+    : error ? '$error'
+    : open  ? '$primary'
+    :          '$border'
+
+  const labelColor: string = disabled
+    ? '$textMuted'
+    : error && floating ? '$error'
+    : open              ? '$text'
+    : floating          ? '$text'
+    :                     '$textMuted'
+
   const openDropdown = () => {
+    if (disabled) return
     triggerRef.current?.measureInWindow((x: number, y: number, width: number, height: number) => {
       setLayout({ x, y, width, height })
       setOpen(true)
@@ -50,37 +69,31 @@ export default function AppSelect({
   const openUpward = layout ? spaceBelow < estimatedHeight && layout.y > estimatedHeight : false
 
   return (
-    <YStack gap="$1" marginTop="$2">
+    <YStack gap="$1" marginBottom="$2">
 
-      {/* LABEL */}
-      <Text
-        pointerEvents="none"
-        position="absolute"
-        left={12}
-        top={floating ? -6 : 17}
-        fontSize={floating ? 11 : 14}
-        color="$textMuted"
-        backgroundColor="$backgroundElevated"
-        paddingHorizontal={floating ? 6 : 0}
-        paddingVertical={floating ? 2 : 0}
-        borderRadius={floating ? 6 : 0}
-        zIndex={10}
-      >
-        {label}
-      </Text>
+      {/* Trigger wrapper — paddingTop creates space for the floating label */}
+      <View position="relative" paddingTop={8}>
+        <Pressable ref={triggerRef} onPress={() => (open ? setOpen(false) : openDropdown())}>
+          <View
+            borderWidth={1}
+            borderRadius={6}
+            borderColor={borderColor}
+            backgroundColor={disabled ? '$backgroundSurface' : '$backgroundElevated'}
+            justifyContent="center"
+            paddingHorizontal="$3"
+            height={44}
+          >
+            <XStack justifyContent="space-between" alignItems="center">
+              <Text fontSize={13} numberOfLines={1} paddingRight="$2" color={selectedLabel ? '$text' : '$textMuted'}>
+                {selectedLabel || placeholder}
+              </Text>
+              <ChevronDown size={18} color={open ? theme.primary?.val as string : theme.textMuted?.val as string} />
+            </XStack>
+          </View>
+        </Pressable>
 
-      {/* INPUT */}
-      <Pressable onPress={() => (open ? setOpen(false) : openDropdown())}>
-        <View
-          ref={triggerRef}
-          height={40}
-          borderWidth={1}
-          borderRadius={6}
-          borderColor={error ? 'red' : '$border'}
-          backgroundColor="$backgroundElevated"
-          justifyContent="center"
-          paddingHorizontal="$3"
-        >
+        {/* Floating label */}
+
           <XStack justifyContent="space-between" alignItems="center">
             {/* El label hace de placeholder cuando está colapsado; el placeholder
                 real solo aparece cuando el label ya flotó (evita que se encimen). */}
@@ -90,9 +103,15 @@ export default function AppSelect({
             <ChevronDown size={18} color="#666" />
           </XStack>
         </View>
-      </Pressable>
 
-      {/* DROPDOWN — en Modal para que no se corte con overflow del padre */}
+      {/* Error message */}
+      {error && (
+        <View flexDirection="row" alignItems="center" gap={4} marginTop={-2}>
+          <Text fontSize={11} color="$error">{error}</Text>
+        </View>
+      )}
+
+      {/* Dropdown */}
       {open && layout && (
         <Modal
           visible
@@ -101,17 +120,12 @@ export default function AppSelect({
           statusBarTranslucent
           onRequestClose={() => setOpen(false)}
         >
-          {/* Backdrop: cierra al tocar fuera */}
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
 
           <View
             position="absolute"
             left={layout.x}
-            top={
-              openUpward
-                ? layout.y - estimatedHeight - 4
-                : layout.y + layout.height + 4
-            }
+            top={openUpward ? layout.y - estimatedHeight - 4 : layout.y + layout.height + 4}
             width={layout.width}
             backgroundColor="$backgroundElevated"
             borderWidth={1}
@@ -119,41 +133,32 @@ export default function AppSelect({
             borderRadius={10}
             maxHeight={DROPDOWN_MAX_HEIGHT}
             overflow="hidden"
-            elevation={10}
-            shadowColor="#000"
-            shadowOpacity={0.15}
-            shadowRadius={8}
-            shadowOffset={{ width: 0, height: 4 }}
+            style={{ elevation: 10, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
           >
             <ScrollView
               nestedScrollEnabled
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingVertical: 4 }}
             >
-              {options.map((option) => (
+              {options.map(option => (
                 <Pressable
-                  key={option.value}
+                  key={option.key ?? option.value}
                   onPress={() => {
                     onValueChange?.(option.value)
                     setOpen(false)
                   }}
                 >
                   <XStack padding="$3" justifyContent="space-between" alignItems="center">
-                    <Text color="$text">{option.label}</Text>
-                    {value === option.value && <Check size={16} color="green" />}
+                    <Text maxWidth="92%"  fontSize={13} color="$text">{option.label}</Text>
+                    {String(value) === String(option.value) && (
+                      <Check size={16} color={theme.primary?.val as string} />
+                    )}
                   </XStack>
                 </Pressable>
               ))}
             </ScrollView>
           </View>
         </Modal>
-      )}
-
-      {/* ERROR */}
-      {error && (
-        <Text fontSize={11} color="red">
-          {error}
-        </Text>
       )}
 
     </YStack>
