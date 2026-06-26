@@ -14,6 +14,10 @@ export const ScreensGastosViaje: TScreens = {
       solicitarProveedor: SolicitarProveedorScreen
     },
   },
+  solicitarProveedor: {
+    Screen: SolicitarProveedorScreen,
+    Childs: {}
+  },
   aprobacionGastos: {
     Screen: AprobacionGastosScreen,
     Childs: {},

@@ -6,6 +6,7 @@ import { Check, ChevronDown } from 'lucide-react-native'
 type Option = {
   label: string
   value: string
+  key?: string
 }
 
 type Props = {
@@ -83,7 +84,7 @@ export default function AppSelect({
             height={44}
           >
             <XStack justifyContent="space-between" alignItems="center">
-              <Text fontSize={13} color={selectedLabel ? '$text' : '$textMuted'}>
+              <Text fontSize={13} numberOfLines={1} paddingRight="$2" color={selectedLabel ? '$text' : '$textMuted'}>
                 {selectedLabel || placeholder}
               </Text>
               <ChevronDown size={18} color={open ? theme.primary?.val as string : theme.textMuted?.val as string} />
@@ -147,14 +148,14 @@ export default function AppSelect({
             >
               {options.map(option => (
                 <Pressable
-                  key={option.value}
+                  key={option.key ?? option.value}
                   onPress={() => {
                     onValueChange?.(option.value)
                     setOpen(false)
                   }}
                 >
                   <XStack padding="$3" justifyContent="space-between" alignItems="center">
-                    <Text fontSize={13} color="$text">{option.label}</Text>
+                    <Text maxWidth="92%"  fontSize={13} color="$text">{option.label}</Text>
                     {String(value) === String(option.value) && (
                       <Check size={16} color={theme.primary?.val as string} />
                     )}

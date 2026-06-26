@@ -4,6 +4,7 @@ import { CheckCircle2, AlertCircle, AlertTriangle } from 'lucide-react-native'
 
 export type InputStatus = 'default' | 'error' | 'success' | 'warning'
 
+
 const STATUS_BORDER_TOKEN: Record<InputStatus, string> = {
   default: '$border',
   error:   '$error',

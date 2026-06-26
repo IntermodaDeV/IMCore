@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native'
 import { YStack, XStack, Text, Button, View, Card, styled } from 'tamagui'
 import { ArrowLeft, Check, Search } from 'lucide-react-native'
 import { useForm, Controller } from 'react-hook-form'
@@ -16,39 +16,55 @@ import dayjs from 'dayjs'
 import { ImageUploader } from '../../components/commons/ImageUploader'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
 import {
-  Company, IExpenseType, IExpenseCategory,
-  IAlimentacionSubtype, IFuelType, ICurrency, IProviderSearchResult,
+  TCompany, IExpenseType, IExpenseCategory,
+  IAlimentacionSubtype, IFuelType,
+  IGiraVendorResponse
 } from '../../api/modules/GastosViaje/gastosViaje.types'
 
 // TODO: derive from user context
-const COMPANY: Company = 'IMHN'
+const COMPANY: TCompany = 'IMHN'
 
 type FormData = {
   imageUri: string
   imageBase64: string
-  expenseTypeId: string
-  categoryId: string
-  alimentacionSubtypeId: string
-  fuelTypeId: string
+  expenseTypeId: number
+  ExpenseCategoryId: number
+  MealId: number
+  FuelTypeId: number
   useCustomProvider: string
   providerName: string
-  providerRtn: string
+  VendAccount: string
+  vatnnum: string
   // IMHN
-  invoiceNumber: string
-  description: string
-  gravedAmount: string
-  exemptAmount: string
-  invoiceDate: string
+  InvoiceId: string
+  Description: string
+  GravadoAmount: string
+  ExemptAmount: string
+  InvoiceDate: string
   // IMGT / IMCR
-  serialNumber: string
-  invoiceNumberFree: string
-  currencyId: string
-  total: string
+  SeriesNum: string
+  InvoiceAmount: string
   gallons: string
 }
 
 
 const toNum = (s: string) => parseFloat(s.replace(/,/g, '') || '0') || 0
+
+const formatAmount = (text: string) => {
+  const cleaned = text.replace(/[^0-9.]/g, '')
+  const parts = cleaned.split('.')
+  if (parts.length > 2) return parts[0] + '.' + parts.slice(1).join('')
+  if (parts[1]?.length > 2) return parts[0] + '.' + parts[1].slice(0, 2)
+  return cleaned
+}
+
+const formatInvoiceIMHN = (text: string) => {
+  const digits = text.replace(/\D/g, '').slice(0, 16)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`
+  if (digits.length <= 8) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 8)}-${digits.slice(8)}`
+}
 
 type SectionState = 'locked' | 'active' | 'completed'
 
@@ -78,7 +94,7 @@ function SectionHeader({ number, title, state }: { number: number; title: string
 }
 
 export default function NuevoGastoScreen() {
-  const { user } = useAuth()
+  const { user, defaultCompany } = useAuth()
   const loader = useLoader()
   const { showToast } = useShowToast()
   const navigation = useNavigation<any>()
@@ -86,45 +102,47 @@ export default function NuevoGastoScreen() {
   const [categories, setCategories]                   = useState<IExpenseCategory[]>([])
   const [alimentacionSubtypes, setAlimentacionSubtypes] = useState<IAlimentacionSubtype[]>([])
   const [fuelTypes, setFuelTypes]                     = useState<IFuelType[]>([])
-  const [currencies, setCurrencies]                   = useState<ICurrency[]>([])
-  const [taxRate, setTaxRate]                         = useState(0.15)
-  const [allProviders, setAllProviders]               = useState<IProviderSearchResult[]>([])
+  const [taxRate, setTaxRate]                         = useState(0)
+  const [allProviders, setAllProviders]               = useState<IGiraVendorResponse[]>([])
   const [selectedProviderId, setSelectedProviderId]   = useState('')
+  const [providerCurrency, setProviderCurrency]       = useState('')
   const [computedTotal, setComputedTotal]             = useState(0)
+  const skipProviderSearchRef                         = useRef(false)
+  const [isSearchingProviders, setIsSearchingProviders] = useState(false)
 
   const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' });
   const SearchStyled = styled(Search, { color: '$textMuted', height: 12, marginEnd: 6});
 
-  const { control, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormData>({
+  const { control, handleSubmit, watch, getValues, setValue, reset, formState: { errors } } = useForm<FormData>({
     defaultValues: {
-      imageUri: '', imageBase64: '', expenseTypeId: '', categoryId: '',
-      alimentacionSubtypeId: '', fuelTypeId: '', useCustomProvider: 'false',
-      providerName: '', providerRtn: '',
-      invoiceNumber: '', description: '', gravedAmount: '', exemptAmount: '',
-      invoiceDate: dayjs().format('YYYY-MM-DD'), serialNumber: '', invoiceNumberFree: '', currencyId: '',
-      total: '', gallons: '',
+      imageUri: '', imageBase64: '', expenseTypeId: 0, ExpenseCategoryId: 0,
+      MealId: 0, FuelTypeId: 0, useCustomProvider: 'false',
+      providerName: '', vatnnum: '', VendAccount: '',
+      InvoiceId: '', Description: '', GravadoAmount: '', ExemptAmount: '',
+      InvoiceDate: dayjs().format('YYYY-MM-DD'), SeriesNum: '',
+      InvoiceAmount: '', gallons: '',
     },
   })
 
   const watchedTypeId                = watch('expenseTypeId')
-  const watchedCatId                 = watch('categoryId')
-  const watchedGraved                = watch('gravedAmount')
-  const watchedExempt                = watch('exemptAmount')
+  const watchedCatId                 = watch('ExpenseCategoryId')
+  const watchedGraved                = watch('GravadoAmount')
+  const watchedExempt                = watch('ExemptAmount')
   const watchedCustom                = watch('useCustomProvider')
-  const watchedAlimentacionSubtypeId = watch('alimentacionSubtypeId')
-  const watchedFuelTypeId            = watch('fuelTypeId')
+  const watchedAlimentacionSubtypeId = watch('MealId')
+  const watchedFuelTypeId            = watch('FuelTypeId')
   const watchedProviderName          = watch('providerName')
+  const watchedVatnum                = watch('vatnnum')
   const watchedImageUri              = watch('imageUri')
 
-  const selectedCategory = categories.find(c => String(c.Id) === watchedCatId)
-  const selectedTypeName = expenseTypes.find(t => String(t.Id) === watchedTypeId)?.Name ?? ''
+  const selectedCategory = categories.find(c => c.Id === watchedCatId)
+  const selectedTypeName = expenseTypes.find(t => t.Id === watchedTypeId)?.Name ?? ''
   const isAlimentacion   = selectedCategory?.Name?.toLowerCase().includes('alimentaci') ?? false
-  const isCombustible    = selectedTypeName === 'Combustible' && COMPANY === 'IMGT'
+  const isCombustible    = selectedCategory?.Name?.toLowerCase().includes('combustible') && COMPANY === 'IMGT'
   const isHospedaje      = selectedTypeName === 'Hospedaje'
   const isIMHN           = COMPANY === 'IMHN'
   const hasPredefined    = !!selectedCategory?.VendAccount
 
-  // ── Estados de secciones (nuevo orden: Tipo → Proveedor → Factura → Imagen) ──
   const section1Complete = !!watchedTypeId && !!watchedCatId &&
     (!isAlimentacion || !!watchedAlimentacionSubtypeId) &&
     (!isCombustible  || !!watchedFuelTypeId)
@@ -140,45 +158,41 @@ export default function NuevoGastoScreen() {
   const section4State: SectionState = watchedImageUri !== '' ? 'completed' : 'active'
 
   usePageHeader({
-    center: (<Text fontSize={16} fontWeight="700" color="$text" > Nuevo Gasto de Viaje </Text>),
+    center: (
+      <TouchableOpacity onPress={() => console.log('Nuevo Gasto de Viaje form:', getValues())} activeOpacity={0.7}>
+        <Text fontSize={16} fontWeight="700" color="$text"> Nuevo Gasto de Viaje </Text>
+      </TouchableOpacity>
+    ),
     left: (
       <View onPress={() => navigation.goBack()}>
         <ArrowLeftStyled  />
       </View>
     ),
-    right: <CountryFlag countryCode="HN" width={28} height={20} />,
+    right: (<CountryFlag countryCode="HN" width={28} height={20} />)
   })
-
-  
 
   useFocusEffect(useCallback(() => {
     const load = async () => {
       try {
-        const [typesRes, taxRes, providersRes] = await Promise.all([
+        const [typesRes, taxRes] = await Promise.all([
           gastosViajeService.getExpenseTypes(COMPANY),
           gastosViajeService.getTaxConfig(COMPANY),
-          gastosViajeService.getProviders(COMPANY),
         ])
         if (typesRes.Success) setExpenseTypes(typesRes.Data)
         if (taxRes.Success) setTaxRate(taxRes.Data.Rate)
-        if (providersRes.Success) setAllProviders(providersRes.Data)
-        if (COMPANY !== 'IMHN') {
-          const curRes = await gastosViajeService.getCurrencies(COMPANY)
-          if (curRes.Success) setCurrencies(curRes.Data)
-        }
       } catch {}
     }
     load()
   }, []))
 
   useEffect(() => {
-    if (!watchedTypeId) { setCategories([]); setValue('categoryId', ''); return }
+    if (!watchedTypeId) { setCategories([]); setValue('ExpenseCategoryId', 0); return }
     const load = async () => {
-      const res = await gastosViajeService.getCategories(parseInt(watchedTypeId), COMPANY)
+      const res = await gastosViajeService.getCategories(watchedTypeId, COMPANY)
       if (res.Success) setCategories(res.Data)
-      setValue('categoryId', '')
-      setValue('alimentacionSubtypeId', '')
-      setValue('fuelTypeId', '')
+      setValue('ExpenseCategoryId', 0)
+      setValue('MealId', 0)
+      setValue('FuelTypeId', 0)
     }
     load()
   }, [watchedTypeId])
@@ -187,13 +201,16 @@ export default function NuevoGastoScreen() {
     if (!watchedCatId) return
     setValue('useCustomProvider', hasPredefined ? 'false' : 'true')
     setSelectedProviderId('')
+    setProviderCurrency('')
 
     if (hasPredefined) {
-      setValue('providerName', selectedCategory?.VendAccount ?? '')
-      setValue('providerRtn', '')
+      setValue('providerName', '')
+      setValue('vatnnum', '')
+      setValue('VendAccount', selectedCategory?.VendAccount ?? '')
     } else {
       setValue('providerName', '')
-      setValue('providerRtn', '')
+      setValue('vatnnum', '')
+      setValue('VendAccount', '')
     }
 
     if (isAlimentacion) {
@@ -202,11 +219,27 @@ export default function NuevoGastoScreen() {
       })
     }
     if (isCombustible) {
-      gastosViajeService.getFuelTypes().then(r => {
+      gastosViajeService.getFuelTypes(COMPANY).then(r => {
         if (r.Success) setFuelTypes(r.Data)
       })
     }
   }, [watchedCatId])
+
+  useEffect(() => {
+    const q = watchedVatnum.trim()
+    if (skipProviderSearchRef.current) { skipProviderSearchRef.current = false; return }
+    if (q.length < 3) { setAllProviders([]); setIsSearchingProviders(false); return }
+    const timer = setTimeout(async () => {
+      try {
+        setIsSearchingProviders(true)
+        const res = await gastosViajeService.searchProvider(q, COMPANY)
+        if (res.Success) setAllProviders(res.Data)
+      } catch {} finally {
+        setIsSearchingProviders(false)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [watchedVatnum])
 
   useEffect(() => {
     if (!isIMHN) return
@@ -218,29 +251,36 @@ export default function NuevoGastoScreen() {
   const onSubmit = async (data: FormData) => {
     try {
       loader.show()
-      const graved = toNum(data.gravedAmount)
-      const exempt = toNum(data.exemptAmount)
-      const total  = isIMHN ? computedTotal : toNum(data.total)
-
-      const invoiceDate = data.invoiceDate
+      const graved = toNum(data.GravadoAmount)
+      const exempt = toNum(data.ExemptAmount)
+      const total  = isIMHN ? computedTotal : toNum(data.InvoiceAmount)
 
       const res = await gastosViajeService.createGasto({
-        UserCode:      user?.Code ?? '',
-        Company:       COMPANY,
-        CategoryId:    parseInt(data.categoryId),
-        InvoiceNumber: isIMHN ? data.invoiceNumber : data.invoiceNumberFree || undefined,
-        SerialNumber:  !isIMHN ? data.serialNumber || undefined : undefined,
-        Description:   data.description || undefined,
-        GravedAmount:  graved,
-        ExemptAmount:  exempt,
-        Total:         total,
-        CurrencyId:    !isIMHN && data.currencyId ? parseInt(data.currencyId) : undefined,
-        InvoiceDate:   invoiceDate,
-        ProviderName:  data.providerName,
-        ProviderRtn:   data.providerRtn || undefined,
-        ImageBase64:   data.imageBase64 || undefined,
-        FuelTypeId:    data.fuelTypeId ? parseInt(data.fuelTypeId) : undefined,
-        Gallons:       data.gallons ? toNum(data.gallons) : undefined,
+        Id:                0,
+        ExpenseCategoryId: data.ExpenseCategoryId,
+        MealId:            data.MealId || null,
+        FuelTypeId:        data.FuelTypeId || null,
+        PersonalCode:      user?.Gira ?? '',
+        CompanyCode:       defaultCompany?.Code ?? '',
+        VendAccount:       data.VendAccount,
+        Description:       data.Description || null,
+        InvoiceId:         data.InvoiceId || null,
+        SeriesNum:         null,
+        ExemptAmount:      exempt,
+        GravadoAmount:     graved,
+        InvoiceAmount:     total,
+        InvoiceDate:       data.InvoiceDate,
+        ImagePath:         null,
+        ImageBase64:       data.imageBase64 || '',
+
+        //Innecesarios pero los necesita el api en el dto
+        ExpenseCategory: expenseTypes[0],
+        FuelType: fuelTypes[0],
+        Status: {
+          "Id": 1,
+          "Name": "Aprobado",
+          "Code": "A"
+        }
       })
 
       if (res.Success) {
@@ -269,6 +309,7 @@ export default function NuevoGastoScreen() {
           <YStack gap="$2" marginBottom="$5">
             <SectionHeader number={1} title="Tipo de gasto" state={section1State} />
             <YStack gap="$2">
+
               <Controller
                 control={control}
                 name="expenseTypeId"
@@ -277,25 +318,25 @@ export default function NuevoGastoScreen() {
                   <AppSelect
                     label="Selecciona el tipo de gasto"
                     value={field.value}
-                    onValueChange={v => field.onChange(String(v))}
+                    onValueChange={v => field.onChange(Number(v))}
                     options={expenseTypes.map(t => ({ label: t.Name, value: String(t.Id) }))}
                     error={errors.expenseTypeId?.message}
                   />
                 )}
               />
 
-              {watchedTypeId && (
+              {!!watchedTypeId && (
                 <Controller
                   control={control}
-                  name="categoryId"
+                  name="ExpenseCategoryId"
                   rules={{ required: 'Selecciona la categoría' }}
                   render={({ field }) => (
                     <AppSelect
                       label="Categoría"
                       value={field.value}
-                      onValueChange={v => field.onChange(String(v))}
-                      options={categories.map(c => ({ label: c.Name, value: String(c.Id) }))}
-                      error={errors.categoryId?.message}
+                      onValueChange={v => field.onChange(Number(v))}
+                      options={categories.map(c => ({ label: String(c.Name), value: String(c.Id) }))}
+                      error={errors.ExpenseCategoryId?.message}
                     />
                   )}
                 />
@@ -304,15 +345,15 @@ export default function NuevoGastoScreen() {
               {isAlimentacion && watchedCatId && (
                 <Controller
                   control={control}
-                  name="alimentacionSubtypeId"
-                  rules={{ required: 'Selecciona el tipo de alimentación' }}
+                  name="MealId"
+                  rules={{ validate: v => v > 0 || 'Selecciona el tipo de alimentación' }}
                   render={({ field }) => (
                     <AppSelect
-                      label="Tipo de alimentación"
+                      label="Tipo de alimentación *"
                       value={field.value}
-                      onValueChange={v => field.onChange(String(v))}
+                      onValueChange={v => field.onChange(Number(v))}
                       options={alimentacionSubtypes.map(s => ({ label: s.Name, value: String(s.Id) }))}
-                      error={errors.alimentacionSubtypeId?.message}
+                      error={errors.MealId?.message}
                     />
                   )}
                 />
@@ -321,15 +362,15 @@ export default function NuevoGastoScreen() {
               {isCombustible && watchedCatId && (
                 <Controller
                   control={control}
-                  name="fuelTypeId"
-                  rules={{ required: 'Selecciona el tipo de combustible' }}
+                  name="FuelTypeId"
+                  rules={{ validate: v => v > 0 || 'Selecciona el tipo de combustible' }}
                   render={({ field }) => (
                     <AppSelect
-                      label="Tipo de combustible"
+                      label="Tipo de combustible *"
                       value={field.value}
-                      onValueChange={v => field.onChange(String(v))}
+                      onValueChange={v => field.onChange(Number(v))}
                       options={fuelTypes.map(f => ({ label: f.Name, value: String(f.Id) }))}
-                      error={errors.fuelTypeId?.message}
+                      error={errors.FuelTypeId?.message}
                     />
                   )}
                 />
@@ -353,14 +394,17 @@ export default function NuevoGastoScreen() {
                   <YStack gap="$2">
                     <Controller
                       control={control}
-                      name="providerRtn"
+                      name="vatnnum"
                       render={({ field }) => (
                         <AppInput
-                          label="RTN / NIT"
-                          placeholder="0801-1985-00012"
+                          label={COMPANY === 'IMHN' ? 'RTN' : 'NIT'}
+                          placeholder={COMPANY === "IMHN" ?  "0801-1985-00012": "080119850001K"}
+                          keyboardType="numbers-and-punctuation"
                           value={field.value}
-                          onChangeText={field.onChange}
-                          suffix={<SearchStyled />}
+                          onChangeText={v => field.onChange(v)}
+                          suffix={isSearchingProviders
+                            ? <ActivityIndicator size="small" style={{ marginEnd: 6 }} />
+                            : <SearchStyled />}
                         />
                       )}
                     />
@@ -370,16 +414,20 @@ export default function NuevoGastoScreen() {
                       value={selectedProviderId}
                       onValueChange={(v) => {
                         const id = String(v)
-                        const p = allProviders.find(r => String(r.Id) === id)
+                        const p = allProviders.find(r => String(r.VATNUM) === id)
                         if (p) {
+                          skipProviderSearchRef.current = true
                           setSelectedProviderId(id)
-                          setValue('providerName', p.Name)
-                          setValue('providerRtn', p.Rtn)
+                          setProviderCurrency(p.CURRENCY)
+                          setValue('providerName', p.NAME)
+                          setValue('vatnnum', p.VATNUM)
+                          setValue('VendAccount', p.ACCOUNTNUM)
                         }
                       }}
-                      options={allProviders.map(r => ({
-                        label: `${r.Name} (${r.Rtn})`,
-                        value: String(r.Id),
+                      options={allProviders.map((r,i) => ({
+                        label: `(${r.VATNUM}) ${r.NAME} `,
+                        value: String(r.VATNUM),
+                        key: `${r.VATNUM}-${i}`
                       }))}
                     />
 
@@ -406,16 +454,16 @@ export default function NuevoGastoScreen() {
                     {selectedCategory?.IsInvoiceRequired && (
                       <Controller
                         control={control}
-                        name="invoiceNumber"
+                        name="InvoiceId"
                         rules={{ required: 'El número de factura es requerido' }}
                         render={({ field }) => (
                           <AppInput
                             label="No. de factura"
                             placeholder="000-001-01-00000000"
                             value={field.value}
-                            onChangeText={field.onChange}
+                            onChangeText={v => field.onChange(formatInvoiceIMHN(v))}
                             keyboardType="numeric"
-                            error={errors.invoiceNumber?.message}
+                            error={errors.InvoiceId?.message}
                           />
                         )}
                       />
@@ -423,7 +471,7 @@ export default function NuevoGastoScreen() {
 
                     <Controller
                       control={control}
-                      name="description"
+                      name="Description"
                       rules={selectedCategory?.IsDescriptionRequired ? { required: 'La descripción es requerida' } : {}}
                       render={({ field }) => (
                         <AppInput
@@ -433,7 +481,7 @@ export default function NuevoGastoScreen() {
                           onChangeText={field.onChange}
                           multiline
                           numberOfLines={3}
-                          error={errors.description?.message}
+                          error={errors.Description?.message}
                           style={{ height: 80}}
                         />
                       )}
@@ -443,16 +491,16 @@ export default function NuevoGastoScreen() {
                       <YStack flex={1}>
                         <Controller
                           control={control}
-                          name="gravedAmount"
+                          name="GravadoAmount"
                           rules={{ required: 'Requerido' }}
                           render={({ field }) => (
                             <AppInput
                               label="Importe gravado"
                               value={field.value}
-                              onChangeText={field.onChange}
+                              onChangeText={v => field.onChange(formatAmount(v))}
                               keyboardType="decimal-pad"
-                              prefix="Lps."
-                              error={errors.gravedAmount?.message}
+                              prefix={<Text>{providerCurrency}</Text>}
+                              error={errors.GravadoAmount?.message}
                             />
                           )}
                         />
@@ -460,14 +508,14 @@ export default function NuevoGastoScreen() {
                       <YStack flex={1}>
                         <Controller
                           control={control}
-                          name="exemptAmount"
+                          name="ExemptAmount"
                           render={({ field }) => (
                             <AppInput
                               label="Importe exento"
                               value={field.value}
-                              onChangeText={field.onChange}
+                              onChangeText={v => field.onChange(formatAmount(v))}
                               keyboardType="decimal-pad"
-                              prefix="Lps."
+                              prefix={<Text>{providerCurrency}</Text>}
                             />
                           )}
                         />
@@ -483,11 +531,12 @@ export default function NuevoGastoScreen() {
                       <YStack flex={1}>
                         <Controller
                           control={control}
-                          name="serialNumber"
+                          name="SeriesNum"
                           render={({ field }) => (
                             <AppInput
                               label="No. de serie"
                               value={field.value}
+                              keyboardType="numbers-and-punctuation"
                               onChangeText={field.onChange}
                             />
                           )}
@@ -496,34 +545,20 @@ export default function NuevoGastoScreen() {
                       <YStack flex={1}>
                         <Controller
                           control={control}
-                          name="invoiceNumberFree"
+                          name="InvoiceId"
                           rules={{ required: 'Requerido' }}
                           render={({ field }) => (
                             <AppInput
                               label="No. de factura"
                               value={field.value}
+                              keyboardType="numbers-and-punctuation"
                               onChangeText={field.onChange}
-                              error={errors.invoiceNumberFree?.message}
+                              error={errors.InvoiceId?.message}
                             />
                           )}
                         />
                       </YStack>
                     </XStack>
-
-                    <Controller
-                      control={control}
-                      name="currencyId"
-                      rules={{ required: 'Selecciona la moneda' }}
-                      render={({ field }) => (
-                        <AppSelect
-                          label="Moneda"
-                          value={field.value}
-                          onValueChange={v => field.onChange(String(v))}
-                          options={currencies.map(c => ({ label: `${c.Name} (${c.Code})`, value: String(c.Id) }))}
-                          error={errors.currencyId?.message}
-                        />
-                      )}
-                    />
 
                     {isCombustible && (
                       <Controller
@@ -543,12 +578,12 @@ export default function NuevoGastoScreen() {
                     {isHospedaje && (
                       <Controller
                         control={control}
-                        name="exemptAmount"
+                        name="ExemptAmount"
                         render={({ field }) => (
                           <AppInput
                             label="Importe exento"
                             value={field.value}
-                            onChangeText={field.onChange}
+                            onChangeText={v => field.onChange(formatAmount(v))}
                             keyboardType="decimal-pad"
                           />
                         )}
@@ -557,15 +592,16 @@ export default function NuevoGastoScreen() {
 
                     <Controller
                       control={control}
-                      name="total"
+                      name="InvoiceAmount"
                       rules={{ required: 'El total es requerido' }}
                       render={({ field }) => (
                         <AppInput
                           label="Total"
                           value={field.value}
-                          onChangeText={field.onChange}
+                          onChangeText={v => field.onChange(formatAmount(v))}
                           keyboardType="decimal-pad"
-                          error={errors.total?.message}
+                          prefix={providerCurrency ? <Text>{providerCurrency}</Text> : <Text>-</Text>}
+                          error={errors.InvoiceAmount?.message}
                         />
                       )}
                     />
@@ -575,7 +611,7 @@ export default function NuevoGastoScreen() {
                 {/* Fecha de factura — siempre */}
                 <Controller
                   control={control}
-                  name="invoiceDate"
+                  name="InvoiceDate"
                   rules={{ required: 'La fecha es requerida' }}
                   render={({ field }) => (
                     <AppDatePicker
@@ -584,7 +620,7 @@ export default function NuevoGastoScreen() {
                       onChange={v => field.onChange(v ?? '')}
                       displayFormat="DD/MM/YYYY"
                       direction="past"
-                      error={errors.invoiceDate?.message}
+                      error={errors.InvoiceDate?.message}
                     />
                   )}
                 />

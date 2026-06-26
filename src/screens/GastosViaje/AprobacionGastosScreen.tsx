@@ -1,12 +1,11 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Pressable } from 'react-native'
 import { YStack, XStack, Text, Card, View, useTheme } from 'tamagui'
-import {
-  Utensils, Fuel, BedDouble, Receipt, ChevronRight, Image as ImageIcon,
-} from 'lucide-react-native'
+import { ChevronRight, Image as ImageIcon } from 'lucide-react-native'
 import dayjs from 'dayjs'
 
+import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useLoader } from '../../providers/LoaderProvider'
 import { handleError, AppError } from '../../utils/errorHandler'
@@ -17,39 +16,22 @@ import SearchInput from '../../components/commons/SearchInput'
 import AppDatePicker from '../../components/commons/AppDatePicker'
 import CountryFlag from '../../components/commons/CountryFlag'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
-import { Company, IGastoViaje } from '../../api/modules/GastosViaje/gastosViaje.types'
-
-const COMPANY: Company = 'IMHN'
-
-const TYPE_ICONS: Record<string, any> = {
-  Alimentación: Utensils,
-  Combustible:  Fuel,
-  Hospedaje:    BedDouble,
-  Otros:        Receipt,
-}
-
-const formatCurrency = (amount: number, code = 'HNL') => {
-  const prefix = code === 'USD' ? '$' : code === 'GTQ' ? 'Q' : 'Lps.'
-  return `${prefix} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-const formatDate = (iso: string) => {
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
-}
+import { IGastoHistorialDetail } from '../../api/modules/GastosViaje/gastosViaje.types'
+import { formatCurrency, getIconFromFa } from './GastosViaje.utils'
 
 export default function AprobacionGastosScreen({ navigation }: any) {
+  const { user, defaultCompany } = useAuth()
   const loader = useLoader()
-  const [data, setData] = useState<IGastoViaje[]>([])
-  const [filtered, setFiltered] = useState<IGastoViaje[]>([])
+  const [data, setData] = useState<IGastoHistorialDetail[]>([])
+  const [filtered, setFiltered] = useState<IGastoHistorialDetail[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
-  const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(14, 'day').format('YYYY-MM-DD'))
+  const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(80, 'day').format('YYYY-MM-DD'))
   const [dateTo, setDateTo]     = useState<string | null>(dayjs().format('YYYY-MM-DD'))
 
   usePageHeader({
     center: <Text fontSize={16} fontWeight="700" color="$text">Aprobación de Gastos</Text>,
-    right: <CountryFlag countryCode="HN" width={28} height={20} />,
+    right: <CountryFlag countryCode={defaultCompany?.CodeIcon ?? 'HN'} width={28} height={20} />,
   })
 
   const loadData = useCallback(async () => {
@@ -57,7 +39,15 @@ export default function AprobacionGastosScreen({ navigation }: any) {
       loader.show()
       setLoading(true)
       setError(null)
-      const res = await gastosViajeService.getPendingApprovals(COMPANY)
+      const from = dateFrom ?? dayjs().subtract(30, 'day').format('YYYY-MM-DD')
+      const to   = dateTo   ?? dayjs().format('YYYY-MM-DD')
+      const res = await gastosViajeService.getHistory(
+        user?.Gira ?? '',
+        defaultCompany?.Code ?? '',
+        from,
+        to,
+        0,
+      )
       if (res.Success) {
         setData(res.Data)
         setFiltered(res.Data)
@@ -68,16 +58,10 @@ export default function AprobacionGastosScreen({ navigation }: any) {
       setLoading(false)
       loader.hide()
     }
-  }, [])
+  }, [user?.Code, defaultCompany?.Code, dateFrom, dateTo])
 
   useFocusEffect(useCallback(() => { loadData() }, [loadData]))
-
-  const baseFiltered = React.useMemo(() => {
-    let result = data
-    if (dateFrom) result = result.filter(g => g.InvoiceDate >= dateFrom)
-    if (dateTo)   result = result.filter(g => g.InvoiceDate <= dateTo)
-    return result
-  }, [data, dateFrom, dateTo])
+  useEffect(() => { loadData() }, [dateFrom, dateTo])
 
   if (loading) return <SkeletonList />
   if (error) return <ErrorState title={error.title} message={error.message} onRetry={loadData} />
@@ -94,8 +78,8 @@ export default function AprobacionGastosScreen({ navigation }: any) {
           direction="past"
         />
         <SearchInput
-          data={baseFiltered}
-          searchKeys={['ProviderName', 'InvoiceNumber', 'UserName', 'UserCode', 'ExpenseTypeName']}
+          data={data}
+          searchKeys={['VendAccount', 'InvoiceId', 'PersonalCode', 'Name', 'ExpenseTypeName']}
           onResults={setFiltered}
           placeholder="Buscar por proveedor, empleado o factura"
         />
@@ -123,9 +107,9 @@ export default function AprobacionGastosScreen({ navigation }: any) {
   )
 }
 
-function ApprovalCard({ item, onPress }: { item: IGastoViaje; onPress: () => void }) {
+function ApprovalCard({ item, onPress }: { item: IGastoHistorialDetail; onPress: () => void }) {
   const theme = useTheme()
-  const TypeIcon = TYPE_ICONS[item.ExpenseTypeName] ?? Receipt
+  const TypeIcon = getIconFromFa(item.Icon)
 
   return (
     <Pressable onPress={onPress}>
@@ -136,7 +120,7 @@ function ApprovalCard({ item, onPress }: { item: IGastoViaje; onPress: () => voi
         borderWidth={1}
         borderColor="$border"
       >
-        <XStack alignItems="center" gap="$3">
+        <XStack gap="$3">
           <View
             width={44} height={44} borderRadius={12}
             backgroundColor={`${theme.success?.val}1f`}
@@ -149,33 +133,31 @@ function ApprovalCard({ item, onPress }: { item: IGastoViaje; onPress: () => voi
             <XStack justifyContent="space-between" alignItems="flex-start">
               <Text fontSize={15} fontWeight="700" color="$text">{item.ExpenseTypeName}</Text>
               <Text fontSize={15} fontWeight="700" color="$text">
-                {formatCurrency(item.Total, item.CurrencyCode)}
+                {formatCurrency(item.InvoiceAmount)}
               </Text>
             </XStack>
 
             <Text fontSize={12} color="$textMuted" numberOfLines={1}>
-              {item.CategoryName} · {item.ProviderName}
+              {item.ExpenseCategoryName} · {item.VendAccount}
             </Text>
 
-            <XStack justifyContent="space-between" alignItems="center" marginTop="$1">
               <XStack
-                paddingHorizontal={8} paddingVertical={3} borderRadius={20}
-                backgroundColor="$backgroundSurface" alignItems="center" gap="$1"
+                paddingVertical={3} borderRadius={20}
+                alignItems="center" gap="$1" width='fitContent'
               >
-                <Text fontSize={11} fontWeight="600" color="$textMuted">{item.UserCode}</Text>
-                {item.UserName && (
-                  <Text fontSize={11} color="$textMuted">· {item.UserName}</Text>
+                <Text fontSize={11} fontWeight="600" color="$textMuted">{item.PersonalCode}</Text>
+                {!!item.Name && (
+                  <Text fontSize={11} color="$textMuted">· {item.Name}</Text>
                 )}
               </XStack>
 
               <XStack alignItems="center" gap="$1">
-                {item.HasImage && <ImageIcon size={12} color={theme.textMuted?.val as string} />}
-                <Text fontSize={12} color="$textMuted">{formatDate(item.InvoiceDate)}</Text>
+                {!!item.ImagePath && <ImageIcon size={12} color={theme.textMuted?.val as string} />}
+                <Text fontSize={12} color="$textMuted">{dayjs(item.InvoiceDate).format('DD/MM/YYYY')}</Text>
               </XStack>
-            </XStack>
+
           </YStack>
 
-          <ChevronRight size={16} color={theme.textMuted?.val as string} />
         </XStack>
       </Card>
     </Pressable>

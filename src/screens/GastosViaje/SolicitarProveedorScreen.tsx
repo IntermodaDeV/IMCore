@@ -11,12 +11,15 @@ import AppInput from '../../components/commons/AppInput'
 import CountryFlag from '../../components/commons/CountryFlag'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
 import { useNavigation } from '@react-navigation/native'
+import { Company } from '../../api/modules/GastosViaje/gastosViaje.types'
 
 type FormData = {
   providerName: string
   providerRtn: string
   justification: string
 }
+
+
 
 export default function SolicitarProveedorScreen() {
   const { user } = useAuth()
@@ -25,6 +28,8 @@ export default function SolicitarProveedorScreen() {
   const navigation = useNavigation();
 
   const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' });
+
+  const COMPANY: Company = 'IMHN'
 
   const { control, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     defaultValues: {
@@ -99,11 +104,11 @@ export default function SolicitarProveedorScreen() {
               name="providerRtn"
               render={({ field }) => (
                 <AppInput
-                  label="RTN / NIT (Opcional)"
-                  placeholder="0801-1985-00012"
+                  label={COMPANY === 'IMHN' ? 'RTN' : 'NIT'}
+                  placeholder={COMPANY === "IMHN" ?  "0801-1985-00012": "080119850001K"}
+                  keyboardType="numbers-and-punctuation"
                   value={field.value}
                   onChangeText={field.onChange}
-                  keyboardType="numeric"
                 />
               )}
             />

@@ -1,9 +1,9 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Pressable, ScrollView } from 'react-native'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
 import {
-  Utensils, Fuel, BedDouble, Receipt, RefreshCw, CheckCircle2, XCircle,
+  RefreshCw, CheckCircle2, XCircle,
   ChevronRight, Plus, Image as ImageIcon, SlidersHorizontal,
 } from 'lucide-react-native'
 
@@ -22,48 +22,30 @@ import { useRightDrawer } from '../../providers/RightDrawerProvider'
 import AppSelect from '../../components/commons/AppSelect'
 import dayjs from 'dayjs'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
-import { Company, ExpenseStatus, IExpenseType, IGastoViaje } from '../../api/modules/GastosViaje/gastosViaje.types'
-
-// TODO: derive from user context
-const COMPANY: Company = 'IMHN'
+import { TCompany, IExpenseType, IGastoHistorialDetail } from '../../api/modules/GastosViaje/gastosViaje.types'
+import { formatCurrency, getIconFromFa } from './GastosViaje.utils'
 
 const STATUS_OPTIONS = [
-  { label: 'Todos', value: 'Todos' },
-  { label: 'Sincronizado', value: 'Sincronizado' },
+  { label: 'Todos',     value: 'Todos' },
+  { label: 'Aprobado',  value: 'Aprobado' },
   { label: 'Pendiente', value: 'Pendiente' },
   { label: 'Rechazado', value: 'Rechazado' },
 ]
 
 
-const TYPE_ICONS: Record<string, any> = {
-  Alimentación: Utensils,
-  Combustible:  Fuel,
-  Hospedaje:    BedDouble,
-  Otros:        Receipt,
-}
-
-const formatCurrency = (amount: number, code = 'HNL') => {
-  const prefix = code === 'USD' ? '$' : code === 'GTQ' ? 'Q' : 'Lps.'
-  return `${prefix} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-const formatDate = (iso: string) => {
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
-}
 
 export default function HistorialGastosScreen({ navigation }: any) {
   const theme = useTheme()
-  const { user } = useAuth()
+  const { user, defaultCompany } = useAuth()
   const loader = useLoader()
   const { showToast } = useShowToast()
-  const [data, setData] = useState<IGastoViaje[]>([])
-  const [filtered, setFiltered] = useState<IGastoViaje[]>([])
+  const [data, setData] = useState<IGastoHistorialDetail[]>([])
+  const [filtered, setFiltered] = useState<IGastoHistorialDetail[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
   const [statusFilter, setStatusFilter] = useState('Todos')
-  const [typeFilter, setTypeFilter] = useState('Todos')
-  const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(14, 'day').format('YYYY-MM-DD'))
+  const [typeFilter, setTypeFilter] = useState(0)
+  const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(80, 'day').format('YYYY-MM-DD'))
   const [dateTo, setDateTo] = useState<string | null>(dayjs().format('YYYY-MM-DD'))
   const [expenseTypes, setExpenseTypes] = useState<IExpenseType[]>([])
   const [syncing, setSyncing] = useState(false)
@@ -71,19 +53,23 @@ export default function HistorialGastosScreen({ navigation }: any) {
 
   usePageHeader({
       center: (<Text fontSize={16} fontWeight="700" color="$text" > Historial de Gastos</Text>),
-      right: <CountryFlag countryCode="HN" width={28} height={20} />,
+      right: <CountryFlag countryCode={defaultCompany?.CodeIcon ?? ''} width={28} height={20} />,
     })
 
-  const pendingCount = data.filter(g => g.Status === 'Pendiente').length
+  const pendingCount = data.filter(g => g.StatusName === 'Pendiente').length
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (_typeFilter?:number) => {
     try {
       loader.show()
       setLoading(true)
       setError(null)
+      
+      const from = dateFrom ?? dayjs().subtract(30, 'day').format('YYYY-MM-DD');
+      const to   = dateTo   ?? dayjs().format('YYYY-MM-DD');
+      
       const [histRes, typesRes] = await Promise.all([
-        gastosViajeService.getHistory(user?.Code ?? '', COMPANY),
-        gastosViajeService.getExpenseTypes(COMPANY),
+        gastosViajeService.getHistory(user?.Gira ?? '', defaultCompany?.Code ?? '', from, to, _typeFilter ?? typeFilter),
+        gastosViajeService.getExpenseTypes(defaultCompany?.Code ?? ''),
       ])
       if (histRes.Success) { setData(histRes.Data); setFiltered(histRes.Data) }
       if (typesRes.Success) setExpenseTypes(typesRes.Data)
@@ -93,14 +79,16 @@ export default function HistorialGastosScreen({ navigation }: any) {
       setLoading(false)
       loader.hide()
     }
-  }, [user?.Code])
+  }, [user?.Code, dateFrom, dateTo])
 
   useFocusEffect(useCallback(() => { loadData() }, [loadData]))
+
+  useEffect(() => { loadData() }, [dateFrom, dateTo])
 
   const handleSync = async () => {
     try {
       setSyncing(true)
-      const res = await gastosViajeService.syncGastos(user?.Code ?? '', COMPANY)
+      const res = await gastosViajeService.syncGastos(user?.Code ?? '', defaultCompany?.Code ?? '')
       if (res.Success) {
         setData(res.Data)
         showToast('success', 'Sincronización', 'Gastos actualizados correctamente', 3000, 'top')
@@ -114,12 +102,14 @@ export default function HistorialGastosScreen({ navigation }: any) {
 
   const baseFiltered = React.useMemo(() => {
     let result = data
-    if (statusFilter !== 'Todos') result = result.filter(g => g.Status === statusFilter)
-    if (typeFilter !== 'Todos') result = result.filter(g => g.ExpenseTypeName === typeFilter)
-    if (dateFrom) result = result.filter(g => g.InvoiceDate >= dateFrom)
-    if (dateTo)   result = result.filter(g => g.InvoiceDate <= dateTo)
+    if (statusFilter !== 'Todos') result = result.filter(g => g.StatusName === statusFilter)
     return result
-  }, [data, statusFilter, typeFilter, dateFrom, dateTo])
+  }, [data, statusFilter])
+
+  useEffect(()=>{
+    loadData(typeFilter);
+  },[typeFilter])
+
 
   if (loading) return <SkeletonList />
   if (error) return <ErrorState title={error.title} message={error.message} onRetry={loadData} />
@@ -187,7 +177,7 @@ export default function HistorialGastosScreen({ navigation }: any) {
           <View flex={1}>
             <SearchInput
               data={baseFiltered}
-              searchKeys={['ProviderName', 'InvoiceNumber', 'CategoryName']}
+              searchKeys={['VendAccount', 'InvoiceId', 'ExpenseCategoryName']}
               onResults={setFiltered}
               placeholder="Buscar por proveedor o factura"
             />
@@ -234,18 +224,18 @@ export default function HistorialGastosScreen({ navigation }: any) {
   )
 }
 
-function GastoCard({ item, onPress }: { item: IGastoViaje; onPress: () => void }) {
+function GastoCard({ item, onPress }: { item: IGastoHistorialDetail; onPress: () => void }) {
   const theme = useTheme()
 
-  const STATUS_CONFIG: Record<ExpenseStatus, { label: string; bg: string; color: string; Icon: any }> = {
-    Sincronizado: { label: 'Sincronizado', bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
-    Pendiente:    { label: 'Pendiente',    bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
-    Rechazado:    { label: 'Rechazado',    bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
+  const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; Icon: any }> = {
+    Aprobado:  { label: 'Aprobado',  bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
+    Pendiente: { label: 'Pendiente', bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
+    Rechazado: { label: 'Rechazado', bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
   }
 
-  const status = STATUS_CONFIG[item.Status]
+  const status = STATUS_CONFIG[item.StatusName] ?? STATUS_CONFIG['Pendiente']
   const StatusIcon = status.Icon
-  const TypeIcon = TYPE_ICONS[item.ExpenseTypeName] ?? Receipt
+  const TypeIcon = getIconFromFa(item.Icon)
 
   return (
     <Pressable onPress={onPress}>
@@ -256,7 +246,8 @@ function GastoCard({ item, onPress }: { item: IGastoViaje; onPress: () => void }
         borderWidth={1}
         borderColor="$border"
       >
-        <XStack alignItems="center" gap="$3">
+        <XStack   gap="$3">
+          
           {/* Icono de categoría */}
           <View
             width={44}
@@ -274,11 +265,17 @@ function GastoCard({ item, onPress }: { item: IGastoViaje; onPress: () => void }
             <XStack justifyContent="space-between" alignItems="flex-start">
               <Text fontSize={15} fontWeight="700" color="$text">{item.ExpenseTypeName}</Text>
               <Text fontSize={15} fontWeight="700" color="$text">
-                {formatCurrency(item.Total, item.CurrencyCode)}
+                {formatCurrency(item.InvoiceAmount)}
               </Text>
             </XStack>
 
-            <Text fontSize={12} color="$textMuted" numberOfLines={1}>{item.InvoiceNumber ?? item.ProviderName}</Text>
+            <Text fontSize={12} color="$textMuted" numberOfLines={1}>
+              {item.ExpenseCategoryName}
+            </Text>
+
+            <Text fontSize={12} color="$textMuted" numberOfLines={1} marginBottom="$2" >
+              {item.InvoiceId ? `${item.InvoiceId}` : ''}
+            </Text>
 
             <XStack justifyContent="space-between" alignItems="center" marginTop="$1">
               <XStack
@@ -294,13 +291,12 @@ function GastoCard({ item, onPress }: { item: IGastoViaje; onPress: () => void }
               </XStack>
 
               <XStack alignItems="center" gap="$1">
-                {item.HasImage && <ImageIcon size={12} color="#999" />}
-                <Text fontSize={12} color="$textMuted">{formatDate(item.InvoiceDate)}</Text>
+                {!!item.ImagePath && <ImageIcon size={12} color="#999" />}
+                <Text fontSize={12} color="$textMuted">{dayjs(item.InvoiceDate).format('DD/MM/YYYY')}</Text>
               </XStack>
             </XStack>
           </YStack>
 
-          <ChevronRight size={16} color={theme.textMuted?.val as string} />
         </XStack>
       </Card>
     </Pressable>
@@ -314,8 +310,8 @@ function FiltrosPanel({
 }: {
   initialStatus: string
   onStatusChange: (v: string) => void
-  initialType: string
-  onTypeChange: (v: string) => void
+  initialType: number
+  onTypeChange: (v: number) => void
   expenseTypes: IExpenseType[]
 }) {
   const [status, setStatus] = useState(initialStatus)
@@ -344,10 +340,10 @@ function FiltrosPanel({
           options={STATUS_OPTIONS}
         />
         <AppSelect
-          label="Tipo de gasto"
+          label="Selecciona el tipo de gasto"
           value={type}
-          onValueChange={v => setType(String(v))}
-          options={typeOptions}
+          onValueChange={v => setType(Number(v))}
+          options={expenseTypes.map(t => ({ label: t.Name, value: String(t.Id) }))}
         />
       </ScrollView>
       <View paddingHorizontal="$4" paddingBottom="$6" paddingTop="$2" borderTopWidth={1} borderTopColor="$border">

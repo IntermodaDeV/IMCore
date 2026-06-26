@@ -1,4 +1,4 @@
-export type Company = 'IMHN' | 'IMGT' | 'IMCR'
+export type TCompany = 'IMHN' | 'IMGT' | 'IMCR'
 
 export interface IGiraApiResponse<T> {
   Succeeded: boolean
@@ -38,6 +38,8 @@ export interface IAlimentacionSubtype {
 export interface IFuelType {
   Id: number
   Name: string
+  MarkupCode?: string
+  CompanyCode?: string
 }
 
 export interface ICurrency {
@@ -48,6 +50,13 @@ export interface ICurrency {
 
 export interface ITaxConfig {
   Rate: number
+}
+
+export interface IGiraVendorResponse {
+  VATNUM: string
+  NAME: string
+  ACCOUNTNUM: string
+  CURRENCY: string
 }
 
 export interface IProviderSearchResult {
@@ -83,40 +92,82 @@ export interface IGastoViaje {
   CreatedAt: string
   UserCode: string
   UserName?: string
-  Company: Company
+  Company: TCompany
+  Icon?: string
+}
+
+export interface IGastoHistorialDetail {
+  Id: number
+  ExpenseCategoryId: number
+  MealId: number | null
+  FuelTypeId: number | null
+  StatusId: number
+  PersonalCode: string
+  VendAccount: string
+  Description: string | null
+  InvoiceId: string | null
+  SeriesNum: string | null
+  ExemptAmount: number
+  GravadoAmount: number
+  InvoiceAmount: number
+  InvoiceDate: string
+  ImagePath: string | null
+  CreationDate: string
+  PersonalCodeAdmin: string | null
+  RejectionMotive: string | null
+  JournalNum: string | null
+  CompanyCode: string
+  AXMessage: string | null
+  InUse: boolean
+  ExpenseCategoryName: string
+  ExpenseTypeName: string
+  Icon: string
+  FuelTypeName: string | null
+  StatusName: string
+  Code: string
+  Name: string
+}
+
+export interface IGastoHistorialResponse {
+  Details: IGastoHistorialDetail[]
+  PendingAmount: number
 }
 
 export interface IApproveGastoRequest {
   GastoId: number
   ApproverCode: string
-  Company: Company
+  Company: string
 }
 
 export interface IRejectGastoRequest {
   GastoId: number
   ApproverCode: string
-  Company: Company
+  Company: string
   Reason: string
 }
 
 export interface ICreateGastoRequest {
-  UserCode: string
-  Company: Company
-  CategoryId: number
-  InvoiceNumber?: string
-  SerialNumber?: string
-  Description?: string
-  GravedAmount: number
+  Id: number
+  CompanyCode: string
+  ExpenseCategoryId: number
+  MealId: number | null
+  FuelTypeId: number | null
+  PersonalCode: string
+  VendAccount: string
+  Description: string | null
+  InvoiceId: string | null
+  SeriesNum: string | null
   ExemptAmount: number
-  Total: number
-  CurrencyId?: number
+  GravadoAmount: number
+  InvoiceAmount: number
   InvoiceDate: string
-  ProviderCode?: string
-  ProviderName: string
-  ProviderRtn?: string
-  ImageBase64?: string
-  FuelTypeId?: number
-  Gallons?: number
+  ImagePath: null
+  ImageBase64: string
+
+  //objetos extra innecesarios
+  ExpenseCategory: any | null
+  FuelType: any | null
+  Status: any | null
 }
 
 export interface ISolicitarProveedorRequest {

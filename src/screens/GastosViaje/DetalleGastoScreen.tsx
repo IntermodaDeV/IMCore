@@ -1,13 +1,14 @@
 import React, { useState } from 'react'
-import { ScrollView, TouchableOpacity, Image, Modal, StyleSheet } from 'react-native'
+import { ScrollView, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator } from 'react-native'
 import ImageViewing from 'react-native-image-viewing'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
 import {
   ArrowLeft, CheckCircle2, RefreshCw, XCircle, AlertTriangle,
-  Image as ImageIcon, ThumbsUp, ThumbsDown,
+  ImageOff, ThumbsUp, ThumbsDown,
+  LucideIcon,
 } from 'lucide-react-native'
 import { usePageHeader } from '../../hooks/usePageHeader'
-import { ExpenseStatus, IGastoViaje } from '../../api/modules/GastosViaje/gastosViaje.types'
+import { IGastoHistorialDetail } from '../../api/modules/GastosViaje/gastosViaje.types'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useLoader } from '../../providers/LoaderProvider'
@@ -16,16 +17,7 @@ import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.se
 import CountryFlag from '../../components/commons/CountryFlag'
 import AppInput from '../../components/commons/AppInput'
 import dayjs from 'dayjs'
-
-const formatCurrency = (amount: number, code = 'HNL') => {
-  const prefix = code === 'USD' ? '$' : code === 'GTQ' ? 'Q' : 'Lps.'
-  return `${prefix} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-const formatDate = (iso: string) => {
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
-}
+import { formatCurrency } from './GastosViaje.utils'
 
 function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
   if (value === null || value === undefined || value === '') return null
@@ -39,28 +31,28 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
 
 export default function DetalleGastoScreen({ route }: any) {
   const theme = useTheme()
-  const gasto: IGastoViaje = route.params?.gasto
+  const gasto: IGastoHistorialDetail = route.params?.gasto
   const isApprovalMode: boolean = route.params?.mode === 'approval'
   const navigation = useNavigation()
-  const { user } = useAuth()
+  const { user, defaultCompany } = useAuth()
   const loader = useLoader()
   const { showToast } = useShowToast()
 
-  const STATUS_CONFIG: Record<ExpenseStatus, { label: string; bg: string; color: string; Icon: any }> = {
-    Sincronizado: { label: 'Sincronizado', bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
-    Pendiente:    { label: 'Pendiente',    bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
-    Rechazado:    { label: 'Rechazado',    bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
+  const STATUS_CONFIG: Record<string, { bg: string; color: string; Icon: LucideIcon }> = {
+    Sincronizado: { bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
+    Pendiente:    { bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
+    Rechazado:    { bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
   }
 
-  const status = STATUS_CONFIG[gasto?.Status ?? 'Pendiente']
-  const StatusIcon = status.Icon
+  const status = STATUS_CONFIG[gasto.StatusName]
+  const StatusIcon = status?.Icon ?? CheckCircle2;
   const [imageOpen, setImageOpen] = useState(false)
+  const [imageError, setImageError] = useState(false)
+  const [imageLoading, setImageLoading] = useState(!!gasto.ImagePath)
   const [rejectModalVisible, setRejectModalVisible] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [rejectError, setRejectError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
-
-  const IMAGE_URI = 'https://leyfacturaelectronica.com/wp-content/uploads/2025/08/ticket-tpv-tienda-ropa-con-qr-verifactu.webp'
 
   usePageHeader({
     left: (
@@ -87,7 +79,7 @@ export default function DetalleGastoScreen({ route }: any) {
       const res = await gastosViajeService.approveGasto({
         GastoId: gasto.Id,
         ApproverCode: user?.Code ?? '',
-        Company: gasto.Company,
+        Company: defaultCompany?.Code ?? '',
       })
       if (res.Success) {
         showToast('success', 'Aprobado', 'El gasto fue aprobado correctamente', 3000, 'top')
@@ -114,7 +106,7 @@ export default function DetalleGastoScreen({ route }: any) {
       const res = await gastosViajeService.rejectGasto({
         GastoId: gasto.Id,
         ApproverCode: user?.Code ?? '',
-        Company: gasto.Company,
+        Company: defaultCompany?.Code ?? '',
         Reason: rejectReason.trim(),
       })
       if (res.Success) {
@@ -138,53 +130,70 @@ export default function DetalleGastoScreen({ route }: any) {
 
         <YStack backgroundColor="$backgroundPage">
 
-          {/* ── Hero: imagen ── */}
-          <View
-            height={340}
-            backgroundColor="$backgroundElevated"
-            justifyContent="center"
-            alignItems="center"
-            overflow="hidden"
-          >
-            {gasto.HasImage ? (
-              <TouchableOpacity activeOpacity={0.9} onPress={() => setImageOpen(true)} style={{ width: '100%', height: 340 }}>
-                <Image
-                  source={{ uri: IMAGE_URI }}
+          {/* ── Hero: imagen (solo si viene ImagePath) ── */}
+          {!!gasto.ImagePath && (
+            <View
+              height={340}
+              backgroundColor="$backgroundElevated"
+              justifyContent="center"
+              alignItems="center"
+              overflow="hidden"
+            >
+              {!imageError ? (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => { if (!imageLoading) setImageOpen(true) }}
                   style={{ width: '100%', height: 340 }}
-                  resizeMode="cover"
-                />
-              </TouchableOpacity>
-            ) : (
-              <YStack alignItems="center" gap="$2">
-                <View
-                  width={80} height={80} borderRadius={40}
-                  backgroundColor="$backgroundSurface"
-                  justifyContent="center" alignItems="center"
                 >
-                  <ImageIcon size={38} color={theme.textMuted?.val as string} opacity={0.4} />
-                </View>
-                <Text fontSize={13} color="$textMuted">Sin imagen adjunta</Text>
-              </YStack>
-            )}
-          </View>
+                  <Image
+                    source={{ uri: gasto.ImagePath }}
+                    style={{ width: '100%', height: 340 }}
+                    resizeMode="cover"
+                    onLoadEnd={() => setImageLoading(false)}
+                    onError={() => { setImageError(true); setImageLoading(false) }}
+                  />
+                  {imageLoading && (
+                    <View
+                      position="absolute" top={0} left={0} right={0} bottom={0}
+                      justifyContent="center" alignItems="center"
+                      backgroundColor="$backgroundElevated"
+                    >
+                      <ActivityIndicator size="large" color={theme.primary?.val as string} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <YStack alignItems="center" gap="$2">
+                  <View
+                    width={80} height={80} borderRadius={40}
+                    backgroundColor="$backgroundSurface"
+                    justifyContent="center" alignItems="center"
+                  >
+                    <ImageOff size={38} color={theme.textMuted?.val as string} opacity={0.5} />
+                  </View>
+                  <Text fontSize={13} color="$textMuted">No se pudo cargar la imagen</Text>
+                </YStack>
+              )}
+            </View>
+          )}
 
           {/* ── Strip: monto + estado ── */}
           <View backgroundColor="$primary" paddingHorizontal={20} paddingVertical={16}>
             <Text color="white" fontSize={12} opacity={0.8} marginBottom={2}>
-              {gasto.ExpenseTypeName} — {gasto.CategoryName}
+              {gasto.ExpenseTypeName} — {gasto.ExpenseCategoryName}
             </Text>
             <Text color="white" fontSize={30} fontWeight="800" lineHeight={34}>
-              {formatCurrency(gasto.Total, gasto.CurrencyCode)}
+              {formatCurrency(gasto.InvoiceAmount)}
             </Text>
             <XStack justifyContent="space-between" alignItems="center" marginTop={8}>
-              <Text color="white" fontSize={12} opacity={0.75}>{formatDate(gasto.InvoiceDate)}</Text>
+              <Text color="white" fontSize={12} opacity={0.75}>{dayjs(gasto.InvoiceDate).format('DD/MM/YYYY')}</Text>
               <XStack
                 paddingHorizontal={10} paddingVertical={4}
                 borderRadius={20} alignItems="center" gap="$1"
                 style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
               >
                 <StatusIcon size={11} color="white" />
-                <Text fontSize={11} fontWeight="700" color="white">{status.label}</Text>
+                <Text fontSize={11} fontWeight="700" color="white">{gasto.StatusName}</Text>
               </XStack>
             </XStack>
           </View>
@@ -192,22 +201,22 @@ export default function DetalleGastoScreen({ route }: any) {
           <YStack paddingHorizontal={16} paddingTop={16} gap="$3">
 
             {/* Solicitante — solo en modo aprobación */}
-            {isApprovalMode && (gasto.UserCode || gasto.UserName) && (
+            {isApprovalMode && (gasto.PersonalCode || gasto.Name) && (
               <Card backgroundColor="$backgroundElevated" borderRadius={12} padding="$4" borderWidth={1} borderColor="$border">
                 <Text fontSize={14} fontWeight="700" color="$text" marginBottom="$3">Solicitante</Text>
-                <InfoRow label="Código" value={gasto.UserCode} />
-                <InfoRow label="Nombre" value={gasto.UserName} />
+                <InfoRow label="Código" value={gasto.PersonalCode} />
+                <InfoRow label="Nombre" value={gasto.Name} />
               </Card>
             )}
 
             {/* Motivo de rechazo */}
-            {gasto.Status === 'Rechazado' && gasto.RejectionReason && (
+            {gasto.StatusName === 'Rechazado' && gasto.RejectionMotive && (
               <Card backgroundColor={`${theme.error?.val}0f`} borderRadius={10} padding="$3" borderWidth={1} borderColor={`${theme.error?.val}33`}>
                 <XStack gap="$2" alignItems="flex-start">
                   <AlertTriangle size={16} color={theme.error?.val as string} style={{ marginTop: 2 }} />
                   <YStack flex={1} gap="$1">
                     <Text fontSize={12} fontWeight="700" color="$error">Motivo de rechazo</Text>
-                    <Text fontSize={13} color="$text">{gasto.RejectionReason}</Text>
+                    <Text fontSize={13} color="$text">{gasto.RejectionMotive}</Text>
                   </YStack>
                 </XStack>
               </Card>
@@ -216,24 +225,24 @@ export default function DetalleGastoScreen({ route }: any) {
             {/* Datos de factura */}
             <Card backgroundColor="$backgroundElevated" borderRadius={12} padding="$4" borderWidth={1} borderColor="$border">
               <Text fontSize={14} fontWeight="700" color="$text" marginBottom="$3">Datos de la factura</Text>
-              <InfoRow label="Número de factura"   value={gasto.InvoiceNumber} />
-              <InfoRow label="Número de serie"     value={gasto.SerialNumber} />
+              <InfoRow label="Número de factura"   value={gasto.InvoiceId} />
+              <InfoRow label="Número de serie"     value={gasto.JournalNum} />
               <InfoRow label="Descripción"         value={gasto.Description} />
-              <InfoRow label="Importe gravado"     value={formatCurrency(gasto.GravedAmount, gasto.CurrencyCode)} />
-              <InfoRow label="Importe exento"      value={formatCurrency(gasto.ExemptAmount, gasto.CurrencyCode)} />
-              <InfoRow label="Total"               value={formatCurrency(gasto.Total, gasto.CurrencyCode)} />
-              <InfoRow label="Galones"             value={gasto.Gallons} />
+              <InfoRow label="Importe gravado"     value={formatCurrency(gasto.GravadoAmount)} />
+              <InfoRow label="Importe exento"      value={formatCurrency(gasto.ExemptAmount)} />
+              <InfoRow label="Total"               value={formatCurrency(gasto.InvoiceAmount)} />
+              
               <InfoRow label="Tipo de combustible" value={gasto.FuelTypeName} />
-              <InfoRow label="Fecha de factura"    value={formatDate(gasto.InvoiceDate)} />
-              <InfoRow label="Fecha de registro"   value={dayjs(gasto.CreatedAt).format('DD/MM/YYYY h:mm a')} />
+              <InfoRow label="Fecha de factura"    value={dayjs(gasto.InvoiceDate).format('DD/MM/YYYY')} />
+              <InfoRow label="Fecha de registro"   value={dayjs(gasto.CreationDate).format('DD/MM/YYYY h:mm a')} />
             </Card>
 
             {/* Proveedor */}
             <Card backgroundColor="$backgroundElevated" borderRadius={12} padding="$4" borderWidth={1} borderColor="$border">
               <Text fontSize={14} fontWeight="700" color="$text" marginBottom="$3">Proveedor</Text>
-              <InfoRow label="Nombre"        value={gasto.ProviderName} />
-              <InfoRow label="Código"        value={gasto.ProviderCode} />
-              <InfoRow label="RTN / NIT"     value={gasto.ProviderRtn} />
+              <InfoRow label="Nombre"        value={gasto.VendAccount + 'PENDIENTE'} />
+              <InfoRow label="Código"        value={gasto.VendAccount} />
+              <InfoRow label="RTN / NIT"     value={gasto.VendAccount + 'PENDIENTE'} />
             </Card>
 
             {/* Acciones */}
@@ -282,7 +291,7 @@ export default function DetalleGastoScreen({ route }: any) {
       </ScrollView>
 
       <ImageViewing
-        images={[{ uri: IMAGE_URI }]}
+        images={[{ uri: gasto.ImagePath ?? '' }]}
         imageIndex={0}
         visible={imageOpen}
         onRequestClose={() => setImageOpen(false)}
@@ -361,8 +370,5 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 16,
     padding: 20,
-  },
-  _placeholder: {
-    // kept so StyleSheet.create stays non-empty
-  },
+  }
 })
