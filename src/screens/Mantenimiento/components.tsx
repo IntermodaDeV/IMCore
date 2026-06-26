@@ -25,33 +25,31 @@ export function KpiCard({ titulo, valor, badge }: KpiCardProps) {
       {...shadows.sm}
       backgroundColor="$backgroundElevated"
       borderRadius="$4"
-      padding="$3"
-      gap="$2"
+      paddingVertical="$2.5"
+      paddingHorizontal="$3"
+      gap="$1"
     >
-      <Text fontSize={11} fontWeight="600" color="$text" numberOfLines={1}>
+      <Text fontSize={11} fontWeight="600" color="$textMuted" numberOfLines={1}>
         {titulo}
       </Text>
-      <Text fontSize={26} fontWeight="800" color="$text">
-        {valor}
-      </Text>
-      {!!badge && (
-        <XStack
-          alignSelf="flex-start"
-          alignItems="center"
-          gap={3}
-          backgroundColor={badge.color + '22'}
-          paddingHorizontal={7}
-          paddingVertical={3}
-          borderRadius={7}
-        >
-          <Text fontSize={10} color={badge.color} fontWeight="800">
-            {badge.up ? '▲' : '▼'}
-          </Text>
-          <Text fontSize={10} color={badge.color} fontWeight="700">
-            {badge.text}
-          </Text>
-        </XStack>
-      )}
+      <XStack alignItems="center" gap="$2" flexWrap="wrap">
+        <Text fontSize={22} fontWeight="800" color="$text">
+          {valor}
+        </Text>
+        {!!badge && (
+          <XStack
+            alignItems="center"
+            backgroundColor={badge.color + '22'}
+            paddingHorizontal={7}
+            paddingVertical={2}
+            borderRadius={7}
+          >
+            <Text fontSize={10} color={badge.color} fontWeight="800">
+              {badge.text}
+            </Text>
+          </XStack>
+        )}
+      </XStack>
     </Card>
   )
 }

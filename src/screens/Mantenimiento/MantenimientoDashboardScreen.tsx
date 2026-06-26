@@ -343,15 +343,14 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
             data={estado.map((d: any) => ({
               value: d.value,
               color: colorEstado(d.label),
-              text: `${((d.value / totalEstado) * 100).toFixed(1)}%`,
+              text: `${Math.round((d.value / totalEstado) * 100)}%`,
             }))}
             radius={chartWidth / 3.4}
             innerRadius={chartWidth / 7}
-            // showText
-            textColor={txt}
+            innerCircleColor={theme.backgroundElevated?.val}
+            showText
+            textColor="#fff"
             textSize={11}
-            labelsPosition="outward"
-            textBackgroundRadius={0}
           />
           <YStack gap="$1.5" width="100%">
             {estado.map((d: any) => (
