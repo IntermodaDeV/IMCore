@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
-import { Pencil, Plus, RotateCw, ChevronDown, ChevronRight } from 'lucide-react-native'
-import { YStack, Text, ScrollView, useTheme, Card, XStack, View, styled} from 'tamagui'
+import { Pencil, Plus, RotateCw, ChevronDown, ChevronRight, SquareMenu } from 'lucide-react-native'
+import * as LucideIcons from 'lucide-react-native'
+import { YStack, Text, ScrollView, useTheme, XStack, View, styled} from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { MenuDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
@@ -113,23 +114,6 @@ export default function MenuScreen() {
       return next
     })
 
-  // Editar la plataforma (App / Web / Ambos) de una opción de menú.
-  const savePlatform = async (item: MenuDTO, platform: 'Both' | 'App' | 'Web') => {
-    try {
-      const res: ExecutionResponse<MenuDTO[]> = await securityService.saveMenu([
-        { ...item, Platform: platform, Modified_By: user?.Code as string },
-      ])
-      if (res.Success) {
-        setData(prev => prev.map(m => (m.Id === item.Id ? { ...m, Platform: platform } : m)))
-        showToast('success', 'Éxito', 'Plataforma actualizada', 3000, 'bottom')
-      } else {
-        showToast('error', 'Error', res.ErrorMessage || 'No se pudo actualizar', 4000, 'bottom')
-      }
-    } catch {
-      showToast('error', 'Error', 'Ocurrió un error inesperado', 4000, 'bottom')
-    }
-  }
-
   // Arma el árbol (padre → hijos) por ParentMenu_Id, ordenado por MenuOrder.
   const buildTree = (items: MenuDTO[]) => {
     const map = new Map<number, MenuDTO & { children: MenuDTO[] }>()
@@ -149,87 +133,96 @@ export default function MenuScreen() {
     return roots
   }
 
-  const PLATFORMS: { label: string; value: 'Both' | 'App' | 'Web' }[] = [
-    { label: 'Ambos', value: 'Both' },
-    { label: 'App', value: 'App' },
-    { label: 'Web', value: 'Web' },
-  ]
-
   const renderCard = (item: MenuDTO, depth = 0, hasChildren = false, isOpen = false) => {
+    const isChild = depth > 0
     const isActive = Number(item.Status_Id) === 1
-    const platform = (item.Platform ?? 'Both') as 'Both' | 'App' | 'Web'
+    const IconComp = ((LucideIcons as any)[item.Icon as string] ?? SquareMenu) as any
     return (
-      <Card
+      <XStack
         key={item.Id}
-        backgroundColor={depth > 0 ? '$backgroundSurface' : '$backgroundElevated'}
-        borderRadius={10}
-        padding="$3"
+        backgroundColor={isChild ? '$backgroundSurface' : '$backgroundElevated'}
+        borderRadius="$4"
+        paddingVertical="$3"
+        paddingHorizontal="$4"
+        marginLeft={isChild ? '$6' : 0}
         marginBottom="$2"
-        marginLeft={depth * 14}
+        alignItems="center"
+        overflow="hidden"
+        gap="$3"
+        shadowColor="#000"
+        shadowOffset={{ width: 0, height: 2 }}
+        shadowOpacity={0.07}
+        shadowRadius={6}
+        elevation={2}
+        onPress={() => { if (hasChildren) toggleExpand(item.Id) }}
+        pressStyle={hasChildren ? { opacity: 0.85, scale: 0.99 } : {}}
       >
-        <XStack justifyContent="space-between" alignItems="flex-start">
-          <XStack flex={1} alignItems="flex-start" gap="$2">
-            {hasChildren ? (
-              <View onPress={() => toggleExpand(item.Id)} pressStyle={{ opacity: 0.6 }} paddingTop={2}>
-                {isOpen ? (
-                  <ChevronDown size={18} color={theme.primary?.val} />
-                ) : (
-                  <ChevronRight size={18} color={theme.primary?.val} />
-                )}
-              </View>
-            ) : (
-              <View width={18} />
-            )}
+        {/* Franja izquierda */}
+        <View
+          position="absolute"
+          left={0}
+          top={0}
+          bottom={0}
+          width={4}
+          backgroundColor={isActive ? '$primary' : 'transparent'}
+        />
 
-            <YStack flex={1}>
-              <Text fontSize={14} fontWeight="800" color="$text">{item.Name}</Text>
-              <Text fontSize={11} color="$text">{item.Description || 'Sin descripción'}</Text>
-              <Text fontSize={10} color="$text">Identificador: {item.Route}</Text>
+        {/* Ícono */}
+        <View
+          width={isChild ? 34 : 40}
+          height={isChild ? 34 : 40}
+          borderRadius={20}
+          backgroundColor={isActive ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
+          justifyContent="center"
+          alignItems="center"
+        >
+          <IconComp size={isChild ? 17 : 20} color={isActive ? '#FF551A' : '#94A3B8'} />
+        </View>
 
-              {/* Plataforma: Ambos / App / Web */}
-              <XStack marginTop="$2" gap="$1.5" flexWrap="wrap">
-                {PLATFORMS.map((p) => {
-                  const sel = platform === p.value
-                  return (
-                    <View
-                      key={p.value}
-                      onPress={() => { if (!sel) savePlatform(item, p.value) }}
-                      backgroundColor={sel ? '$primary' : '$backgroundElevated'}
-                      borderWidth={1}
-                      borderColor={sel ? '$primary' : '$border'}
-                      borderRadius={999}
-                      paddingHorizontal={10}
-                      paddingVertical={3}
-                      pressStyle={{ opacity: 0.7 }}
-                    >
-                      <Text fontSize={10} fontWeight="700" color={sel ? 'white' : '$textMuted'}>{p.label}</Text>
-                    </View>
-                  )
-                })}
-              </XStack>
-            </YStack>
-          </XStack>
+        {/* Info */}
+        <YStack flex={1} gap="$0.5">
+          <Text fontWeight="700" fontSize={isChild ? 13 : 14} color="$text">{item.Name}</Text>
+          <Text fontSize={12} color="$textMuted">{item.Description || item.Route}</Text>
+        </YStack>
 
-          <XStack alignItems="flex-start" gap="$2">
+        {/* Estado + Editar + Chevron */}
+        <XStack alignItems="center" gap="$2">
+          <View
+            backgroundColor={isActive ? 'rgba(255, 85, 26, 0.12)' : 'rgba(239, 68, 68, 0.12)'}
+            paddingHorizontal="$2"
+            paddingVertical={3}
+            borderRadius="$10"
+            pressStyle={{ opacity: 0.7 }}
+            onPress={(e: any) => { e?.stopPropagation?.(); setSelectedItem(item); setDialogOpen(true) }}
+          >
+            <Text fontSize={10} fontWeight="700" color={isActive ? '$primary' : '#ef4444'}>
+              {isActive ? 'Activo' : 'Inactivo'}
+            </Text>
+          </View>
+
+          {isActive && (
             <View
-              borderRadius={999}
-              backgroundColor={isActive ? '#22c55e' : '#ef4444'}
-              paddingHorizontal={8}
-              paddingVertical={2}
-              pressStyle={{ opacity: 0.7 }}
-              onPress={() => { setSelectedItem(item); setDialogOpen(true) }}
+              onPress={(e: any) => { e?.stopPropagation?.(); createMenu(item.Id) }}
+              pressStyle={{ opacity: 0.6 }}
+              padding="$1.5"
+              hitSlop={6}
             >
-              <Text fontSize={10} color="white" fontWeight="700">{isActive ? 'Activo' : 'Inactivo'}</Text>
+              <Pencil size={16} color={theme.primary?.val} />
             </View>
+          )}
 
-            {isActive && (
-              <View borderRadius={8} pressStyle={{ opacity: 0.6 }} onPress={() => createMenu(item.Id)}>
-                <Pencil size={16} color={theme.primary?.val} />
-              </View>
-            )}
-          </XStack>
+          {hasChildren && (
+            <View
+              onPress={(e: any) => { e?.stopPropagation?.(); toggleExpand(item.Id) }}
+              pressStyle={{ opacity: 0.6 }}
+              padding="$2"
+              hitSlop={8}
+            >
+              {isOpen ? <ChevronDown size={20} color="#94A3B8" /> : <ChevronRight size={20} color="#94A3B8" />}
+            </View>
+          )}
         </XStack>
-      </Card>
+      </XStack>
     )
   }
 
