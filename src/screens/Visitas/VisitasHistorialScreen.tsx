@@ -8,6 +8,7 @@ import ViewShot, { captureRef } from 'react-native-view-shot'
 import { CameraRoll } from '@react-native-camera-roll/camera-roll'
 import Page from '../../components/commons/Page'
 import SearchInput from '../../components/commons/SearchInput'
+import { useFocusEffect } from '@react-navigation/native'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
@@ -95,9 +96,16 @@ export default function VisitasHistorialScreen() {
     setRefreshing(false)
   }
 
-  useEffect(() => {
-    load()
-  }, [])
+  // Recarga el historial cada vez que la pantalla gana foco (ej. al volver
+  // desde Validar tras registrar entrada/salida). La 1ra vez muestra spinner;
+  // las siguientes recargan en silencio para no parpadear.
+  const firstLoad = useRef(true)
+  useFocusEffect(
+    React.useCallback(() => {
+      load(!firstLoad.current)
+      firstLoad.current = false
+    }, [])
+  )
 
   // Mantener la lista filtrada en sync cuando se recarga la data
   useEffect(() => {

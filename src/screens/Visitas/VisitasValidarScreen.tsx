@@ -3,7 +3,7 @@ import { Platform, PermissionsAndroid, StyleSheet, Modal } from 'react-native'
 import { YStack, XStack, Text, View, Button, Spinner } from 'tamagui'
 import { Camera } from 'react-native-camera-kit'
 import { XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, Users, X, LogIn, LogOut } from 'lucide-react-native'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native'
 import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -35,6 +35,7 @@ export default function VisitasValidarScreen() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualToken, setManualToken] = useState('')
   const lockRef = useRef(false)
+  const isFocused = useIsFocused()
 
   usePageHeader({
     center: (
@@ -58,6 +59,21 @@ export default function VisitasValidarScreen() {
       }
     })()
   }, [])
+
+  // Cada vez que la pantalla gana foco (ej. al volver desde Home), reinicia el
+  // estado para poder escanear de nuevo. Sin esto, el Drawer mantiene la
+  // pantalla montada con el resultado anterior y el lock activo, y la cámara
+  // "no hace nada" hasta cerrar la app por completo.
+  useFocusEffect(
+    React.useCallback(() => {
+      setResult(null)
+      setProcessing(false)
+      lockRef.current = false
+      return () => {
+        lockRef.current = false
+      }
+    }, [])
+  )
 
   const validar = async (token: string) => {
     const tk = (token || '').trim()
@@ -86,11 +102,13 @@ export default function VisitasValidarScreen() {
     lockRef.current = false
   }
 
-  // Cierra el resultado y regresa a la pantalla anterior
+  // Cierra el resultado/cámara y regresa. En el Drawer puede no haber back stack,
+  // así que si no se puede volver, navega al Home.
   const cerrar = () => {
     setResult(null)
     lockRef.current = false
     if (navigation.canGoBack()) navigation.goBack()
+    else (navigation as any).navigate('inicio')
   }
 
   const submitManual = async () => {
@@ -106,6 +124,7 @@ export default function VisitasValidarScreen() {
     if (result.Reason === 'entrada') return { color: '#2E9E5B', bg: 'rgba(46,158,91,0.12)', Icon: LogIn, title: 'Entrada registrada' }
     if (result.Reason === 'salida') return { color: '#2563EB', bg: 'rgba(37,99,235,0.12)', Icon: LogOut, title: 'Salida registrada' }
     if (result.Reason === 'outofrange') return { color: '#E58E26', bg: 'rgba(229,142,38,0.12)', Icon: TriangleAlert, title: 'Pase no válido hoy' }
+    if (result.Reason === 'finished') return { color: '#64748B', bg: 'rgba(100,116,139,0.14)', Icon: TriangleAlert, title: 'Pase ya utilizado' }
     return { color: '#E53935', bg: 'rgba(229,57,53,0.12)', Icon: XCircle, title: 'Pase no encontrado' }
   })()
 
@@ -194,7 +213,7 @@ export default function VisitasValidarScreen() {
           </YStack>
         ) : (
           <>
-            {hasPermission && (
+            {hasPermission && isFocused && (
               <Camera
                 style={StyleSheet.absoluteFill}
                 scanBarcode
@@ -216,7 +235,25 @@ export default function VisitasValidarScreen() {
               </View>
             )}
 
-            <YStack position="absolute" top={20} left={0} right={0} alignItems="center">
+            {/* Botón para cerrar la cámara y volver atrás */}
+            <View
+              position="absolute"
+              top={16}
+              left={16}
+              zIndex={20}
+              onPress={cerrar}
+              pressStyle={{ opacity: 0.6 }}
+              width={42}
+              height={42}
+              borderRadius={21}
+              backgroundColor="rgba(0,0,0,0.55)"
+              justifyContent="center"
+              alignItems="center"
+            >
+              <X size={24} color="#fff" />
+            </View>
+
+            <YStack position="absolute" top={20} left={0} right={0} alignItems="center" pointerEvents="none">
               <XStack backgroundColor="rgba(0,0,0,0.55)" paddingHorizontal="$3" paddingVertical="$2" borderRadius="$10" gap="$2" alignItems="center">
                 <ScanLine size={16} color="#fff" />
                 <Text color="#fff" fontSize={13}>
