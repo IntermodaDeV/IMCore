@@ -49,6 +49,7 @@ export default function MenuForm() {
         Icon: '',
         ParentMenu_Id: null,
         MenuOrder: null,
+        Platform: 'Both',
         User_Code: '',
         Create_By: '',
         Modified_By: '',
@@ -130,6 +131,7 @@ export default function MenuForm() {
                 MenuOrder: data.MenuOrder,
                 ParentMenu_Id: data.ParentMenu_Id === 0 ? null : data.ParentMenu_Id,
                 Route: data.Route,
+                Platform: data.Platform ?? 'Both',
                 Status_Name: '',
                 Create_By: user?.Code ?? '',
                 Status_Id: data.Status_Id,
@@ -418,6 +420,23 @@ export default function MenuForm() {
                                                     label="Descripción"
                                                     value={value}
                                                     onChangeText={onChange}
+                                                />
+                                            )}
+                                        />
+
+                                        <Controller
+                                            control={control}
+                                            name="Platform"
+                                            render={({ field: { onChange, value } }) => (
+                                                <AppSelect
+                                                    label="Plataforma"
+                                                    value={value ?? 'Both'}
+                                                    onValueChange={(val) => onChange(val as 'Both' | 'App' | 'Web')}
+                                                    options={[
+                                                        { label: 'Ambos (app y web)', value: 'Both' },
+                                                        { label: 'Solo app', value: 'App' },
+                                                        { label: 'Solo web', value: 'Web' },
+                                                    ]}
                                                 />
                                             )}
                                         />

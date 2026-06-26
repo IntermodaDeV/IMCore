@@ -330,9 +330,10 @@ export function buildMenuTree(menu: MenuDTO[] = []) {
       const parent = map.get(item.ParentMenu_Id)
       if (parent) {
         parent.children.push(node)
-      } else {
-        roots.push(node)
       }
+      // Si el padre NO está presente (sin permiso, inactivo o filtrado), el hijo
+      // queda huérfano y NO se muestra: no lo subimos a la raíz. Así, quitar el
+      // padre oculta también a los hijos.
     }
   }
 

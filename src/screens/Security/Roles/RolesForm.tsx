@@ -7,6 +7,7 @@ import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
 import { AccessDTO, IAccessControl, IMenuControl, MenuDTO, RolesDTO } from '../../../api/modules/security/security.types'
 import { securityService } from '../../../api/modules/security/security.service'
+import { computeMenuCascade, buildMenuControlPayloads } from '../menuCascade'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
@@ -191,37 +192,22 @@ export default function RolesForm() {
 
     const toggleRolMenu = async (selectedPermiso: MenuDTO) => {
         const existing = menuControl.find((ac) => ac.Menu_Id === selectedPermiso.Id)
-        let payload: IMenuControl
+        const base = user?.Code ?? ''
+        const newStatus: 1 | 2 = !existing ? 1 : (existing.Status_Id === 1 ? 2 : 1)
         setLoadingToggle(selectedPermiso.Id)
-        if (!existing) {
-            payload = {
-                Id: -1,
-                Menu_Id: selectedPermiso.Id,
-                User_Code: null,
-                Rol_Id: Id as number,
-                Status_Id: 1,
-                Type_Id: 7,
-                Create_By: user?.Code ?? '',
-            }
-        } else if (existing.Status_Id === 1) {
-            payload = { ...existing, Status_Id: 2, Type_Id: 7, Create_By: user?.Code as string}
-        } else {
-            payload = { ...existing, Status_Id: 1, Type_Id: 7, Create_By: user?.Code as string}
-        }
+
+        // Cascada en ambas direcciones (padre↔hijos), igual que en el web.
+        const changes = computeMenuCascade(permisos, menuControl, selectedPermiso.Id, newStatus)
+        const payloads = buildMenuControlPayloads(changes, menuControl, {
+            typeId: 7,
+            createBy: base,
+            rolId: Id as number,
+        })
+
         try {
-            const response = await securityService.saveMenuControl([payload])
+            const response = await securityService.saveMenuControl(payloads)
             if (response.Success) {
-                if (!existing) {
-                    setMenuControl((prev) => [...prev, { ...payload, Id: response.Data?.[0]?.Id ?? -1 }])
-                } else {
-                    setMenuControl((prev) =>
-                        prev.map((ac) =>
-                            ac.Menu_Id === selectedPermiso.Id
-                                ? { ...ac, Status_Id: payload.Status_Id }
-                                : ac
-                        )
-                    )
-                }
+                // Recarga el control real (refleja también los cambios en cascada).
                 getInfoSinLoading()
                 showToast('success', 'Éxito', response.SuccessMessage || 'Operación realizada correctamente', 5000, 'bottom')
             } else {

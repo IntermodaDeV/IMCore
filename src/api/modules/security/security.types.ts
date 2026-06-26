@@ -87,6 +87,8 @@ export type MenuDTO = {
   Icon: string;
   ParentMenu_Id?: number | null;
   MenuOrder?: number | null;
+  // Alcance de la opción: 'Both' (app y web), 'App' (solo app), 'Web' (solo web).
+  Platform?: 'Both' | 'App' | 'Web';
   Status_Id?: number;
   Status_Name?: string;
   User_Code?: string;
