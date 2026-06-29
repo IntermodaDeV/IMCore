@@ -1,25 +1,22 @@
-import { Users, RotateCw, Camera, Trash2, Image as ImageIcon, ChevronDown, Check } from 'lucide-react-native'
+import { Users, RotateCw, Camera, Trash2, Image as ImageIcon } from 'lucide-react-native'
 import React, { useEffect, useMemo, useState } from 'react'
 import { FlatList, Image, PermissionsAndroid, Platform } from 'react-native'
 import { launchCamera, launchImageLibrary, Asset } from 'react-native-image-picker'
-import { useFocusEffect } from '@react-navigation/native'
 import { YStack, XStack, Text, View, styled, Spinner, AlertDialog, Button } from 'tamagui'
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { ICompany, IEmployee } from '../../../api/modules/recursosHumanos/recursosHumanos.types'
-import { IUserCompanies } from '../../../api/modules/security/security.types'
-import { securityService } from '../../../api/modules/security/security.service'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { recursosHumanosService, employeePhotoUrl } from '../../../api/modules/recursosHumanos/recursosHumanos.service'
 import { useShowToast } from '../../../utils/useShowToast'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
-import CountryFlag from '../../../components/commons/CountryFlag'
 import { useLoader } from '../../../providers/LoaderProvider'
 import ErrorState from '../../AdmSys/ErrorState'
 import SkeletonList from '../../../components/Skeletons/SkeletonList'
 import SearchInput from '../../../components/commons/SearchInput'
 import AppSelect from '../../../components/commons/AppSelect'
 import { useAuth } from '../../../context/AuthContext'
+import { useCountrySelector } from '../../../hooks/useCountrySelector'
 import EmptyState from '../../AdmSys/EmptyState'
 import RecordCount from '../../../components/commons/RecordCount'
 
@@ -164,19 +161,16 @@ function PhotoSourceDialog({
   )
 }
 
-// Diálogo para cambiar de país/empresa (entre las que el usuario tiene acceso).
-function CountryPickerDialog({
+function PhotoPreviewDialog({
   open,
   onOpenChange,
-  companies,
-  selectedId,
-  onSelect,
+  uri,
+  nombre,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
-  companies: IUserCompanies[]
-  selectedId: number | null
-  onSelect: (id: number) => void
+  uri: string
+  nombre: string
 }) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -185,59 +179,41 @@ function CountryPickerDialog({
           key="overlay"
           enterStyle={{ opacity: 0 }}
           exitStyle={{ opacity: 0 }}
-          opacity={0.6}
+          opacity={0.85}
           backgroundColor="black"
+          onPress={() => onOpenChange(false)}
         />
         <AlertDialog.Content
           elevate
           key="content"
-          width="85%"
+          width="90%"
           alignSelf="center"
-          enterStyle={{ y: -12, opacity: 0, scale: 0.94 }}
-          exitStyle={{ y: 8, opacity: 0, scale: 0.96 }}
+          enterStyle={{ opacity: 0, scale: 0.94 }}
+          exitStyle={{ opacity: 0, scale: 0.96 }}
           backgroundColor="$backgroundElevated"
           borderRadius="$6"
-          paddingHorizontal="$5"
-          paddingVertical="$5"
-          x={0}
-          y={0}
+          padding="$4"
           scale={1}
           opacity={1}
         >
           <YStack gap="$3">
             <AlertDialog.Title>
-              <Text fontSize={16} fontWeight="700" color="$text" textAlign="center">
-                Selecciona el país
+              <Text fontSize={15} fontWeight="700" color="$text" textAlign="center" numberOfLines={2}>
+                {nombre}
               </Text>
             </AlertDialog.Title>
 
-            <YStack gap="$2">
-              {companies.map(c => {
-                const companyId = Number(c.Company_Id)
-                const sel = companyId === selectedId
-                return (
-                  <XStack
-                    key={c.Id}
-                    onPress={() => {
-                      onSelect(companyId)
-                      onOpenChange(false)
-                    }}
-                    alignItems="center"
-                    gap="$3"
-                    padding="$3"
-                    borderRadius="$3"
-                    backgroundColor={sel ? '$primaryOpacity' : '$backgroundSurface'}
-                    pressStyle={{ opacity: 0.7 }}
-                  >
-                    <CountryFlag countryCode={c.CodeIcon || c.Code || ''} width={28} height={20} />
-                    <Text flex={1} fontSize={14} fontWeight={sel ? '700' : '600'} color="$text" numberOfLines={1}>
-                      {c.Name}
-                    </Text>
-                    {sel && <Check size={16} color="#FF551A" />}
-                  </XStack>
-                )
-              })}
-            </YStack>
+            <View
+              width="100%"
+              aspectRatio={1}
+              borderRadius="$4"
+              overflow="hidden"
+              backgroundColor="$backgroundSurface"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+            </View>
 
             <AlertDialog.Cancel asChild>
               <Button
@@ -248,7 +224,7 @@ function CountryPickerDialog({
                 onPress={() => onOpenChange(false)}
               >
                 <Text fontSize={14} fontWeight="600" color="$textMuted">
-                  Cancelar
+                  Cerrar
                 </Text>
               </Button>
             </AlertDialog.Cancel>
@@ -267,7 +243,7 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
   const [busy, setBusy] = useState(false)
   const [sourceOpen, setSourceOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  // Cambia al subir/eliminar para forzar recarga de la imagen (mismo nombre de archivo).
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [cacheBust, setCacheBust] = useState(0)
 
   const baseUrl = employeePhotoUrl(empleado.Employee_Code)
@@ -344,7 +320,6 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
       shadowRadius={6}
       elevation={2}
     >
-      {/* Título: nombre + acciones (cambiar / eliminar foto) */}
       <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
         <Text flex={1} fontWeight="700" fontSize={15} color="$text" numberOfLines={2} ellipsizeMode="tail">
           {nombre}
@@ -365,21 +340,22 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
           </View>
 
           <View
-            onPress={() => setConfirmOpen(true)}
+            onPress={mostrarFoto ? () => setConfirmOpen(true) : undefined}
+            disabled={!mostrarFoto}
             width={34}
             height={34}
             borderRadius={999}
             backgroundColor="$errorOpacity"
             alignItems="center"
             justifyContent="center"
-            pressStyle={{ opacity: 0.6 }}
+            opacity={mostrarFoto ? 1 : 0.4}
+            pressStyle={mostrarFoto ? { opacity: 0.6 } : undefined}
           >
             <Trash2 size={16} color="#EF4444" />
           </View>
         </XStack>
       </XStack>
 
-      {/* Dos columnas: foto (35%) + información (65%) */}
       <XStack gap="$3" marginTop="$1" alignItems="center">
         <View
           width="35%"
@@ -389,6 +365,8 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
           backgroundColor="$backgroundSurface"
           alignItems="center"
           justifyContent="center"
+          onPress={mostrarFoto ? () => setPreviewOpen(true) : undefined}
+          pressStyle={mostrarFoto ? { opacity: 0.7 } : undefined}
         >
           {busy ? (
             <Spinner color="$primary" />
@@ -411,7 +389,13 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
         </YStack>
       </XStack>
 
-      {/* Diálogo: elegir origen de la foto (cámara / galería) */}
+      <PhotoPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        uri={fotoUrl}
+        nombre={nombre}
+      />
+
       <PhotoSourceDialog
         open={sourceOpen}
         onOpenChange={setSourceOpen}
@@ -419,7 +403,6 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
         onGallery={elegirGaleria}
       />
 
-      {/* Diálogo: confirmar eliminación de la foto */}
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -435,32 +418,14 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
 })
 
 export default function PersonalScreen() {
-  // Países/empresas a los que el usuario tiene acceso (vista AdmSys.Vta_UsersCompanies).
-  const [countryList, setCountryList] = useState<IUserCompanies[]>([])
-  const [selectedCountryId, setSelectedCountryId] = useState<number | null>(null)
-  const [countryPickerOpen, setCountryPickerOpen] = useState(false)
-
-  // Empresas de PayWeb (COD_EMPRESA) dentro del país seleccionado.
+  const { countryCode, flagCode, HeaderTrigger, PickerDialog } = useCountrySelector()
   const [companies, setCompanies] = useState<ICompany[]>([])
   const [selectedCompany, setSelectedCompany] = useState<string>('')
   const [data, setData] = useState<IEmployee[]>([])
   const [filtered, setFiltered] = useState<IEmployee[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<AppError | null>(null)
-  const { user, defaultCompany } = useAuth()
   const loader = useLoader()
-
-  // País activo: el seleccionado en el header o, por defecto, la compañía del AuthContext.
-  const selectedCountry = useMemo(
-    () => countryList.find(c => Number(c.Company_Id) === selectedCountryId) ?? null,
-    [countryList, selectedCountryId]
-  )
-  // Code -> país que espera PayWeb; CodeIcon -> ISO para la bandera.
-  // Para la bandera se prefiere CodeIcon y, si viene vacío, se usa Code (que sí llega
-  // desde AdmSys.Companies). Se usa || para que los strings vacíos también caigan al fallback.
-  const countryCode = selectedCountry?.Code || defaultCompany?.Code || ''
-  const flagCode =
-    selectedCountry?.CodeIcon || selectedCountry?.Code || defaultCompany?.CodeIcon || defaultCompany?.Code || ''
 
   const companyOptions = useMemo(
     () =>
@@ -472,43 +437,27 @@ export default function PersonalScreen() {
     [companies]
   )
 
-  // Carga los países/empresas a los que el usuario tiene acceso (vista Vta_UsersCompanies,
-  // que ya trae Name/Code/CodeIcon/IsDefault, así que no hace falta cruzar con getCompanies).
-  const loadCountryList = React.useCallback(async () => {
-    if (!user?.Code) return
-    try {
-      const resp = await securityService.getCompaniesByUser(user.Code)
-      if (resp.Success) {
-
-        console.log('')
-        const list = (resp.Data ?? []).filter(c => c.Status_Id === 1)
-        setCountryList(list)
-        setSelectedCountryId(prev => {
-          if (prev != null) return prev
-          const porDefecto = list.find(c => c.IsDefault) ?? list[0]
-          return porDefecto ? Number(porDefecto.Company_Id) : (defaultCompany?.Id ?? null)
-        })
-      }
-    } catch {
-      // Si falla, se queda con la compañía por defecto del AuthContext.
-    }
-  }, [user?.Code, defaultCompany?.Id])
-
-  // Carga las empresas de PayWeb del país indicado y selecciona la primera.
   const loadCompanies = React.useCallback(async (code: string) => {
     if (!code) {
       setCompanies([])
       setSelectedCompany('')
+      setLoading(false)
       return
     }
+    setLoading(true)
     try {
       const resp: ExecutionResponse<ICompany[]> = await recursosHumanosService.getCompanies(code)
       if (resp.Success) {
         const list = resp.Data ?? []
         setCompanies(list)
-        setSelectedCompany(list[0]?.COD_EMPRESA ?? '')
+        const first = list[0]?.COD_EMPRESA ?? ''
+        setSelectedCompany(first)
+        if (!first) setLoading(false)
+      } else {
+        setLoading(false)
       }
     } catch {
+      setLoading(false)
     }
   }, [])
 
@@ -516,6 +465,7 @@ export default function PersonalScreen() {
     if (!companyCode) {
       setData([])
       setFiltered([])
+      setLoading(false)
       return
     }
     try {
@@ -535,19 +485,10 @@ export default function PersonalScreen() {
     }
   }, [])
 
-  // Carga la lista de países accesibles al enfocar la pantalla.
-  useFocusEffect(
-    React.useCallback(() => {
-      loadCountryList()
-    }, [loadCountryList])
-  )
-
-  // Al cambiar el país, recarga las empresas de PayWeb (y resetea la selección).
   useEffect(() => {
     loadCompanies(countryCode)
   }, [countryCode, loadCompanies])
 
-  // Al cambiar la empresa de PayWeb, recarga empleados.
   useEffect(() => {
     loadEmployees(selectedCompany)
   }, [selectedCompany, loadEmployees])
@@ -575,14 +516,7 @@ export default function PersonalScreen() {
     ),
     right: (
       <XStack gap="$3" alignItems="center">
-        {!!flagCode && (
-          <View onPress={() => setCountryPickerOpen(true)} pressStyle={{ opacity: 0.6 }}>
-            <XStack alignItems="center" gap="$1">
-              <CountryFlag countryCode={flagCode} width={26} height={18} />
-              <ChevronDown size={14} color="#94A3B8" />
-            </XStack>
-          </View>
-        )}
+        {HeaderTrigger}
         <View onPress={refrescar}>
           <RotateCwStyled size={18} />
         </View>
@@ -643,15 +577,7 @@ export default function PersonalScreen() {
           <RecordCount count={filtered?.length ?? 0} />
         </>
       )}
-
-      {/* Switcher de país/empresa (entre los que el usuario tiene acceso) */}
-      <CountryPickerDialog
-        open={countryPickerOpen}
-        onOpenChange={setCountryPickerOpen}
-        companies={countryList}
-        selectedId={selectedCountryId}
-        onSelect={setSelectedCountryId}
-      />
+      {PickerDialog}
     </YStack>
   )
 }
