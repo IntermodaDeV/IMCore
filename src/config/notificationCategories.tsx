@@ -1,4 +1,4 @@
-import { DoorOpen, ShoppingCart, Bell } from 'lucide-react-native'
+import { DoorOpen, ShoppingCart, Bell, CheckCheck } from 'lucide-react-native'
 import type { NotificationCategory } from '../api/modules/notifications/notifications.service'
 
 /**
@@ -31,6 +31,18 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
     Icon: ShoppingCart,
     color: '#7C3AED',
     bg: 'rgba(124,58,237,0.12)',
+  },
+  pase_aprobacion: {
+    label: 'Aprobación de pase',
+    Icon: CheckCheck,
+    color: '#FF551A',
+    bg: 'rgba(255,85,26,0.12)',
+  },
+  pase_estado: {
+    label: 'Pases',
+    Icon: DoorOpen,
+    color: '#15803D',
+    bg: 'rgba(34,197,94,0.12)',
   },
 }
 

@@ -1,5 +1,6 @@
 import { navigateWhenReady } from '../navigation/navigationRef'
 import { requestOpenPass } from './passNavigation'
+import { requestOpenPaseAprobacion } from './paseNavigation'
 
 // Enruta una notificación (push o bandeja) a su pantalla de detalle según la
 // categoría. `data` es el payload de la notificación (FCM data o el Data del inbox).
@@ -24,6 +25,20 @@ export function routeNotification(data: any): boolean {
       navigateWhenReady('visitasHistorial')
       return true
     }
+  }
+
+  // Pase pendiente de aprobación -> pantalla de Aprobaciones (resalta el pase)
+  if (category === 'pase_aprobacion') {
+    const paseId = Number(data.paseId ?? data.PaseId)
+    navigateWhenReady('paseAprobaciones')
+    if (paseId > 0) requestOpenPaseAprobacion(paseId)
+    return true
+  }
+
+  // Resultado del pase (aprobado/rechazado/registrado) -> Mis pases
+  if (category === 'pase_estado') {
+    navigateWhenReady('paseHistorial')
+    return true
   }
 
   if (category === 'solicitud_compra') {
