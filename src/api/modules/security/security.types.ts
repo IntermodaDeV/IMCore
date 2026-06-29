@@ -168,6 +168,10 @@ export type IUserCompanies = {
   Company_Id: string;
   IsDefault?: boolean;
   Status_Id: number;
+  // Datos de la compañía (vista AdmSys.Vta_UsersCompanies)
+  Name?: string;
+  Code?: string;
+  CodeIcon?: string;
 };
 
 

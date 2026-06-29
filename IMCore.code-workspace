@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../PepeTienda"
+		},
+		{
+			"path": "../../IM_InterfazExenta_API"
 		}
 	],
 	"settings": {}
