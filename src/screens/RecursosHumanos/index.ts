@@ -4,8 +4,8 @@ import MisPasesScreen from './MisPasesScreen'
 import PaseAprobacionesScreen from './PaseAprobacionesScreen'
 import PaseValidarScreen from './PaseValidarScreen'
 import PaseCategoriasScreen from './PaseCategoriasScreen'
+import PersonalScreen from './Personal/PersonalScreen'
 
-// Las keys deben coincidir con el `Route` del menú en la BD de Security.
 export const ScreensRecursosHumanos: TScreens = {
   paseCrear: {
     Screen: PaseCrearScreen,
@@ -25,6 +25,10 @@ export const ScreensRecursosHumanos: TScreens = {
   },
   paseCategorias: {
     Screen: PaseCategoriasScreen,
+    Childs: {},
+  },
+  personal: {
+    Screen: PersonalScreen,
     Childs: {},
   },
 }
