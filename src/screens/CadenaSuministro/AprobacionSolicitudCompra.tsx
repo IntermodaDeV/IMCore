@@ -1,7 +1,7 @@
 
 import { Check, X, ChevronUp, ClipboardList, ChevronDown, RotateCw } from 'lucide-react-native'
-import React, { useEffect, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native'
+import React, { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native'
 import {
   YStack,
   XStack,
@@ -51,6 +51,14 @@ export default function AprobacionSolicitudCompra() {
   const { user } = useAuth()
   const loader = useLoader();
 
+  // Navegación por notificación: resalta/expande una solicitud específica.
+  const route = useRoute()
+  const navigation = useNavigation<any>()
+  const scrollRef = useRef<any>(null)
+  const cardY = useRef<Record<string, number>>({})
+  const [highlighted, setHighlighted] = useState<string | null>(null)
+  const [focusTarget, setFocusTarget] = useState<string | null>(null)
+
   const getInfo = React.useCallback(async () => {
     try {
       loader.show()
@@ -86,6 +94,10 @@ export default function AprobacionSolicitudCompra() {
         Solicitud: solicitudSelected?.Solicitud ?? '',
         Usuario: user?.Code ?? '',
         Estado: estado,
+        PreparadorCode: solicitudSelected?.PreparadorCode ?? '',
+        Preparador: solicitudSelected?.Preparador ?? '',
+        ImporteNeto: solicitudSelected?.ImporteNeto ?? 0,
+        Categoria: solicitudSelected?.Categoria ?? '',
       }
       const response = await cadenaSuministroService.aprobarSolicitud(info)
       if (response?.Success) {
@@ -127,6 +139,43 @@ export default function AprobacionSolicitudCompra() {
   useEffect(() => {
     setFiltered(data)
   }, [data])
+
+  // Expande (horneado en `data` para que ningún reset lo borre), resalta y
+  // desplaza hacia una solicitud concreta.
+  const focusSolicitud = React.useCallback((codigo: string) => {
+    const expandir = (item: ISolicitudCompraUsuario) =>
+      item.Solicitud === codigo ? { ...item, expandido: true } : item
+    setData(prev => prev.map(expandir))
+    setFiltered(prev => prev.map(expandir))
+    setHighlighted(codigo)
+    // Espera al re-render (la tarjeta expandida cambia de alto) para el scroll.
+    setTimeout(() => {
+      const y = cardY.current[codigo]
+      if (y != null) scrollRef.current?.scrollTo?.({ y: Math.max(y - 12, 0), animated: true })
+    }, 400)
+    // Quita el resaltado después de un momento (la expansión se mantiene).
+    setTimeout(() => setHighlighted(null), 3000)
+  }, [])
+
+  // 1) Captura el código entrante de la notificación y limpia el parámetro para
+  //    no repetir el enfoque al volver a la pantalla.
+  useEffect(() => {
+    const target = (route.params as any)?.solicitud as string | undefined
+    if (target) {
+      setFocusTarget(String(target))
+      navigation.setParams({ solicitud: undefined })
+    }
+  }, [route.params, navigation])
+
+  // 2) Aplica el enfoque cuando ya hay datos cargados (evita la carrera con
+  //    getInfo) y la solicitud existe en la lista.
+  useEffect(() => {
+    if (!focusTarget || loading || data.length === 0) return
+    if (data.some(d => d.Solicitud === focusTarget)) {
+      focusSolicitud(focusTarget)
+    }
+    setFocusTarget(null)
+  }, [focusTarget, data, loading, focusSolicitud])
 
   usePageHeader({
     center: (
@@ -171,6 +220,7 @@ export default function AprobacionSolicitudCompra() {
           />
 
           <ScrollView
+            ref={scrollRef}
             style={{ flex: 1 }}
             nestedScrollEnabled={true}
             showsVerticalScrollIndicator={false}
@@ -181,10 +231,13 @@ export default function AprobacionSolicitudCompra() {
               (filtered ?? []).map((solicitud, index) => (
                 <Card
                   key={`${solicitud.Solicitud}-${index}`}
+                  onLayout={(e: any) => { cardY.current[solicitud.Solicitud] = e.nativeEvent.layout.y }}
                   borderRadius="$4"
                   backgroundColor="$backgroundElevated"
                   overflow="hidden"
                   marginBottom="$4"
+                  borderWidth={highlighted === solicitud.Solicitud ? 2 : 0}
+                  borderColor={highlighted === solicitud.Solicitud ? '$primary' : 'transparent'}
                 >
                   <XStack
                     padding="$3"

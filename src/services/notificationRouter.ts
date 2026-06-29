@@ -26,5 +26,17 @@ export function routeNotification(data: any): boolean {
     }
   }
 
+  if (category === 'solicitud_compra') {
+    const solicitud = data.solicitud ?? data.Solicitud
+    navigateWhenReady('aprobacionSC', solicitud ? { solicitud: String(solicitud) } : undefined)
+    return true
+  }
+
+  if (category === 'solicitud_compra_historico') {
+    const solicitud = data.solicitud ?? data.Solicitud
+    navigateWhenReady('historic', solicitud ? { solicitud: String(solicitud) } : undefined)
+    return true
+  }
+
   return false
 }
