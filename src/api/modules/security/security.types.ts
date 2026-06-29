@@ -20,6 +20,13 @@ interface RoleDTO {
   RoleName: string
 }
 
+export interface IDefaultCompany {
+  Id: number
+  Name: string
+  Code: string
+  Status_Id: number
+  CodeIcon: string
+}
 
 export interface UsersDTO {
   Id: number
@@ -36,11 +43,11 @@ export interface UsersDTO {
   Create_By?: string
   Roles?: RoleDTO[]
   Companies?: string
-  DefaultCompany?: number | null
+  DefaultCompany?: IDefaultCompany[] | null
   DefaultCompany_Id?: number | null
   Creation_Date?: string | Date
   ValidateAD?: boolean | null
-
+  Gira:string,
   Modified_By?: string
   Modification_Date?: string | Date | null
   DynamicColumns?: Record<string, string>

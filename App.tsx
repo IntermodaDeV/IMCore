@@ -88,6 +88,7 @@ function Root() {
   return (
     <TamaguiProvider config={config} defaultTheme={theme}>
       <LoaderProvider>
+        <RightDrawerProvider>
         <HeaderProvider>
 
           <Theme name={theme}>
@@ -174,6 +175,7 @@ function Root() {
             </ToastProvider>
           </Theme>
         </HeaderProvider>
+        </RightDrawerProvider>
       </LoaderProvider>
     </TamaguiProvider>
   )
