@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import DeviceInfo from 'react-native-device-info'
-import { YStack, Card, Input, Button, Text, XStack, Spinner, ScrollView  } from 'tamagui'
+import { YStack, Card, Input, Button, Text, XStack, Spinner, ScrollView, AlertDialog  } from 'tamagui'
 import { ImageBackground, Image, KeyboardAvoidingView, Platform } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
-import { User, Lock, LogIn,Eye, EyeOff } from 'lucide-react-native'
+import { User, Lock, LogIn,Eye, EyeOff, KeyRound, MailCheck } from 'lucide-react-native'
+import { shadows } from '../../theme/shadows'
 import { useForm, Controller } from 'react-hook-form'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '../../context/AuthContext'
@@ -28,6 +29,17 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
+
+  // Reactivar cuenta
+  const [openReactivate, setOpenReactivate] = useState(false)
+  const [openReactivateSent, setOpenReactivateSent] = useState(false)
+  const [reactivating, setReactivating] = useState(false)
+  const [reactivateInput, setReactivateInput] = useState('')
+  const [reactivateMasked, setReactivateMasked] = useState('')
+  // 'id' = pide usuario/correo ; 'domain' = pide contraseña de dominio (cuentas AD)
+  const [reactivateStep, setReactivateStep] = useState<'id' | 'domain'>('id')
+  const [reactivatePassword, setReactivatePassword] = useState('')
+  const [showReactivatePassword, setShowReactivatePassword] = useState(false)
   const route = useRoute()
   const params = route.params as RouteParams
   const { control, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
@@ -78,6 +90,70 @@ export default function LoginScreen() {
       showToast('error', 'Error', 'Ocurrió un problema al iniciar sesión', 5000, 'top')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const openReactivateDialog = () => {
+    setReactivateInput('')
+    setReactivatePassword('')
+    setShowReactivatePassword(false)
+    setReactivateStep('id')
+    setOpenReactivate(true)
+  }
+
+  // Paso 1: el usuario ingresa su usuario/correo.
+  const handleReactivateContinue = async () => {
+    if (!reactivateInput.trim()) {
+      showToast('error', 'Error', 'Ingresa tu usuario o correo', 4000, 'top')
+      return
+    }
+    setReactivating(true)
+    try {
+      const response = await securityService.recoverAccount({ Identifier: reactivateInput.trim() })
+      if (response?.Success) {
+        if (response.extras?.RequiresDomainPassword) {
+          // Cuenta de Active Directory: pedir la contraseña de dominio (no se envía correo)
+          setReactivateStep('domain')
+        } else {
+          // Cuenta normal: ya se envió el correo
+          setReactivateMasked(response.extras?.Email || '')
+          setOpenReactivate(false)
+          setOpenReactivateSent(true)
+        }
+      } else {
+        // No se encontró la cuenta (o error): se queda en el diálogo y muestra el mensaje
+        showToast('error', 'Error', response?.ErrorMessage || 'No se pudo procesar la solicitud', 5000, 'top')
+      }
+    } catch {
+      showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'top')
+    } finally {
+      setReactivating(false)
+    }
+  }
+
+  // Paso 2 (solo AD): valida la contraseña de dominio y reactiva.
+  const handleReactivateDomain = async () => {
+    if (!reactivatePassword) {
+      showToast('error', 'Error', 'Ingresa tu contraseña de dominio', 4000, 'top')
+      return
+    }
+    setReactivating(true)
+    try {
+      const response = await securityService.reactivateAD({
+        Identifier: reactivateInput.trim(),
+        Password: reactivatePassword,
+      })
+      if (response?.Success) {
+        setOpenReactivate(false)
+        showToast('success', 'Cuenta reactivada', response?.SuccessMessage || 'Tu cuenta fue reactivada. Inicia sesión con tus credenciales de dominio.', 6000, 'top')
+        reset({ Code: reactivateInput.trim(), password: '' })
+      } else {
+        showToast('error', 'Error', response?.ErrorMessage || 'No se pudo reactivar la cuenta', 6000, 'top')
+      }
+    } catch {
+      showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'top')
+    } finally {
+      setReactivating(false)
     }
   }
 
@@ -269,6 +345,17 @@ export default function LoginScreen() {
                 </Text>
               </XStack>
 
+              <XStack justifyContent="center" alignItems="center" marginBottom="$4">
+                <Text
+                  fontSize={13}
+                  fontWeight="700"
+                  color="$primary"
+                  onPress={openReactivateDialog}
+                >
+                  ¿Tu cuenta está inactiva? Reactívala
+                </Text>
+              </XStack>
+
                 <Button
                   backgroundColor="$primary"
                   height={45}
@@ -297,6 +384,189 @@ export default function LoginScreen() {
             </YStack>
           </Card>
         </YStack>
+
+        {/* Diálogo: reactivar cuenta (ingresar usuario o correo) */}
+        <AlertDialog
+          open={openReactivate}
+          onOpenChange={(v) => { if (!reactivating) setOpenReactivate(v) }}
+        >
+          <AlertDialog.Portal>
+            <AlertDialog.Overlay opacity={0.6} backgroundColor="black" />
+            <AlertDialog.Content
+              elevate
+              width="85%"
+              alignSelf="center"
+              backgroundColor="white"
+              borderRadius="$6"
+              padding="$5"
+              x={0} y={0} scale={1} opacity={1}
+              {...shadows.lg}
+            >
+              <YStack alignItems="center" gap="$3">
+                <YStack
+                  width={60} height={60} borderRadius={30}
+                  backgroundColor="rgba(255,85,26,.12)"
+                  justifyContent="center" alignItems="center"
+                >
+                  <KeyRound size={28} color="#FF551A" />
+                </YStack>
+
+                <Text fontSize={18} fontWeight="700" color="#1e3a5f" textAlign="center">
+                  Reactivar cuenta
+                </Text>
+
+                {reactivateStep === 'id' ? (
+                  <>
+                    <Text fontSize={14} color="#6b7280" textAlign="center" lineHeight={20}>
+                      Ingresa tu usuario o correo para continuar con la reactivación de tu cuenta.
+                    </Text>
+
+                    <XStack
+                      alignItems="center"
+                      width="100%"
+                      backgroundColor="#f5f5f5"
+                      borderRadius={6}
+                      paddingHorizontal="$2"
+                      borderWidth={1}
+                      borderColor="#e5e5e5"
+                    >
+                      <User size={20} color="#777" />
+                      <Input
+                        flex={1}
+                        placeholder="Usuario o correo"
+                        value={reactivateInput}
+                        onChangeText={setReactivateInput}
+                        size="$4"
+                        color="$black"
+                        placeholderTextColor="$gray"
+                        borderWidth={0}
+                        backgroundColor="transparent"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        autoComplete="off"
+                      />
+                    </XStack>
+                  </>
+                ) : (
+                  <>
+                    <Text fontSize={14} color="#6b7280" textAlign="center" lineHeight={20}>
+                      Tu cuenta usa tu contraseña de dominio (Active Directory). Ingrésala para
+                      reactivar tu cuenta; no se cambiará tu contraseña.
+                    </Text>
+
+                    <XStack
+                      alignItems="center"
+                      width="100%"
+                      backgroundColor="#f5f5f5"
+                      borderRadius={6}
+                      paddingHorizontal="$2"
+                      borderWidth={1}
+                      borderColor="#e5e5e5"
+                    >
+                      <Lock size={20} color="#777" />
+                      <Input
+                        flex={1}
+                        placeholder="Contraseña de dominio"
+                        secureTextEntry={!showReactivatePassword}
+                        value={reactivatePassword}
+                        onChangeText={setReactivatePassword}
+                        size="$4"
+                        color="$black"
+                        placeholderTextColor="$gray"
+                        borderWidth={0}
+                        backgroundColor="transparent"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        autoComplete="off"
+                        textContentType="password"
+                      />
+                      <Pressable onPress={() => setShowReactivatePassword(!showReactivatePassword)}>
+                        {showReactivatePassword ? (
+                          <EyeOff size={20} color="#777" />
+                        ) : (
+                          <Eye size={20} color="#777" />
+                        )}
+                      </Pressable>
+                    </XStack>
+                  </>
+                )}
+
+                <XStack width="100%" gap="$3" marginTop="$1">
+                  <Button
+                    flex={1}
+                    backgroundColor="#e5e7eb"
+                    disabled={reactivating}
+                    opacity={reactivating ? 0.6 : 1}
+                    onPress={() => { if (!reactivating) setOpenReactivate(false) }}
+                  >
+                    <Text color="#1e3a5f">Cancelar</Text>
+                  </Button>
+
+                  <Button
+                    flex={1}
+                    backgroundColor="$primary"
+                    disabled={reactivating}
+                    opacity={reactivating ? 0.8 : 1}
+                    onPress={reactivateStep === 'id' ? handleReactivateContinue : handleReactivateDomain}
+                  >
+                    <XStack gap="$2" alignItems="center">
+                      {reactivating && <Spinner size="small" color="white" />}
+                      <Text color="white" fontWeight="700">
+                        {reactivating
+                          ? 'Procesando...'
+                          : reactivateStep === 'id' ? 'Continuar' : 'Reactivar'}
+                      </Text>
+                    </XStack>
+                  </Button>
+                </XStack>
+              </YStack>
+            </AlertDialog.Content>
+          </AlertDialog.Portal>
+        </AlertDialog>
+
+        {/* Diálogo: correo enviado */}
+        <AlertDialog open={openReactivateSent}>
+          <AlertDialog.Portal>
+            <AlertDialog.Overlay opacity={0.6} backgroundColor="black" />
+            <AlertDialog.Content
+              elevate
+              width="85%"
+              alignSelf="center"
+              backgroundColor="white"
+              borderRadius="$6"
+              padding="$5"
+              x={0} y={0} scale={1} opacity={1}
+              {...shadows.lg}
+            >
+              <YStack alignItems="center" gap="$3">
+                <YStack
+                  width={60} height={60} borderRadius={30}
+                  backgroundColor="rgba(34,197,94,.15)"
+                  justifyContent="center" alignItems="center"
+                >
+                  <MailCheck size={30} color="#22c55e" />
+                </YStack>
+
+                <Text fontSize={18} fontWeight="700" color="#1e3a5f" textAlign="center">
+                  Revisa tu correo
+                </Text>
+
+                <Text fontSize={14} color="#6b7280" textAlign="center" lineHeight={20}>
+                  Te enviamos un correo{reactivateMasked ? ` a ${reactivateMasked}` : ''} con un enlace
+                  para crear tu nueva contraseña y reactivar tu cuenta. Revisa también tu carpeta de spam.
+                </Text>
+
+                <Button
+                  width="100%"
+                  backgroundColor="$primary"
+                  onPress={() => { setOpenReactivateSent(false); setReactivateInput('') }}
+                >
+                  <Text color="white" fontWeight="700">Entendido</Text>
+                </Button>
+              </YStack>
+            </AlertDialog.Content>
+          </AlertDialog.Portal>
+        </AlertDialog>
       </ImageBackground>
     </KeyboardAvoidingView>
   )

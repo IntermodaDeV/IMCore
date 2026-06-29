@@ -26,6 +26,12 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
     color: '#7C3AED',
     bg: 'rgba(124,58,237,0.12)',
   },
+  solicitud_compra_historico: {
+    label: 'Solicitudes de compra',
+    Icon: ShoppingCart,
+    color: '#7C3AED',
+    bg: 'rgba(124,58,237,0.12)',
+  },
 }
 
 const DEFAULT_CATEGORY: CategoryMeta = {

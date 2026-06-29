@@ -4,6 +4,7 @@ export interface ExecutionResponse<T> {
   SuccessMessage: string
   ErrorMessage: string
   Success: boolean
+  extras?: Record<string, any>
 }
 
 

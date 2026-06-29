@@ -17,6 +17,8 @@ export const securityService = {
   getUserById: (Id: number) => httpClient.get<ExecutionResponse<UsersDTO[]>>(`${schema}/UserById?Id=${Id}`),
   saveUserExternalCodes: (data: IUserExternalCodes[]) => httpClient.post<ExecutionResponse<IUserExternalCodes[]>>(`${schema}/UserExternalCodes`, data),
   saveUsersRegister: (data: IRegister[]) => httpClient.post<ExecutionResponse<IRegister[]>>(`${schema}/Register`, data),
+  recoverAccount: (data: { Identifier: string }) => httpClient.post<ExecutionResponse<any>>(`${schema}/RecoverAccount`, data),
+  reactivateAD: (data: { Identifier: string; Password: string }) => httpClient.post<ExecutionResponse<any>>(`${schema}/ReactivateAD`, data),
   
   getMenus: () => httpClient.get<ExecutionResponse<MenuDTO[]>>(`${schema}/Menus`),
   saveMenu: (data: MenuDTO[]) => httpClient.post<ExecutionResponse<MenuDTO[]>>(`${schema}/Menus`, data),

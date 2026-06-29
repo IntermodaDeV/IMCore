@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { UsersDTO } from '../api/modules/security/security.types'
+import { UsersDTO, IDefaultCompany } from '../api/modules/security/security.types'
 import { securityService } from '../api/modules/security/security.service'
 import { sessionManager } from '../api/core/sessionManager'
 import { registerForUser, unregisterCurrent } from '../services/pushNotifications'
 
 type AuthContextType = {
   user: UsersDTO | null
+  defaultCompany: IDefaultCompany | null
   companyId: number | null
   setCompanyId: (companyId: number | null) => Promise<void>
   login: (user: UsersDTO) => Promise<void>
@@ -34,6 +35,7 @@ export const AuthProvider = ({
   children: React.ReactNode
 }) => {
   const [user, setUser] = useState<UsersDTO | null>(null)
+  const [defaultCompany, setDefaultCompany] = useState<IDefaultCompany | null>(null)
   const [companyId, setCompanyIdState] = useState<number | null>(null)
   const [themeState, setThemeState] = useState<'light' | 'dark'>('light')
   const [loading, setLoading] = useState(true)
@@ -52,10 +54,13 @@ export const AuthProvider = ({
           const parsedUser = JSON.parse(savedUser)
           setUser(parsedUser)
 
+          const dc = parsedUser?.DefaultCompany?.[0] ?? null
+          setDefaultCompany(dc)
+
           if (savedCompanyId != null) {
             setCompanyIdState(Number(savedCompanyId))
-          } else if (parsedUser?.DefaultCompany != null) {
-            setCompanyIdState(Number(parsedUser.DefaultCompany))
+          } else if (dc?.Id != null) {
+            setCompanyIdState(dc.Id)
           }
         }
 
@@ -118,12 +123,9 @@ export const AuthProvider = ({
 
       setUser(userData)
 
-      const defaultCompany =
-        userData?.DefaultCompany != null
-          ? Number(userData.DefaultCompany)
-          : null
-
-      setCompanyIdState(defaultCompany)
+      const dc = userData?.DefaultCompany?.[0] ?? null
+      setDefaultCompany(dc)
+      setCompanyIdState(dc?.Id ?? null)
 
       const userTheme =
         userData?.Theme === 'dark'
@@ -142,8 +144,8 @@ export const AuthProvider = ({
         userTheme
       )
 
-      if (defaultCompany != null) {
-        await AsyncStorage.setItem('companyId', String(defaultCompany))
+      if (dc?.Id != null) {
+        await AsyncStorage.setItem('companyId', String(dc.Id))
       } else {
         await AsyncStorage.removeItem('companyId')
       }
@@ -199,6 +201,7 @@ export const AuthProvider = ({
       }
 
       setUser(null)
+      setDefaultCompany(null)
       setCompanyIdState(null)
 
       await Promise.all([
@@ -220,6 +223,7 @@ export const AuthProvider = ({
     <AuthContext.Provider
       value={{
         user,
+        defaultCompany,
         companyId,
         setCompanyId,
         login,

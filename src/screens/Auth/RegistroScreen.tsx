@@ -10,7 +10,7 @@ import { shadows } from '../../theme/shadows'
 import { ExecutionResponse } from '../../api/modules/response.type'
 import { IRegister } from '../../api/modules/security/security.types'
 import { securityService } from '../../api/modules/security/security.service'
-import { CircleCheckBig, Eye, EyeOff } from 'lucide-react-native'
+import { CircleCheckBig, Eye, EyeOff, KeyRound, MailCheck, Lock } from 'lucide-react-native'
 
 type RegisterForm = {
   Code: string
@@ -29,6 +29,17 @@ export default function RegisterScreen() {
   const [userCode, setUserCode] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
+  // Recuperación de cuenta (cuando el usuario/correo ya existe)
+  const [openRecover, setOpenRecover] = useState(false)
+  const [openRecoverSent, setOpenRecoverSent] = useState(false)
+  const [recovering, setRecovering] = useState(false)
+  const [recoverEmail, setRecoverEmail] = useState('')
+  const [recoverUserCode, setRecoverUserCode] = useState('')
+  // Cuenta de Active Directory: se reactiva validando la contraseña de dominio
+  const [recoverIsAD, setRecoverIsAD] = useState(false)
+  const [recoverPassword, setRecoverPassword] = useState('')
+  const [showRecoverPassword, setShowRecoverPassword] = useState(false)
 
   const {
     control,
@@ -72,7 +83,15 @@ export default function RegisterScreen() {
             setUserCode(info?.Code)
             setOpenSuccess(true)
             // showToast('success','Éxito',response?.SuccessMessage,5000,'top')
-        }else{
+        } else if (response?.extras?.AccountInactive) {
+            // La cuenta existe pero está inactiva (Status_Id = 2) -> ofrecer reactivarla
+            setRecoverUserCode(response.extras?.User_Code || info.Code)
+            setRecoverEmail(response.extras?.Email || '')
+            setRecoverIsAD(!!response.extras?.ValidateAD)
+            setRecoverPassword('')
+            setShowRecoverPassword(false)
+            setOpenRecover(true)
+        } else {
             showToast('error','Error',response?.ErrorMessage,5000,'top')
         }
     } catch {
@@ -81,6 +100,49 @@ export default function RegisterScreen() {
         setLoadingSave(false)
     }
     })
+
+    const handleRecover = async () => {
+        setRecovering(true)
+        try {
+            const response = await securityService.recoverAccount({ Identifier: recoverUserCode })
+            setOpenRecover(false)
+            if (response?.Success) {
+                setOpenRecoverSent(true)
+            } else {
+                showToast('error', 'Error', response?.ErrorMessage || 'No se pudo enviar el correo', 5000, 'top')
+            }
+        } catch {
+            showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'top')
+        } finally {
+            setRecovering(false)
+        }
+    }
+
+    // Cuenta AD: valida la contraseña de dominio y reactiva (no se envía correo ni se cambia clave)
+    const handleReactivateAD = async () => {
+        if (!recoverPassword) {
+            showToast('error', 'Error', 'Ingresa tu contraseña de dominio', 4000, 'top')
+            return
+        }
+        setRecovering(true)
+        try {
+            const response = await securityService.reactivateAD({
+                Identifier: recoverUserCode,
+                Password: recoverPassword,
+            })
+            if (response?.Success) {
+                setOpenRecover(false)
+                showToast('success', 'Cuenta reactivada', response?.SuccessMessage || 'Tu cuenta fue reactivada. Inicia sesión con tus credenciales de dominio.', 6000, 'top')
+                navigation.navigate('Login' as never, { Code: recoverUserCode } as never)
+            } else {
+                showToast('error', 'Error', response?.ErrorMessage || 'No se pudo reactivar la cuenta', 6000, 'top')
+            }
+        } catch {
+            showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'top')
+        } finally {
+            setRecovering(false)
+        }
+    }
 
   return (
     <Page>
@@ -385,6 +447,147 @@ export default function RegisterScreen() {
 
                 </AlertDialog.Content>
 
+            </AlertDialog.Portal>
+        </AlertDialog>
+
+        {/* Diálogo: la cuenta ya existe -> ofrecer recuperarla por correo */}
+        <AlertDialog
+            open={openRecover}
+            onOpenChange={(v) => { if (!recovering) setOpenRecover(v) }}
+        >
+            <AlertDialog.Portal>
+                <AlertDialog.Overlay opacity={0.6} backgroundColor="black" />
+                <AlertDialog.Content
+                    elevate
+                    width="85%"
+                    alignSelf="center"
+                    backgroundColor="$backgroundElevated"
+                    borderRadius="$6"
+                    padding="$5"
+                    x={0} y={0} scale={1} opacity={1}
+                    {...shadows.lg}
+                >
+                    <YStack alignItems="center" gap="$3">
+                        <YStack
+                            width={60} height={60} borderRadius={30}
+                            backgroundColor="rgba(255,85,26,.12)"
+                            justifyContent="center" alignItems="center"
+                        >
+                            <KeyRound size={28} color="#FF551A" />
+                        </YStack>
+
+                        <Text fontSize={18} fontWeight="700" color="$text" textAlign="center">
+                            Esta cuenta está inactiva
+                        </Text>
+
+                        {recoverIsAD ? (
+                            <>
+                                <Text color="$textMuted" textAlign="center" lineHeight={22}>
+                                    Esta cuenta usa tu contraseña de dominio (Active Directory).
+                                    Ingrésala para reactivarla; no se cambiará tu contraseña.
+                                </Text>
+
+                                <AppInput
+                                    label="Contraseña de dominio"
+                                    value={recoverPassword}
+                                    onChangeText={setRecoverPassword}
+                                    secureTextEntry={!showRecoverPassword}
+                                    autoCapitalize="none"
+                                    rightElement={
+                                        <Pressable onPress={() => setShowRecoverPassword(!showRecoverPassword)}>
+                                            {showRecoverPassword
+                                                ? <EyeOff size={20} color="#777" />
+                                                : <Eye size={20} color="#777" />}
+                                        </Pressable>
+                                    }
+                                />
+                            </>
+                        ) : (
+                            <Text color="$textMuted" textAlign="center" lineHeight={22}>
+                                Ya existe una cuenta con este usuario o correo
+                                {recoverEmail ? ` (${recoverEmail})` : ''}, pero está inactiva.
+                                ¿Quieres que te enviemos un correo para reactivarla y crear una nueva contraseña?
+                            </Text>
+                        )}
+
+                        <XStack width="100%" gap="$3" marginTop="$1">
+                            <Button
+                                flex={1}
+                                backgroundColor="$buttonSecondary"
+                                disabled={recovering}
+                                opacity={recovering ? 0.6 : 1}
+                                onPress={() => { if (!recovering) setOpenRecover(false) }}
+                            >
+                                <Text color="$text">Cancelar</Text>
+                            </Button>
+
+                            <Button
+                                flex={1}
+                                backgroundColor="$primary"
+                                disabled={recovering}
+                                opacity={recovering ? 0.8 : 1}
+                                onPress={recoverIsAD ? handleReactivateAD : handleRecover}
+                            >
+                                <XStack gap="$2" alignItems="center">
+                                    {recovering && <Spinner size="small" color="white" />}
+                                    <Text color="white">
+                                        {recovering
+                                            ? 'Procesando...'
+                                            : recoverIsAD ? 'Reactivar' : 'Enviar correo'}
+                                    </Text>
+                                </XStack>
+                            </Button>
+                        </XStack>
+                    </YStack>
+                </AlertDialog.Content>
+            </AlertDialog.Portal>
+        </AlertDialog>
+
+        {/* Diálogo: correo de recuperación enviado */}
+        <AlertDialog open={openRecoverSent}>
+            <AlertDialog.Portal>
+                <AlertDialog.Overlay opacity={0.6} backgroundColor="black" />
+                <AlertDialog.Content
+                    elevate
+                    width="85%"
+                    alignSelf="center"
+                    backgroundColor="$backgroundElevated"
+                    borderRadius="$6"
+                    padding="$5"
+                    x={0} y={0} scale={1} opacity={1}
+                    {...shadows.lg}
+                >
+                    <YStack alignItems="center" gap="$3">
+                        <YStack
+                            width={60} height={60} borderRadius={30}
+                            backgroundColor="rgba(34,197,94,.15)"
+                            justifyContent="center" alignItems="center"
+                        >
+                            <MailCheck size={30} color="#22c55e" />
+                        </YStack>
+
+                        <Text fontSize={18} fontWeight="700" color="$text" textAlign="center">
+                            Revisa tu correo
+                        </Text>
+
+                        <Text color="$textMuted" textAlign="center" lineHeight={22}>
+                            Si la cuenta existe, te enviamos un correo
+                            {recoverEmail ? ` a ${recoverEmail}` : ''} con un enlace para crear tu
+                            nueva contraseña y reactivar tu cuenta. Revisa también tu carpeta de spam.
+                        </Text>
+
+                        <Button
+                            width="100%"
+                            backgroundColor="$primary"
+                            onPress={() => {
+                                setOpenRecoverSent(false)
+                                navigation.navigate('Login' as never, { Code: recoverUserCode } as never)
+                            }}
+                        >
+                            <Text color="white">Ir a inicio de sesión</Text>
+                        </Button>
+                    </YStack>
+                </AlertDialog.Content>
             </AlertDialog.Portal>
         </AlertDialog>
     </Page>

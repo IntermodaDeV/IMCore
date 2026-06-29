@@ -9,6 +9,7 @@ export interface ISolicitudCompraArticulo {
 export interface ISolicitudCompraUsuario {
   Solicitud: string
   Preparador: string
+  PreparadorCode?: string
   ImporteNeto: number
   Categoria: string
   Articulos: ISolicitudCompraArticulo[]
@@ -16,8 +17,23 @@ export interface ISolicitudCompraUsuario {
   justificacion?: string
 }
 
+export interface IApprovalHistory {
+  Solicitud: string
+  User_Code: string
+  Estado: string
+  Preparador: string
+  ImporteNeto: number
+  Categoria: string
+  Name: string
+  Creation_Date: string
+}
+
 export interface ISolicitud {
   Solicitud: string
   Usuario: string
   Estado: string
+  PreparadorCode?: string
+  Preparador: string
+  ImporteNeto: number
+  Categoria: string
 }

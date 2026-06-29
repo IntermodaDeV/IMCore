@@ -647,7 +647,7 @@ export default function UsersScreen() {
                         width={42}
                         height={24}
                         borderRadius={12}
-                        backgroundColor={value ? '$primary' : '$buttonCancel'}
+                        backgroundColor={value ? '$primary' : '$textDisabled'}
                         justifyContent="center"
                         paddingHorizontal={3}
                       >

@@ -17,6 +17,7 @@ export default function SearchInput<T extends Record<string, any>>({
     placeholder = 'Buscar...',
 }: SearchInputProps<T>) {
     const [query, setQuery] = useState('')
+    const [isFocused, setIsFocused] = useState(false)
     const theme = useTheme()
 
     const handleChange = (text: string) => {
@@ -48,15 +49,17 @@ export default function SearchInput<T extends Record<string, any>>({
             alignItems="center"
             gap="$2"
             borderWidth={1}
-            borderColor="$border"
+            borderColor={isFocused ? '$primary' : '$border'}
             marginBottom="$3"
             height={42}
         >
-            <Search size={16} color={theme.textMuted?.val} />
+            <Search size={16} color={isFocused ? theme.primary?.val : theme.textMuted?.val} />
             <Input
                 flex={1}
                 value={query}
                 onChangeText={handleChange}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
                 placeholder={placeholder}
                 placeholderTextColor={theme.textMuted?.val}
                 borderWidth={0}
