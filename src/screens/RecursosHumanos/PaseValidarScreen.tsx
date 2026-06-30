@@ -6,7 +6,7 @@ import { XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, X, LogIn, LogOut
 import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native'
 import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
-import { usePageHeader } from '../../hooks/usePageHeader'
+import { usePasesHeader } from './usePasesHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
 import { pasesService } from '../../api/modules/pases/pases.service'
@@ -44,13 +44,7 @@ export default function PaseValidarScreen() {
   const lockRef = useRef(false)
   const isFocused = useIsFocused()
 
-  usePageHeader({
-    center: (
-      <Text fontSize="$4" fontWeight="700" color="$text">
-        Validar pase
-      </Text>
-    ),
-  })
+  usePasesHeader('Validar pase')
 
   useEffect(() => {
     ;(async () => {

@@ -4,7 +4,7 @@ import { YStack, XStack, Text, Button, View, ScrollView, Spinner } from 'tamagui
 import { Check, X, DoorOpen, DoorClosed, CheckCheck } from 'lucide-react-native'
 import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
-import { usePageHeader } from '../../hooks/usePageHeader'
+import { usePasesHeader } from './usePasesHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
 import { handleError } from '../../utils/errorHandler'
@@ -26,13 +26,7 @@ export default function PaseAprobacionesScreen() {
   const [rejectPase, setRejectPase] = useState<IPase | null>(null)
   const [motivo, setMotivo] = useState('')
 
-  usePageHeader({
-    center: (
-      <Text fontSize="$4" fontWeight="700" color="$text">
-        Aprobaciones
-      </Text>
-    ),
-  })
+  usePasesHeader('Aprobaciones')
 
   const load = async (silent = false) => {
     if (!user?.Code) return

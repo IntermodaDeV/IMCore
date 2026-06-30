@@ -5,7 +5,7 @@ import { Plus, Pencil, DoorOpen, DoorClosed } from 'lucide-react-native'
 import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
 import AppSelect from '../../components/commons/AppSelect'
-import { usePageHeader } from '../../hooks/usePageHeader'
+import { usePasesHeader } from './usePasesHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
 import { pasesService } from '../../api/modules/pases/pases.service'
@@ -32,13 +32,7 @@ export default function PaseCategoriasScreen() {
   const [saving, setSaving] = useState(false)
   const [togglingId, setTogglingId] = useState<number | null>(null)
 
-  usePageHeader({
-    center: (
-      <Text fontSize="$4" fontWeight="700" color="$text">
-        Categorías de pase
-      </Text>
-    ),
-  })
+  usePasesHeader('Categorías de pase')
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true)

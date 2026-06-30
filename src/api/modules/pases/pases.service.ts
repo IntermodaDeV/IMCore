@@ -42,6 +42,10 @@ export const pasesService = {
   getMisPases: (userCode: string) =>
     httpClient.get<ExecutionResponse<IPase[]>>(`${schema}/MisPases?user_Code=${encodeURIComponent(userCode)}`),
 
+  // Historial global (todos los pases) — gated por access 'TodoHistorialPases'
+  getHistorialTodos: (userCode: string) =>
+    httpClient.get<ExecutionResponse<IPase[]>>(`${schema}/Historial?user_Code=${encodeURIComponent(userCode)}`),
+
   getPorAprobar: (userCode: string) =>
     httpClient.get<ExecutionResponse<IPase[]>>(`${schema}/PorAprobar?user_Code=${encodeURIComponent(userCode)}`),
 

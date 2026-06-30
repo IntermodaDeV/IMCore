@@ -6,7 +6,7 @@ import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
 import AppSelect from '../../components/commons/AppSelect'
 import AppDatePicker from '../../components/commons/AppDatePicker'
-import { usePageHeader } from '../../hooks/usePageHeader'
+import { usePasesHeader } from './usePasesHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
 import { handleError } from '../../utils/errorHandler'
@@ -35,13 +35,7 @@ export default function PaseCrearScreen() {
   const [observacion, setObservacion] = useState('')
   const [saving, setSaving] = useState(false)
 
-  usePageHeader({
-    center: (
-      <Text fontSize="$4" fontWeight="700" color="$text">
-        Crear pase
-      </Text>
-    ),
-  })
+  usePasesHeader('Crear pase')
 
   useEffect(() => {
     ;(async () => {
