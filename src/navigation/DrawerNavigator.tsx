@@ -158,7 +158,10 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
     const needAprob = esAprobador && !hasAprob
     const needValidar = (esSeguridad || esAdmin) && !hasValidar
     const needCategorias = esAdmin && !hasCategorias
-    if (!hasCrear || !hasHist || needAprob || needValidar || needCategorias) {
+    const hasHistTodos = baseMenu.some(m => m.Route === 'paseHistorialTodos')
+    const verTodosPases = esAdmin || (user?.Access ?? '').split(',').map(s => s.trim()).includes('TodoHistorialPases')
+    const needHistorial = verTodosPases && !hasHistTodos
+    if (!hasCrear || !hasHist || needAprob || needValidar || needCategorias || needHistorial) {
       const grupoRH = baseMenu.find(m => m.Route === 'rrhh')
       let parentId = grupoRH?.Id
       if (!grupoRH) { inject.push({ Id: -910, Name: 'Recursos Humanos', Route: 'rrhh', Icon: 'Building2', ParentMenu_Id: null, MenuOrder: 98 }); parentId = -910 }
@@ -167,6 +170,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
       if (needAprob) inject.push({ Id: -913, Name: 'Aprobaciones', Route: 'paseAprobaciones', Icon: 'CheckCheck', ParentMenu_Id: parentId, MenuOrder: 3 })
       if (needValidar) inject.push({ Id: -914, Name: 'Validar pase', Route: 'paseValidar', Icon: 'ScanLine', ParentMenu_Id: parentId, MenuOrder: 4 })
       if (needCategorias) inject.push({ Id: -915, Name: 'Categorías de pase', Route: 'paseCategorias', Icon: 'Tags', ParentMenu_Id: parentId, MenuOrder: 5 })
+      if (needHistorial) inject.push({ Id: -916, Name: 'Historial de pases', Route: 'paseHistorialTodos', Icon: 'FileStack', ParentMenu_Id: parentId, MenuOrder: 6 })
     }
   }
   const MENU = buildMenuTree([...baseMenu, ...inject])
@@ -322,7 +326,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           width="100%"
         >
           <Text color="$textMuted" fontSize={11}>
-            1.2.2
+            1.2.3
           </Text>
 
           <ThemeToggle/>
