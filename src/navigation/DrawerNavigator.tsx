@@ -141,6 +141,38 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
     if (!grupo) inject.push({ Id: -901, Name: 'Mantenimiento', Route: 'mantenimiento', Icon: 'SquareMenu', ParentMenu_Id: null, MenuOrder: 99 })
     inject.push({ Id: -902, Name: 'Tickets', Route: 'mantenimientoTickets', Icon: 'Wrench', ParentMenu_Id: grupo?.Id ?? -901, MenuOrder: 1 })
   }
+  // Recursos Humanos / Pases: cualquier empleado con usuario puede crear pases y ver
+  // los suyos, así que Crear pase / Mis pases se inyectan para todo usuario autenticado
+  // aunque el menú del servidor no los asigne. "Aprobaciones" solo para quien tiene el
+  // rol "Aprobador de pases".
+  if (user?.Code) {
+    const roles = (user?.Roles ?? []) as any[]
+    const esAprobador = roles.some(r => r?.RoleName === 'Aprobador de pases')
+    const esAdmin = roles.some(r => r?.RoleName === 'Administrador')
+    const esSeguridad = roles.some(r => r?.RoleName === 'Seguridad')
+    const hasCrear = baseMenu.some(m => m.Route === 'paseCrear')
+    const hasHist = baseMenu.some(m => m.Route === 'paseHistorial')
+    const hasAprob = baseMenu.some(m => m.Route === 'paseAprobaciones')
+    const hasValidar = baseMenu.some(m => m.Route === 'paseValidar')
+    const hasCategorias = baseMenu.some(m => m.Route === 'paseCategorias')
+    const needAprob = esAprobador && !hasAprob
+    const needValidar = (esSeguridad || esAdmin) && !hasValidar
+    const needCategorias = esAdmin && !hasCategorias
+    const hasHistTodos = baseMenu.some(m => m.Route === 'paseHistorialTodos')
+    const verTodosPases = esAdmin || (user?.Access ?? '').split(',').map(s => s.trim()).includes('TodoHistorialPases')
+    const needHistorial = verTodosPases && !hasHistTodos
+    if (!hasCrear || !hasHist || needAprob || needValidar || needCategorias || needHistorial) {
+      const grupoRH = baseMenu.find(m => m.Route === 'rrhh')
+      let parentId = grupoRH?.Id
+      if (!grupoRH) { inject.push({ Id: -910, Name: 'Recursos Humanos', Route: 'rrhh', Icon: 'Building2', ParentMenu_Id: null, MenuOrder: 98 }); parentId = -910 }
+      if (!hasCrear) inject.push({ Id: -911, Name: 'Crear pase', Route: 'paseCrear', Icon: 'DoorOpen', ParentMenu_Id: parentId, MenuOrder: 1 })
+      if (!hasHist) inject.push({ Id: -912, Name: 'Mis pases', Route: 'paseHistorial', Icon: 'History', ParentMenu_Id: parentId, MenuOrder: 2 })
+      if (needAprob) inject.push({ Id: -913, Name: 'Aprobaciones', Route: 'paseAprobaciones', Icon: 'CheckCheck', ParentMenu_Id: parentId, MenuOrder: 3 })
+      if (needValidar) inject.push({ Id: -914, Name: 'Validar pase', Route: 'paseValidar', Icon: 'ScanLine', ParentMenu_Id: parentId, MenuOrder: 4 })
+      if (needCategorias) inject.push({ Id: -915, Name: 'Categorías de pase', Route: 'paseCategorias', Icon: 'Tags', ParentMenu_Id: parentId, MenuOrder: 5 })
+      if (needHistorial) inject.push({ Id: -916, Name: 'Historial de pases', Route: 'paseHistorialTodos', Icon: 'FileStack', ParentMenu_Id: parentId, MenuOrder: 6 })
+    }
+  }
   const MENU = buildMenuTree([...baseMenu, ...inject])
   const insets = useSafeAreaInsets()
 
@@ -294,7 +326,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           width="100%"
         >
           <Text color="$textMuted" fontSize={11}>
-            1.1.0
+            1.2.3
           </Text>
 
           <ThemeToggle/>
@@ -330,9 +362,10 @@ export function buildMenuTree(menu: MenuDTO[] = []) {
       const parent = map.get(item.ParentMenu_Id)
       if (parent) {
         parent.children.push(node)
-      } else {
-        roots.push(node)
       }
+      // Si el padre NO está presente (sin permiso, inactivo o filtrado), el hijo
+      // queda huérfano y NO se muestra: no lo subimos a la raíz. Así, quitar el
+      // padre oculta también a los hijos.
     }
   }
 

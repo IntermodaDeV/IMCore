@@ -5,6 +5,7 @@ import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
 import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, IUserCompanies, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
 import { securityService } from '../../../api/modules/security/security.service'
+import { computeMenuCascade, buildMenuControlPayloads } from '../menuCascade'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import { useShowToast } from '../../../utils/useShowToast'
@@ -232,58 +233,23 @@ export default function UsersForm() {
     const isMenuActive = (menuId?: number | null) =>
         (menuControl ?? []).some((ac) => ac.Menu_Id === menuId && ac.Status_Id === 1)
 
-    const buildMenuPayload = (menu: MenuDTO, targetStatus: number): IMenuControl => {
-        const existing = menuControl.find((ac) => ac.Menu_Id === menu.Id)
-        if (!existing) {
-            return {
-                Id: -1,
-                Menu_Id: menu.Id,
-                User_Code: user_Code,
-                Rol_Id: null,
-                Status_Id: targetStatus,
-                Type_Id: 6,
-                Create_By: user?.Code ?? '',
-            }
-        }
-        return { ...existing, Status_Id: targetStatus, Type_Id: 6, Create_By: user?.Code as string }
-    }
 
     const toggleRolMenu = async (selectedPermiso: MenuDTO) => {
-        const targetStatus = isMenuActive(selectedPermiso.Id) ? 2 : 1
+        const targetStatus: 1 | 2 = isMenuActive(selectedPermiso.Id) ? 2 : 1
         setLoadingToggle(selectedPermiso.Id)
         try {
-            // El SP procesa un registro por llamada, así que se envía de forma secuencial.
-            const response = await securityService.saveMenuControl([buildMenuPayload(selectedPermiso, targetStatus)])
+            // Cascada en ambas direcciones (padre↔hijos), igual que en el web.
+            const changes = computeMenuCascade(permisos, menuControl, selectedPermiso.Id, targetStatus)
+            const payloads = buildMenuControlPayloads(changes, menuControl, {
+                typeId: 6,
+                createBy: user?.Code ?? '',
+                userCode: user_Code,
+            })
+            const response = await securityService.saveMenuControl(payloads)
             if (!response.Success) {
                 showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
                 setLoadingToggle(null)
                 return
-            }
-
-            // Si se activa un hijo, el menú padre también debe quedar activo.
-            if (targetStatus === 1 && selectedPermiso.ParentMenu_Id) {
-                const parent = permisos.find((m) => m.Id === selectedPermiso.ParentMenu_Id)
-                if (parent && !isMenuActive(parent.Id)) {
-                    await securityService.saveMenuControl([buildMenuPayload(parent, 1)])
-                }
-            }
-
-            // Si se desactiva un hijo y el padre queda sin hijos activos, se desactiva el padre (excepto Inicio).
-            if (targetStatus === 2 && selectedPermiso.ParentMenu_Id) {
-                const parent = permisos.find((m) => m.Id === selectedPermiso.ParentMenu_Id)
-                const isInicio =
-                    parent?.Route?.toLowerCase() === 'inicio' || parent?.Name?.toLowerCase() === 'inicio'
-                if (parent && !isInicio && isMenuActive(parent.Id)) {
-                    const otherChildrenActive = permisos.some(
-                        (m) =>
-                            m.ParentMenu_Id === parent.Id &&
-                            m.Id !== selectedPermiso.Id &&
-                            isMenuActive(m.Id)
-                    )
-                    if (!otherChildrenActive) {
-                        await securityService.saveMenuControl([buildMenuPayload(parent, 2)])
-                    }
-                }
             }
 
             await getInfoSinLoading()

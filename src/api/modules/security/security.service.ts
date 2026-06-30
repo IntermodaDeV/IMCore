@@ -24,7 +24,8 @@ export const securityService = {
   saveMenu: (data: MenuDTO[]) => httpClient.post<ExecutionResponse<MenuDTO[]>>(`${schema}/Menus`, data),
   changeStatusMenu: (data: MenuDTO[]) => httpClient.put<ExecutionResponse<MenuDTO[]>>(`${schema}/Menus`, data),
   getMenuById: (Id: number) => httpClient.get<ExecutionResponse<MenuDTO[]>>(`${schema}/MenuById?Id=${Id}`),
-  getMenuByUser: (userCode: string) => httpClient.get<ExecutionResponse<MenuDTO[]>>(`${schema}/Menu?user_Code=${userCode}`),
+  // platform='App' hace que la API excluya las opciones marcadas solo-Web.
+  getMenuByUser: (userCode: string, platform: 'App' | 'Web' = 'App') => httpClient.get<ExecutionResponse<MenuDTO[]>>(`${schema}/Menu?user_Code=${userCode}&platform=${platform}`),
 
   getMenuControl: (Type_Id: number, Menu_Id: number) => httpClient.get<ExecutionResponse<IMenuControl[]>>(`${schema}/MenuControl?Type_Id=${Type_Id}&Menu_Id=${Menu_Id}`),
   saveMenuControl: (data: IMenuControl[]) => httpClient.post<ExecutionResponse<IMenuControl[]>>(`${schema}/MenuControl`, data),

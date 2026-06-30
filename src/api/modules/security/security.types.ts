@@ -94,6 +94,8 @@ export type MenuDTO = {
   Icon: string;
   ParentMenu_Id?: number | null;
   MenuOrder?: number | null;
+  // Alcance de la opción: 'Both' (app y web), 'App' (solo app), 'Web' (solo web).
+  Platform?: 'Both' | 'App' | 'Web';
   Status_Id?: number;
   Status_Name?: string;
   User_Code?: string;
@@ -166,6 +168,10 @@ export type IUserCompanies = {
   Company_Id: string;
   IsDefault?: boolean;
   Status_Id: number;
+  // Datos de la compañía (vista AdmSys.Vta_UsersCompanies)
+  Name?: string;
+  Code?: string;
+  CodeIcon?: string;
 };
 
 

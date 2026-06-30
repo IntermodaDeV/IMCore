@@ -4,7 +4,7 @@ type ScreenComponent = ComponentType<any>;
 
 interface ModuleRoute {
   Screen: ScreenComponent;
-  Childs: Record<string, ScreenComponent>;
+  Childs?: Record<string, ScreenComponent>;
 }
 
 export type TScreens = Record<string, ModuleRoute>;

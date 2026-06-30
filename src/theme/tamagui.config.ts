@@ -71,6 +71,7 @@ export const config = createTamagui({
       // =========================
       primary: '#FF551A',
       primaryOpacity: 'rgba(255, 85, 26, 0.20)',
+      primaryOpacity2: 'rgba(255, 83, 26, 0.09)',
       secondary: '#001F3F',
 
       // =========================
@@ -124,6 +125,7 @@ export const config = createTamagui({
       // =========================
       primary: '#FF551A',
       primaryOpacity: 'rgba(255, 85, 26, 0.20)',
+      primaryOpacity2: 'rgba(255, 83, 26, 0.09)',
       secondary: '#7292B8',
 
       // =========================
