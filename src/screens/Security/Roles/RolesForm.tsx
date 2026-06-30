@@ -205,13 +205,19 @@ export default function RolesForm() {
         })
 
         try {
-            const response = await securityService.saveMenuControl(payloads)
-            if (response.Success) {
+            let response
+            for (const payload of payloads) {
+                response = await securityService.saveMenuControl([payload])
+                if (!response.Success) {
+                    showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
+                    setLoadingToggle(null)
+                    return
+                }
+            }
+            if (response) {
                 // Recarga el control real (refleja también los cambios en cascada).
                 getInfoSinLoading()
                 showToast('success', 'Éxito', response.SuccessMessage || 'Operación realizada correctamente', 5000, 'bottom')
-            } else {
-                showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
             }
         } catch {
             showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'bottom')
