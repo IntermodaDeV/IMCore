@@ -18,6 +18,7 @@ import CountryFlag from '../../components/commons/CountryFlag'
 import AppInput from '../../components/commons/AppInput'
 import dayjs from 'dayjs'
 import { formatCurrency } from './GastosViaje.utils'
+import {TCompany, ECompany} from '../../api/modules/GastosViaje/gastosViaje.types'
 
 function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
   if (value === null || value === undefined || value === '') return null
@@ -183,7 +184,7 @@ export default function DetalleGastoScreen({ route }: any) {
               {gasto.ExpenseTypeName} — {gasto.ExpenseCategoryName}
             </Text>
             <Text color="white" fontSize={30} fontWeight="800" lineHeight={34}>
-              {formatCurrency(gasto.InvoiceAmount)}
+              { gasto.Currency + ' ' + formatCurrency(gasto.InvoiceAmount)}
             </Text>
             <XStack justifyContent="space-between" alignItems="center" marginTop={8}>
               <Text color="white" fontSize={12} opacity={0.75}>{dayjs(gasto.InvoiceDate).format('DD/MM/YYYY')}</Text>
@@ -228,9 +229,9 @@ export default function DetalleGastoScreen({ route }: any) {
               <InfoRow label="Número de factura"   value={gasto.InvoiceId} />
               <InfoRow label="Número de serie"     value={gasto.JournalNum} />
               <InfoRow label="Descripción"         value={gasto.Description} />
-              <InfoRow label="Importe gravado"     value={formatCurrency(gasto.GravadoAmount)} />
-              <InfoRow label="Importe exento"      value={formatCurrency(gasto.ExemptAmount)} />
-              <InfoRow label="Total"               value={formatCurrency(gasto.InvoiceAmount)} />
+              <InfoRow label="Importe gravado"     value={gasto.Currency + ' ' + formatCurrency(gasto.GravadoAmount)} />
+              <InfoRow label="Importe exento"      value={gasto.Currency + ' ' + formatCurrency(gasto.ExemptAmount)} />
+              <InfoRow label="Total"               value={gasto.Currency + ' ' + formatCurrency(gasto.InvoiceAmount)} />
               
               <InfoRow label="Tipo de combustible" value={gasto.FuelTypeName} />
               <InfoRow label="Fecha de factura"    value={dayjs(gasto.InvoiceDate).format('DD/MM/YYYY')} />
@@ -240,9 +241,9 @@ export default function DetalleGastoScreen({ route }: any) {
             {/* Proveedor */}
             <Card backgroundColor="$backgroundElevated" borderRadius={12} padding="$4" borderWidth={1} borderColor="$border">
               <Text fontSize={14} fontWeight="700" color="$text" marginBottom="$3">Proveedor</Text>
-              <InfoRow label="Nombre"        value={gasto.VendAccount + 'PENDIENTE'} />
+              <InfoRow label="Nombre"        value={gasto.VendName} />
               <InfoRow label="Código"        value={gasto.VendAccount} />
-              <InfoRow label="RTN / NIT"     value={gasto.VendAccount + 'PENDIENTE'} />
+              <InfoRow label={gasto.CompanyCode == ECompany.IMGT ? 'NIT' : 'RTN'}     value={gasto.VatNum} />
             </Card>
 
             {/* Acciones */}

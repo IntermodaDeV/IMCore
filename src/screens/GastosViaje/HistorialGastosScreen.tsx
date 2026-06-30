@@ -22,7 +22,7 @@ import { useRightDrawer } from '../../providers/RightDrawerProvider'
 import AppSelect from '../../components/commons/AppSelect'
 import dayjs from 'dayjs'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
-import { TCompany, IExpenseType, IGastoHistorialDetail } from '../../api/modules/GastosViaje/gastosViaje.types'
+import { IExpenseType, IGastoHistorialDetail } from '../../api/modules/GastosViaje/gastosViaje.types'
 import { formatCurrency, getIconFromFa } from './GastosViaje.utils'
 
 const STATUS_OPTIONS = [
@@ -45,7 +45,7 @@ export default function HistorialGastosScreen({ navigation }: any) {
   const [error, setError] = useState<AppError | null>(null)
   const [statusFilter, setStatusFilter] = useState('Todos')
   const [typeFilter, setTypeFilter] = useState(0)
-  const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(80, 'day').format('YYYY-MM-DD'))
+  const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(14, 'day').format('YYYY-MM-DD'))
   const [dateTo, setDateTo] = useState<string | null>(dayjs().format('YYYY-MM-DD'))
   const [expenseTypes, setExpenseTypes] = useState<IExpenseType[]>([])
   const [syncing, setSyncing] = useState(false)
@@ -64,14 +64,14 @@ export default function HistorialGastosScreen({ navigation }: any) {
       setLoading(true)
       setError(null)
       
-      const from = dateFrom ?? dayjs().subtract(30, 'day').format('YYYY-MM-DD');
+      const from = dateFrom ?? dayjs().subtract(14, 'day').format('YYYY-MM-DD');
       const to   = dateTo   ?? dayjs().format('YYYY-MM-DD');
       
       const [histRes, typesRes] = await Promise.all([
-        gastosViajeService.getHistory(user?.Gira ?? '', defaultCompany?.Code ?? '', from, to, _typeFilter ?? typeFilter),
+        gastosViajeService.getHistory(user?.Finansi ?? '', defaultCompany?.Code ?? '', from, to, _typeFilter ?? typeFilter),
         gastosViajeService.getExpenseTypes(defaultCompany?.Code ?? ''),
       ])
-      if (histRes.Success) { setData(histRes.Data); setFiltered(histRes.Data) }
+      if (histRes.Success) { setData(histRes.Data ?? []); setFiltered(histRes.Data ?? []) }
       if (typesRes.Success) setExpenseTypes(typesRes.Data)
     } catch (err) {
       setError(handleError(err))
@@ -177,9 +177,9 @@ export default function HistorialGastosScreen({ navigation }: any) {
           <View flex={1}>
             <SearchInput
               data={baseFiltered}
-              searchKeys={['VendAccount', 'InvoiceId', 'ExpenseCategoryName']}
+              searchKeys={['ExpenseTypeName', 'InvoiceId', 'ExpenseCategoryName']}
               onResults={setFiltered}
-              placeholder="Buscar por proveedor o factura"
+              placeholder="Buscar por tipo de gasto o factura"
             />
           </View>
         </XStack>
@@ -265,7 +265,7 @@ function GastoCard({ item, onPress }: { item: IGastoHistorialDetail; onPress: ()
             <XStack justifyContent="space-between" alignItems="flex-start">
               <Text fontSize={15} fontWeight="700" color="$text">{item.ExpenseTypeName}</Text>
               <Text fontSize={15} fontWeight="700" color="$text">
-                {formatCurrency(item.InvoiceAmount)}
+                {item.Currency + ' ' +formatCurrency(item.InvoiceAmount)}
               </Text>
             </XStack>
 

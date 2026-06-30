@@ -256,39 +256,47 @@ export default function NuevoGastoScreen() {
       const total  = isIMHN ? computedTotal : toNum(data.InvoiceAmount)
 
       const res = await gastosViajeService.createGasto({
-        Id:                0,
-        ExpenseCategoryId: data.ExpenseCategoryId,
-        MealId:            data.MealId || null,
-        FuelTypeId:        data.FuelTypeId || null,
-        PersonalCode:      user?.Gira ?? '',
-        CompanyCode:       defaultCompany?.Code ?? '',
-        VendAccount:       data.VendAccount,
-        Description:       data.Description || null,
-        InvoiceId:         data.InvoiceId || null,
-        SeriesNum:         null,
-        ExemptAmount:      exempt,
-        GravadoAmount:     graved,
-        InvoiceAmount:     total,
-        InvoiceDate:       data.InvoiceDate,
-        ImagePath:         null,
-        ImageBase64:       data.imageBase64 || '',
-
-        //Innecesarios pero los necesita el api en el dto
-        ExpenseCategory: expenseTypes[0],
-        FuelType: fuelTypes[0],
-        Status: {
-          "Id": 1,
-          "Name": "Aprobado",
-          "Code": "A"
-        }
+        id:                0,
+        expenseCategoryId: data.ExpenseCategoryId,
+        mealId:            data.MealId || null,
+        fuelTypeId:        data.FuelTypeId || null,
+        statusId:          0,
+        personalCode:      user?.Finansi ?? '',
+        vendAccount:       data.VendAccount,
+        description:       data.Description || '',
+        invoiceId:         data.InvoiceId || '',
+        seriesNum:         '',
+        exemptAmount:      exempt,
+        gravadoAmount:     graved,
+        invoiceAmount:     total,
+        invoiceDate:       data.InvoiceDate,
+        imagePath:         data.imageBase64 ?? '',
+        imageBase64:       "",
+        personalCodeAdmin: '',
+        rejectionMotive:   '',
+        journalNum:        '',
+        companyCode:       defaultCompany?.Code ?? COMPANY,
+        axMessage:         '',
+        inUse:             true,
       })
 
-      if (res.Success) {
+      if (res.Succeeded) {
         showToast('success', 'Gasto registrado', 'Tu gasto fue enviado correctamente', 3000, 'top')
         reset()
         navigation.goBack()
       } else {
-        showToast('error', 'Error', res.ErrorMessage || 'No se pudo registrar el gasto', 4000, 'top')
+        
+        if (res.EstatusCode === 409) {
+          try {
+            const outer = JSON.parse(res.Message ?? '{}')
+            const inner = JSON.parse(outer?.Message ?? '{}')
+            showToast('warning', 'Aviso', inner?.mensaje ?? outer?.mensaje ?? res.Message ?? '', 4000, 'top')
+          } catch {
+            showToast('warning', 'Aviso', res.Message ?? '', 4000, 'top')
+          }
+        } else {
+          showToast('error', 'Error', res.Errors || 'No se pudo registrar el gasto', 4000, 'top')
+        }
       }
     } catch {
       showToast('error', 'Error', 'Ocurrió un error inesperado', 4000, 'top')

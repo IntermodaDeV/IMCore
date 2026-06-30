@@ -11,7 +11,6 @@ import AppInput from '../../components/commons/AppInput'
 import CountryFlag from '../../components/commons/CountryFlag'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
 import { useNavigation } from '@react-navigation/native'
-import { Company } from '../../api/modules/GastosViaje/gastosViaje.types'
 
 type FormData = {
   providerName: string
@@ -22,14 +21,12 @@ type FormData = {
 
 
 export default function SolicitarProveedorScreen() {
-  const { user } = useAuth()
+  const { user, defaultCompany } = useAuth()
   const loader = useLoader()
   const { showToast } = useShowToast()
   const navigation = useNavigation();
 
   const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' });
-
-  const COMPANY: Company = 'IMHN'
 
   const { control, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     defaultValues: {
@@ -54,12 +51,13 @@ export default function SolicitarProveedorScreen() {
     try {
       loader.show()
       const res = await gastosViajeService.solicitarProveedor({
-        UserCode:      user?.Code ?? '',
-        ProviderName:  data.providerName,
-        ProviderRtn:   data.providerRtn || undefined,
-        Country:       'HN',
+        PersonalCode:      user?.Finansi ?? '',
+        VendName:  data.providerName,
+        VatNum:   data.providerRtn || undefined,
+        CompanyCode: defaultCompany?.Code ?? '',
         Justification: data.justification,
       })
+      
       if (res.Success) {
         showToast('success', 'Solicitud enviada', 'Tu solicitud fue registrada correctamente', 3000, 'top')
         reset()
@@ -104,8 +102,8 @@ export default function SolicitarProveedorScreen() {
               name="providerRtn"
               render={({ field }) => (
                 <AppInput
-                  label={COMPANY === 'IMHN' ? 'RTN' : 'NIT'}
-                  placeholder={COMPANY === "IMHN" ?  "0801-1985-00012": "080119850001K"}
+                  label={defaultCompany?.Code === 'IMHN' ? 'RTN' : 'NIT'}
+                  placeholder={defaultCompany?.Code === "IMHN" ?  "0801-1985-00012": "080119850001K"}
                   keyboardType="numbers-and-punctuation"
                   value={field.value}
                   onChangeText={field.onChange}

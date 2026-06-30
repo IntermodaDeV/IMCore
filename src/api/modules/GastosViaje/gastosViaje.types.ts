@@ -1,5 +1,14 @@
 export type TCompany = 'IMHN' | 'IMGT' | 'IMCR'
 
+
+export enum ECompany {
+  IMHN = 'IMHN',
+  IMGT = 'IMGT',
+  IMCR = 'IMCR',
+}
+
+
+
 export interface IGiraApiResponse<T> {
   Succeeded: boolean
   Message: string | null
@@ -104,6 +113,9 @@ export interface IGastoHistorialDetail {
   StatusId: number
   PersonalCode: string
   VendAccount: string
+  VendName: string
+  VatNum: string
+  Currency: string
   Description: string | null
   InvoiceId: string | null
   SeriesNum: string | null
@@ -147,33 +159,34 @@ export interface IRejectGastoRequest {
 }
 
 export interface ICreateGastoRequest {
-  Id: number
-  CompanyCode: string
-  ExpenseCategoryId: number
-  MealId: number | null
-  FuelTypeId: number | null
-  PersonalCode: string
-  VendAccount: string
-  Description: string | null
-  InvoiceId: string | null
-  SeriesNum: string | null
-  ExemptAmount: number
-  GravadoAmount: number
-  InvoiceAmount: number
-  InvoiceDate: string
-  ImagePath: null
-  ImageBase64: string
-
-  //objetos extra innecesarios
-  ExpenseCategory: any | null
-  FuelType: any | null
-  Status: any | null
+  id: number
+  expenseCategoryId: number
+  mealId: number | null
+  fuelTypeId: number | null
+  statusId: number
+  personalCode: string
+  vendAccount: string
+  description: string
+  invoiceId: string
+  seriesNum: string
+  exemptAmount: number
+  gravadoAmount: number
+  invoiceAmount: number
+  invoiceDate: string
+  imagePath: string | null
+  imageBase64: string
+  personalCodeAdmin: string
+  rejectionMotive: string
+  journalNum: string
+  companyCode: string
+  axMessage: string
+  inUse: boolean
 }
 
 export interface ISolicitarProveedorRequest {
-  UserCode: string
-  ProviderName: string
-  ProviderRtn?: string
-  Country: string
+  PersonalCode: string
+  VendName: string
+  VatNum?: string
+  CompanyCode: string
   Justification: string
 }

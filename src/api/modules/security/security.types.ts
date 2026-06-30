@@ -47,7 +47,7 @@ export interface UsersDTO {
   DefaultCompany_Id?: number | null
   Creation_Date?: string | Date
   ValidateAD?: boolean | null
-  Gira:string,
+  Finansi:string,
   Modified_By?: string
   Modification_Date?: string | Date | null
   DynamicColumns?: Record<string, string>

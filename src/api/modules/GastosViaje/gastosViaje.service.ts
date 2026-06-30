@@ -151,24 +151,64 @@ export const gastosViajeService = {
     }
   },
 
-  createGasto: async (data: ICreateGastoRequest): Promise<ExecutionResponse<IGastoHistorialDetail>> => {
-    const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail>>('Gira/ExpenseDetail', data)
+  getHistoryRevision: async (
+    company: string,
+    dateFrom: string,
+    dateTo: string,
+    statusId: number
+  ): Promise<ExecutionResponse<IGastoHistorialDetail[]>> => {
+    const res = await httpClient.get<IGiraApiResponse<IGastoHistorialResponse>>(
+      `Gira/HistoricalDetailsRevision/${company}/${statusId}/${dateFrom}/${dateTo}`
+    )
     return {
       Success: res.Succeeded,
-      Data: res.Data,
+      Data: res.Data.Details,
       SuccessMessage: res.Message ?? '',
       ErrorMessage: res.Errors ?? '',
     }
   },
 
-  solicitarProveedor: async (_data: ISolicitarProveedorRequest): Promise<ExecutionResponse<boolean>> => {
-    await delay(600)
-    return { Success: true, Data: true, SuccessMessage: 'Solicitud enviada correctamente', ErrorMessage: '' }
+  createGasto: async (data: ICreateGastoRequest): Promise<IGiraApiResponse<IGastoHistorialDetail>> => {
+    const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail>>('Gira/ExpenseDetail', data)
+    return {
+      Succeeded: res.Succeeded,
+      Data: res.Data,
+      Message: res.Message ?? '',
+      Errors: '',
+      EstatusCode: res.EstatusCode ?? 0
+    }
   },
 
-  syncGastos: async (_userCode: string, _company: string): Promise<ExecutionResponse<IGastoHistorialDetail[]>> => {
-    await delay(1000)
-    return { Success: true, Data: [], SuccessMessage: 'Sincronización completada', ErrorMessage: '' }
+  solicitarProveedor: async (
+    _data: ISolicitarProveedorRequest
+  ): Promise<ExecutionResponse<ISolicitarProveedorRequest>> => {
+    const res = await httpClient.post<IGiraApiResponse<ISolicitarProveedorRequest>>(
+      "Gira/ProviderDetail",
+      _data
+    );
+
+    return {
+      Success: res.Succeeded,
+      Data: res.Data,
+      SuccessMessage: res.Message ?? "",
+      ErrorMessage: res.Errors ?? ""
+    };
+  },
+
+  syncGastos: async (
+    _userCode: string,
+    _company: string
+  ): Promise<ExecutionResponse<IGastoHistorialDetail[]>> => {
+    const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail[]>>(
+      `Gira/SyncPending/${_company}?personalCode=${_userCode}`
+    );
+
+    return {
+      Success: res.Succeeded,
+      Data: res.Data,
+      SuccessMessage: res.Message ?? "",
+      ErrorMessage: res.Errors ?? ""
+    };
   },
 
   // TODO: conectar al endpoint real

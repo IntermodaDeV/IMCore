@@ -26,7 +26,7 @@ export default function AprobacionGastosScreen({ navigation }: any) {
   const [filtered, setFiltered] = useState<IGastoHistorialDetail[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
-  const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(80, 'day').format('YYYY-MM-DD'))
+  const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(14, 'day').format('YYYY-MM-DD'))
   const [dateTo, setDateTo]     = useState<string | null>(dayjs().format('YYYY-MM-DD'))
 
   usePageHeader({
@@ -39,10 +39,9 @@ export default function AprobacionGastosScreen({ navigation }: any) {
       loader.show()
       setLoading(true)
       setError(null)
-      const from = dateFrom ?? dayjs().subtract(30, 'day').format('YYYY-MM-DD')
+      const from = dateFrom ?? dayjs().subtract(14, 'day').format('YYYY-MM-DD')
       const to   = dateTo   ?? dayjs().format('YYYY-MM-DD')
-      const res = await gastosViajeService.getHistory(
-        user?.Gira ?? '',
+      const res = await gastosViajeService.getHistoryRevision(
         defaultCompany?.Code ?? '',
         from,
         to,
@@ -79,9 +78,9 @@ export default function AprobacionGastosScreen({ navigation }: any) {
         />
         <SearchInput
           data={data}
-          searchKeys={['VendAccount', 'InvoiceId', 'PersonalCode', 'Name', 'ExpenseTypeName']}
+          searchKeys={['InvoiceId', 'PersonalCode', 'Name', 'ExpenseTypeName']}
           onResults={setFiltered}
-          placeholder="Buscar por proveedor, empleado o factura"
+          placeholder="Buscar por factura, empleado o tipo de gasto"
         />
       </YStack>
 
@@ -133,9 +132,13 @@ function ApprovalCard({ item, onPress }: { item: IGastoHistorialDetail; onPress:
             <XStack justifyContent="space-between" alignItems="flex-start">
               <Text fontSize={15} fontWeight="700" color="$text">{item.ExpenseTypeName}</Text>
               <Text fontSize={15} fontWeight="700" color="$text">
-                {formatCurrency(item.InvoiceAmount)}
+                {item.Currency + ' ' + formatCurrency(item.InvoiceAmount)}
               </Text>
             </XStack>
+
+            <Text fontSize={12} marginBottom="$2" numberOfLines={1}>
+              {item.InvoiceId}
+            </Text>
 
             <Text fontSize={12} color="$textMuted" numberOfLines={1}>
               {item.ExpenseCategoryName} · {item.VendAccount}
