@@ -10,6 +10,7 @@ import { useShowToast } from '../../utils/useShowToast'
 import { handleError } from '../../utils/errorHandler'
 import { pasesService } from '../../api/modules/pases/pases.service'
 import { IPase } from '../../api/modules/pases/pases.types'
+import { fmtFechaHora } from './paseFormat'
 
 const ESTADO_COLOR: Record<number, { bg: string; fg: string }> = {
   1: { bg: 'rgba(245,158,11,0.14)', fg: '#B45309' },
@@ -124,8 +125,10 @@ export default function HistorialPasesScreen() {
                         Código: {p.EmpleadoCode}{p.CodAlterno ? ` / ${p.CodAlterno}` : ''}
                       </Text>
                       {!!p.AprobadorNombre && <Text fontSize={11} color="$textMuted">Aprueba: {p.AprobadorNombre}</Text>}
+                      {!!p.Creation_Date && <Text fontSize={11} color="$textMuted">Creado: {fmtFechaHora(p.Creation_Date)}</Text>}
+                      {!!p.Aprobacion_Date && <Text fontSize={11} color="#15803D">Aprobado: {fmtFechaHora(p.Aprobacion_Date)}</Text>}
                       {!!p.RegistradoAt && (
-                        <Text fontSize={11} color="#1D4ED8">Registrado: {new Date(p.RegistradoAt).toLocaleString('es-HN')}</Text>
+                        <Text fontSize={11} color="#1D4ED8">Ingreso/registro: {fmtFechaHora(p.RegistradoAt)}</Text>
                       )}
                     </YStack>
                   </YStack>

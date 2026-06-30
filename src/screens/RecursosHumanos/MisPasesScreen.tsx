@@ -9,6 +9,7 @@ import { useShowToast } from '../../utils/useShowToast'
 import { handleError } from '../../utils/errorHandler'
 import { pasesService } from '../../api/modules/pases/pases.service'
 import { IPase } from '../../api/modules/pases/pases.types'
+import { fmtFechaHora } from './paseFormat'
 
 const ESTADO_COLOR: Record<number, { bg: string; fg: string }> = {
   1: { bg: 'rgba(245,158,11,0.14)', fg: '#B45309' }, // Pendiente
@@ -123,22 +124,26 @@ export default function MisPasesScreen() {
                       </View>
                     </XStack>
 
-                    {(p.AprobadorNombre || p.Observacion || p.MotivoRechazo || p.RegistradoAt) && (
-                      <YStack gap="$0.5" paddingLeft={50}>
-                        {!!p.AprobadorNombre && (
-                          <Text fontSize={11} color="$textMuted">Aprueba: {p.AprobadorNombre}</Text>
-                        )}
-                        {!!p.Observacion && (
-                          <Text fontSize={11} color="$textMuted">Obs: {p.Observacion}</Text>
-                        )}
-                        {!!p.MotivoRechazo && (
-                          <Text fontSize={11} color="#B91C1C">Rechazo: {p.MotivoRechazo}</Text>
-                        )}
-                        {!!p.RegistradoAt && (
-                          <Text fontSize={11} color="#1D4ED8">Registrado: {new Date(p.RegistradoAt).toLocaleString('es-HN')}</Text>
-                        )}
-                      </YStack>
-                    )}
+                    <YStack gap="$0.5" paddingLeft={50}>
+                      {!!p.AprobadorNombre && (
+                        <Text fontSize={11} color="$textMuted">Aprueba: {p.AprobadorNombre}</Text>
+                      )}
+                      {!!p.Observacion && (
+                        <Text fontSize={11} color="$textMuted">Obs: {p.Observacion}</Text>
+                      )}
+                      {!!p.MotivoRechazo && (
+                        <Text fontSize={11} color="#B91C1C">Rechazo: {p.MotivoRechazo}</Text>
+                      )}
+                      {!!p.Creation_Date && (
+                        <Text fontSize={11} color="$textMuted">Creado: {fmtFechaHora(p.Creation_Date)}</Text>
+                      )}
+                      {!!p.Aprobacion_Date && (
+                        <Text fontSize={11} color="#15803D">Aprobado: {fmtFechaHora(p.Aprobacion_Date)}</Text>
+                      )}
+                      {!!p.RegistradoAt && (
+                        <Text fontSize={11} color="#1D4ED8">Ingreso/registro: {fmtFechaHora(p.RegistradoAt)}</Text>
+                      )}
+                    </YStack>
                   </YStack>
                 )
               })}
