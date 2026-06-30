@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Platform, PermissionsAndroid, StyleSheet, Modal } from 'react-native'
 import { YStack, XStack, Text, View, Button, Spinner } from 'tamagui'
 import { Camera } from 'react-native-camera-kit'
-import { XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, X, LogIn, LogOut } from 'lucide-react-native'
+import { XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, X, LogIn, LogOut, Clock } from 'lucide-react-native'
 import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native'
 import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
@@ -124,7 +124,9 @@ export default function PaseValidarScreen() {
     if (!result) return null
     if (result.Valid && result.Reason === 'entrada') return { color: '#2E9E5B', bg: 'rgba(46,158,91,0.12)', Icon: LogIn, title: 'Entrada registrada' }
     if (result.Valid && result.Reason === 'salida') return { color: '#2563EB', bg: 'rgba(37,99,235,0.12)', Icon: LogOut, title: 'Salida registrada' }
-    return { color: '#E58E26', bg: 'rgba(229,142,38,0.12)', Icon: TriangleAlert, title: 'Sin pase válido' }
+    if (result.Reason === 'pendiente') return { color: '#E58E26', bg: 'rgba(229,142,38,0.12)', Icon: Clock, title: 'Pase pendiente de aprobación' }
+    if (result.Reason === 'utilizado') return { color: '#64748B', bg: 'rgba(100,116,139,0.14)', Icon: TriangleAlert, title: 'Pase ya utilizado' }
+    return { color: '#E53935', bg: 'rgba(229,57,53,0.12)', Icon: XCircle, title: 'Sin pase para hoy' }
   })()
 
   return (
