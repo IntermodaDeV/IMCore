@@ -326,7 +326,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           width="100%"
         >
           <Text color="$textMuted" fontSize={11}>
-            1.2.3
+            1.2.2
           </Text>
 
           <ThemeToggle/>
