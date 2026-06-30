@@ -17,11 +17,12 @@ export function computeMenuCascade(
   const byId = new Map<number, MenuDTO>()
   for (const m of menu) {
     byId.set(m.Id, m)
-    parentOf.set(m.Id, m.ParentMenu_Id ?? null)
-    if (m.ParentMenu_Id) {
-      const arr = childrenOf.get(m.ParentMenu_Id) ?? []
+    const parentId = m.ParentMenu_Id && m.ParentMenu_Id > 0 ? m.ParentMenu_Id : null
+    parentOf.set(m.Id, parentId)
+    if (parentId) {
+      const arr = childrenOf.get(parentId) ?? []
       arr.push(m.Id)
-      childrenOf.set(m.ParentMenu_Id, arr)
+      childrenOf.set(parentId, arr)
     }
   }
 

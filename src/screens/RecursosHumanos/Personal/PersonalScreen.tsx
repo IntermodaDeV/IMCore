@@ -51,6 +51,14 @@ function Row({ label, value }: { label: string; value?: string | null }) {
   )
 }
 
+const COMPRESION_FOTO = {
+  mediaType: 'photo',
+  quality: 0.6,
+  maxWidth: 800,
+  maxHeight: 800,
+  includeBase64: true,
+} as const
+
 const requestCameraPermission = async () => {
   if (Platform.OS !== 'android') return true
   const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
@@ -271,7 +279,7 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
   }
 
   const elegirGaleria = () => {
-    launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 1, includeBase64: true }, res => {
+    launchImageLibrary({ ...COMPRESION_FOTO, selectionLimit: 1 }, res => {
       if (res.didCancel || res.errorCode) return
       const asset = res.assets?.[0]
       if (asset) subirFoto(asset)
@@ -280,7 +288,7 @@ const EmployeeCard = React.memo(function EmployeeCard({ empleado }: { empleado: 
 
   const tomarFoto = async () => {
     if (!(await requestCameraPermission())) return
-    launchCamera({ mediaType: 'photo', quality: 0.8, cameraType: 'back', includeBase64: true }, res => {
+    launchCamera({ ...COMPRESION_FOTO, cameraType: 'back' }, res => {
       if (res.didCancel || res.errorCode) return
       const asset = res.assets?.[0]
       if (asset) subirFoto(asset)
