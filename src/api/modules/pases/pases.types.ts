@@ -12,6 +12,7 @@ export interface IPaseCategoria {
 
 export interface IEmpleado {
   EmpleadoCode: string
+  CodAlterno?: string | null
   EmpleadoNombre: string
   cod_Departamento?: string | null
   Departamento?: string | null
@@ -47,6 +48,7 @@ export interface IPaseResult {
 export interface IPase {
   Id: number
   EmpleadoCode?: string
+  CodAlterno?: string | null
   EmpleadoNombre?: string
   Departamento?: string | null
   cod_Departamento?: string | null

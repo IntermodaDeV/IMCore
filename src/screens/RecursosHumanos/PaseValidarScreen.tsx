@@ -19,6 +19,18 @@ const fmtDateTime = (iso?: string | null) => {
   return isNaN(d.getTime()) ? iso : d.toLocaleString('es-HN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// El QR del carnet trae el código alterno con información adicional, p.ej.
+// "#sfbc#user#25524". Extraemos solo el código (último segmento entre '#').
+const parseCarnet = (raw?: string | null): string => {
+  if (!raw) return ''
+  const s = String(raw).trim()
+  if (s.includes('#')) {
+    const parts = s.split('#').map((p) => p.trim()).filter(Boolean)
+    if (parts.length) return parts[parts.length - 1]
+  }
+  return s
+}
+
 export default function PaseValidarScreen() {
   const { user } = useAuth()
   const { showToast } = useShowToast()
@@ -82,7 +94,13 @@ export default function PaseValidarScreen() {
 
   const onReadCode = (event: any) => {
     if (lockRef.current || processing || result) return
-    const code = event?.nativeEvent?.codeStringValue
+    // El shape del evento varía por versión/plataforma de react-native-camera-kit.
+    const raw =
+      event?.nativeEvent?.codeStringValue ??
+      event?.codeStringValue ??
+      event?.nativeEvent?.code ??
+      event?.code
+    const code = parseCarnet(raw)
     if (!code) return
     lockRef.current = true
     validar(code)
@@ -101,10 +119,11 @@ export default function PaseValidarScreen() {
   }
 
   const submitManual = async () => {
-    if (!manualCode.trim()) return
+    const code = parseCarnet(manualCode)
+    if (!code) return
     setManualOpen(false)
     lockRef.current = true
-    await validar(manualCode)
+    await validar(code)
   }
 
   const estado = (() => {
