@@ -1,6 +1,7 @@
 import Config from 'react-native-config'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { refreshAccessToken } from '../auth/refreshToken'
+import { sessionManager } from './sessionManager'
 
 type HttpMethod =
   | 'GET'
@@ -33,12 +34,15 @@ const DEFAULT_TIMEOUT = 30000
 export class HttpError extends Error {
   status: number
   response: string
+  // Motivo enviado por el servidor (header X-Session-Reason). 'forced' = cierre por admin.
+  reason?: string
 
-  constructor(status: number, response: string) {
+  constructor(status: number, response: string, reason?: string) {
     super(`HTTP ${status}`)
     this.name = 'HttpError'
     this.status = status
     this.response = response
+    this.reason = reason
   }
 }
 
@@ -76,7 +80,8 @@ class HttpClient {
       const text = await response.text()
 
       if (!response.ok) {
-        throw new HttpError(response.status, text)
+        const reason = response.headers.get('X-Session-Reason') ?? undefined
+        throw new HttpError(response.status, text, reason)
       }
 
       return (text ? JSON.parse(text) : null) as TResponse
@@ -170,6 +175,13 @@ class HttpClient {
         error instanceof HttpError &&
         error.status === 401
       ) {
+        // Cierre de sesión forzado por un administrador: no intentamos refrescar,
+        // mostramos directamente la pantalla "sesión cerrada por administrador".
+        if (error.reason === 'forced') {
+          sessionManager.notifyForcedLogout()
+          throw error
+        }
+
         const newToken =
           await refreshAccessToken()
 

@@ -1,6 +1,7 @@
 
-import { ClipboardList, RotateCw, CheckCircle2, XCircle, CalendarClock, User } from 'lucide-react-native'
+import { ClipboardList, RotateCw, CheckCircle2, XCircle, CalendarClock, User, ChevronDown, ChevronUp } from 'lucide-react-native'
 import React, { useEffect, useRef, useState } from 'react';
+import { Pressable } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native'
 import { YStack, XStack, Text, Card, View, styled, ScrollView } from 'tamagui'
 import { usePageHeader } from '../../hooks/usePageHeader';
@@ -15,12 +16,15 @@ import SearchInput from '../../components/commons/SearchInput';
 import { useAuth } from '../../context/AuthContext';
 import EmptyState from '../AdmSys/EmptyState';
 import RecordCount from '../../components/commons/RecordCount';
+import { NotificationBell } from '../../components/notifications/NotificationBell';
 
 export default function SolicitudesHistorico() {
 
   //Icons
   const ClipboardListStyled = styled(ClipboardList, { color: '$primary' });
   const RotateCwStyled = styled(RotateCw, { color: '$text' });
+  const ChevronUpStyled = styled(ChevronUp, { color: '$text' });
+  const ChevronDownStyled = styled(ChevronDown, { color: '$text' });
 
   //Estados
   const [data, setData] = useState<IApprovalHistory[]>([])
@@ -35,6 +39,7 @@ export default function SolicitudesHistorico() {
   const scrollRef = useRef<any>(null)
   const cardY = useRef<Record<string, number>>({})
   const [highlighted, setHighlighted] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   const verHistorialCompleto = (user?.Access ?? '').split(',').map(s => s.trim()).includes('History')
 
@@ -112,10 +117,11 @@ export default function SolicitudesHistorico() {
       </Text>
     ),
     right: (
-      <XStack gap="$2">
+      <XStack gap="$3" alignItems="center">
         <View onPress={() => getInfo()}>
           <RotateCwStyled size={18} />
         </View>
+        <NotificationBell size={18} />
       </XStack>
     )
   })
@@ -278,6 +284,22 @@ export default function SolicitudesHistorico() {
                           </XStack>
                         )}
                       </XStack>
+
+                      {(solicitud.Articulos?.length ?? 0) > 0 && (
+                        <XStack
+                          alignItems="center"
+                          justifyContent="space-between"
+                          padding="$2"
+                          marginTop="$2"
+                        >
+                          <Text fontSize="$2" fontWeight="800" color="$text">
+                            CANTIDAD DE PRODUCTOS
+                          </Text>
+                          <Text fontSize="$2" fontWeight="800" color="$text">
+                            {solicitud.Articulos!.length}
+                          </Text>
+                        </XStack>
+                      )}
                     </YStack>
                   </Card>
                 )

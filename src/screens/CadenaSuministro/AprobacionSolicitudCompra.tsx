@@ -27,6 +27,7 @@ import { useShowToast } from '../../utils/useShowToast';
 import EmptyState from '../AdmSys/EmptyState';
 import { Pressable } from 'react-native';
 import RecordCount from '../../components/commons/RecordCount';
+import { NotificationBell } from '../../components/notifications/NotificationBell';
 
 export default function AprobacionSolicitudCompra() {
 
@@ -184,10 +185,11 @@ export default function AprobacionSolicitudCompra() {
       </Text>
     ),
     right: (
-      <XStack gap="$2">
+      <XStack gap="$3" alignItems="center">
         <View onPress={() => getInfo()}>
           <RotateCwStyled size={18}  />
         </View>
+        <NotificationBell size={18} />
       </XStack>
     )
   })

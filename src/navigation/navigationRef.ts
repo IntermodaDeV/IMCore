@@ -1,4 +1,4 @@
-import { createNavigationContainerRef } from '@react-navigation/native'
+import { createNavigationContainerRef, CommonActions } from '@react-navigation/native'
 
 // Ref global para navegar desde fuera de componentes (ej. al tocar una
 // notificación push con la app en segundo plano o cerrada).
@@ -8,6 +8,10 @@ export const navigationRef = createNavigationContainerRef<any>()
 // notificación, la navegación puede no estar montada todavía).
 export function navigateWhenReady(name: string, params?: any, attempt = 0) {
   if (navigationRef.isReady()) {
+    if (navigationRef.getCurrentRoute()?.name === name) {
+      if (params) navigationRef.dispatch(CommonActions.setParams(params))
+      return
+    }
     ;(navigationRef.navigate as any)(name, params)
   } else if (attempt < 40) {
     setTimeout(() => navigateWhenReady(name, params, attempt + 1), 150)

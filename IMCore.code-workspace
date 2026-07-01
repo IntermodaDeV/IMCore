@@ -13,8 +13,11 @@
 			"path": "../PepeTienda"
 		},
 		{
+			"path": "../../PepeTiendaApi"
+		},
+		{
 			"path": "../../IM_InterfazExenta_API"
-		}
+		},
 	],
 	"settings": {}
 }

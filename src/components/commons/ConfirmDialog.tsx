@@ -13,6 +13,11 @@ interface ConfirmDialogProps {
     onConfirm: () => void
     onCancel?: () => void
     loading?: boolean
+    // Acción secundaria opcional: si se define, se muestra un segundo botón de
+    // acción (y los botones se acomodan en columna).
+    secondaryLabel?: string
+    secondaryColor?: string
+    onSecondary?: () => void
 }
 
 export default function ConfirmDialog({
@@ -24,7 +29,10 @@ export default function ConfirmDialog({
     onConfirm,
     onCancel,
     confirmLabel = 'Aceptar',
-    loading
+    loading,
+    secondaryLabel,
+    secondaryColor,
+    onSecondary,
 }: ConfirmDialogProps) {
     return (
         <AlertDialog 
@@ -97,8 +105,69 @@ export default function ConfirmDialog({
                         </YStack>
 
                         {/* Botones */}
-                        <XStack gap="$3" width="100%" marginTop="$1">
-                        <AlertDialog.Cancel asChild>
+                        {onSecondary ? (
+                          // Con acción secundaria: botones en columna.
+                          <YStack gap="$3" width="100%" marginTop="$1">
+                            <Button
+                                height={42}
+                                borderRadius="$4"
+                                backgroundColor={confirmColor}
+                                borderWidth={0}
+                                disabled={loading}
+                                opacity={loading ? 0.8 : 1}
+                                pressStyle={{ opacity: 0.7 }}
+                                onPress={() => { if (!loading) onConfirm() }}
+                            >
+                                <XStack gap="$2" alignItems="center">
+                                {loading && <Spinner size="small" color="white" />}
+                                <Text fontSize={14} fontWeight="600" color="white">
+                                    {confirmLabel}
+                                </Text>
+                                </XStack>
+                            </Button>
+
+                            <Button
+                                height={42}
+                                borderRadius="$4"
+                                backgroundColor={secondaryColor ?? confirmColor}
+                                borderWidth={0}
+                                disabled={loading}
+                                opacity={loading ? 0.8 : 1}
+                                pressStyle={{ opacity: 0.7 }}
+                                onPress={() => { if (!loading) onSecondary() }}
+                            >
+                                <XStack gap="$2" alignItems="center">
+                                {loading && <Spinner size="small" color="white" />}
+                                <Text fontSize={14} fontWeight="600" color="white">
+                                    {secondaryLabel}
+                                </Text>
+                                </XStack>
+                            </Button>
+
+                            <AlertDialog.Cancel asChild>
+                                <Button
+                                    height={42}
+                                    borderRadius="$4"
+                                    backgroundColor="$buttonSecondary"
+                                    borderWidth={0}
+                                    disabled={loading}
+                                    opacity={loading ? 0.6 : 1}
+                                    pressStyle={{ opacity: 0.7 }}
+                                    onPress={() => {
+                                    if (loading) return
+                                        onCancel?.()
+                                        onOpenChange(false)
+                                    }}
+                                >
+                                    <Text fontSize={14} fontWeight="600" color="$text">
+                                    Cancelar
+                                    </Text>
+                                </Button>
+                            </AlertDialog.Cancel>
+                          </YStack>
+                        ) : (
+                          <XStack gap="$3" width="100%" marginTop="$1">
+                          <AlertDialog.Cancel asChild>
                             <Button
                                 flex={1}
                                 height={42}
@@ -145,6 +214,7 @@ export default function ConfirmDialog({
                         </Button>
                         {/* </AlertDialog.Action> */}
                         </XStack>
+                        )}
 
                     </YStack>
                 </AlertDialog.Content>
