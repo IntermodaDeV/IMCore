@@ -346,6 +346,24 @@ export default function AprobacionSolicitudCompra() {
                       </YStack>
                     </XStack>
 
+                    {!!solicitud.Comentario?.trim() && (
+                      <YStack
+                        borderWidth={1}
+                        borderColor="$backgroundSurface"
+                        borderRadius="$3"
+                        padding="$3"
+                        gap="$1"
+                      >
+                        <Text fontSize={9} color="$textMuted" fontWeight="700">
+                          COMENTARIO
+                        </Text>
+
+                        <Text fontSize="$2" color="$text" lineHeight={18}>
+                          {solicitud.Comentario}
+                        </Text>
+                      </YStack>
+                    )}
+
                     <Pressable
                       onPress={() => toggleDetalle(solicitud.Solicitud)}
                     >

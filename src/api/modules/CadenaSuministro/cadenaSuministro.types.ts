@@ -12,6 +12,7 @@ export interface ISolicitudCompraUsuario {
   PreparadorCode?: string
   ImporteNeto: number
   Categoria: string
+  Comentario?: string
   Articulos: ISolicitudCompraArticulo[]
   expandido?: boolean
   justificacion?: string
