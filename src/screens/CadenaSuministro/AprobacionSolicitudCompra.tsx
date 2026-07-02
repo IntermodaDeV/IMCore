@@ -99,6 +99,7 @@ export default function AprobacionSolicitudCompra() {
         Preparador: solicitudSelected?.Preparador ?? '',
         ImporteNeto: solicitudSelected?.ImporteNeto ?? 0,
         Categoria: solicitudSelected?.Categoria ?? '',
+        Comentario: solicitudSelected?.Comentario ?? ''
       }
       const response = await cadenaSuministroService.aprobarSolicitud(info)
       if (response?.Success) {

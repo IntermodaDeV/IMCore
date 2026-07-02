@@ -267,6 +267,24 @@ export default function SolicitudesHistorico() {
                         </YStack>
                       </XStack>
 
+                      {!!solicitud.Comentario?.trim() && (
+                        <YStack
+                          borderWidth={1}
+                          borderColor="$backgroundSurface"
+                          borderRadius="$3"
+                          padding="$3"
+                          gap="$1"
+                        >
+                          <Text fontSize={9} color="$textMuted" fontWeight="700">
+                            COMENTARIO
+                          </Text>
+  
+                          <Text fontSize="$2" color="$text" lineHeight={18}>
+                            {solicitud.Comentario}
+                          </Text>
+                        </YStack>
+                      )}
+
                       <XStack alignItems="center" justifyContent="space-between" marginTop="$1">
                         <XStack alignItems="center" gap="$1">
                           <CalendarClock size={13} color="#94A3B8" />
@@ -285,6 +303,8 @@ export default function SolicitudesHistorico() {
                         )}
                       </XStack>
 
+
+              
                       {(solicitud.Articulos?.length ?? 0) > 0 && (
                         <XStack
                           alignItems="center"

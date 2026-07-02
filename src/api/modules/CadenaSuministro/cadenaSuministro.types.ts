@@ -36,6 +36,7 @@ export interface IApprovalHistory {
   Preparador: string
   ImporteNeto: number
   Categoria: string
+  Comentario?: string
   Name: string
   Creation_Date: string
   Articulos?: IApprovalHistoryDetalle[]
@@ -49,4 +50,5 @@ export interface ISolicitud {
   Preparador: string
   ImporteNeto: number
   Categoria: string
+  Comentario?: string
 }
