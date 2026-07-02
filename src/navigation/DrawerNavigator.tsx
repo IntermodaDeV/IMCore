@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage, Platform } from 'react-native'
+import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage, Platform, RefreshControl } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
 import { createDrawerNavigator, DrawerContentScrollView, DrawerContentComponentProps } from '@react-navigation/drawer'
@@ -180,6 +180,18 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
     await logout()
   }
 
+  // Refresca menú + accesos/roles del usuario (para reflejar permisos recién
+  // otorgados sin necesidad de cerrar sesión). Lo usan el botón y el pull-to-refresh.
+  const handleRefresh = async () => {
+    if (!user?.Code) return
+    try {
+      setRefreshing(true)
+      await Promise.all([refreshMenu(user.Code), refreshUser()])
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   return (
     <View flex={1} backgroundColor="$background" marginBottom={Platform.OS === 'ios' ? insets.bottom : 0}  >
       <View
@@ -200,18 +212,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
             right: 10,
             zIndex: 1,
           }}
-          onPress={async () => {
-            if (!user?.Code) return
-
-            try {
-              setRefreshing(true)
-              // Refresca menú + accesos/roles del usuario (para reflejar permisos
-              // recién otorgados sin necesidad de cerrar sesión).
-              await Promise.all([refreshMenu(user.Code), refreshUser()])
-            } finally {
-              setRefreshing(false)
-            }
-          }}
+          onPress={handleRefresh}
         >
           <LucideIcons.RotateCw size={16} color={theme.primary?.val}  />
         </TouchableOpacity>
@@ -270,6 +271,14 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
               paddingTop: 12,
               paddingBottom: 20,
             }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={[theme.primary?.val ?? '#FF551A']}
+                tintColor={theme.primary?.val ?? '#FF551A'}
+              />
+            }
           >
             <View>
             {MENU.map((item, index) => (

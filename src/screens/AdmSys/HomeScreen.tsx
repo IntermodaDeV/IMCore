@@ -6,7 +6,7 @@ import { AppError, handleError } from '../../utils/errorHandler'
 import { IQuickActions } from '../../api/modules/security/security.types'
 import { ExecutionResponse } from '../../api/modules/response.type'
 import { securityService } from '../../api/modules/security/security.service'
-import { ScrollView, ImageBackground } from 'react-native'
+import { ScrollView, ImageBackground, RefreshControl } from 'react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import * as Icons from 'lucide-react-native'
 import { Pressable } from 'react-native'
@@ -65,24 +65,35 @@ export default function HomeScreen() {
     ),
   })
 
-  const getInfo = React.useCallback(async () => {
+  // silent = true (pull-to-refresh): no muestra el loader global, usa el spinner del gesto.
+  const getInfo = React.useCallback(async (silent = false) => {
     try {
-      loader.show();
+      if (!silent) loader.show();
       setError(null)
       setMenus(menu?.filter((i) => i?.ParentMenu_Id !== null).slice(0, 6))
       const response: ExecutionResponse<IQuickActions[]> = await securityService.getQuickActions(user?.User_Code)
       if (response.Success) {
         setData(response.Data.filter((i: IQuickActions) => i?.Status_Id === 1))
-        
+
       }
 
-      loader.hide();
+      if (!silent) loader.hide();
     } catch (err) {
       setError(handleError(err))
     } finally {
-      loader.hide();
+      if (!silent) loader.hide();
     }
   }, [user?.User_Code])
+
+  const [refreshing, setRefreshing] = useState(false)
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await getInfo(true)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [getInfo])
 
   useFocusEffect(
     React.useCallback(() => {
@@ -103,6 +114,14 @@ export default function HomeScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.background?.val }}
       contentContainerStyle={{ flexGrow: 1 }}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[theme.primary?.val ?? '#FF551A']}
+          tintColor={theme.primary?.val ?? '#FF551A'}
+        />
+      }
     >
       <YStack
         flex={1}

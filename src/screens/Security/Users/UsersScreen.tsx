@@ -438,25 +438,51 @@ export default function UsersScreen() {
 
                           {/* Iconos de acción — solo si está activo */}
                           {isActive && (
-                            <XStack gap="$3" alignItems="center">
+                            <XStack gap="$2" alignItems="center">
                               <View
-                                borderRadius={8}
-                                pressStyle={{ opacity: 0.6, scale: 0.95 }}
+                                width={28}
+                                height={28}
+                                borderRadius={10}
+                                // borderWidth={1}
+                                borderColor="$border"
+                                backgroundColor="$backgroundSurface"
+                                alignItems="center"
+                                justifyContent="center"
+                                hitSlop={6}
+                                pressStyle={{ opacity: 0.7, scale: 0.95, backgroundColor: '$backgroundElevated' }}
                                 onPress={() => openForm(item?.Id)}
                               >
                                 <Pencil size={15} color={theme.primary?.val} />
                               </View>
 
                               <View
-                                pressStyle={{ opacity: 0.6, scale: 0.95 }}
+                                width={28}
+                                height={28}
+                                borderRadius={10}
+                                // borderWidth={1}
+                                borderColor="$border"
+                                backgroundColor="$backgroundSurface"
+                                alignItems="center"
+                                justifyContent="center"
+                                hitSlop={6}
+                                pressStyle={{ opacity: 0.7, scale: 0.95, backgroundColor: '$backgroundElevated' }}
                                 onPress={() => getInfoDialog(item)}
                               >
                                 <KeyRound size={15} color={theme.primary?.val} />
                               </View>
 
-                              {canForceLogout  && (
+                              {canForceLogout && (
                                 <View
-                                  pressStyle={{ opacity: 0.6, scale: 0.95 }}
+                                  width={28}
+                                  height={28}
+                                  borderRadius={10}
+                                  // borderWidth={1}
+                                  borderColor="rgba(239,68,68,0.35)"
+                                  backgroundColor="rgba(239,68,68,0.08)"
+                                  alignItems="center"
+                                  justifyContent="center"
+                                  hitSlop={6}
+                                  pressStyle={{ opacity: 0.7, scale: 0.95, backgroundColor: 'rgba(239,68,68,0.16)' }}
                                   onPress={() => { setForceLogoutTarget(item); setForceLogoutOpen(true) }}
                                 >
                                   <LogOut size={15} color={theme.error?.val ?? '#EF4444'} />
@@ -576,7 +602,7 @@ export default function UsersScreen() {
                                           setExternalCodeDialog(true)
                                         }}
                                       >
-                                        <Pencil size={16} color="#132902" />
+                                        <Pencil size={16} color="#FF551A" />
                                       </View>
 
                                       {externalCode && (
