@@ -74,6 +74,13 @@ export const ticketsService = {
       cierre ?? {},
     ),
 
+  // Diagnóstico (tipo de falla + causa).
+  diagnosticar: (id: number, dto: { TipoFalla?: string | null; Causa?: string | null }) =>
+    httpClient.post<ExecutionResponse<ITicketResult>, { TipoFalla?: string | null; Causa?: string | null }>(
+      `${schema}/Diagnosticar?id=${id}`,
+      dto,
+    ),
+
   // Bitácora de acciones (línea de tiempo).
   getEventos: (id: number) =>
     httpClient.get<ExecutionResponse<ITicketEvento[]>>(`${schema}/Eventos`, { id }),

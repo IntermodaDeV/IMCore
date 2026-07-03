@@ -37,6 +37,7 @@ export interface ITicket {
   Mecanico: string | null
 
   IdOperador: number | null
+  FechaAsignacion: string | null   // sella el último momento de asignación/reasignación
   HoraInicio: string | null
   HoraFinal: string | null
   TiempoRespuestaMin: number | null

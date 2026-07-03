@@ -10,7 +10,7 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT, puedeCrearTickets } from '../mantenimiento.helpers'
+import { colorEstado, colorPrioridad, ACCENT, estadoVisual, puedeCrearTickets } from '../mantenimiento.helpers'
 import TicketsResumen from './TicketsResumen'
 import { shadows } from '../../../theme/shadows'
 import { NotificationBell } from '../../../components/notifications/NotificationBell'
@@ -395,26 +395,31 @@ function EstadoChip({ label, active, color, onPress }: { label: string; active: 
 }
 
 function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; theme: any }) {
-  const estadoC = colorEstado(t.Estado ?? '')
+  const estadoVis = estadoVisual(t.EstadoCode, t.Estado, t.Mecanico_UserCode)
+  const estadoC = estadoVis.color
   const prioC = colorPrioridad(t.Prioridad ?? '')
+  // Prioridad Alta: realce sutil en rojo para captar la atención en el listado
+  // (fondo levemente teñido + marco rojo tenue + halo suave en iOS).
+  const esAlta = t.Prioridad === 'Alta'
   return (
     <View
       onPress={onPress}
       pressStyle={{ opacity: 0.9, scale: 0.997 }}
-      backgroundColor="$backgroundElevated"
+      backgroundColor={esAlta ? 'rgba(239, 68, 68, 0.06)' : '$backgroundElevated'}
       borderRadius="$5"
       borderLeftWidth={4}
       borderLeftColor={estadoC}
-      borderWidth={1}
-      borderColor="$border"
+      borderWidth={esAlta ? 1.5 : 1}
+      borderColor={esAlta ? 'rgba(239, 68, 68, 0.43)' : '$border'}
       padding="$3"
       gap="$2"
       {...shadows.sm}
+      {...(esAlta ? { shadowColor: '#EF4444', shadowOpacity: 0.19 } : {})}
     >
       <XStack alignItems="center" justifyContent="space-between">
         <Text fontSize="$4" fontWeight="800" color="$text">{t.CodigoTicket}</Text>
         <View backgroundColor={estadoC} borderRadius="$10" paddingHorizontal="$2.5" paddingVertical="$1">
-          <Text fontSize="$1" fontWeight="700" color="#fff">{t.Estado}</Text>
+          <Text fontSize="$1" fontWeight="700" color="#fff">{estadoVis.label}</Text>
         </View>
       </XStack>
 
@@ -422,7 +427,7 @@ function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; th
         {!!t.Prioridad && (
           <XStack alignItems="center" gap="$1.5">
             <View width={8} height={8} borderRadius={4} backgroundColor={prioC} />
-            <Text fontSize="$2" color="$textMuted">{t.Prioridad}</Text>
+            <Text fontSize="$2" color={esAlta ? prioC : '$textMuted'} fontWeight={esAlta ? '800' : '400'}>{t.Prioridad}</Text>
           </XStack>
         )}
         {!!t.Area && <Text fontSize="$2" color="$textMuted">· {t.Area}</Text>}

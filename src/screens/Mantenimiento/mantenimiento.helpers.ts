@@ -27,6 +27,19 @@ export const puedeOperarTicket = (
   (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
   hasRole(roles, ROLES_OPERAR)
 
+// Diagnosticar (tipo de falla + causa): Admin, Sup. Mantenimiento, Mecánico,
+// el mecánico asignado, o acceso 'DiagnosticarTickets'. (El backend revalida.)
+const ROLES_DIAGNOSTICAR = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico']
+export const puedeDiagnosticar = (
+  roles?: RoleLike[] | null,
+  access?: string | null,
+  userCode?: string | null,
+  mecanicoUserCode?: string | null,
+) =>
+  hasRole(roles, ROLES_DIAGNOSTICAR) ||
+  (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
+  hasAccess(access, 'DiagnosticarTickets')
+
 // ── Paletas (mismas del dashboard de Streamlit) ──────────────────────────────
 export const MESES: Record<number, string> = {
   1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -54,6 +67,20 @@ export const ACCENT = '#FF551A'
 const COLOR_FALLBACK = '#94A3B8'
 export const colorEstado = (e: string) => PALETA_ESTADO[e] ?? COLOR_FALLBACK
 export const colorPrioridad = (p: string) => COLORES_PRIO[p] ?? COLOR_FALLBACK
+
+// Estado derivado "Asignado": el ticket sigue Pendiente pero ya tiene mecánico/
+// técnico asignado. Color propio (teal), distinto del resto de estados.
+export const COLOR_ASIGNADO = '#14b8a6'
+export function estadoVisual(
+  estadoCode?: string | null,
+  estadoLabel?: string | null,
+  mecanicoUserCode?: string | null,
+): { label: string; color: string } {
+  if (estadoCode === 'PENDIENTE' && !!mecanicoUserCode)
+    return { label: 'Asignado', color: COLOR_ASIGNADO }
+  const label = estadoLabel ?? '—'
+  return { label, color: colorEstado(label) }
+}
 
 // Escalas de degradado [claro, oscuro] (≈ color_continuous_scale de plotly).
 export type Escala = [string, string]

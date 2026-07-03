@@ -40,7 +40,9 @@ export default function AppSelect({
     [value, options]
   )
 
-  const floating = open || !!value
+  // Flota también cuando hay placeholder, para que el label no se encime con el
+  // texto del placeholder en el estado vacío.
+  const floating = open || !!value || !!placeholder
 
   const borderColor = disabled
     ? '$border'
