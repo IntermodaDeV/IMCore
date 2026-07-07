@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Modal, RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, TextArea, useTheme } from 'tamagui'
-import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2 } from 'lucide-react-native'
+import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2, ShieldCheck, XCircle } from 'lucide-react-native'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -11,14 +11,16 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IMecanico, ITicketEvento } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT, puedeOperarTicket } from '../mantenimiento.helpers'
+import { colorEstado, colorPrioridad, ACCENT, COLOR_ASIGNADO, estadoVisual, puedeOperarTicket, puedeDiagnosticar, puedeValidar } from '../mantenimiento.helpers'
 
 const ACCESO_ASIGNAR = 'AsignarTickets'
 const ROLES_ASIGNAR = ['Administrador', 'Supervisor de Mantenimiento']
+const COLOR_VALIDADO = '#059669'   // sello de producción (esmeralda)
 
 // Etiqueta legible de cada evento de la bitácora.
 const EVENTO_LABEL: Record<string, string> = {
   INICIAR: 'Iniciado', PAUSAR: 'Pausado', REANUDAR: 'Reanudado', COMPLETAR: 'Completado',
+  DIAGNOSTICO: 'Diagnóstico', VALIDAR: 'Validado', RECHAZAR: 'Rechazado',
 }
 
 const fmtFecha = (iso: string | null): string => {
@@ -58,9 +60,21 @@ export default function TicketDetailScreen() {
   // Acciones del mecánico + bitácora
   const [eventos, setEventos] = useState<ITicketEvento[]>([])
   const [accionando, setAccionando] = useState(false)
+
+  // Diagnóstico (tipo de falla + causa) — tickets de máquina
+  const [tiposFalla, setTiposFalla] = useState<string[]>([])
+  const [causas, setCausas] = useState<string[]>([])
+  const [dxFalla, setDxFalla] = useState<string | undefined>()
+  const [dxCausa, setDxCausa] = useState<string | undefined>()
+  const [dxSaving, setDxSaving] = useState(false)
   const [showCompletar, setShowCompletar] = useState(false)
   const [cierreCausa, setCierreCausa] = useState('')
   const [cierreObs, setCierreObs] = useState('')
+
+  // Validación de producción (validar / rechazar)
+  const [validando, setValidando] = useState(false)
+  const [showRechazar, setShowRechazar] = useState(false)
+  const [rechazoMotivo, setRechazoMotivo] = useState('')
 
   usePageHeader({
     left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
@@ -104,6 +118,42 @@ export default function TicketDetailScreen() {
     ticketsService.getMecanicos().then(r => setMecanicos(r.Data ?? [])).catch(() => {})
   }, [puedeAsignar])
 
+  // Diagnóstico: inicializa desde el ticket y carga los tipos de falla (máquina).
+  useEffect(() => {
+    setDxFalla(t?.TipoFalla ?? undefined)
+    setDxCausa(t?.Causa ?? undefined)
+    if (t && t.TipoDestino !== 'AREA' && t.Operacion_Id != null && t.Modelo) {
+      ticketsService.getTiposFalla(t.Operacion_Id, t.Modelo)
+        .then(r => setTiposFalla((r.Data ?? []).map(x => x.TipoFalla))).catch(() => setTiposFalla([]))
+    } else {
+      setTiposFalla([])
+    }
+  }, [t?.Id, t?.Operacion_Id, t?.Modelo, t?.TipoFalla, t?.Causa])
+
+  // Causas según modelo + tipo de falla seleccionado.
+  useEffect(() => {
+    if (t?.Modelo && dxFalla) {
+      ticketsService.getCausas(t.Modelo, dxFalla)
+        .then(r => setCausas((r.Data ?? []).map(x => x.Causa))).catch(() => setCausas([]))
+    } else {
+      setCausas([])
+    }
+  }, [t?.Modelo, dxFalla])
+
+  const doDiagnosticar = async () => {
+    if (!dxFalla || !dxCausa) { showToast('warning', 'Diagnóstico incompleto', 'Selecciona tipo de falla y causa'); return }
+    setDxSaving(true)
+    try {
+      const res = await ticketsService.diagnosticar(id, { TipoFalla: dxFalla, Causa: dxCausa })
+      if (res.Success && res.Data?.Success) { showToast('success', 'Diagnóstico guardado', t?.CodigoTicket ?? ''); await cargar() }
+      else showToast('error', 'No se pudo guardar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo guardar el diagnóstico')
+    } finally {
+      setDxSaving(false)
+    }
+  }
+
   if (cargando) {
     return (
       <YStack flex={1} backgroundColor="$background" alignItems="center" justifyContent="center" gap="$3">
@@ -122,7 +172,8 @@ export default function TicketDetailScreen() {
   }
 
   const esArea = t.TipoDestino === 'AREA'
-  const estadoC = colorEstado(t.Estado ?? '')
+  const estadoVis = estadoVisual(t.EstadoCode, t.Estado, t.Mecanico_UserCode)
+  const estadoC = estadoVis.color
   const prioC = colorPrioridad(t.Prioridad ?? '')
   const orden = t.EstadoOrden ?? 1
   const cancelado = t.EstadoCode === 'CANCELADO'
@@ -214,8 +265,66 @@ export default function TicketDetailScreen() {
     }
   }
 
+  const doValidar = async () => {
+    setValidando(true)
+    try {
+      const res = await ticketsService.validar(id)
+      if (res.Success && res.Data?.Success) { showToast('success', 'Ticket validado', t.CodigoTicket); await cargar() }
+      else showToast('error', 'No se pudo validar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) { showToast('error', 'Error', e?.message || 'No se pudo validar') }
+    finally { setValidando(false) }
+  }
+
+  const doRechazar = async () => {
+    if (!rechazoMotivo.trim()) { showToast('warning', 'Falta el motivo', 'Indica por qué se rechaza'); return }
+    setValidando(true)
+    try {
+      const res = await ticketsService.rechazar(id, rechazoMotivo.trim())
+      if (res.Success && res.Data?.Success) {
+        showToast('success', 'Ticket rechazado', t.CodigoTicket)
+        setShowRechazar(false); setRechazoMotivo('')
+        await cargar()
+      } else showToast('error', 'No se pudo rechazar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) { showToast('error', 'Error', e?.message || 'No se pudo rechazar') }
+    finally { setValidando(false) }
+  }
+
   const estado = t.EstadoCode
-  const mostrarAcciones = puedeOperar && (estado === 'PENDIENTE' || estado === 'EN_PROCESO' || estado === 'PAUSADO')
+  const mostrarAcciones = puedeOperar && (estado === 'PENDIENTE' || estado === 'EN_PROCESO' || estado === 'PAUSADO' || estado === 'RECHAZADO')
+
+  // Validación de producción: sobre tickets COMPLETADOS y aún no validados.
+  const puedeVal = puedeValidar(user?.Roles, user?.Access)
+  const estaValidado = !!t.ValidadoPor
+  const mostrarValidacion = estado === 'COMPLETADO' && !estaValidado && puedeVal
+
+  // Diagnóstico: solo tickets de máquina, con permiso, mientras no esté cerrado.
+  const puedeDiag = puedeDiagnosticar(user?.Roles, user?.Access, user?.Code, t.Mecanico_UserCode)
+  const mostrarDiagnostico = !esArea && puedeDiag && estado !== 'COMPLETADO' && estado !== 'CANCELADO'
+
+  // Bitácora unificada: la asignación (FechaAsignacion) + los eventos del
+  // mecánico (iniciar/pausar/reanudar/completar), en orden cronológico.
+  type BitItem = { key: string; label: string; fecha: string | null; usuario?: string | null; comentario?: string | null; color: string }
+  const bitacora: BitItem[] = [
+    ...(t.Mecanico_UserCode
+      ? [{
+          key: 'asignado', label: 'Asignado', fecha: t.FechaAsignacion,
+          comentario: t.Mecanico && t.Mecanico.trim() ? t.Mecanico : null,
+          color: COLOR_ASIGNADO,
+        } as BitItem]
+      : []),
+    ...eventos.map<BitItem>(ev => {
+      // La reanudación se categoriza según el estado anterior (Pausado vs Rechazado).
+      const catReanudar = ev.EstadoAnterior === 'Rechazado' ? 'Por ticket inválido' : 'Por pausa'
+      return {
+        key: `ev-${ev.Id}`,
+        label: EVENTO_LABEL[ev.Evento ?? ''] ?? ev.Evento ?? '',
+        fecha: ev.Fecha,
+        usuario: ev.Usuario,
+        comentario: ev.Evento === 'REANUDAR' ? catReanudar : ev.Comentario,
+        color: colorEstado(ev.EstadoNuevo ?? ''),
+      }
+    }),
+  ].sort((a, b) => new Date(a.fecha ?? 0).getTime() - new Date(b.fecha ?? 0).getTime())
 
   return (
     <View flex={1} backgroundColor="$background">
@@ -230,7 +339,7 @@ export default function TicketDetailScreen() {
             <XStack alignItems="center" justifyContent="space-between">
               <Text fontSize="$6" fontWeight="900" color="$text">{t.CodigoTicket}</Text>
               <View backgroundColor={estadoC} borderRadius="$10" paddingHorizontal="$3" paddingVertical="$1.5">
-                <Text fontSize="$2" fontWeight="800" color="#fff">{t.Estado}</Text>
+                <Text fontSize="$2" fontWeight="800" color="#fff">{estadoVis.label}</Text>
               </View>
             </XStack>
             <XStack alignItems="center" gap="$3" flexWrap="wrap">
@@ -250,11 +359,21 @@ export default function TicketDetailScreen() {
           <Section title="Seguimiento">
             <Step label="Reportado" date={fmtFecha(t.Fecha)} color={ACCENT} done />
             {cancelado ? (
-              <Step label="Cancelado" date={fmtFecha(t.Modification_Date)} color={colorEstado('Cancelado')} done last />
+              <>
+                {!!t.Mecanico_UserCode && (
+                  <Step label="Asignado" date={fmtFecha(t.FechaAsignacion)} color={COLOR_ASIGNADO} done />
+                )}
+                <Step label="Cancelado" date={fmtFecha(t.Modification_Date)} color={colorEstado('Cancelado')} done last />
+              </>
             ) : (
               <>
+                <Step label="Asignado" date={fmtFecha(t.FechaAsignacion)} color={COLOR_ASIGNADO} done={!!t.Mecanico_UserCode} />
                 <Step label="En Proceso" date={fmtFecha(t.HoraInicio)} color={colorEstado('En Proceso')} done={orden >= 2} />
-                <Step label="Completado" date={fmtFecha(t.HoraFinal)} color={colorEstado('Completado')} done={orden >= 3} last />
+                {estado === 'RECHAZADO' && (
+                  <Step label="Rechazado" date={fmtFecha(t.Modification_Date)} color={colorEstado('Rechazado')} done />
+                )}
+                <Step label="Completado" date={fmtFecha(t.HoraFinal)} color={colorEstado('Completado')} done={estado === 'COMPLETADO'} />
+                <Step label="Validado" date={fmtFecha(t.FechaValidacion)} color={COLOR_VALIDADO} done={estaValidado} last />
                 <XStack gap="$4" marginTop="$2" paddingTop="$2" borderTopWidth={1} borderTopColor="$border" flexWrap="wrap">
                   <TimeStat label="T. respuesta" value={fmtMin(t.TiempoRespuestaMin)} />
                   <TimeStat label="T. resolución" value={fmtMin(t.TiempoResolucionMin)} />
@@ -276,7 +395,7 @@ export default function TicketDetailScreen() {
                   <ActionBtn icon={<Pause size={18} color="#fff" />} label="Pausar" color={colorEstado('Pausado')}
                     loading={accionando} onPress={() => doAccion(ticketsService.pausar, 'Ticket pausado')} />
                 )}
-                {estado === 'PAUSADO' && (
+                {(estado === 'PAUSADO' || estado === 'RECHAZADO') && (
                   <ActionBtn icon={<RotateCcw size={18} color="#fff" />} label="Reanudar" color={colorEstado('En Proceso')}
                     loading={accionando} onPress={() => doAccion(ticketsService.reanudar, 'Ticket reanudado')} />
                 )}
@@ -288,6 +407,32 @@ export default function TicketDetailScreen() {
               {estado === 'PENDIENTE' && !t.Mecanico_UserCode && (
                 <Text fontSize="$2" color="$textMuted">Asigna un mecánico antes de iniciar.</Text>
               )}
+            </Section>
+          )}
+
+          {/* Sello de validación (visible para todos cuando el ticket ya fue validado) */}
+          {estaValidado && (
+            <Section title="Validación">
+              <XStack alignItems="center" gap="$2">
+                <ShieldCheck size={18} color={COLOR_VALIDADO} />
+                <Text fontSize="$3" color="$text" fontWeight="700">
+                  Validado por {t.ValidadoNombre && t.ValidadoNombre.trim() ? t.ValidadoNombre : (t.ValidadoPor ?? '—')}
+                </Text>
+              </XStack>
+              <Text fontSize="$2" color="$textMuted">{fmtFecha(t.FechaValidacion)}</Text>
+            </Section>
+          )}
+
+          {/* Validación de producción (ticket completado, aún sin validar) */}
+          {mostrarValidacion && (
+            <Section title="Validación de producción">
+              <Text fontSize="$2" color="$textMuted">¿La reparación fue satisfactoria? Valida para cerrar, o rechaza para reabrir.</Text>
+              <XStack gap="$2.5" flexWrap="wrap">
+                <ActionBtn icon={<ShieldCheck size={18} color="#fff" />} label="Validar" color={COLOR_VALIDADO}
+                  loading={validando} onPress={doValidar} />
+                <ActionBtn icon={<XCircle size={18} color="#fff" />} label="Rechazar" color={colorEstado('Rechazado')}
+                  loading={false} onPress={() => setShowRechazar(true)} />
+              </XStack>
             </Section>
           )}
 
@@ -312,7 +457,7 @@ export default function TicketDetailScreen() {
             {!!t.Causa && <InfoRow label="Causa" value={t.Causa} />}
           </Section>
 
-          {/* Asignación */}
+          {/* Asignación (primer paso del flujo: asignar → iniciar → diagnosticar → completar) */}
           <Section title="Asignación">
             <XStack alignItems="center" gap="$2">
               <User size={16} color={theme.textMuted?.val} />
@@ -338,6 +483,33 @@ export default function TicketDetailScreen() {
             )}
           </Section>
 
+          {/* Diagnóstico (máquina): tipo de falla + causa. Requerido para completar. */}
+          {mostrarDiagnostico && (
+            <Section title="Diagnóstico">
+              <Text fontSize="$2" color="$textMuted">Requerido para poder completar el ticket.</Text>
+              <AppSelect
+                label="Tipo de falla"
+                value={dxFalla}
+                options={tiposFalla.map(f => ({ label: f, value: f }))}
+                onValueChange={v => { setDxFalla(v ? String(v) : undefined); setDxCausa(undefined) }}
+                placeholder={t.Modelo ? 'Selecciona el tipo de falla' : 'El ticket no tiene modelo'}
+              />
+              <AppSelect
+                label="Causa"
+                value={dxCausa}
+                options={causas.map(c => ({ label: c, value: c }))}
+                onValueChange={v => setDxCausa(v ? String(v) : undefined)}
+                placeholder={dxFalla ? 'Selecciona la causa' : 'Primero el tipo de falla'}
+              />
+              <View onPress={dxSaving ? undefined : doDiagnosticar} pressStyle={{ opacity: 0.85 }}
+                opacity={dxSaving ? 0.6 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
+                alignItems="center" justifyContent="center" flexDirection="row" gap="$2" marginTop="$1">
+                {dxSaving ? <Spinner color="#fff" /> : <CheckCircle2 size={18} color="#fff" />}
+                <Text color="#fff" fontWeight="800" fontSize="$3">Guardar diagnóstico</Text>
+              </View>
+            </Section>
+          )}
+
           {/* Observaciones */}
           {!!t.Observaciones && (
             <Section title="Observaciones">
@@ -345,23 +517,23 @@ export default function TicketDetailScreen() {
             </Section>
           )}
 
-          {/* Bitácora de acciones */}
-          {eventos.length > 0 && (
+          {/* Bitácora de acciones (asignación + eventos del mecánico) */}
+          {bitacora.length > 0 && (
             <Section title="Bitácora">
               <YStack gap="$2.5">
-                {eventos.map((ev, i) => (
-                  <XStack key={ev.Id} gap="$3" alignItems="flex-start">
+                {bitacora.map((b, i) => (
+                  <XStack key={b.key} gap="$3" alignItems="flex-start">
                     <YStack alignItems="center">
-                      <View width={10} height={10} borderRadius={5} backgroundColor={colorEstado(ev.EstadoNuevo ?? '')} marginTop={4} />
-                      {i < eventos.length - 1 && <View width={2} flex={1} minHeight={16} backgroundColor="$border" />}
+                      <View width={10} height={10} borderRadius={5} backgroundColor={b.color} marginTop={4} />
+                      {i < bitacora.length - 1 && <View width={2} flex={1} minHeight={16} backgroundColor="$border" />}
                     </YStack>
-                    <YStack flex={1} paddingBottom={i < eventos.length - 1 ? 4 : 0}>
+                    <YStack flex={1} paddingBottom={i < bitacora.length - 1 ? 4 : 0}>
                       <XStack justifyContent="space-between" gap="$2">
-                        <Text fontSize="$3" fontWeight="700" color="$text">{EVENTO_LABEL[ev.Evento ?? ''] ?? ev.Evento}</Text>
-                        <Text fontSize="$2" color="$textMuted">{fmtFecha(ev.Fecha)}</Text>
+                        <Text fontSize="$3" fontWeight="700" color="$text">{b.label}</Text>
+                        <Text fontSize="$2" color="$textMuted">{fmtFecha(b.fecha)}</Text>
                       </XStack>
-                      {!!ev.Usuario && ev.Usuario.trim() && <Text fontSize="$2" color="$textMuted">por {ev.Usuario}</Text>}
-                      {!!ev.Comentario && ev.Comentario.trim() && <Text fontSize="$2" color="$text" marginTop="$1">{ev.Comentario}</Text>}
+                      {!!b.usuario && b.usuario.trim() && <Text fontSize="$2" color="$textMuted">por {b.usuario}</Text>}
+                      {!!b.comentario && b.comentario.trim() && <Text fontSize="$2" color="$text" marginTop="$1">{b.comentario}</Text>}
                     </YStack>
                   </XStack>
                 ))}
@@ -416,6 +588,35 @@ export default function TicketDetailScreen() {
                 alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
                 {accionando ? <Spinner color="#fff" /> : <CheckCircle2 size={18} color="#fff" />}
                 <Text color="#fff" fontWeight="800" fontSize="$3">Completar</Text>
+              </View>
+            </XStack>
+          </YStack>
+        </View>
+      </Modal>
+
+      {/* Modal de rechazo (motivo obligatorio) */}
+      <Modal visible={showRechazar} transparent animationType="fade" onRequestClose={() => setShowRechazar(false)}>
+        <View flex={1} backgroundColor="rgba(0,0,0,0.45)" alignItems="center" justifyContent="center" padding="$4">
+          <YStack width="100%" maxWidth={480} backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3">
+            <Text fontSize="$5" fontWeight="900" color="$text">Rechazar ticket</Text>
+            <Text fontSize="$2" color="$textMuted">El ticket se reabrirá y el mecánico será notificado para reanudarlo. Indica el motivo.</Text>
+
+            <YStack gap="$1.5">
+              <Text fontSize="$2" color="$textMuted">Motivo del rechazo *</Text>
+              <TextArea value={rechazoMotivo} onChangeText={setRechazoMotivo} placeholder="Ej. La máquina sigue con la misma falla"
+                minHeight={80} backgroundColor="$backgroundHover" borderColor="$border" color="$text" />
+            </YStack>
+
+            <XStack gap="$2.5" marginTop="$1">
+              <View flex={1} onPress={validando ? undefined : () => setShowRechazar(false)} pressStyle={{ opacity: 0.85 }}
+                borderWidth={1.5} borderColor="$border" borderRadius="$4" height={46} alignItems="center" justifyContent="center">
+                <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
+              </View>
+              <View flex={1} onPress={validando ? undefined : doRechazar} pressStyle={{ opacity: 0.85 }}
+                opacity={validando ? 0.6 : 1} backgroundColor={colorEstado('Rechazado')} borderRadius="$4" height={46}
+                alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+                {validando ? <Spinner color="#fff" /> : <XCircle size={18} color="#fff" />}
+                <Text color="#fff" fontWeight="800" fontSize="$3">Rechazar</Text>
               </View>
             </XStack>
           </YStack>

@@ -6,6 +6,15 @@ import { IArea, IOperacion, ITipoParo } from './tickets.types'
 // permiso de menú de cada pantalla; el backend solo exige autenticación.
 const schema = 'Catalogos'
 
+export interface ITipoFallaAdmin { Id: number; Operacion_Id: number; Modelo: string; Name: string; Status_Id: number }
+export interface ICausaFallaAdmin { Id: number; TipoFalla_Id: number; Name: string; Status_Id: number }
+export interface ITipoFallaManage { Id?: number; Operacion_Id?: number; Modelo?: string; Name: string; Status_Id?: number }
+export interface ICausaFallaManage { Id?: number; TipoFalla_Id?: number; Name: string; Status_Id?: number }
+export interface IModelo { Modelo: string }
+
+export interface IMaquina { Id: number; TipoMaquina?: string | null; Ubicacion?: string | null; Modelo?: string | null; Area_Id?: number | null; Area?: string | null; Status_Id: number }
+export interface IMaquinaManage { Id?: number; TipoMaquina?: string | null; Modelo?: string | null; Area_Id?: number | null; Status_Id?: number }
+
 export interface IAreaPrincipal { Id: number; Name: string; PermiteMaquinas: boolean; Orden: number; Status_Id: number }
 export interface IAreaPrincipalManage { Id?: number; Name: string; PermiteMaquinas: boolean; Status_Id?: number }
 export interface IAreaManage { Id?: number; Name: string; AreaPrincipal_Id: number; Status_Id?: number }
@@ -42,6 +51,40 @@ export const catalogosService = {
     httpClient.put<ExecutionResponse<null>, IOperacionManage>(`${schema}/Operaciones`, data),
   toggleOperacion: (id: number) =>
     httpClient.post<ExecutionResponse<null>>(`${schema}/Operaciones/Toggle?id=${id}`),
+
+  // ── Máquinas ────────────────────────────────────────────────────────────────
+  getMaquinas: (search?: string, areaId?: number, onlyActive = false) =>
+    httpClient.get<ExecutionResponse<IMaquina[]>>(`${schema}/Maquinas`, { search, area_Id: areaId, onlyActive }),
+  crearMaquina: (data: IMaquinaManage) =>
+    httpClient.post<ExecutionResponse<null>, IMaquinaManage>(`${schema}/Maquinas`, data),
+  editarMaquina: (data: IMaquinaManage) =>
+    httpClient.put<ExecutionResponse<null>, IMaquinaManage>(`${schema}/Maquinas`, data),
+  toggleMaquina: (id: number) =>
+    httpClient.post<ExecutionResponse<null>>(`${schema}/Maquinas/Toggle?id=${id}`),
+
+  // ── Modelos por operación (maestro de fallas) ───────────────────────────────
+  getModelos: (operacionId: number) =>
+    httpClient.get<ExecutionResponse<IModelo[]>>(`${schema}/Modelos`, { operacion_Id: operacionId }),
+
+  // ── Tipos de falla (maestro) ────────────────────────────────────────────────
+  getTiposFalla: (operacionId: number, modelo: string, onlyActive = false) =>
+    httpClient.get<ExecutionResponse<ITipoFallaAdmin[]>>(`${schema}/TiposFalla`, { operacion_Id: operacionId, modelo, onlyActive }),
+  crearTipoFalla: (data: ITipoFallaManage) =>
+    httpClient.post<ExecutionResponse<null>, ITipoFallaManage>(`${schema}/TiposFalla`, data),
+  editarTipoFalla: (data: ITipoFallaManage) =>
+    httpClient.put<ExecutionResponse<null>, ITipoFallaManage>(`${schema}/TiposFalla`, data),
+  toggleTipoFalla: (id: number) =>
+    httpClient.post<ExecutionResponse<null>>(`${schema}/TiposFalla/Toggle?id=${id}`),
+
+  // ── Causas de falla (maestro) ───────────────────────────────────────────────
+  getCausas: (tipoFallaId: number, onlyActive = false) =>
+    httpClient.get<ExecutionResponse<ICausaFallaAdmin[]>>(`${schema}/Causas`, { tipoFalla_Id: tipoFallaId, onlyActive }),
+  crearCausa: (data: ICausaFallaManage) =>
+    httpClient.post<ExecutionResponse<null>, ICausaFallaManage>(`${schema}/Causas`, data),
+  editarCausa: (data: ICausaFallaManage) =>
+    httpClient.put<ExecutionResponse<null>, ICausaFallaManage>(`${schema}/Causas`, data),
+  toggleCausa: (id: number) =>
+    httpClient.post<ExecutionResponse<null>>(`${schema}/Causas/Toggle?id=${id}`),
 
   // ── Tipos de paro ─────────────────────────────────────────────────────────
   getTiposParo: (onlyActive = false) =>

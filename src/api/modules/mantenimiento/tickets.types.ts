@@ -37,11 +37,17 @@ export interface ITicket {
   Mecanico: string | null
 
   IdOperador: number | null
+  FechaAsignacion: string | null   // sella el último momento de asignación/reasignación
   HoraInicio: string | null
   HoraFinal: string | null
   TiempoRespuestaMin: number | null
   TiempoResolucionMin: number | null
   TiempoNetoMin: number | null   // tiempo activo neto (excluye pausas)
+
+  // Sello de validación de producción (no es un estado; el estado sigue COMPLETADO).
+  ValidadoPor: string | null
+  ValidadoNombre: string | null
+  FechaValidacion: string | null
 
   Observaciones: string | null
   Vigente: boolean
@@ -86,6 +92,8 @@ export interface ITicketResult {
   EventAssigned: boolean
   EventStarted: boolean
   EventFinished: boolean
+  EventValidated?: boolean
+  EventRejected?: boolean
 }
 
 // Filtros del listado (nombres alineados a los query params de api/Tickets).
