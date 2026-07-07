@@ -81,6 +81,18 @@ export const ticketsService = {
       dto,
     ),
 
+  // ── Validación de producción (post-completado) ──────────────────────────────
+  // Validar/aprobar (el backend valida rol Sup. Producción/Admin o acceso 'ValidarTickets').
+  validar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Validar?id=${id}`),
+
+  // Rechazar/reabrir con motivo obligatorio.
+  rechazar: (id: number, motivo: string) =>
+    httpClient.post<ExecutionResponse<ITicketResult>, { Motivo: string }>(
+      `${schema}/Rechazar?id=${id}`,
+      { Motivo: motivo },
+    ),
+
   // Bitácora de acciones (línea de tiempo).
   getEventos: (id: number) =>
     httpClient.get<ExecutionResponse<ITicketEvento[]>>(`${schema}/Eventos`, { id }),

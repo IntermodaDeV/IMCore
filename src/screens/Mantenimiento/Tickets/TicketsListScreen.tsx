@@ -432,6 +432,11 @@ function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; th
         )}
         {!!t.Area && <Text fontSize="$2" color="$textMuted">· {t.Area}</Text>}
         {!!t.Operacion && <Text fontSize="$2" color="$textMuted">· {t.Operacion}</Text>}
+        {!!t.ValidadoPor && (
+          <View backgroundColor="rgba(5,150,105,0.15)" borderRadius="$10" paddingHorizontal="$2" paddingVertical={2}>
+            <Text fontSize={10} color="#059669" fontWeight="800">✓ Validado</Text>
+          </View>
+        )}
       </XStack>
 
       <XStack alignItems="center" justifyContent="space-between">

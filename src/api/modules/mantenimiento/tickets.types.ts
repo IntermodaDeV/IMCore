@@ -44,6 +44,11 @@ export interface ITicket {
   TiempoResolucionMin: number | null
   TiempoNetoMin: number | null   // tiempo activo neto (excluye pausas)
 
+  // Sello de validación de producción (no es un estado; el estado sigue COMPLETADO).
+  ValidadoPor: string | null
+  ValidadoNombre: string | null
+  FechaValidacion: string | null
+
   Observaciones: string | null
   Vigente: boolean
   Create_By: string | null
@@ -87,6 +92,8 @@ export interface ITicketResult {
   EventAssigned: boolean
   EventStarted: boolean
   EventFinished: boolean
+  EventValidated?: boolean
+  EventRejected?: boolean
 }
 
 // Filtros del listado (nombres alineados a los query params de api/Tickets).

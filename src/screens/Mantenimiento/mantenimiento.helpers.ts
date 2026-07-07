@@ -40,6 +40,12 @@ export const puedeDiagnosticar = (
   (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
   hasAccess(access, 'DiagnosticarTickets')
 
+// Validar / rechazar la reparación (sello de producción): rol Sup. Producción o
+// Administrador, o acceso 'ValidarTickets'. (El backend revalida.)
+const ROLES_VALIDAR = ['Administrador', 'Supervisor de Producción']
+export const puedeValidar = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_VALIDAR) || hasAccess(access, 'ValidarTickets')
+
 // ── Paletas (mismas del dashboard de Streamlit) ──────────────────────────────
 export const MESES: Record<number, string> = {
   1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -53,6 +59,7 @@ export const PALETA_ESTADO: Record<string, string> = {
   Pausado: '#a855f7',
   Pendiente: '#f59e0b',
   Cancelado: '#dc2626',
+  Rechazado: '#f43f5e',   // reabierto por producción (rosa/rojo — requiere atención)
 }
 
 export const COLORES_PRIO: Record<string, string> = {

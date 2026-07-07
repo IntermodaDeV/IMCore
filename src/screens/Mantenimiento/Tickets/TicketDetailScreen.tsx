@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Modal, RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, TextArea, useTheme } from 'tamagui'
-import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2 } from 'lucide-react-native'
+import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2, ShieldCheck, XCircle } from 'lucide-react-native'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -11,14 +11,16 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IMecanico, ITicketEvento } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT, COLOR_ASIGNADO, estadoVisual, puedeOperarTicket, puedeDiagnosticar } from '../mantenimiento.helpers'
+import { colorEstado, colorPrioridad, ACCENT, COLOR_ASIGNADO, estadoVisual, puedeOperarTicket, puedeDiagnosticar, puedeValidar } from '../mantenimiento.helpers'
 
 const ACCESO_ASIGNAR = 'AsignarTickets'
 const ROLES_ASIGNAR = ['Administrador', 'Supervisor de Mantenimiento']
+const COLOR_VALIDADO = '#059669'   // sello de producción (esmeralda)
 
 // Etiqueta legible de cada evento de la bitácora.
 const EVENTO_LABEL: Record<string, string> = {
   INICIAR: 'Iniciado', PAUSAR: 'Pausado', REANUDAR: 'Reanudado', COMPLETAR: 'Completado',
+  DIAGNOSTICO: 'Diagnóstico', VALIDAR: 'Validado', RECHAZAR: 'Rechazado',
 }
 
 const fmtFecha = (iso: string | null): string => {
@@ -68,6 +70,11 @@ export default function TicketDetailScreen() {
   const [showCompletar, setShowCompletar] = useState(false)
   const [cierreCausa, setCierreCausa] = useState('')
   const [cierreObs, setCierreObs] = useState('')
+
+  // Validación de producción (validar / rechazar)
+  const [validando, setValidando] = useState(false)
+  const [showRechazar, setShowRechazar] = useState(false)
+  const [rechazoMotivo, setRechazoMotivo] = useState('')
 
   usePageHeader({
     left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
@@ -258,8 +265,37 @@ export default function TicketDetailScreen() {
     }
   }
 
+  const doValidar = async () => {
+    setValidando(true)
+    try {
+      const res = await ticketsService.validar(id)
+      if (res.Success && res.Data?.Success) { showToast('success', 'Ticket validado', t.CodigoTicket); await cargar() }
+      else showToast('error', 'No se pudo validar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) { showToast('error', 'Error', e?.message || 'No se pudo validar') }
+    finally { setValidando(false) }
+  }
+
+  const doRechazar = async () => {
+    if (!rechazoMotivo.trim()) { showToast('warning', 'Falta el motivo', 'Indica por qué se rechaza'); return }
+    setValidando(true)
+    try {
+      const res = await ticketsService.rechazar(id, rechazoMotivo.trim())
+      if (res.Success && res.Data?.Success) {
+        showToast('success', 'Ticket rechazado', t.CodigoTicket)
+        setShowRechazar(false); setRechazoMotivo('')
+        await cargar()
+      } else showToast('error', 'No se pudo rechazar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) { showToast('error', 'Error', e?.message || 'No se pudo rechazar') }
+    finally { setValidando(false) }
+  }
+
   const estado = t.EstadoCode
-  const mostrarAcciones = puedeOperar && (estado === 'PENDIENTE' || estado === 'EN_PROCESO' || estado === 'PAUSADO')
+  const mostrarAcciones = puedeOperar && (estado === 'PENDIENTE' || estado === 'EN_PROCESO' || estado === 'PAUSADO' || estado === 'RECHAZADO')
+
+  // Validación de producción: sobre tickets COMPLETADOS y aún no validados.
+  const puedeVal = puedeValidar(user?.Roles, user?.Access)
+  const estaValidado = !!t.ValidadoPor
+  const mostrarValidacion = estado === 'COMPLETADO' && !estaValidado && puedeVal
 
   // Diagnóstico: solo tickets de máquina, con permiso, mientras no esté cerrado.
   const puedeDiag = puedeDiagnosticar(user?.Roles, user?.Access, user?.Code, t.Mecanico_UserCode)
@@ -276,14 +312,18 @@ export default function TicketDetailScreen() {
           color: COLOR_ASIGNADO,
         } as BitItem]
       : []),
-    ...eventos.map<BitItem>(ev => ({
-      key: `ev-${ev.Id}`,
-      label: EVENTO_LABEL[ev.Evento ?? ''] ?? ev.Evento ?? '',
-      fecha: ev.Fecha,
-      usuario: ev.Usuario,
-      comentario: ev.Comentario,
-      color: colorEstado(ev.EstadoNuevo ?? ''),
-    })),
+    ...eventos.map<BitItem>(ev => {
+      // La reanudación se categoriza según el estado anterior (Pausado vs Rechazado).
+      const catReanudar = ev.EstadoAnterior === 'Rechazado' ? 'Por ticket inválido' : 'Por pausa'
+      return {
+        key: `ev-${ev.Id}`,
+        label: EVENTO_LABEL[ev.Evento ?? ''] ?? ev.Evento ?? '',
+        fecha: ev.Fecha,
+        usuario: ev.Usuario,
+        comentario: ev.Evento === 'REANUDAR' ? catReanudar : ev.Comentario,
+        color: colorEstado(ev.EstadoNuevo ?? ''),
+      }
+    }),
   ].sort((a, b) => new Date(a.fecha ?? 0).getTime() - new Date(b.fecha ?? 0).getTime())
 
   return (
@@ -329,7 +369,11 @@ export default function TicketDetailScreen() {
               <>
                 <Step label="Asignado" date={fmtFecha(t.FechaAsignacion)} color={COLOR_ASIGNADO} done={!!t.Mecanico_UserCode} />
                 <Step label="En Proceso" date={fmtFecha(t.HoraInicio)} color={colorEstado('En Proceso')} done={orden >= 2} />
-                <Step label="Completado" date={fmtFecha(t.HoraFinal)} color={colorEstado('Completado')} done={orden >= 3} last />
+                {estado === 'RECHAZADO' && (
+                  <Step label="Rechazado" date={fmtFecha(t.Modification_Date)} color={colorEstado('Rechazado')} done />
+                )}
+                <Step label="Completado" date={fmtFecha(t.HoraFinal)} color={colorEstado('Completado')} done={estado === 'COMPLETADO'} />
+                <Step label="Validado" date={fmtFecha(t.FechaValidacion)} color={COLOR_VALIDADO} done={estaValidado} last />
                 <XStack gap="$4" marginTop="$2" paddingTop="$2" borderTopWidth={1} borderTopColor="$border" flexWrap="wrap">
                   <TimeStat label="T. respuesta" value={fmtMin(t.TiempoRespuestaMin)} />
                   <TimeStat label="T. resolución" value={fmtMin(t.TiempoResolucionMin)} />
@@ -351,7 +395,7 @@ export default function TicketDetailScreen() {
                   <ActionBtn icon={<Pause size={18} color="#fff" />} label="Pausar" color={colorEstado('Pausado')}
                     loading={accionando} onPress={() => doAccion(ticketsService.pausar, 'Ticket pausado')} />
                 )}
-                {estado === 'PAUSADO' && (
+                {(estado === 'PAUSADO' || estado === 'RECHAZADO') && (
                   <ActionBtn icon={<RotateCcw size={18} color="#fff" />} label="Reanudar" color={colorEstado('En Proceso')}
                     loading={accionando} onPress={() => doAccion(ticketsService.reanudar, 'Ticket reanudado')} />
                 )}
@@ -363,6 +407,32 @@ export default function TicketDetailScreen() {
               {estado === 'PENDIENTE' && !t.Mecanico_UserCode && (
                 <Text fontSize="$2" color="$textMuted">Asigna un mecánico antes de iniciar.</Text>
               )}
+            </Section>
+          )}
+
+          {/* Sello de validación (visible para todos cuando el ticket ya fue validado) */}
+          {estaValidado && (
+            <Section title="Validación">
+              <XStack alignItems="center" gap="$2">
+                <ShieldCheck size={18} color={COLOR_VALIDADO} />
+                <Text fontSize="$3" color="$text" fontWeight="700">
+                  Validado por {t.ValidadoNombre && t.ValidadoNombre.trim() ? t.ValidadoNombre : (t.ValidadoPor ?? '—')}
+                </Text>
+              </XStack>
+              <Text fontSize="$2" color="$textMuted">{fmtFecha(t.FechaValidacion)}</Text>
+            </Section>
+          )}
+
+          {/* Validación de producción (ticket completado, aún sin validar) */}
+          {mostrarValidacion && (
+            <Section title="Validación de producción">
+              <Text fontSize="$2" color="$textMuted">¿La reparación fue satisfactoria? Valida para cerrar, o rechaza para reabrir.</Text>
+              <XStack gap="$2.5" flexWrap="wrap">
+                <ActionBtn icon={<ShieldCheck size={18} color="#fff" />} label="Validar" color={COLOR_VALIDADO}
+                  loading={validando} onPress={doValidar} />
+                <ActionBtn icon={<XCircle size={18} color="#fff" />} label="Rechazar" color={colorEstado('Rechazado')}
+                  loading={false} onPress={() => setShowRechazar(true)} />
+              </XStack>
             </Section>
           )}
 
@@ -518,6 +588,35 @@ export default function TicketDetailScreen() {
                 alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
                 {accionando ? <Spinner color="#fff" /> : <CheckCircle2 size={18} color="#fff" />}
                 <Text color="#fff" fontWeight="800" fontSize="$3">Completar</Text>
+              </View>
+            </XStack>
+          </YStack>
+        </View>
+      </Modal>
+
+      {/* Modal de rechazo (motivo obligatorio) */}
+      <Modal visible={showRechazar} transparent animationType="fade" onRequestClose={() => setShowRechazar(false)}>
+        <View flex={1} backgroundColor="rgba(0,0,0,0.45)" alignItems="center" justifyContent="center" padding="$4">
+          <YStack width="100%" maxWidth={480} backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3">
+            <Text fontSize="$5" fontWeight="900" color="$text">Rechazar ticket</Text>
+            <Text fontSize="$2" color="$textMuted">El ticket se reabrirá y el mecánico será notificado para reanudarlo. Indica el motivo.</Text>
+
+            <YStack gap="$1.5">
+              <Text fontSize="$2" color="$textMuted">Motivo del rechazo *</Text>
+              <TextArea value={rechazoMotivo} onChangeText={setRechazoMotivo} placeholder="Ej. La máquina sigue con la misma falla"
+                minHeight={80} backgroundColor="$backgroundHover" borderColor="$border" color="$text" />
+            </YStack>
+
+            <XStack gap="$2.5" marginTop="$1">
+              <View flex={1} onPress={validando ? undefined : () => setShowRechazar(false)} pressStyle={{ opacity: 0.85 }}
+                borderWidth={1.5} borderColor="$border" borderRadius="$4" height={46} alignItems="center" justifyContent="center">
+                <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
+              </View>
+              <View flex={1} onPress={validando ? undefined : doRechazar} pressStyle={{ opacity: 0.85 }}
+                opacity={validando ? 0.6 : 1} backgroundColor={colorEstado('Rechazado')} borderRadius="$4" height={46}
+                alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+                {validando ? <Spinner color="#fff" /> : <XCircle size={18} color="#fff" />}
+                <Text color="#fff" fontWeight="800" fontSize="$3">Rechazar</Text>
               </View>
             </XStack>
           </YStack>
