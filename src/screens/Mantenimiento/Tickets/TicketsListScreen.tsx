@@ -239,21 +239,21 @@ export default function TicketsListScreen() {
           />
         </XStack>
 
-        {/* Chips de estado */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <XStack gap="$2" paddingVertical="$1">
-            <EstadoChip label="Todos" active={estadoId === undefined} color={ACCENT} onPress={() => setEstadoId(undefined)} />
-            {estados.map(e => (
-              <EstadoChip
-                key={e.Id}
-                label={e.Name}
-                active={estadoId === e.Id}
-                color={colorEstado(e.Name)}
-                onPress={() => setEstadoId(prev => (prev === e.Id ? undefined : e.Id))}
-              />
-            ))}
-          </XStack>
-        </ScrollView>
+        {/* Chips de estado: envuelven en pantallas angostas para que ninguno quede
+            cortado/inaccesible. (El scroll horizontal anidado dentro del pager no es
+            fiable en Android, por eso se usa wrap en vez de scroll.) */}
+        <XStack gap="$2" paddingVertical="$1" flexWrap="wrap">
+          <EstadoChip label="Todos" active={estadoId === undefined} color={ACCENT} onPress={() => setEstadoId(undefined)} />
+          {estados.map(e => (
+            <EstadoChip
+              key={e.Id}
+              label={e.Name}
+              active={estadoId === e.Id}
+              color={colorEstado(e.Name)}
+              onPress={() => setEstadoId(prev => (prev === e.Id ? undefined : e.Id))}
+            />
+          ))}
+        </XStack>
 
         {/* Área / Prioridad */}
         <XStack gap="$2">
