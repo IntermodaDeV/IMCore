@@ -3,6 +3,9 @@ import { Animated, RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
 import { Search, Plus, Wrench, RefreshCw } from 'lucide-react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
+// ScrollView de gesture-handler: permite scroll horizontal fiable AUN dentro del
+// pager horizontal (coordina el gesto), a diferencia del ScrollView de RN.
+import { ScrollView as GestureScrollView } from 'react-native-gesture-handler'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useAuth } from '../../../context/AuthContext'
@@ -239,10 +242,13 @@ export default function TicketsListScreen() {
           />
         </XStack>
 
-        {/* Chips de estado: envuelven en pantallas angostas para que ninguno quede
-            cortado/inaccesible. (El scroll horizontal anidado dentro del pager no es
-            fiable en Android, por eso se usa wrap en vez de scroll.) */}
-        <XStack gap="$2" paddingVertical="$1" flexWrap="wrap">
+        {/* Chips de estado en una sola línea con scroll horizontal (gesture-handler
+            para que funcione dentro del pager). paddingRight deja respirar al último. */}
+        <GestureScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingVertical: 4, paddingRight: 16, alignItems: 'center' }}
+        >
           <EstadoChip label="Todos" active={estadoId === undefined} color={ACCENT} onPress={() => setEstadoId(undefined)} />
           {estados.map(e => (
             <EstadoChip
@@ -253,7 +259,7 @@ export default function TicketsListScreen() {
               onPress={() => setEstadoId(prev => (prev === e.Id ? undefined : e.Id))}
             />
           ))}
-        </XStack>
+        </GestureScrollView>
 
         {/* Área / Prioridad */}
         <XStack gap="$2">

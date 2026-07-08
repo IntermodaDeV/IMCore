@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Button, TamaguiProvider, Text, Theme, View } from 'tamagui'
 import { config } from './src/theme/tamagui.config'
 import { NavigationContainer } from '@react-navigation/native'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { navigationRef } from './src/navigation/navigationRef'
 import { setupNotificationOpenHandlers } from './src/services/pushNotifications'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -183,14 +184,16 @@ function Root() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MenuProvider>
-        <ToastPositionProvider>
-          <NotificationsProvider>
-            <Root />
-          </NotificationsProvider>
-        </ToastPositionProvider>
-      </MenuProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <MenuProvider>
+          <ToastPositionProvider>
+            <NotificationsProvider>
+              <Root />
+            </NotificationsProvider>
+          </ToastPositionProvider>
+        </MenuProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   )
 }
