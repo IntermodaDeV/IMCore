@@ -49,6 +49,9 @@ export interface ITicket {
   ValidadoNombre: string | null
   FechaValidacion: string | null
 
+  // Recordatorio recurrente (minutos) mientras esté En Proceso. Default 30; 0 = sin aviso.
+  RecordatorioMin: number
+
   Observaciones: string | null
   Vigente: boolean
   Create_By: string | null

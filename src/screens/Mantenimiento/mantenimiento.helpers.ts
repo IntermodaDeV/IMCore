@@ -40,11 +40,24 @@ export const puedeDiagnosticar = (
   (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
   hasAccess(access, 'DiagnosticarTickets')
 
-// Validar / rechazar la reparación (sello de producción): rol Sup. Producción o
-// Administrador, o acceso 'ValidarTickets'. (El backend revalida.)
+// Validar / rechazar la reparación (sello de producción): el creador de su propio
+// ticket, rol Sup. Producción/Administrador, o acceso 'ValidarTickets'. (El backend revalida.)
 const ROLES_VALIDAR = ['Administrador', 'Supervisor de Producción']
-export const puedeValidar = (roles?: RoleLike[] | null, access?: string | null) =>
-  hasRole(roles, ROLES_VALIDAR) || hasAccess(access, 'ValidarTickets')
+export const puedeValidar = (
+  roles?: RoleLike[] | null,
+  access?: string | null,
+  userCode?: string | null,
+  createdBy?: string | null,
+) =>
+  (!!userCode && !!createdBy && userCode === createdBy) ||
+  hasRole(roles, ROLES_VALIDAR) ||
+  hasAccess(access, 'ValidarTickets')
+
+// Configurar el recordatorio del ticket (minutos): rol Sup. Mantenimiento o
+// Administrador, o acceso 'ConfigRecordatorioTicket'. (El backend revalida.)
+const ROLES_CONFIG_RECORDATORIO = ['Administrador', 'Supervisor de Mantenimiento']
+export const puedeConfigRecordatorio = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_CONFIG_RECORDATORIO) || hasAccess(access, 'ConfigRecordatorioTicket')
 
 // ── Paletas (mismas del dashboard de Streamlit) ──────────────────────────────
 export const MESES: Record<number, string> = {
