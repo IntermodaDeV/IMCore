@@ -305,10 +305,10 @@ export default function TicketDetailScreen() {
   const estado = t.EstadoCode
   const mostrarAcciones = puedeOperar && (estado === 'PENDIENTE' || estado === 'EN_PROCESO' || estado === 'PAUSADO' || estado === 'RECHAZADO')
 
-  // Recordatorio: se ve/administra mientras el ticket no esté cerrado.
+  // Recordatorio: editable mientras el ticket no esté cancelado. Default 0 (sin aviso).
   const puedeConfigRec = puedeConfigRecordatorio(user?.Roles, user?.Access)
-  const mostrarRecordatorio = estado !== 'COMPLETADO' && estado !== 'CANCELADO'
-  const recMin = t.RecordatorioMin ?? 30
+  const mostrarRecordatorio = estado !== 'CANCELADO'
+  const recMin = t.RecordatorioMin ?? 0
 
   // Validación de producción: sobre tickets COMPLETADOS y aún no validados.
   const puedeVal = puedeValidar(user?.Roles, user?.Access, user?.Code, t.Create_By)
