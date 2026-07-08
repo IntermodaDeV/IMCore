@@ -59,6 +59,25 @@ const ROLES_CONFIG_RECORDATORIO = ['Administrador', 'Supervisor de Mantenimiento
 export const puedeConfigRecordatorio = (roles?: RoleLike[] | null, access?: string | null) =>
   hasRole(roles, ROLES_CONFIG_RECORDATORIO) || hasAccess(access, 'ConfigRecordatorioTicket')
 
+// Ver el "pool" de TODOS los tickets (para descubrir y autoasignarse): rol
+// Mecánico/Técnico/Sup. Mtto/Admin, o acceso 'AsignarTickets'. Habilita el toggle
+// "Todos" en el listado. (El backend revalida el alcance.)
+const ROLES_POOL = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico']
+export const puedeVerPool = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_POOL) || hasAccess(access, 'AsignarTickets')
+
+// Despachar: asignar un ticket a CUALQUIER mecánico/técnico. Sup. Mtto/Admin o
+// acceso 'AsignarTickets'. (El backend revalida.)
+const ROLES_DESPACHAR = ['Administrador', 'Supervisor de Mantenimiento']
+export const puedeDespachar = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_DESPACHAR) || hasAccess(access, 'AsignarTickets')
+
+// Autoasignarse (tomar un ticket para sí mismo): rol Mecánico o Técnico. El
+// backend solo permite tickets libres o el propio (no "robar" el de otro).
+const ROLES_AUTOASIGNAR = ['Mecánico', 'Técnico']
+export const puedeAutoasignar = (roles?: RoleLike[] | null) =>
+  hasRole(roles, ROLES_AUTOASIGNAR)
+
 // ── Paletas (mismas del dashboard de Streamlit) ──────────────────────────────
 export const MESES: Record<number, string> = {
   1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',

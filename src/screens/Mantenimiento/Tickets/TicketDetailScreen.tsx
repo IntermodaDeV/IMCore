@@ -11,10 +11,8 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IMecanico, ITicketEvento } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT, COLOR_ASIGNADO, estadoVisual, puedeOperarTicket, puedeDiagnosticar, puedeValidar, puedeConfigRecordatorio } from '../mantenimiento.helpers'
+import { colorEstado, colorPrioridad, ACCENT, COLOR_ASIGNADO, estadoVisual, puedeOperarTicket, puedeDiagnosticar, puedeValidar, puedeConfigRecordatorio, puedeDespachar, puedeAutoasignar } from '../mantenimiento.helpers'
 
-const ACCESO_ASIGNAR = 'AsignarTickets'
-const ROLES_ASIGNAR = ['Administrador', 'Supervisor de Mantenimiento']
 const COLOR_VALIDADO = '#059669'   // sello de producción (esmeralda)
 
 // Etiqueta legible de cada evento de la bitácora.
@@ -49,9 +47,10 @@ export default function TicketDetailScreen() {
   const MAX = 760
   const [cancelando, setCancelando] = useState(false)
 
-  // ¿Puede asignar? rol Sup. Mantenimiento/Admin o acceso 'AsignarTickets'
-  const accesos = (user?.Access ?? '').split(',').map(s => s.trim())
-  const puedeAsignar = (user?.Roles ?? []).some(r => ROLES_ASIGNAR.includes(r.RoleName)) || accesos.includes(ACCESO_ASIGNAR)
+  // Despachar = asignar a CUALQUIERA (Sup. Mtto/Admin o acceso 'AsignarTickets').
+  // Autoasignar = tomarse el ticket para sí (rol Mecánico/Técnico).
+  const puedeDespacharTicket = puedeDespachar(user?.Roles, user?.Access)
+  const puedeAutoAsignar = puedeAutoasignar(user?.Roles)
 
   const [mecanicos, setMecanicos] = useState<IMecanico[]>([])
   const [selMec, setSelMec] = useState<string | undefined>()
@@ -115,11 +114,11 @@ export default function TicketDetailScreen() {
 
   const onRefresh = useCallback(async () => { setRefrescando(true); await cargar(); setRefrescando(false) }, [cargar])
 
-  // Carga la lista de mecánicos/técnicos solo si el usuario puede asignar.
+  // Carga la lista de mecánicos/técnicos solo si el usuario puede despachar (picker).
   useEffect(() => {
-    if (!puedeAsignar) return
+    if (!puedeDespacharTicket) return
     ticketsService.getMecanicos().then(r => setMecanicos(r.Data ?? [])).catch(() => {})
-  }, [puedeAsignar])
+  }, [puedeDespacharTicket])
 
   // Diagnóstico: inicializa desde el ticket y carga los tipos de falla (máquina).
   useEffect(() => {
@@ -210,8 +209,10 @@ export default function TicketDetailScreen() {
     )
   }
 
-  // Asignación: disponible si puede asignar y el ticket no está terminado
-  const puedeAsignarAqui = puedeAsignar && t.EstadoCode !== 'COMPLETADO' && t.EstadoCode !== 'CANCELADO'
+  // Ticket abierto (no terminado): base para asignar / tomar.
+  const ticketAbierto = t.EstadoCode !== 'COMPLETADO' && t.EstadoCode !== 'CANCELADO'
+  // Despachar (picker): asignar a cualquiera mientras el ticket esté abierto.
+  const puedeDespacharAqui = puedeDespacharTicket && ticketAbierto
   const mecOpts = mecanicos.map(m => ({ value: m.User_Code, label: m.Nombre || m.User_Code }))
   const asignar = async () => {
     if (!selMec) { showToast('warning', 'Selecciona', 'Elige a quién asignar'); return }
@@ -222,6 +223,23 @@ export default function TicketDetailScreen() {
       else showToast('error', 'No se pudo asignar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
     } catch (e: any) {
       showToast('error', 'Error', e?.message || 'No se pudo asignar')
+    } finally {
+      setAsignando(false)
+    }
+  }
+
+  // Tomar ticket (autoasignarse): solo mecánico/técnico que NO es despachador, con
+  // el ticket abierto y LIBRE (el backend igual bloquea tomar el de otro técnico).
+  const puedeTomar = puedeAutoAsignar && !puedeDespacharTicket && ticketAbierto && !t.Mecanico_UserCode
+  const tomar = async () => {
+    if (!user?.Code) return
+    setAsignando(true)
+    try {
+      const res = await ticketsService.asignar(id, user.Code)
+      if (res.Success && res.Data?.Success) { showToast('success', 'Ticket tomado', t.CodigoTicket); await cargar() }
+      else showToast('error', 'No se pudo tomar', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo tomar')
     } finally {
       setAsignando(false)
     }
@@ -434,7 +452,7 @@ export default function TicketDetailScreen() {
               </Text>
             </XStack>
 
-            {puedeAsignarAqui && (
+            {puedeDespacharAqui && (
               <YStack gap="$2.5" marginTop="$2" paddingTop="$3" borderTopWidth={1} borderTopColor="$border">
                 <Text fontSize="$2" color="$textMuted">Asignar a un mecánico / técnico / supervisor:</Text>
                 <AppSelect label="" placeholder="Selecciona mecánico/técnico/supervisor"
@@ -446,6 +464,19 @@ export default function TicketDetailScreen() {
                   <Text color="#fff" fontWeight="800" fontSize="$3">
                     {asignando ? 'Asignando…' : (t.Mecanico_UserCode ? 'Reasignar' : 'Asignar')}
                   </Text>
+                </View>
+              </YStack>
+            )}
+
+            {/* Autoasignación: el mecánico/técnico se toma el ticket libre. */}
+            {puedeTomar && (
+              <YStack gap="$2.5" marginTop="$2" paddingTop="$3" borderTopWidth={1} borderTopColor="$border">
+                <Text fontSize="$2" color="$textMuted">Este ticket está sin asignar. Puedes tomarlo para trabajarlo tú.</Text>
+                <View onPress={asignando ? undefined : tomar} pressStyle={{ opacity: 0.85 }}
+                  opacity={asignando ? 0.6 : 1} backgroundColor={COLOR_ASIGNADO} borderRadius="$4" height={46}
+                  alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+                  {asignando ? <Spinner color="#fff" /> : <User size={18} color="#fff" />}
+                  <Text color="#fff" fontWeight="800" fontSize="$3">{asignando ? 'Tomando…' : 'Tomar ticket'}</Text>
                 </View>
               </YStack>
             )}
