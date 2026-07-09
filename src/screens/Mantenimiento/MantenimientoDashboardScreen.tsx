@@ -176,7 +176,9 @@ export default function MantenimientoDashboardScreen() {
 
   const periodoTxt = `${MESES[mes ?? 1]} ${anio ?? ''}` + (semana ? ` · Semana ${semana}` : '')
 
+  const refetching = cargando && !!data
   return (
+    <View flex={1} backgroundColor="$backgroundPage">
     <ScrollView
       flex={1}
       backgroundColor="$backgroundPage"
@@ -185,7 +187,7 @@ export default function MantenimientoDashboardScreen() {
         <RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />
       }
     >
-      <YStack padding="$4" gap="$3">
+      <YStack padding="$4" gap="$3" opacity={refetching ? 0.45 : 1}>
         {/* ── Encabezado ── */}
         <YStack>
           <Text fontSize={18} fontWeight="800" color="$text">
@@ -324,6 +326,33 @@ export default function MantenimientoDashboardScreen() {
         )}
       </YStack>
     </ScrollView>
+    {refetching && (
+      <View
+        position="absolute"
+        top={0}
+        left={0}
+        right={0}
+        bottom={0}
+        alignItems="center"
+        justifyContent="center"
+        pointerEvents="none"
+      >
+        <XStack
+          backgroundColor="$background"
+          borderColor="$border"
+          borderWidth={1}
+          borderRadius="$4"
+          paddingHorizontal="$4"
+          paddingVertical="$3"
+          gap="$2"
+          alignItems="center"
+        >
+          <Spinner color={ACCENT} />
+          <Text color="$text" fontWeight="700">Actualizando…</Text>
+        </XStack>
+      </View>
+    )}
+    </View>
   )
 }
 
