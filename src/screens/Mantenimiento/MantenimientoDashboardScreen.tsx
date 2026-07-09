@@ -7,7 +7,7 @@ import { RefreshCw } from 'lucide-react-native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
 import AppSelect from '../../components/commons/AppSelect'
-import { sharepointService } from '../../api/modules/sharepoint/sharepoint.service'
+import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
 import { MantenimientoPeriodo } from '../../api/modules/sharepoint/mantenimiento.types'
 import {
   ACCENT,
@@ -58,12 +58,14 @@ export default function MantenimientoDashboardScreen() {
   // Filtros finos (en cliente, sobre los registros del período).
   const [filtros, setFiltros] = useState<FiltrosFinos>(FILTROS_FINOS_DEFAULT)
   const [tab, setTab] = useState(0)
+  // Toggle Máquina/Área (en cliente, sobre TipoDestino de los registros).
+  const [tipoDest, setTipoDest] = useState<'Todos' | 'MAQUINA' | 'AREA'>('Todos')
 
   const fetchData = useCallback(
     async (params?: { anio?: number; mes?: number; semana?: number }) => {
       setError(null)
       try {
-        const resp = await sharepointService.getMantenimiento(params)
+        const resp = await ticketsService.getDashboard(params)
         if (!resp.Success || !resp.Data) {
           throw new Error(resp.ErrorMessage || 'No se pudo cargar la información.')
         }
@@ -108,10 +110,10 @@ export default function MantenimientoDashboardScreen() {
   }, [anio, mes, semana, fetchData])
 
   // ── Datos derivados ──
-  const registros = useMemo(
-    () => (data ? aplicarFiltrosFinos(data.Registros, filtros) : []),
-    [data, filtros],
-  )
+  const registros = useMemo(() => {
+    const base = data ? aplicarFiltrosFinos(data.Registros, filtros) : []
+    return tipoDest === 'Todos' ? base : base.filter(r => r.TipoDestino === tipoDest)
+  }, [data, filtros, tipoDest])
   const kpis = useMemo(() => calcularKpis(registros), [registros])
   const estado = useMemo(() => conteoEstado(registros), [registros])
   const prioridad = useMemo(() => conteoPrioridad(registros), [registros])
@@ -150,7 +152,7 @@ export default function MantenimientoDashboardScreen() {
       <YStack flex={1} backgroundColor="$background" alignItems="center" justifyContent="center" gap="$3">
         <Spinner size="large" color={ACCENT} />
         <Text color="$textMuted" fontSize={13}>
-          Conectando con SharePoint…
+          Cargando datos…
         </Text>
       </YStack>
     )
@@ -160,7 +162,7 @@ export default function MantenimientoDashboardScreen() {
     return (
       <YStack flex={1} backgroundColor="$background" alignItems="center" justifyContent="center" gap="$3" padding="$5">
         <Text color="$error" fontSize={14} textAlign="center">
-          No se pudo conectar a SharePoint:
+          No se pudieron cargar los datos:
         </Text>
         <Text color="$textMuted" fontSize={12} textAlign="center">
           {error}
@@ -191,9 +193,32 @@ export default function MantenimientoDashboardScreen() {
           </Text>
           <Text fontSize={12} color="$text">
             📅 {periodoTxt} · {filtros.area} · {filtros.prioridad} ·{' '}
-            <Text fontWeight="700">{data?.Total ?? 0}</Text> registros
+            <Text fontWeight="700">{registros.length}</Text> registros
           </Text>
         </YStack>
+
+        {/* ── Toggle Máquina / Área (separa los tickets por tipo de destino) ── */}
+        <XStack backgroundColor="$backgroundHover" borderRadius="$4" padding={3} gap={3}>
+          {(['Todos', 'MAQUINA', 'AREA'] as const).map(t => {
+            const on = tipoDest === t
+            const label = t === 'Todos' ? 'Todos' : t === 'MAQUINA' ? '🛠 Máquina' : '📍 Área'
+            return (
+              <View
+                key={t}
+                flex={1}
+                onPress={() => setTipoDest(t)}
+                pressStyle={{ opacity: 0.85 }}
+                backgroundColor={on ? ACCENT : 'transparent'}
+                borderRadius="$3"
+                height={34}
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Text fontSize={13} fontWeight="700" color={on ? '#fff' : '$textMuted'}>{label}</Text>
+              </View>
+            )
+          })}
+        </XStack>
 
         {/* ── Filtros colapsables (acordeón, como Python móvil) ── */}
         <FiltrosColapsables resumen={periodoTxt}>
