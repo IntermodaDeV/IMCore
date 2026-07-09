@@ -1,14 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useWindowDimensions } from 'react-native'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useWindowDimensions, Modal, StyleSheet } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Input, TextArea, useTheme } from 'tamagui'
-import { Check, Wrench, MapPin, ScanLine, ArrowLeft } from 'lucide-react-native'
+import { Check, Wrench, MapPin, ScanLine, ArrowLeft, X, RotateCcw } from 'lucide-react-native'
 import { useNavigation } from '@react-navigation/native'
+import { Camera } from 'react-native-camera-kit'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
 import { useAuth } from '../../../context/AuthContext'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
+import { catalogosService, IMaquina } from '../../../api/modules/mantenimiento/catalogos.service'
 import { IArea, IOperacion, IModelo, ITipoParo, IPrioridad, ITicketManage } from '../../../api/modules/mantenimiento/tickets.types'
 import { ACCENT, puedeCrearMaquina } from '../mantenimiento.helpers'
 
@@ -71,7 +73,52 @@ export default function NewTicketScreen() {
   const [enviando, setEnviando] = useState(false)
   const [intentado, setIntentado] = useState(false)
 
+  // Escaneo de máquina (código de barras/QR de la etiqueta AF).
+  const [scanOpen, setScanOpen] = useState(false)
+  const [maquina, setMaquina] = useState<IMaquina | null>(null)
+  const [buscandoMaq, setBuscandoMaq] = useState(false)
+  const scanLock = useRef(false)
+
   const esMaquina = tipo === 'MAQUINA'
+
+  // Busca la máquina por el código escaneado (AF-######## o solo dígitos) y
+  // autollena modelo + número. Si no existe, deja continuar manualmente.
+  const buscarMaquina = useCallback(async (codigo: string) => {
+    setBuscandoMaq(true)
+    try {
+      const res = await catalogosService.getMaquinaPorCodigo(codigo)
+      if (res.Success && res.Data) {
+        const m = res.Data
+        setMaquina(m)
+        if (m.Modelo) setModelo(m.Modelo)
+        setNumero(m.CodigoActivo || codigo)
+        showToast('success', 'Máquina encontrada', `${m.CodigoActivo ?? ''} · ${m.Modelo ?? ''}`)
+      } else {
+        setMaquina(null)
+        setNumero(codigo)
+        showToast('warning', 'Máquina no registrada', `Código ${codigo}. Puedes continuar manualmente.`, 4000)
+      }
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo buscar la máquina')
+    } finally {
+      setBuscandoMaq(false)
+    }
+  }, [showToast])
+
+  const onReadCode = (event: any) => {
+    if (scanLock.current) return
+    // El shape del evento varía por versión/plataforma de react-native-camera-kit.
+    const raw = event?.nativeEvent?.codeStringValue ?? event?.codeStringValue
+      ?? event?.nativeEvent?.code ?? event?.code
+    const code = String(raw ?? '').trim()
+    if (!code) return
+    scanLock.current = true
+    setScanOpen(false)
+    buscarMaquina(code)
+  }
+
+  const abrirEscaner = () => { scanLock.current = false; setScanOpen(true) }
+  const limpiarMaquina = () => { setMaquina(null); setNumero(''); setModelo(undefined) }
 
   useEffect(() => {
     ;(async () => {
@@ -93,7 +140,7 @@ export default function NewTicketScreen() {
   useEffect(() => {
     setAreaId(undefined); setOperacionId(undefined); setOperaciones([])
     setModelo(undefined); setModelos([]); setNumero(''); setObjeto('')
-    setIdOperador(''); setTipoParoId(undefined); setIntentado(false)
+    setIdOperador(''); setTipoParoId(undefined); setIntentado(false); setMaquina(null)
   }, [tipo])
 
   useEffect(() => {
@@ -104,12 +151,14 @@ export default function NewTicketScreen() {
   }, [areaId])
 
   useEffect(() => {
-    setModelo(undefined); setModelos([])
+    // Cambiar de operación reinicia el modelo y la máquina escaneada.
+    setModelo(undefined); setModelos([]); setMaquina(null); setNumero('')
     if (!esMaquina || operacionId == null) return
     ticketsService.getModelos(operacionId).then(r => setModelos(r.Data ?? [])).catch(() => {})
   }, [operacionId, esMaquina])
 
-  const numeroOk = /^\d{4}$/.test(numero)
+  // Válido: 4 dígitos (entrada manual → AF-0000####) o un código AF completo (escaneo).
+  const numeroOk = /^\d{4}$/.test(numero) || /^AF-\d+$/i.test(numero.trim())
   const operadorOk = /^\d+$/.test(idOperador.trim())
 
   const puedeGuardar = esMaquina
@@ -157,7 +206,14 @@ export default function NewTicketScreen() {
   )
   const optsArea = useMemo(() => toOpts(areasFiltradas, a => a.Id, a => a.Name), [areasFiltradas])
   const optsOp = useMemo(() => toOpts(operaciones, o => o.Id, o => o.Name), [operaciones])
-  const optsModelo = useMemo(() => modelos.map(m => ({ value: m.Modelo, label: m.Modelo })), [modelos])
+  const optsModelo = useMemo(() => {
+    const base = modelos.map(m => ({ value: m.Modelo, label: m.Modelo }))
+    // Si la máquina escaneada trae un modelo que no está en el catálogo de la
+    // operación, lo agregamos como opción para no perderlo.
+    if (maquina?.Modelo && !base.some(o => o.value === maquina.Modelo))
+      base.unshift({ value: maquina.Modelo, label: `${maquina.Modelo} (escaneada)` })
+    return base
+  }, [modelos, maquina])
   const optsParo = useMemo(() => toOpts(tiposParo, t => t.Id, t => t.Name), [tiposParo])
   const optsPrio = useMemo(() => toOpts(prioridades, p => p.Id, p => p.Name), [prioridades])
 
@@ -200,24 +256,55 @@ export default function NewTicketScreen() {
                   onValueChange={v => setOperacionId(v ? Number(v) : undefined)} />
               </Field>
 
-              {/* Número de máquina (escaneo/manual). Al existir, el modelo se autocompletará a futuro. */}
-              <Field label="Número de máquina *" hint="escanea o escribe los 4 dígitos" error={intentado && !numeroOk}>
-                <XStack alignItems="center" height={50} borderWidth={1}
-                  borderColor={intentado && !numeroOk ? ERR : '$border'} borderRadius={8}
-                  backgroundColor="$backgroundElevated" overflow="hidden">
-                  <View height="100%" justifyContent="center" paddingHorizontal="$3"
-                    backgroundColor="$backgroundHover" borderRightWidth={1} borderRightColor="$border">
-                    <Text color="$text" fontWeight="800" fontSize="$5">AF-0000</Text>
+              {/* Número de máquina: escaneo de la etiqueta AF (autollena modelo) o
+                  entrada manual de los 4 dígitos. */}
+              <Field label="Número de máquina *" hint="escanea la etiqueta AF o escribe los 4 dígitos" error={intentado && !numeroOk}>
+                {(maquina || /^AF-\d+$/i.test(numero.trim())) ? (
+                  <View borderWidth={1.5} borderColor={ACCENT} borderRadius={10}
+                    backgroundColor="$backgroundElevated" padding="$3" gap="$1.5">
+                    <XStack alignItems="center" justifyContent="space-between">
+                      <Text fontSize="$5" fontWeight="900" color={ACCENT}>
+                        {maquina?.CodigoActivo ?? numero.trim().toUpperCase()}
+                      </Text>
+                      <XStack alignItems="center" gap="$1.5" onPress={abrirEscaner} pressStyle={{ opacity: 0.7 }}>
+                        <RotateCcw size={15} color={theme.textMuted?.val} />
+                        <Text fontSize="$2" color="$textMuted">Reescanear</Text>
+                      </XStack>
+                    </XStack>
+                    {maquina ? (
+                      <>
+                        <Text fontSize="$3" color="$text" fontWeight="700">
+                          {maquina.Modelo}{maquina.Marca ? `  ·  ${maquina.Marca}` : ''}
+                        </Text>
+                        <XStack gap="$4" flexWrap="wrap">
+                          {!!maquina.NumeroSerie && <Text fontSize="$2" color="$textMuted">Serie: {maquina.NumeroSerie}</Text>}
+                          {!!maquina.Area && <Text fontSize="$2" color="$textMuted">Ubicación: {maquina.Area}</Text>}
+                        </XStack>
+                      </>
+                    ) : (
+                      <Text fontSize="$2" color="$textMuted">No registrada — se usará el código escaneado.</Text>
+                    )}
+                    <Text fontSize="$2" color={ACCENT} marginTop="$1" onPress={limpiarMaquina} pressStyle={{ opacity: 0.7 }}>
+                      Ingresar manualmente
+                    </Text>
                   </View>
-                  <Input flex={1} unstyled height="100%" paddingHorizontal="$3" fontSize="$6" color="$text"
-                    keyboardType="number-pad" maxLength={4} placeholder="0000" placeholderTextColor={theme.textMuted?.val}
-                    value={numero} onChangeText={t => setNumero(t.replace(/\D/g, '').slice(0, 4))} />
-                  <View height="100%" width={50} alignItems="center" justifyContent="center"
-                    backgroundColor={ACCENT} pressStyle={{ opacity: 0.8 }}
-                    onPress={() => showToast('info', 'Escaneo de máquina', 'Lectura de QR/código de barras — próximamente')}>
-                    <ScanLine size={22} color="#fff" />
-                  </View>
-                </XStack>
+                ) : (
+                  <XStack alignItems="center" height={50} borderWidth={1}
+                    borderColor={intentado && !numeroOk ? ERR : '$border'} borderRadius={8}
+                    backgroundColor="$backgroundElevated" overflow="hidden">
+                    <View height="100%" justifyContent="center" paddingHorizontal="$3"
+                      backgroundColor="$backgroundHover" borderRightWidth={1} borderRightColor="$border">
+                      <Text color="$text" fontWeight="800" fontSize="$5">AF-0000</Text>
+                    </View>
+                    <Input flex={1} unstyled height="100%" paddingHorizontal="$3" fontSize="$6" color="$text"
+                      keyboardType="number-pad" maxLength={4} placeholder="0000" placeholderTextColor={theme.textMuted?.val}
+                      value={numero} onChangeText={t => setNumero(t.replace(/\D/g, '').slice(0, 4))} />
+                    <View height="100%" width={54} alignItems="center" justifyContent="center"
+                      backgroundColor={ACCENT} pressStyle={{ opacity: 0.8 }} onPress={abrirEscaner}>
+                      {buscandoMaq ? <Spinner color="#fff" /> : <ScanLine size={22} color="#fff" />}
+                    </View>
+                  </XStack>
+                )}
               </Field>
 
               <Field label="Modelo de máquina *" hint="se autocompleta al existir la máquina" error={intentado && !modelo}>
@@ -276,6 +363,24 @@ export default function NewTicketScreen() {
           </View>
         </YStack>
       </ScrollView>
+
+      {/* Escáner de código de barras/QR de la etiqueta AF de la máquina */}
+      <Modal visible={scanOpen} animationType="slide" onRequestClose={() => setScanOpen(false)}>
+        <View flex={1} backgroundColor="#000">
+          <Camera style={StyleSheet.absoluteFill} scanBarcode onReadCode={onReadCode} scanThrottleDelay={400} />
+          <YStack position="absolute" top={0} left={0} right={0} paddingTop="$8" paddingHorizontal="$4" gap="$2">
+            <XStack alignItems="center" justifyContent="space-between">
+              <Text color="#fff" fontSize="$5" fontWeight="800">Escanea la máquina</Text>
+              <View onPress={() => setScanOpen(false)} pressStyle={{ opacity: 0.7 }}
+                width={40} height={40} borderRadius={20} alignItems="center" justifyContent="center"
+                backgroundColor="rgba(0,0,0,0.5)">
+                <X size={24} color="#fff" />
+              </View>
+            </XStack>
+            <Text color="#fff" opacity={0.8} fontSize="$2">Apunta al código de barras de la etiqueta (AF-…).</Text>
+          </YStack>
+        </View>
+      </Modal>
     </View>
   )
 }
