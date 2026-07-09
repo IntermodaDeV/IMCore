@@ -190,6 +190,9 @@ export default function TicketsListScreen() {
     [prioridades],
   )
 
+  // Total de tickets del alcance/filtros actuales (COUNT(*) OVER() viaja en cada fila).
+  const totalTickets = tickets.length ? (tickets[0].TotalCount ?? tickets.length) : 0
+
   return (
     <View flex={1} backgroundColor="$background">
       {/* Toggle Resumen | Listado */}
@@ -231,11 +234,17 @@ export default function TicketsListScreen() {
       <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
         {/* Alcance Mías / Todos (solo para quien puede ver el pool). "Todos" muestra
             el universo para descubrir y autoasignarse; combina con el filtro de Área. */}
-        {verPool && (
+        {verPool ? (
           <XStack alignItems="center" gap="$2">
             <Text fontSize="$2" color="$textMuted" fontWeight="700">Ver:</Text>
             <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
             <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
+            <View flex={1} />
+            <Text fontSize="$1" color="$textMuted">{totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'}</Text>
+          </XStack>
+        ) : (
+          <XStack justifyContent="flex-end">
+            <Text fontSize="$1" color="$textMuted">{totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'}</Text>
           </XStack>
         )}
 
