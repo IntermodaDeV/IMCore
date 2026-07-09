@@ -3,6 +3,9 @@ import { Animated, RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
 import { Search, Plus, Wrench, RefreshCw } from 'lucide-react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
+// ScrollView de gesture-handler: permite scroll horizontal fiable AUN dentro del
+// pager horizontal (coordina el gesto), a diferencia del ScrollView de RN.
+import { ScrollView as GestureScrollView } from 'react-native-gesture-handler'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useAuth } from '../../../context/AuthContext'
@@ -10,7 +13,7 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT, estadoVisual, puedeCrearTickets } from '../mantenimiento.helpers'
+import { colorEstado, colorPrioridad, ACCENT, estadoVisual, puedeCrearTickets, puedeVerPool } from '../mantenimiento.helpers'
 import TicketsResumen from './TicketsResumen'
 import { shadows } from '../../../theme/shadows'
 import { NotificationBell } from '../../../components/notifications/NotificationBell'
@@ -80,9 +83,17 @@ export default function TicketsListScreen() {
   const [areaId, setAreaId] = useState<number | undefined>(undefined)
   const [prioridadId, setPrioridadId] = useState<number | undefined>(undefined)
   const [search, setSearch] = useState('')
+  // Alcance: 'mias' (por rol) | 'todos' (pool, para autoasignarse). Default 'mias'.
+  const [scope, setScope] = useState<'mias' | 'todos'>('mias')
 
   const puedeCrear = useMemo(
     () => puedeCrearTickets(user?.Roles, user?.Access),
+    [user],
+  )
+  // ¿Puede ver el pool "Todos"? (mecánico/técnico/sup. mtto/admin o acceso). Solo
+  // entonces mostramos el toggle Mías/Todos.
+  const verPool = useMemo(
+    () => puedeVerPool(user?.Roles, user?.Access),
     [user],
   )
 
@@ -109,6 +120,7 @@ export default function TicketsListScreen() {
         prioridad_Id: prioridadId,
         area_Id: areaId,
         search: search.trim() || undefined,
+        scope,
         take: 100,
       })
       if (!res.Success) {
@@ -121,7 +133,7 @@ export default function TicketsListScreen() {
       setError(e?.message || 'Error de conexión')
       setTickets([])
     }
-  }, [estadoId, prioridadId, areaId, search])
+  }, [estadoId, prioridadId, areaId, search, scope])
 
   useEffect(() => {
     ;(async () => {
@@ -139,7 +151,7 @@ export default function TicketsListScreen() {
       cargarTickets()
     }, 350)
     return () => clearTimeout(t)
-  }, [estadoId, prioridadId, areaId, search, cargarTickets])
+  }, [estadoId, prioridadId, areaId, search, scope, cargarTickets])
 
   const onRefresh = useCallback(async () => {
     setRefrescando(true)
@@ -217,6 +229,16 @@ export default function TicketsListScreen() {
       <View width={width} height="100%">
       {/* Filtros */}
       <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
+        {/* Alcance Mías / Todos (solo para quien puede ver el pool). "Todos" muestra
+            el universo para descubrir y autoasignarse; combina con el filtro de Área. */}
+        {verPool && (
+          <XStack alignItems="center" gap="$2">
+            <Text fontSize="$2" color="$textMuted" fontWeight="700">Ver:</Text>
+            <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
+            <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
+          </XStack>
+        )}
+
         {/* Buscador */}
         <XStack
           alignItems="center"
@@ -239,21 +261,24 @@ export default function TicketsListScreen() {
           />
         </XStack>
 
-        {/* Chips de estado */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <XStack gap="$2" paddingVertical="$1">
-            <EstadoChip label="Todos" active={estadoId === undefined} color={ACCENT} onPress={() => setEstadoId(undefined)} />
-            {estados.map(e => (
-              <EstadoChip
-                key={e.Id}
-                label={e.Name}
-                active={estadoId === e.Id}
-                color={colorEstado(e.Name)}
-                onPress={() => setEstadoId(prev => (prev === e.Id ? undefined : e.Id))}
-              />
-            ))}
-          </XStack>
-        </ScrollView>
+        {/* Chips de estado en una sola línea con scroll horizontal (gesture-handler
+            para que funcione dentro del pager). paddingRight deja respirar al último. */}
+        <GestureScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingVertical: 4, paddingRight: 16, alignItems: 'center' }}
+        >
+          <EstadoChip label="Todos" active={estadoId === undefined} color={ACCENT} onPress={() => setEstadoId(undefined)} />
+          {estados.map(e => (
+            <EstadoChip
+              key={e.Id}
+              label={e.Name}
+              active={estadoId === e.Id}
+              color={colorEstado(e.Name)}
+              onPress={() => setEstadoId(prev => (prev === e.Id ? undefined : e.Id))}
+            />
+          ))}
+        </GestureScrollView>
 
         {/* Área / Prioridad */}
         <XStack gap="$2">

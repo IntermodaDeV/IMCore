@@ -49,6 +49,9 @@ export interface ITicket {
   ValidadoNombre: string | null
   FechaValidacion: string | null
 
+  // Recordatorio recurrente (minutos) mientras esté En Proceso. Default 30; 0 = sin aviso.
+  RecordatorioMin: number
+
   Observaciones: string | null
   Vigente: boolean
   Create_By: string | null
@@ -94,6 +97,7 @@ export interface ITicketResult {
   EventFinished: boolean
   EventValidated?: boolean
   EventRejected?: boolean
+  AutoAsignado?: boolean   // el que asigna es el mismo asignado (autoasignación)
 }
 
 // Filtros del listado (nombres alineados a los query params de api/Tickets).
@@ -103,6 +107,8 @@ export interface ITicketFiltros {
   mecanico_UserCode?: string
   area_Id?: number
   search?: string
+  // Alcance del listado: 'mias' (default, por rol) | 'todos' (pool, requiere permiso).
+  scope?: 'mias' | 'todos'
   skip?: number
   take?: number
 }

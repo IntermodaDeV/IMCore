@@ -93,6 +93,10 @@ export const ticketsService = {
       { Motivo: motivo },
     ),
 
+  // Configurar el recordatorio recurrente (0/15/30/60 min). Permiso validado en el backend.
+  configurarRecordatorio: (id: number, minutos: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Recordatorio?id=${id}&minutos=${minutos}`),
+
   // Bitácora de acciones (línea de tiempo).
   getEventos: (id: number) =>
     httpClient.get<ExecutionResponse<ITicketEvento[]>>(`${schema}/Eventos`, { id }),

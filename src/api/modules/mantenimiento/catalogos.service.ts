@@ -12,8 +12,8 @@ export interface ITipoFallaManage { Id?: number; Operacion_Id?: number; Modelo?:
 export interface ICausaFallaManage { Id?: number; TipoFalla_Id?: number; Name: string; Status_Id?: number }
 export interface IModelo { Modelo: string }
 
-export interface IMaquina { Id: number; TipoMaquina?: string | null; Ubicacion?: string | null; Modelo?: string | null; Area_Id?: number | null; Area?: string | null; Status_Id: number }
-export interface IMaquinaManage { Id?: number; TipoMaquina?: string | null; Modelo?: string | null; Area_Id?: number | null; Status_Id?: number }
+export interface IMaquina { Id: number; CodigoActivo?: string | null; TipoMaquina?: string | null; Ubicacion?: string | null; Modelo?: string | null; Marca?: string | null; NumeroSerie?: string | null; Area_Id?: number | null; Area?: string | null; Status_Id: number }
+export interface IMaquinaManage { Id?: number; CodigoActivo?: string | null; TipoMaquina?: string | null; Modelo?: string | null; Marca?: string | null; NumeroSerie?: string | null; Area_Id?: number | null; Status_Id?: number }
 
 export interface IAreaPrincipal { Id: number; Name: string; PermiteMaquinas: boolean; Orden: number; Status_Id: number }
 export interface IAreaPrincipalManage { Id?: number; Name: string; PermiteMaquinas: boolean; Status_Id?: number }
@@ -55,6 +55,9 @@ export const catalogosService = {
   // ── Máquinas ────────────────────────────────────────────────────────────────
   getMaquinas: (search?: string, areaId?: number, onlyActive = false) =>
     httpClient.get<ExecutionResponse<IMaquina[]>>(`${schema}/Maquinas`, { search, area_Id: areaId, onlyActive }),
+  // Búsqueda por código de activo (escaneo): acepta AF-######## o solo dígitos.
+  getMaquinaPorCodigo: (codigo: string) =>
+    httpClient.get<ExecutionResponse<IMaquina>>(`${schema}/Maquinas/PorCodigo`, { codigo }),
   crearMaquina: (data: IMaquinaManage) =>
     httpClient.post<ExecutionResponse<null>, IMaquinaManage>(`${schema}/Maquinas`, data),
   editarMaquina: (data: IMaquinaManage) =>
