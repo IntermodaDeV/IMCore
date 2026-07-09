@@ -17,6 +17,7 @@ import {
   ITicketEvento,
   ITicketResumen,
 } from './tickets.types'
+import { MantenimientoPeriodo } from '../sharepoint/mantenimiento.types'
 
 // Consume los endpoints de api/Tickets. baseUrl (API_URL) ya incluye /api/,
 // por eso las rutas van como 'Tickets/...'.
@@ -104,6 +105,11 @@ export const ticketsService = {
   // Resumen por período (KPIs + desglose por mecánico). desde/hasta en ISO.
   getResumen: (desde: string, hasta: string) =>
     httpClient.get<ExecutionResponse<ITicketResumen[]>>(`${schema}/Resumen`, { desde, hasta }),
+
+  // Dashboard principal (global) desde nuestra BD — reemplaza al de SharePoint.
+  // Devuelve el período (registros + filtros) con la misma forma para reutilizar los gráficos.
+  getDashboard: (params?: { anio?: number; mes?: number; semana?: number; tipoDestino?: string }) =>
+    httpClient.get<ExecutionResponse<MantenimientoPeriodo>>(`${schema}/Dashboard`, { ...params }),
 
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>

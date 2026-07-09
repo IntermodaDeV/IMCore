@@ -71,6 +71,8 @@ export default function TicketsListScreen() {
   const [tickets, setTickets] = useState<ITicket[]>([])
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
+  // Recarga por cambio de filtro/alcance (feedback al mover Míos/Todos).
+  const [recargando, setRecargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Catálogos para filtros
@@ -114,6 +116,7 @@ export default function TicketsListScreen() {
 
   const cargarTickets = useCallback(async () => {
     setError(null)
+    setRecargando(true)
     try {
       const res = await ticketsService.getTickets({
         estado_Id: estadoId,
@@ -132,6 +135,8 @@ export default function TicketsListScreen() {
     } catch (e: any) {
       setError(e?.message || 'Error de conexión')
       setTickets([])
+    } finally {
+      setRecargando(false)
     }
   }, [estadoId, prioridadId, areaId, search, scope])
 
@@ -145,13 +150,22 @@ export default function TicketsListScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Recarga al cambiar filtros (con pequeño debounce para la búsqueda).
+  // Búsqueda: recarga con debounce (evita pegarle a la API en cada tecla).
+  const primerBusqueda = useRef(true)
   useEffect(() => {
-    const t = setTimeout(() => {
-      cargarTickets()
-    }, 350)
+    if (primerBusqueda.current) { primerBusqueda.current = false; return }
+    const t = setTimeout(() => { cargarTickets() }, 350)
     return () => clearTimeout(t)
-  }, [estadoId, prioridadId, areaId, search, scope, cargarTickets])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  // Alcance (Míos/Todos) y filtros: recarga inmediata (sin retardo ni doble carga).
+  const primerFiltro = useRef(true)
+  useEffect(() => {
+    if (primerFiltro.current) { primerFiltro.current = false; return }
+    cargarTickets()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, estadoId, areaId, prioridadId])
 
   const onRefresh = useCallback(async () => {
     setRefrescando(true)
@@ -188,6 +202,18 @@ export default function TicketsListScreen() {
   const opcionesPrioridad = useMemo(
     () => [{ label: 'Todas las prioridades', value: 'all' }, ...prioridades.map(p => ({ label: p.Name, value: String(p.Id) }))],
     [prioridades],
+  )
+
+  // Total de tickets del alcance/filtros actuales (COUNT(*) OVER() viaja en cada fila).
+  const totalTickets = tickets.length ? (tickets[0].TotalCount ?? tickets.length) : 0
+  // Conteo / indicador de recarga (feedback al mover Míos↔Todos o filtros).
+  const countNode = recargando ? (
+    <XStack alignItems="center" gap="$1.5">
+      <Spinner size="small" color={ACCENT} />
+      <Text fontSize="$2" color="$textMuted">Actualizando…</Text>
+    </XStack>
+  ) : (
+    <Text fontSize="$2" fontWeight="700" color={ACCENT}>{totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'}</Text>
   )
 
   return (
@@ -231,12 +257,16 @@ export default function TicketsListScreen() {
       <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
         {/* Alcance Mías / Todos (solo para quien puede ver el pool). "Todos" muestra
             el universo para descubrir y autoasignarse; combina con el filtro de Área. */}
-        {verPool && (
+        {verPool ? (
           <XStack alignItems="center" gap="$2">
             <Text fontSize="$2" color="$textMuted" fontWeight="700">Ver:</Text>
             <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
             <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
+            <View flex={1} />
+            {countNode}
           </XStack>
+        ) : (
+          <XStack justifyContent="flex-end">{countNode}</XStack>
         )}
 
         {/* Buscador */}
@@ -333,6 +363,7 @@ export default function TicketsListScreen() {
               flexDirection="row"
               flexWrap="wrap"
               justifyContent="space-between"
+              opacity={recargando ? 0.45 : 1}
             >
               {tickets.map(t => (
                 <View key={t.Id} width={isWide ? '49%' : '100%'} marginBottom="$2.5">
