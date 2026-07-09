@@ -1,5 +1,5 @@
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Button, useTheme } from 'tamagui'
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts'
@@ -60,6 +60,8 @@ export default function MantenimientoDashboardScreen() {
   const [tab, setTab] = useState(0)
   // Toggle Máquina/Área (en cliente, sobre TipoDestino de los registros).
   const [tipoDest, setTipoDest] = useState<'Todos' | 'MAQUINA' | 'AREA'>('Todos')
+  // Breve indicador de carga al cambiar filtros de cliente (toggle / área / prioridad).
+  const [filtrando, setFiltrando] = useState(false)
 
   const fetchData = useCallback(
     async (params?: { anio?: number; mes?: number; semana?: number }) => {
@@ -108,6 +110,16 @@ export default function MantenimientoDashboardScreen() {
     await fetchData({ anio, mes, semana })
     setRefrescando(false)
   }, [anio, mes, semana, fetchData])
+
+  // Flash breve de "carga" al cambiar filtros de cliente (toggle Máquina/Área, área,
+  // prioridad, tipo de paro): el filtrado es instantáneo, pero da feedback visual.
+  const primerFiltroFino = useRef(true)
+  useEffect(() => {
+    if (primerFiltroFino.current) { primerFiltroFino.current = false; return }
+    setFiltrando(true)
+    const t = setTimeout(() => setFiltrando(false), 300)
+    return () => clearTimeout(t)
+  }, [tipoDest, filtros])
 
   // ── Datos derivados ──
   const registros = useMemo(() => {
@@ -176,7 +188,8 @@ export default function MantenimientoDashboardScreen() {
 
   const periodoTxt = `${MESES[mes ?? 1]} ${anio ?? ''}` + (semana ? ` · Semana ${semana}` : '')
 
-  const refetching = cargando && !!data
+  // Vista "cargando": cambio de período (backend) o flash de filtro de cliente.
+  const refetching = (cargando && !!data) || filtrando
   return (
     <View flex={1} backgroundColor="$backgroundPage">
     <ScrollView
