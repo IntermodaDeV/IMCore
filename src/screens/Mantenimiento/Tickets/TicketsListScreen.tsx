@@ -71,6 +71,8 @@ export default function TicketsListScreen() {
   const [tickets, setTickets] = useState<ITicket[]>([])
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
+  // Recarga por cambio de filtro/alcance (feedback al mover Míos/Todos).
+  const [recargando, setRecargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Catálogos para filtros
@@ -114,6 +116,7 @@ export default function TicketsListScreen() {
 
   const cargarTickets = useCallback(async () => {
     setError(null)
+    setRecargando(true)
     try {
       const res = await ticketsService.getTickets({
         estado_Id: estadoId,
@@ -132,6 +135,8 @@ export default function TicketsListScreen() {
     } catch (e: any) {
       setError(e?.message || 'Error de conexión')
       setTickets([])
+    } finally {
+      setRecargando(false)
     }
   }, [estadoId, prioridadId, areaId, search, scope])
 
@@ -192,6 +197,15 @@ export default function TicketsListScreen() {
 
   // Total de tickets del alcance/filtros actuales (COUNT(*) OVER() viaja en cada fila).
   const totalTickets = tickets.length ? (tickets[0].TotalCount ?? tickets.length) : 0
+  // Conteo / indicador de recarga (feedback al mover Míos↔Todos o filtros).
+  const countNode = recargando ? (
+    <XStack alignItems="center" gap="$1.5">
+      <Spinner size="small" color={ACCENT} />
+      <Text fontSize="$2" color="$textMuted">Actualizando…</Text>
+    </XStack>
+  ) : (
+    <Text fontSize="$2" fontWeight="700" color={ACCENT}>{totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'}</Text>
+  )
 
   return (
     <View flex={1} backgroundColor="$background">
@@ -240,12 +254,10 @@ export default function TicketsListScreen() {
             <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
             <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
             <View flex={1} />
-            <Text fontSize="$1" color="$textMuted">{totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'}</Text>
+            {countNode}
           </XStack>
         ) : (
-          <XStack justifyContent="flex-end">
-            <Text fontSize="$1" color="$textMuted">{totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'}</Text>
-          </XStack>
+          <XStack justifyContent="flex-end">{countNode}</XStack>
         )}
 
         {/* Buscador */}
@@ -342,6 +354,7 @@ export default function TicketsListScreen() {
               flexDirection="row"
               flexWrap="wrap"
               justifyContent="space-between"
+              opacity={recargando ? 0.4 : 1}
             >
               {tickets.map(t => (
                 <View key={t.Id} width={isWide ? '49%' : '100%'} marginBottom="$2.5">
