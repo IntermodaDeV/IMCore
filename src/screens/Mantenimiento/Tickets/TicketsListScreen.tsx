@@ -150,13 +150,22 @@ export default function TicketsListScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Recarga al cambiar filtros (con pequeño debounce para la búsqueda).
+  // Búsqueda: recarga con debounce (evita pegarle a la API en cada tecla).
+  const primerBusqueda = useRef(true)
   useEffect(() => {
-    const t = setTimeout(() => {
-      cargarTickets()
-    }, 350)
+    if (primerBusqueda.current) { primerBusqueda.current = false; return }
+    const t = setTimeout(() => { cargarTickets() }, 350)
     return () => clearTimeout(t)
-  }, [estadoId, prioridadId, areaId, search, scope, cargarTickets])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  // Alcance (Míos/Todos) y filtros: recarga inmediata (sin retardo ni doble carga).
+  const primerFiltro = useRef(true)
+  useEffect(() => {
+    if (primerFiltro.current) { primerFiltro.current = false; return }
+    cargarTickets()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, estadoId, areaId, prioridadId])
 
   const onRefresh = useCallback(async () => {
     setRefrescando(true)
@@ -354,7 +363,6 @@ export default function TicketsListScreen() {
               flexDirection="row"
               flexWrap="wrap"
               justifyContent="space-between"
-              opacity={recargando ? 0.4 : 1}
             >
               {tickets.map(t => (
                 <View key={t.Id} width={isWide ? '49%' : '100%'} marginBottom="$2.5">
