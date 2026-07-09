@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Modal, RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, TextArea, useTheme } from 'tamagui'
-import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2, ShieldCheck, XCircle } from 'lucide-react-native'
+import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2, ShieldCheck, XCircle, Eye, X } from 'lucide-react-native'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
+import QRCode from 'react-native-qrcode-svg'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { NotificationBell } from '../../../components/notifications/NotificationBell'
@@ -46,6 +47,7 @@ export default function TicketDetailScreen() {
   const { width } = useWindowDimensions()
   const MAX = 760
   const [cancelando, setCancelando] = useState(false)
+  const [showQR, setShowQR] = useState(false)   // modal con el QR del ticket
 
   // Despachar = asignar a CUALQUIERA (Sup. Mtto/Admin o acceso 'AsignarTickets').
   // Autoasignar = tomarse el ticket para sí (rol Mecánico/Técnico).
@@ -365,6 +367,13 @@ export default function TicketDetailScreen() {
     }),
   ].sort((a, b) => new Date(a.fecha ?? 0).getTime() - new Date(b.fecha ?? 0).getTime())
 
+  // Tiempo Completado → Validado (cliente): primer COMPLETAR de la bitácora → validación.
+  // El reloj corre de corrido aunque haya habido rechazos/reprocesos en medio.
+  const primerCompletar = eventos.find(e => e.Evento === 'COMPLETAR')?.Fecha
+  const tValidacionMin = (t.FechaValidacion && primerCompletar)
+    ? Math.max(0, Math.round((new Date(t.FechaValidacion).getTime() - new Date(primerCompletar).getTime()) / 60000))
+    : null
+
   return (
     <View flex={1} backgroundColor="$background">
       <ScrollView
@@ -377,9 +386,15 @@ export default function TicketDetailScreen() {
           <YStack backgroundColor="$backgroundHover" borderRadius="$5" borderLeftWidth={4} borderLeftColor={estadoC} padding="$4" gap="$2">
             <XStack alignItems="center" justifyContent="space-between">
               <Text fontSize="$6" fontWeight="900" color="$text">{t.CodigoTicket}</Text>
-              <View backgroundColor={estadoC} borderRadius="$10" paddingHorizontal="$3" paddingVertical="$1.5">
-                <Text fontSize="$2" fontWeight="800" color="#fff">{estadoVis.label}</Text>
-              </View>
+              <XStack alignItems="center" gap="$2.5">
+                {/* Ojo: muestra el QR del ticket (para validación de salida de repuestos) */}
+                <View onPress={() => setShowQR(true)} pressStyle={{ opacity: 0.6 }} hitSlop={10}>
+                  <Eye size={22} color={theme.textMuted?.val} />
+                </View>
+                <View backgroundColor={estadoC} borderRadius="$10" paddingHorizontal="$3" paddingVertical="$1.5">
+                  <Text fontSize="$2" fontWeight="800" color="#fff">{estadoVis.label}</Text>
+                </View>
+              </XStack>
             </XStack>
             <XStack alignItems="center" gap="$3" flexWrap="wrap">
               <Chip icon={esArea ? <MapPin size={13} color={theme.textMuted?.val} /> : <Wrench size={13} color={theme.textMuted?.val} />}
@@ -413,14 +428,28 @@ export default function TicketDetailScreen() {
                 )}
                 <Step label="Completado" date={fmtFecha(t.HoraFinal)} color={colorEstado('Completado')} done={estado === 'COMPLETADO'} />
                 <Step label="Validado" date={fmtFecha(t.FechaValidacion)} color={COLOR_VALIDADO} done={estaValidado} last />
-                <XStack gap="$4" marginTop="$2" paddingTop="$2" borderTopWidth={1} borderTopColor="$border" flexWrap="wrap">
-                  <TimeStat label="T. respuesta" value={fmtMin(t.TiempoRespuestaMin)} />
-                  <TimeStat label="T. resolución" value={fmtMin(t.TiempoResolucionMin)} />
-                  <TimeStat label="T. neto" value={fmtMin(t.TiempoNetoMin)} />
-                </XStack>
               </>
             )}
           </Section>
+
+          {/* Tiempos del ticket */}
+          {!cancelado && (
+            <Section title="Tiempos">
+              <YStack gap="$2.5">
+                <TiempoRow label="Respuesta" hint="Reportado → En proceso" value={fmtMin(t.TiempoRespuestaMin)} />
+                <TiempoRow label="Resolución" hint="En proceso → Completado (sin pausas)" value={fmtMin(t.TiempoNetoMin)} />
+                <TiempoRow
+                  label="Total"
+                  hint="Respuesta + Resolución"
+                  value={fmtMin(t.TiempoRespuestaMin != null && t.TiempoNetoMin != null ? t.TiempoRespuestaMin + t.TiempoNetoMin : null)}
+                  bold
+                />
+                {tValidacionMin != null && (
+                  <TiempoRow label="Validación" hint="Completado → Validado" value={fmtMin(tValidacionMin)} />
+                )}
+              </YStack>
+            </Section>
+          )}
 
           {/* Detalle */}
           <Section title="Detalle">
@@ -702,6 +731,25 @@ export default function TicketDetailScreen() {
           </YStack>
         </View>
       </Modal>
+
+      {/* QR del ticket (para validación de salida de repuestos) */}
+      <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
+        <View flex={1} backgroundColor="rgba(0,0,0,0.6)" alignItems="center" justifyContent="center" padding="$4"
+          onPress={() => setShowQR(false)}>
+          <YStack backgroundColor="white" borderRadius="$6" padding="$5" alignItems="center" gap="$3"
+            width="100%" maxWidth={340} onPress={() => {}}>
+            <XStack width="100%" alignItems="center" justifyContent="space-between">
+              <Text color="#1A1A2E" fontWeight="900" fontSize="$5">Ticket</Text>
+              <View onPress={() => setShowQR(false)} hitSlop={10}><X size={22} color="#1A1A2E" /></View>
+            </XStack>
+            <QRCode value={t.CodigoTicket || String(t.Id)} size={230} quietZone={8} />
+            <Text color="#1A1A2E" fontWeight="800" fontSize="$5" letterSpacing={1}>{t.CodigoTicket}</Text>
+            <Text color="#6B7280" fontSize="$2" textAlign="center">
+              Muéstralo al validador para la salida de repuestos.
+            </Text>
+          </YStack>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -752,11 +800,14 @@ function Step({ label, date, color, done, last }: { label: string; date: string;
   )
 }
 
-function TimeStat({ label, value }: { label: string; value: string }) {
+function TiempoRow({ label, hint, value, bold }: { label: string; hint?: string; value: string; bold?: boolean }) {
   return (
-    <XStack alignItems="center" gap="$1.5">
-      <Clock size={14} color="#94A3B8" />
-      <Text fontSize="$2" color="$textMuted">{label}: <Text color="$text" fontWeight="700">{value}</Text></Text>
+    <XStack alignItems="center" justifyContent="space-between" gap="$2">
+      <YStack flex={1}>
+        <Text fontSize="$3" fontWeight={bold ? '800' : '600'} color="$text">{label}</Text>
+        {!!hint && <Text fontSize="$1" color="$textMuted">{hint}</Text>}
+      </YStack>
+      <Text fontSize="$4" fontWeight={bold ? '900' : '700'} color={bold ? ACCENT : '$text'}>{value}</Text>
     </XStack>
   )
 }
