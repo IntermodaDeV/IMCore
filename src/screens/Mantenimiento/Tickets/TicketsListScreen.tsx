@@ -363,6 +363,7 @@ export default function TicketsListScreen() {
               flexDirection="row"
               flexWrap="wrap"
               justifyContent="space-between"
+              opacity={recargando ? 0.45 : 1}
             >
               {tickets.map(t => (
                 <View key={t.Id} width={isWide ? '49%' : '100%'} marginBottom="$2.5">
