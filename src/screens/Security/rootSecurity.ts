@@ -7,6 +7,7 @@ import MenuForm from "./Menu/MenuForm";
 import UsersForm from "./Users/UsersForm";
 import AccessForm from "./Access/AccessForm";
 import RolesForm from "./Roles/RolesForm";
+import ConfiguracionesGlobalesScreen from "./Configuraciones/ConfiguracionesGlobalesScreen";
 import { TScreens } from "../../navigation/screens.types";
 
 export const rootSecurity: TScreens = {
@@ -40,6 +41,11 @@ export const rootSecurity: TScreens = {
 
   perfil: {
     Screen: ProfileScreen,
+    Childs: {},
+  },
+
+  configuracionesGlobales: {
+    Screen: ConfiguracionesGlobalesScreen,
     Childs: {},
   },
 };
