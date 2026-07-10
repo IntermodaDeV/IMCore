@@ -85,6 +85,10 @@ export default function DrawerNavigator({ setTheme }: any) {
         header: ({route, options}) => <AppHeader  route={route} options={options} />,
         headerShown: true,
         drawerType: 'slide',
+        // El gesto de swipe capturaba el scroll vertical de las listas (p. ej.
+        // Máquinas) y el drawer quedaba pegado a medio abrir. Se abre solo con el
+        // botón ☰ del header.
+        swipeEnabled: false,
         drawerStyle: {
           backgroundColor: theme.background?.val,
           width: 290,
