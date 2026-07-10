@@ -83,7 +83,7 @@ export const gastosViajeService = {
     }
   },
 
-  getCategories: async (expenseTypeId: number, company: TCompany): Promise<ExecutionResponse<IExpenseCategory[]>> => {
+  getCategories: async (expenseTypeId: number, company: string): Promise<ExecutionResponse<IExpenseCategory[]>> => {
     const res = await httpClient.get<IGiraApiResponse<IExpenseCategory[]>>(`Gira/ExpensesCategories/${company}`)
     return {
       Success: res.Succeeded,
@@ -103,7 +103,7 @@ export const gastosViajeService = {
     }
   },
 
-  getFuelTypes: async (company: TCompany): Promise<ExecutionResponse<IFuelType[]>> => {
+  getFuelTypes: async (company: string): Promise<ExecutionResponse<IFuelType[]>> => {
     const res = await httpClient.get<IGiraApiResponse<IFuelType[]>>(`Gira/FuelTypes/${company}`)
     return {
       Success: res.Succeeded,
@@ -113,17 +113,17 @@ export const gastosViajeService = {
     }
   },
 
-  getCurrencies: async (_company: TCompany): Promise<ExecutionResponse<ICurrency[]>> => {
+  getCurrencies: async (_company: string): Promise<ExecutionResponse<ICurrency[]>> => {
     await delay(100)
     return { Success: true, Data: MOCK_CURRENCIES, SuccessMessage: 'OK', ErrorMessage: '' }
   },
 
-  getTaxConfig: async (_company: TCompany): Promise<ExecutionResponse<ITaxConfig>> => {
+  getTaxConfig: async (_company: string): Promise<ExecutionResponse<ITaxConfig>> => {
     const res = await httpClient.get<IGiraApiResponse<{TAXCODE:string, TAXVALUE: number}[]>>(`Gira/TaxPercentage/${_company}`)
     return { Success: true, Data: { Rate: (res.Data[0].TAXVALUE / 100)}, SuccessMessage: 'OK', ErrorMessage: '' }
   },
 
-  searchProvider: async (query: string, company: TCompany): Promise<ExecutionResponse<IGiraVendorResponse[]>> => {
+  searchProvider: async (query: string, company: string): Promise<ExecutionResponse<IGiraVendorResponse[]>> => {
     const res = await httpClient.get<IGiraApiResponse<IGiraVendorResponse[]>>(`Gira/Vendors/${encodeURIComponent(query)}/${company}`)
     return {
       Success: res.Succeeded,
@@ -139,13 +139,13 @@ export const gastosViajeService = {
     dateFrom: string,
     dateTo: string,
     statusId: number
-  ): Promise<ExecutionResponse<IGastoHistorialDetail[]>> => {
+  ): Promise<ExecutionResponse<IGastoHistorialResponse>> => {
     const res = await httpClient.get<IGiraApiResponse<IGastoHistorialResponse>>(
       `Gira/HistoricalDetails/${company}/${statusId}/${dateFrom}/${dateTo}?personalCode=${personalCode}`
     )
     return {
       Success: res.Succeeded,
-      Data: res.Data.Details,
+      Data: { Details: res.Data.Details, PendingAmount: res.Data.PendingAmount },
       SuccessMessage: res.Message ?? '',
       ErrorMessage: res.Errors ?? '',
     }
@@ -157,12 +157,12 @@ export const gastosViajeService = {
     dateTo: string,
     statusId: number
   ): Promise<ExecutionResponse<IGastoHistorialDetail[]>> => {
-    const res = await httpClient.get<IGiraApiResponse<IGastoHistorialResponse>>(
-      `Gira/HistoricalDetailsRevision/${company}/${statusId}/${dateFrom}/${dateTo}`
+    const res = await httpClient.get<IGiraApiResponse<IGastoHistorialDetail[]>>(
+      `Gira/PendingApprovals/${company}`
     )
     return {
       Success: res.Succeeded,
-      Data: res.Data.Details,
+      Data: res.Data,
       SuccessMessage: res.Message ?? '',
       ErrorMessage: res.Errors ?? '',
     }
@@ -180,10 +180,11 @@ export const gastosViajeService = {
   },
 
   solicitarProveedor: async (
+    companyCode: string,
     _data: ISolicitarProveedorRequest
   ): Promise<ExecutionResponse<ISolicitarProveedorRequest>> => {
     const res = await httpClient.post<IGiraApiResponse<ISolicitarProveedorRequest>>(
-      "Gira/ProviderDetail",
+      `Gira/EmailNewVendor/${companyCode}`,
       _data
     );
 
@@ -195,37 +196,37 @@ export const gastosViajeService = {
     };
   },
 
-  syncGastos: async (
-    _userCode: string,
-    _company: string
-  ): Promise<ExecutionResponse<IGastoHistorialDetail[]>> => {
+  
+  getPendingApprovals: async (_company: string, _userCode: string): Promise<ExecutionResponse<string>> => {
+    const res = await httpClient.post<IGiraApiResponse<string>>(
+      `Gira/PendingAX/${_company}/${_userCode}`
+    );
+    return { Success: res.Succeeded, Data: res.Data, SuccessMessage: res.Message ?? "", ErrorMessage: res.Errors ?? "" }
+  },
+
+  approveGasto: async (_data: IApproveGastoRequest): Promise<ExecutionResponse<boolean>> => {
     const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail[]>>(
-      `Gira/SyncPending/${_company}?personalCode=${_userCode}`
+      `Gira/ApproveExpense/${_data.Company}/${_data.GastoId}/${_data.FinansiCode}`
     );
 
     return {
       Success: res.Succeeded,
-      Data: res.Data,
+      Data: true,
       SuccessMessage: res.Message ?? "",
       ErrorMessage: res.Errors ?? ""
     };
   },
 
-  // TODO: conectar al endpoint real
-  getPendingApprovals: async (_company: TCompany): Promise<ExecutionResponse<IGastoViaje[]>> => {
-    await delay(600)
-    return { Success: true, Data: MOCK_PENDING_APPROVALS, SuccessMessage: 'OK', ErrorMessage: '' }
-  },
-
-  // TODO: conectar al endpoint real
-  approveGasto: async (_data: IApproveGastoRequest): Promise<ExecutionResponse<boolean>> => {
-    await delay(700)
-    return { Success: true, Data: true, SuccessMessage: 'Gasto aprobado correctamente', ErrorMessage: '' }
-  },
-
-  // TODO: conectar al endpoint real
   rejectGasto: async (_data: IRejectGastoRequest): Promise<ExecutionResponse<boolean>> => {
-    await delay(700)
-    return { Success: true, Data: true, SuccessMessage: 'Gasto rechazado correctamente', ErrorMessage: '' }
+    const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail[]>>(
+      `Gira/ApproveExpense/${_data.Company}/${_data.GastoId}/${_data.FinansiCode}/${_data.Reason}`
+    );
+
+    return {
+      Success: res.Succeeded,
+      Data: true,
+      SuccessMessage: res.Message ?? "",
+      ErrorMessage: res.Errors ?? ""
+    };
   },
 }

@@ -8,7 +8,7 @@ import {
   LucideIcon,
 } from 'lucide-react-native'
 import { usePageHeader } from '../../hooks/usePageHeader'
-import { IGastoHistorialDetail } from '../../api/modules/GastosViaje/gastosViaje.types'
+import { IGastoHistorialDetail, IGiraApiResponse } from '../../api/modules/GastosViaje/gastosViaje.types'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useLoader } from '../../providers/LoaderProvider'
@@ -19,6 +19,7 @@ import AppInput from '../../components/commons/AppInput'
 import dayjs from 'dayjs'
 import { formatCurrency } from './GastosViaje.utils'
 import {TCompany, ECompany} from '../../api/modules/GastosViaje/gastosViaje.types'
+import { ExecutionResponse } from '../../api/modules/response.type'
 
 function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
   if (value === null || value === undefined || value === '') return null
@@ -62,7 +63,7 @@ export default function DetalleGastoScreen({ route }: any) {
       </TouchableOpacity>
     ),
     center: <Text fontSize={16} fontWeight="700" color="$text">Detalle de Gasto</Text>,
-    right: <CountryFlag countryCode="HN" width={28} height={20} />,
+    right: <CountryFlag countryCode={defaultCompany?.CodeIcon ?? 'HN'} width={28} height={20} />,
   })
 
   if (!gasto) {
@@ -81,6 +82,7 @@ export default function DetalleGastoScreen({ route }: any) {
         GastoId: gasto.Id,
         ApproverCode: user?.Code ?? '',
         Company: defaultCompany?.Code ?? '',
+        FinansiCode: user?.Payweb ?? '',
       })
       if (res.Success) {
         showToast('success', 'Aprobado', 'El gasto fue aprobado correctamente', 3000, 'top')
@@ -88,8 +90,25 @@ export default function DetalleGastoScreen({ route }: any) {
       } else {
         showToast('error', 'Error', 'No se pudo aprobar el gasto', 4000, 'top')
       }
-    } catch {
-      showToast('error', 'Error', 'Ocurrió un error inesperado', 4000, 'top')
+    } catch (error:any) {
+      let responseData;
+
+      try {
+        responseData =
+          typeof error.response === 'string'
+            ? JSON.parse(error.response)
+            : error.response?.data;
+      } catch {
+        responseData = null;
+      }
+
+      showToast(
+        'error',
+        'Error',
+        responseData?.Message ?? 'Ocurrió un error inesperado',
+        8000,
+        'top'
+      );
     } finally {
       setActionLoading(false)
       loader.hide()
@@ -109,6 +128,7 @@ export default function DetalleGastoScreen({ route }: any) {
         ApproverCode: user?.Code ?? '',
         Company: defaultCompany?.Code ?? '',
         Reason: rejectReason.trim(),
+        FinansiCode: user?.Payweb ?? '',
       })
       if (res.Success) {
         setRejectModalVisible(false)
@@ -247,7 +267,7 @@ export default function DetalleGastoScreen({ route }: any) {
             </Card>
 
             {/* Acciones */}
-            {isApprovalMode ? (
+            {isApprovalMode && gasto.Code === 'P' ? (
               <XStack gap="$3">
                 <Button
                   flex={1} height={48} borderRadius={12}
@@ -332,6 +352,7 @@ export default function DetalleGastoScreen({ route }: any) {
               style={{height: 140}}
               autoFocus
             />
+
             <XStack gap="$3" marginTop={16}>
               <Button
                 flex={1} height={44} borderRadius={10}

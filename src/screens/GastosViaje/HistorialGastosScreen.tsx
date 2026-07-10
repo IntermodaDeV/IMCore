@@ -56,7 +56,7 @@ export default function HistorialGastosScreen({ navigation }: any) {
       right: <CountryFlag countryCode={defaultCompany?.CodeIcon ?? ''} width={28} height={20} />,
     })
 
-  const pendingCount = data.filter(g => g.StatusName === 'Pendiente').length
+  const [pendingCount, setpendingCount] = useState(0)
 
   const loadData = useCallback(async (_typeFilter?:number) => {
     try {
@@ -68,10 +68,13 @@ export default function HistorialGastosScreen({ navigation }: any) {
       const to   = dateTo   ?? dayjs().format('YYYY-MM-DD');
       
       const [histRes, typesRes] = await Promise.all([
-        gastosViajeService.getHistory(user?.Finansi ?? '', defaultCompany?.Code ?? '', from, to, _typeFilter ?? typeFilter),
+        gastosViajeService.getHistory(user?.Payweb ?? '', defaultCompany?.Code ?? '', from, to, _typeFilter ?? typeFilter),
         gastosViajeService.getExpenseTypes(defaultCompany?.Code ?? ''),
       ])
-      if (histRes.Success) { setData(histRes.Data ?? []); setFiltered(histRes.Data ?? []) }
+      
+      setpendingCount(histRes.Data?.PendingAmount ?? 0);
+
+      if (histRes.Success) { setData(histRes.Data.Details ?? []); setFiltered(histRes.Data.Details ?? []) }
       if (typesRes.Success) setExpenseTypes(typesRes.Data)
     } catch (err) {
       setError(handleError(err))
@@ -88,9 +91,9 @@ export default function HistorialGastosScreen({ navigation }: any) {
   const handleSync = async () => {
     try {
       setSyncing(true)
-      const res = await gastosViajeService.syncGastos(user?.Code ?? '', defaultCompany?.Code ?? '')
+      const res = await gastosViajeService.getPendingApprovals( defaultCompany?.Code ?? '', user?.Payweb ?? '')
       if (res.Success) {
-        setData(res.Data)
+        loadData(typeFilter);
         showToast('success', 'Sincronización', 'Gastos actualizados correctamente', 3000, 'top')
       }
     } catch {
@@ -227,11 +230,13 @@ export default function HistorialGastosScreen({ navigation }: any) {
 function GastoCard({ item, onPress }: { item: IGastoHistorialDetail; onPress: () => void }) {
   const theme = useTheme()
 
-  const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; Icon: any }> = {
+  
+   const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; Icon: any }> = {
     Aprobado:  { label: 'Aprobado',  bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
     Pendiente: { label: 'Pendiente', bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
     Rechazado: { label: 'Rechazado', bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
   }
+  
 
   const status = STATUS_CONFIG[item.StatusName] ?? STATUS_CONFIG['Pendiente']
   const StatusIcon = status.Icon
@@ -316,11 +321,6 @@ function FiltrosPanel({
 }) {
   const [status, setStatus] = useState(initialStatus)
   const [type, setType] = useState(initialType)
-
-  const typeOptions = [
-    { label: 'Todos', value: 'Todos' },
-    ...expenseTypes.map(t => ({ label: t.Name, value: t.Name })),
-  ]
 
   const { closeDrawer } = useRightDrawer()
 

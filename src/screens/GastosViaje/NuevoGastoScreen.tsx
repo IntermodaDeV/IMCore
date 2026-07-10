@@ -21,9 +21,6 @@ import {
   IGiraVendorResponse
 } from '../../api/modules/GastosViaje/gastosViaje.types'
 
-// TODO: derive from user context
-const COMPANY: TCompany = 'IMHN'
-
 type FormData = {
   imageUri: string
   imageBase64: string
@@ -110,6 +107,7 @@ export default function NuevoGastoScreen() {
   const skipProviderSearchRef                         = useRef(false)
   const [isSearchingProviders, setIsSearchingProviders] = useState(false)
 
+
   const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' });
   const SearchStyled = styled(Search, { color: '$textMuted', height: 12, marginEnd: 6});
 
@@ -138,9 +136,9 @@ export default function NuevoGastoScreen() {
   const selectedCategory = categories.find(c => c.Id === watchedCatId)
   const selectedTypeName = expenseTypes.find(t => t.Id === watchedTypeId)?.Name ?? ''
   const isAlimentacion   = selectedCategory?.Name?.toLowerCase().includes('alimentaci') ?? false
-  const isCombustible    = selectedCategory?.Name?.toLowerCase().includes('combustible') && COMPANY === 'IMGT'
+  const isCombustible    = selectedCategory?.Name?.toLowerCase().includes('combustible') && defaultCompany?.Code === 'IMGT'
   const isHospedaje      = selectedTypeName === 'Hospedaje'
-  const isIMHN           = COMPANY === 'IMHN'
+  const isIMHN           = defaultCompany?.Code === 'IMHN'
   const hasPredefined    = !!selectedCategory?.VendAccount
 
   const section1Complete = !!watchedTypeId && !!watchedCatId &&
@@ -168,19 +166,39 @@ export default function NuevoGastoScreen() {
         <ArrowLeftStyled  />
       </View>
     ),
-    right: (<CountryFlag countryCode="HN" width={28} height={20} />)
+    right: (<CountryFlag countryCode={defaultCompany?.CodeIcon ?? 'HN'} width={28} height={20} />)
   })
 
   useFocusEffect(useCallback(() => {
     const load = async () => {
       try {
-        const [typesRes, taxRes] = await Promise.all([
-          gastosViajeService.getExpenseTypes(COMPANY),
-          gastosViajeService.getTaxConfig(COMPANY),
-        ])
+        
+        const typesRes = await gastosViajeService.getExpenseTypes(defaultCompany?.Code ?? '')
         if (typesRes.Success) setExpenseTypes(typesRes.Data)
+        
+          const taxRes = await gastosViajeService.getTaxConfig(defaultCompany?.Code ?? '')
         if (taxRes.Success) setTaxRate(taxRes.Data.Rate)
-      } catch {}
+
+      } catch(error:any) {
+        let responseData;
+
+        try {
+          responseData =
+            typeof error.response === 'string'
+              ? JSON.parse(error.response)
+              : error.response?.data;
+        } catch {
+          responseData = null;
+        }
+
+        showToast(
+          'info',
+          'Informacion',
+          responseData?.Message ?? 'Ocurrió un error inesperado',
+          8000,
+          'top'
+        );
+      }
     }
     load()
   }, []))
@@ -188,7 +206,7 @@ export default function NuevoGastoScreen() {
   useEffect(() => {
     if (!watchedTypeId) { setCategories([]); setValue('ExpenseCategoryId', 0); return }
     const load = async () => {
-      const res = await gastosViajeService.getCategories(watchedTypeId, COMPANY)
+      const res = await gastosViajeService.getCategories(watchedTypeId, defaultCompany?.Code ?? '')
       if (res.Success) setCategories(res.Data)
       setValue('ExpenseCategoryId', 0)
       setValue('MealId', 0)
@@ -207,10 +225,12 @@ export default function NuevoGastoScreen() {
       setValue('providerName', '')
       setValue('vatnnum', '')
       setValue('VendAccount', selectedCategory?.VendAccount ?? '')
+      setProviderCurrency(selectedCategory?.VendCurrency ?? '')
     } else {
       setValue('providerName', '')
       setValue('vatnnum', '')
       setValue('VendAccount', '')
+      setProviderCurrency('')
     }
 
     if (isAlimentacion) {
@@ -219,7 +239,7 @@ export default function NuevoGastoScreen() {
       })
     }
     if (isCombustible) {
-      gastosViajeService.getFuelTypes(COMPANY).then(r => {
+      gastosViajeService.getFuelTypes(defaultCompany?.Code ?? '').then(r => {
         if (r.Success) setFuelTypes(r.Data)
       })
     }
@@ -232,7 +252,7 @@ export default function NuevoGastoScreen() {
     const timer = setTimeout(async () => {
       try {
         setIsSearchingProviders(true)
-        const res = await gastosViajeService.searchProvider(q, COMPANY)
+        const res = await gastosViajeService.searchProvider(q, defaultCompany?.Code ?? '')
         if (res.Success) setAllProviders(res.Data)
       } catch {} finally {
         setIsSearchingProviders(false)
@@ -254,52 +274,58 @@ export default function NuevoGastoScreen() {
       const graved = toNum(data.GravadoAmount)
       const exempt = toNum(data.ExemptAmount)
       const total  = isIMHN ? computedTotal : toNum(data.InvoiceAmount)
-
+      
       const res = await gastosViajeService.createGasto({
         id:                0,
         expenseCategoryId: data.ExpenseCategoryId,
         mealId:            data.MealId || null,
         fuelTypeId:        data.FuelTypeId || null,
         statusId:          0,
-        personalCode:      user?.Finansi ?? '',
+        personalCode:      user?.Payweb ?? '',
         vendAccount:       data.VendAccount,
         description:       data.Description || '',
         invoiceId:         data.InvoiceId || '',
-        seriesNum:         '',
+        seriesNum:         data.SeriesNum || null,
         exemptAmount:      exempt,
         gravadoAmount:     graved,
         invoiceAmount:     total,
         invoiceDate:       data.InvoiceDate,
         imagePath:         data.imageBase64 ?? '',
-        imageBase64:       "",
-        personalCodeAdmin: '',
-        rejectionMotive:   '',
-        journalNum:        '',
-        companyCode:       defaultCompany?.Code ?? COMPANY,
-        axMessage:         '',
+        personalCodeAdmin: null,
+        rejectionMotive:   null,
+        journalNum:        null,
+        companyCode:       defaultCompany?.Code ?? '',
+        axMessage:         null,
         inUse:             true,
       })
-
-      if (res.Succeeded) {
+      
+      if (res.Succeeded === true) {
         showToast('success', 'Gasto registrado', 'Tu gasto fue enviado correctamente', 3000, 'top')
         reset()
         navigation.goBack()
       } else {
-        
-        if (res.EstatusCode === 409) {
-          try {
-            const outer = JSON.parse(res.Message ?? '{}')
-            const inner = JSON.parse(outer?.Message ?? '{}')
-            showToast('warning', 'Aviso', inner?.mensaje ?? outer?.mensaje ?? res.Message ?? '', 4000, 'top')
-          } catch {
-            showToast('warning', 'Aviso', res.Message ?? '', 4000, 'top')
-          }
-        } else {
-          showToast('error', 'Error', res.Errors || 'No se pudo registrar el gasto', 4000, 'top')
-        }
+        showToast('error', 'Error' ,'No se pudo registrar el gasto', 8000, 'top')
       }
-    } catch {
-      showToast('error', 'Error', 'Ocurrió un error inesperado', 4000, 'top')
+      
+    } catch(error:any) {
+      let responseData;
+
+      try {
+        responseData =
+          typeof error.response === 'string'
+            ? JSON.parse(error.response)
+            : error.response?.data;
+      } catch {
+        responseData = null;
+      }
+
+      showToast(
+        'error',
+        'Error',
+        responseData?.Message ?? 'Ocurrió un error inesperado',
+        8000,
+        'top'
+      );
     } finally {
       loader.hide()
     }
@@ -397,6 +423,14 @@ export default function NuevoGastoScreen() {
                       <Text fontSize={12} color="$textMuted">Proveedor asignado</Text>
                       <Text fontSize={14} fontWeight="700" color="$text">{selectedCategory?.VendAccount}</Text>
                     </YStack>
+                    <TouchableOpacity onPress={() => {
+                      setValue('useCustomProvider', 'true')
+                      setSelectedProviderId('')
+                    }}>
+                      <Text fontSize={13} color="$primary" fontWeight="600" marginTop="$1">
+                        Cambiar
+                      </Text>
+                    </TouchableOpacity>
                   </Card>
                 ) : (
                   <YStack gap="$2">
@@ -405,8 +439,8 @@ export default function NuevoGastoScreen() {
                       name="vatnnum"
                       render={({ field }) => (
                         <AppInput
-                          label={COMPANY === 'IMHN' ? 'RTN' : 'NIT'}
-                          placeholder={COMPANY === "IMHN" ?  "0801-1985-00012": "080119850001K"}
+                          label={defaultCompany?.Code === 'IMHN' ? 'RTN' : 'NIT'}
+                          placeholder={defaultCompany?.Code === "IMHN" ?  "0801-1985-00012": "080119850001K"}
                           keyboardType="numbers-and-punctuation"
                           value={field.value}
                           onChangeText={v => field.onChange(v)}
@@ -459,28 +493,27 @@ export default function NuevoGastoScreen() {
                 {/* IMHN */}
                 {isIMHN && (
                   <>
-                    {selectedCategory?.IsInvoiceRequired && (
-                      <Controller
-                        control={control}
-                        name="InvoiceId"
-                        rules={{ required: 'El número de factura es requerido' }}
-                        render={({ field }) => (
-                          <AppInput
-                            label="No. de factura"
-                            placeholder="000-001-01-00000000"
-                            value={field.value}
-                            onChangeText={v => field.onChange(formatInvoiceIMHN(v))}
-                            keyboardType="numeric"
-                            error={errors.InvoiceId?.message}
-                          />
-                        )}
-                      />
-                    )}
+                    
+                    <Controller
+                      control={control}
+                      name="InvoiceId"
+                      rules={selectedCategory?.IsInvoiceRequired ? { required: 'El número de factura es requerido' } : {}}
+                      render={({ field }) => (
+                        <AppInput
+                          label="No. de factura"
+                          placeholder="000-001-01-00000000"
+                          value={field.value}
+                          onChangeText={v => field.onChange(formatInvoiceIMHN(v))}
+                          keyboardType="numeric"
+                          error={errors.InvoiceId?.message}
+                        />
+                      )}
+                    />
 
                     <Controller
                       control={control}
                       name="Description"
-                      rules={selectedCategory?.IsDescriptionRequired ? { required: 'La descripción es requerida' } : {}}
+                      rules={selectedCategory?.IsDescriptionRequired ? { required: 'La descripción es requerida', maxLength: { value: 250, message: 'Máximo 250 caracteres' } } : { maxLength: { value: 250, message: 'Máximo 250 caracteres' } }}
                       render={({ field }) => (
                         <AppInput
                           label={`Descripción${selectedCategory?.IsDescriptionRequired ? '' : ' (Opcional)'}`}
@@ -489,6 +522,7 @@ export default function NuevoGastoScreen() {
                           onChangeText={field.onChange}
                           multiline
                           numberOfLines={3}
+                          maxLength={250}
                           error={errors.Description?.message}
                           style={{ height: 80}}
                         />
@@ -500,7 +534,7 @@ export default function NuevoGastoScreen() {
                         <Controller
                           control={control}
                           name="GravadoAmount"
-                          rules={{ required: 'Requerido' }}
+                          
                           render={({ field }) => (
                             <AppInput
                               label="Importe gravado"

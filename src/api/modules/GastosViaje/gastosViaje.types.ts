@@ -34,6 +34,7 @@ export interface IExpenseCategory {
   IsDescriptionRequired: boolean
   IsImageRequired: boolean
   VendAccount?: string | null
+  VendCurrency?: string | null
   CompanyCode?: string
   Status?: boolean
   ExpenseType?: IExpenseType
@@ -149,6 +150,7 @@ export interface IApproveGastoRequest {
   GastoId: number
   ApproverCode: string
   Company: string
+  FinansiCode: string
 }
 
 export interface IRejectGastoRequest {
@@ -156,6 +158,7 @@ export interface IRejectGastoRequest {
   ApproverCode: string
   Company: string
   Reason: string
+  FinansiCode: string
 }
 
 export interface ICreateGastoRequest {
@@ -168,25 +171,24 @@ export interface ICreateGastoRequest {
   vendAccount: string
   description: string
   invoiceId: string
-  seriesNum: string
+  seriesNum: string | null
   exemptAmount: number
   gravadoAmount: number
   invoiceAmount: number
   invoiceDate: string
   imagePath: string | null
-  imageBase64: string
-  personalCodeAdmin: string
-  rejectionMotive: string
-  journalNum: string
-  companyCode: string
-  axMessage: string
+  personalCodeAdmin: string | null
+  rejectionMotive: string | null
+  journalNum: string | null
+  companyCode: string 
+  axMessage: string | null
   inUse: boolean
 }
 
 export interface ISolicitarProveedorRequest {
-  PersonalCode: string
-  VendName: string
-  VatNum?: string
-  CompanyCode: string
-  Justification: string
+  RequesterCode: string
+  VendorName: string
+  RTN: string
+  Description: string
+  InvoiceImage: string
 }
