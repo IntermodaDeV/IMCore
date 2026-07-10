@@ -43,6 +43,7 @@ export interface ITicket {
   TiempoRespuestaMin: number | null
   TiempoResolucionMin: number | null
   TiempoNetoMin: number | null   // tiempo activo neto (excluye pausas)
+  TiempoValidacionMin: number | null   // primer completado → validación
 
   // Sello de validación de producción (no es un estado; el estado sigue COMPLETADO).
   ValidadoPor: string | null
