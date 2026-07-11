@@ -85,9 +85,7 @@ export default function DrawerNavigator({ setTheme }: any) {
         header: ({route, options}) => <AppHeader  route={route} options={options} />,
         headerShown: true,
         drawerType: 'slide',
-        // El gesto de swipe capturaba el scroll vertical de las listas (p. ej.
-        // Máquinas) y el drawer quedaba pegado a medio abrir. Se abre solo con el
-        // botón ☰ del header.
+        // Sin gesto de swipe: el drawer se abre únicamente con el botón ☰ del header.
         swipeEnabled: false,
         drawerStyle: {
           backgroundColor: theme.background?.val,
@@ -398,18 +396,24 @@ function TreeItem({
       setNavLoading && setNavLoading(route)
     } catch (e) {}
 
-    if (navigation.getState().routeNames.includes(route)) {
-      navigation.navigate(route)
-    } else {
-      navigation.navigate('not_found', { name: route })
-    }
-
-    // close drawer and clear loading after short delay
+    // Cierra el drawer PRIMERO y navega en el siguiente tick. La animación de
+    // cierre corre en el hilo de UI (reanimated); si navegáramos antes, el montaje
+    // de una pantalla que hace trabajo pesado (fetch grande, muchos cards, etc.)
+    // bloquea el hilo de JS y el cierre nunca se dispara → el drawer se queda
+    // pegado. Al cerrar primero, el cierre ya va en marcha cuando arranca la
+    // navegación, y termina en el hilo de UI aunque el JS esté ocupado.
     try {
       navigation.closeDrawer && navigation.closeDrawer()
     } catch (e) {}
 
-    setTimeout(() => setNavLoading && setNavLoading(null), 500)
+    setTimeout(() => {
+      if (navigation.getState().routeNames.includes(route)) {
+        navigation.navigate(route)
+      } else {
+        navigation.navigate('not_found', { name: route })
+      }
+      setTimeout(() => setNavLoading && setNavLoading(null), 500)
+    }, 80)
   }
 
   return (
