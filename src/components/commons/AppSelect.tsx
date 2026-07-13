@@ -129,7 +129,10 @@ export default function AppSelect({
           statusBarTranslucent
           onRequestClose={() => setOpen(false)}
         >
-          <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
+          {/* Backdrop atenuado: sin fondo, el Modal transparente dejaba ver el
+              drawer que queda montado detrás (drawerType:'slide') y todo se
+              encimaba. El scrim tapa lo que hay detrás, como el resto de modales. */}
+          <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }} onPress={() => setOpen(false)} />
 
           <View
             position="absolute"
