@@ -28,8 +28,8 @@ export const puedeOperarTicket = (
   hasRole(roles, ROLES_OPERAR)
 
 // Diagnosticar (tipo de falla + causa): Admin, Sup. Mantenimiento, Mecánico,
-// el mecánico asignado, o acceso 'DiagnosticarTickets'. (El backend revalida.)
-const ROLES_DIAGNOSTICAR = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico']
+// Técnico, el mecánico asignado, o acceso 'DiagnosticarTickets'. (El backend revalida.)
+const ROLES_DIAGNOSTICAR = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico']
 export const puedeDiagnosticar = (
   roles?: RoleLike[] | null,
   access?: string | null,

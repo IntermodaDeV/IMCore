@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Modal, RefreshControl } from 'react-native'
-import { ScrollView, Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
+import { Modal, RefreshControl, FlatList } from 'react-native'
+import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { useFocusEffect } from '@react-navigation/native'
 import { Plus, Pencil, Layers } from 'lucide-react-native'
 
@@ -70,37 +70,44 @@ export default function TiposParoScreen() {
       {loading ? (
         <YStack flex={1} alignItems="center" justifyContent="center" gap="$3"><Spinner size="large" color={ACCENT} /><Text color="$textMuted">Cargando…</Text></YStack>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
-          refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />}>
-          {items.length === 0 ? (
+        // FlatList (virtualizado) en vez de ScrollView + map: solo renderiza las
+        // filas visibles, evitando saturar el hilo de JS si la lista crece.
+        <FlatList
+          data={items}
+          keyExtractor={(it) => String(it.Id)}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 40, flexGrow: 1 }}
+          ItemSeparatorComponent={() => <View height={10} />}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={9}
+          refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />}
+          ListEmptyComponent={
             <YStack alignItems="center" justifyContent="center" paddingVertical="$10" gap="$2">
               <Layers size={28} color={theme.textMuted?.val} />
               <Text fontSize="$4" fontWeight="700" color="$text">Sin registros</Text>
               <Text fontSize="$2" color="$textMuted">Toca el + para agregar.</Text>
             </YStack>
-          ) : (
-            <YStack gap="$2.5">
-              {items.map(it => {
-                const activo = it.Status_Id === 1
-                return (
-                  <XStack key={it.Id} backgroundColor="$backgroundElevated" borderRadius="$4"
-                    borderLeftWidth={4} borderLeftColor={activo ? '$primary' : '$border'} borderWidth={1} borderColor="$border"
-                    paddingVertical="$3" paddingHorizontal="$4" alignItems="center" gap="$3" {...shadows.sm}
-                    onPress={() => abrirEditar(it)} pressStyle={{ opacity: 0.8, scale: 0.99 }}>
-                    <Text flex={1} fontSize={14} fontWeight="800" color="$text">{it.Name}</Text>
-                    <View onPress={(e: any) => { e?.stopPropagation?.(); setConfirm(it) }} pressStyle={{ opacity: 0.7 }}
-                      backgroundColor={activo ? 'rgba(255, 85, 26, 0.12)' : 'rgba(148, 163, 184, 0.15)'} paddingHorizontal="$2" paddingVertical={3} borderRadius="$10">
-                      <Text fontSize={10} color={activo ? '$primary' : '$textMuted'} fontWeight="700">{activo ? 'Activo' : 'Inactivo'}</Text>
-                    </View>
-                    <View onPress={(e: any) => { e?.stopPropagation?.(); abrirEditar(it) }} pressStyle={{ opacity: 0.6 }} padding="$2" hitSlop={6}>
-                      <Pencil size={16} color={theme.primary?.val} />
-                    </View>
-                  </XStack>
-                )
-              })}
-            </YStack>
-          )}
-        </ScrollView>
+          }
+          renderItem={({ item: it }) => {
+            const activo = it.Status_Id === 1
+            return (
+              <XStack backgroundColor="$backgroundElevated" borderRadius="$4"
+                borderLeftWidth={4} borderLeftColor={activo ? '$primary' : '$border'} borderWidth={1} borderColor="$border"
+                paddingVertical="$3" paddingHorizontal="$4" alignItems="center" gap="$3" {...shadows.sm}
+                onPress={() => abrirEditar(it)} pressStyle={{ opacity: 0.8, scale: 0.99 }}>
+                <Text flex={1} fontSize={14} fontWeight="800" color="$text">{it.Name}</Text>
+                <View onPress={(e: any) => { e?.stopPropagation?.(); setConfirm(it) }} pressStyle={{ opacity: 0.7 }}
+                  backgroundColor={activo ? 'rgba(255, 85, 26, 0.12)' : 'rgba(148, 163, 184, 0.15)'} paddingHorizontal="$2" paddingVertical={3} borderRadius="$10">
+                  <Text fontSize={10} color={activo ? '$primary' : '$textMuted'} fontWeight="700">{activo ? 'Activo' : 'Inactivo'}</Text>
+                </View>
+                <View onPress={(e: any) => { e?.stopPropagation?.(); abrirEditar(it) }} pressStyle={{ opacity: 0.6 }} padding="$2" hitSlop={6}>
+                  <Pencil size={16} color={theme.primary?.val} />
+                </View>
+              </XStack>
+            )
+          }}
+        />
       )}
 
       <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, RefreshControl, useWindowDimensions } from 'react-native'
-import { ScrollView, Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
+import { Animated, RefreshControl, useWindowDimensions, FlatList } from 'react-native'
+import { Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
 import { Search, Plus, Wrench, RefreshCw } from 'lucide-react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 // ScrollView de gesture-handler: permite scroll horizontal fiable AUN dentro del
@@ -338,41 +338,44 @@ export default function TicketsListScreen() {
           <Text color="$textMuted">Cargando tickets…</Text>
         </YStack>
       ) : (
-        <ScrollView
-          flex={1}
-          contentContainerStyle={{ padding: 12, paddingBottom: 96 }}
+        // FlatList (virtualizado) en vez de ScrollView + map: evita renderizar de
+        // golpe todas las tarjetas (hasta 100) y saturar el hilo de JS al montar/
+        // hacer scroll, lo que provocaba jank y contribuía al drawer pegado.
+        // numColumns con key de remonte para alternar 1↔2 columnas (isWide).
+        <FlatList
+          data={error ? [] : tickets}
+          key={isWide ? 'grid' : 'list'}
+          numColumns={isWide ? 2 : 1}
+          columnWrapperStyle={isWide ? { justifyContent: 'space-between' } : undefined}
+          keyExtractor={(t) => String(t.Id)}
+          style={{ flex: 1, opacity: recargando ? 0.45 : 1 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 96, width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center', flexGrow: 1 }}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={9}
+          keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />}
-        >
-          {error ? (
-            <EmptyState
-              icon={<RefreshCw size={28} color={theme.textMuted?.val} />}
-              title="No se pudieron cargar los tickets"
-              subtitle={error}
-            />
-          ) : tickets.length === 0 ? (
-            <EmptyState
-              icon={<Wrench size={28} color={theme.textMuted?.val} />}
-              title="Sin tickets"
-              subtitle="No hay tickets que coincidan con los filtros."
-            />
-          ) : (
-            <View
-              width="100%"
-              maxWidth={CONTENT_MAX}
-              alignSelf="center"
-              flexDirection="row"
-              flexWrap="wrap"
-              justifyContent="space-between"
-              opacity={recargando ? 0.45 : 1}
-            >
-              {tickets.map(t => (
-                <View key={t.Id} width={isWide ? '49%' : '100%'} marginBottom="$2.5">
-                  <TicketCard t={t} onPress={() => irADetalle(t)} theme={theme} />
-                </View>
-              ))}
+          ListEmptyComponent={
+            error ? (
+              <EmptyState
+                icon={<RefreshCw size={28} color={theme.textMuted?.val} />}
+                title="No se pudieron cargar los tickets"
+                subtitle={error}
+              />
+            ) : (
+              <EmptyState
+                icon={<Wrench size={28} color={theme.textMuted?.val} />}
+                title="Sin tickets"
+                subtitle="No hay tickets que coincidan con los filtros."
+              />
+            )
+          }
+          renderItem={({ item: t }) => (
+            <View width={isWide ? '49%' : '100%'} marginBottom="$2.5">
+              <TicketCard t={t} onPress={() => irADetalle(t)} theme={theme} />
             </View>
           )}
-        </ScrollView>
+        />
       )}
       </View>
       </Animated.ScrollView>
