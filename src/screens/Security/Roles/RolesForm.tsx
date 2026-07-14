@@ -11,7 +11,7 @@ import { computeMenuCascade, buildMenuControlPayloads } from '../menuCascade'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { useAuth } from '../../../context/AuthContext'
 import SkeletonForm from '../../../components/Skeletons/SkeletonForm'
-import { ArrowLeft, User } from 'lucide-react-native'
+import { ArrowLeft, User, ChevronDown, ChevronRight } from 'lucide-react-native'
 import SearchInput from '../../../components/commons/SearchInput'
 import { handleError } from '../../../utils/errorHandler'
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -37,6 +37,7 @@ export default function RolesForm() {
     const [accessControl, setAccessControl] = useState<IAccessControl[]>([])
     const [menuControl, setMenuControl] = useState<IMenuControl[]>([])
     const [loadingToggle, setLoadingToggle] = useState<string | number |  null>(null)
+    const [expandedParents, setExpandedParents] = useState<Record<number, boolean>>({})
     const { user } = useAuth()
     const { showToast } = useShowToast()
     const isEdit = !!Id;
@@ -205,18 +206,129 @@ export default function RolesForm() {
         })
 
         try {
-            const response = await securityService.saveMenuControl(payloads)
-            if (response.Success) {
+            let response
+            for (const payload of payloads) {
+                response = await securityService.saveMenuControl([payload])
+                if (!response.Success) {
+                    showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
+                    setLoadingToggle(null)
+                    return
+                }
+            }
+            if (response) {
                 // Recarga el control real (refleja también los cambios en cascada).
                 getInfoSinLoading()
                 showToast('success', 'Éxito', response.SuccessMessage || 'Operación realizada correctamente', 5000, 'bottom')
-            } else {
-                showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
             }
         } catch {
             showToast('error', 'Error', 'Ocurrió un error inesperado', 5000, 'bottom')
         }
         setLoadingToggle(null)
+    }
+
+    const renderPermisoRow = (
+        i: MenuDTO,
+        opts?: { isChild?: boolean; hasChildren?: boolean; isExpanded?: boolean; onToggleExpand?: () => void }
+    ) => {
+        const isChild = !!opts?.isChild
+        const hasChildren = !!opts?.hasChildren
+        const hasAccess = (menuControl ?? []).some(
+            (ac) => ac.Menu_Id === i?.Id && ac.Status_Id === 1
+        )
+        const isLoadingThis = loadingToggle === i.Id
+        const isDisabled = loadingToggle !== null && !isLoadingThis
+
+        return (
+            <XStack
+                key={i.Id}
+                backgroundColor={isChild ? '$backgroundSurface' : '$backgroundElevated'}
+                borderRadius="$4"
+                paddingVertical="$3"
+                paddingHorizontal="$4"
+                marginLeft={isChild ? '$6' : 0}
+                alignItems="center"
+                borderWidth={0}
+                overflow="hidden"
+                gap="$3"
+                shadowColor="#000"
+                shadowOffset={{ width: 0, height: 2 }}
+                shadowOpacity={0.07}
+                shadowRadius={6}
+                elevation={2}
+                onPress={() => !isDisabled && !isLoadingThis && toggleRolMenu(i)}
+                opacity={isDisabled ? 0.4 : 1}
+                pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
+            >
+                {/* Franja izquierda */}
+                <View
+                    position="absolute"
+                    left={0}
+                    top={0}
+                    bottom={0}
+                    width={4}
+                    backgroundColor={hasAccess ? '$primary' : 'transparent'}
+                />
+
+                {/* Ícono */}
+                <View
+                    width={isChild ? 34 : 40}
+                    height={isChild ? 34 : 40}
+                    borderRadius={20}
+                    backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
+                    justifyContent="center"
+                    alignItems="center"
+                >
+                    {isLoadingThis ? (
+                        <Spinner size="small" color="$primary" />
+                    ) : (
+                        <User size={isChild ? 17 : 20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
+                    )}
+                </View>
+
+                {/* Info */}
+                <YStack flex={1} gap="$0.5">
+                    <Text fontWeight="700" fontSize={isChild ? 13 : 14} color="$text">
+                        {i.Name}
+                    </Text>
+                    <Text fontSize={12} color="$textMuted">
+                        {i.Description}
+                    </Text>
+                </YStack>
+
+                {/* Badge + Chevron */}
+                <XStack alignItems="center" gap="$2">
+                    {hasAccess && (
+                        <View
+                            backgroundColor="rgba(255, 85, 26, 0.12)"
+                            paddingHorizontal="$2"
+                            paddingVertical={3}
+                            borderRadius="$10"
+                        >
+                            <Text fontSize={10} color="$primary" fontWeight="700">
+                                Activo
+                            </Text>
+                        </View>
+                    )}
+                    {hasChildren && (
+                        <View
+                            onPress={(e: any) => {
+                                e?.stopPropagation?.()
+                                opts?.onToggleExpand?.()
+                            }}
+                            pressStyle={{ opacity: 0.6 }}
+                            padding="$2"
+                            hitSlop={8}
+                        >
+                            {opts?.isExpanded ? (
+                                <ChevronDown size={20} color="#94A3B8" />
+                            ) : (
+                                <ChevronRight size={20} color="#94A3B8" />
+                            )}
+                        </View>
+                    )}
+                </XStack>
+            </XStack>
+        )
     }
 
     useEffect(() => { getInfo() }, [])
@@ -499,89 +611,42 @@ export default function RolesForm() {
                                 </View>
                                 <ScrollView flex={1} showsVerticalScrollIndicator={false}>
                                     <YStack paddingHorizontal="$4" paddingBottom="$4" gap="$3">
-                                        {filteredPermisos.map((i) => {
-                                            const hasAccess = (menuControl ?? []).some(
-                                                (ac) => ac.Menu_Id === i?.Id && ac.Status_Id === 1
+                                        {(() => {
+                                            const parents = filteredPermisos.filter((m) => !m.ParentMenu_Id)
+                                            const parentIds = new Set(parents.map((p) => p.Id))
+                                            const orphanChildren = filteredPermisos.filter(
+                                                (m) => m.ParentMenu_Id && !parentIds.has(m.ParentMenu_Id)
                                             )
-                                            const id = `checkbox-user-${i.Id}`
+                                            const rows: React.ReactNode[] = []
 
-                                            const isLoadingThis = loadingToggle === i.Id
-                                            const isDisabled = loadingToggle !== null && !isLoadingThis
+                                            parents.forEach((parent) => {
+                                                const children = filteredPermisos.filter((m) => m.ParentMenu_Id === parent.Id)
+                                                const hasChildren = children.length > 0
+                                                // Los menús padre arrancan siempre colapsados; se expanden con el chevron.
+                                                const isExpanded = expandedParents[parent.Id] ?? false
 
-                                            return (
-                                                <XStack
-                                                    key={i.Id}
-                                                    backgroundColor="$backgroundElevated"
-                                                    borderRadius="$4"
-                                                    paddingVertical="$3"
-                                                    paddingHorizontal="$4"
-                                                    alignItems="center"
-                                                    borderWidth={0}
-                                                    overflow="hidden"
-                                                    gap="$3"
-                                                    shadowColor="#000"
-                                                    shadowOffset={{ width: 0, height: 2 }}
-                                                    shadowOpacity={0.07}
-                                                    shadowRadius={6}
-                                                    elevation={2}
-                                                    onPress={() => !isDisabled && !isLoadingThis && toggleRolMenu(i)}
-                                                    opacity={isDisabled ? 0.4 : 1}
-                                                    pressStyle={isDisabled || isLoadingThis ? {} : { opacity: 0.75, scale: 0.99 }}
-                                                >
-                                                    {/* Franja izquierda */}
-                                                    <View
-                                                        position="absolute"
-                                                        left={0}
-                                                        top={0}
-                                                        bottom={0}
-                                                        width={4}
-                                                        backgroundColor={hasAccess ? '$primary' : 'transparent'}
-                                                    />
+                                                rows.push(
+                                                    renderPermisoRow(parent, {
+                                                        hasChildren,
+                                                        isExpanded,
+                                                        onToggleExpand: () =>
+                                                            setExpandedParents((prev) => ({ ...prev, [parent.Id]: !isExpanded })),
+                                                    })
+                                                )
 
-                                                    {/* Ícono usuario */}
-                                                    <View
-                                                        width={40}
-                                                        height={40}
-                                                        borderRadius={20}
-                                                        backgroundColor={hasAccess ? 'rgba(255, 85, 26, 0.12)' : '$backgroundSurface'}
-                                                        justifyContent="center"
-                                                        alignItems="center"
-                                                    >
-                                                        {isLoadingThis ? (
-                                                            <Spinner size="small" color="$primary" />
-                                                        ) : (
-                                                            <User size={20} color={hasAccess ? '#FF551A' : '#94A3B8'} />
-                                                        )}
-                                                    </View>
+                                                if (hasChildren && isExpanded) {
+                                                    children.forEach((child) =>
+                                                        rows.push(renderPermisoRow(child, { isChild: true }))
+                                                    )
+                                                }
+                                            })
 
-                                                    {/* Info */}
-                                                    <YStack flex={1} gap="$0.5">
-                                                        <Text fontWeight="700" fontSize={14} color="$text">
-                                                            {i.Name}
-                                                        </Text>
-                                                        <Text fontSize={12} color="$textMuted">
-                                                           {i.Description}
-                                                        </Text>
-                                                    </YStack>
-
-                                                    {/* Badge + Checkbox */}
-                                                    <XStack alignItems="center" gap="$2">
-                                                        {hasAccess && (
-                                                            <View
-                                                                backgroundColor="rgba(255, 85, 26, 0.12)"
-                                                                paddingHorizontal="$2"
-                                                                paddingVertical={3}
-                                                                borderRadius="$10"
-                                                            >
-                                                                <Text fontSize={10} color="$primary" fontWeight="700">
-                                                                    Activo
-                                                                </Text>
-                                                            </View>
-                                                        )}
-                                                    </XStack>
-                                                </XStack>
+                                            orphanChildren.forEach((child) =>
+                                                rows.push(renderPermisoRow(child, { isChild: true }))
                                             )
-                                        })}
+
+                                            return rows
+                                        })()}
                                     </YStack>
                                 </ScrollView>
                             </>

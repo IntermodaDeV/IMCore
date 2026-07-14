@@ -245,9 +245,16 @@ export default function UsersForm() {
                 createBy: user?.Code ?? '',
                 userCode: user_Code,
             })
-            const response = await securityService.saveMenuControl(payloads)
-            if (!response.Success) {
-                showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
+            let response
+            for (const payload of payloads) {
+                response = await securityService.saveMenuControl([payload])
+                if (!response.Success) {
+                    showToast('error', 'Error', response.ErrorMessage || 'Error al actualizar', 5000, 'bottom')
+                    setLoadingToggle(null)
+                    return
+                }
+            }
+            if (!response) {
                 setLoadingToggle(null)
                 return
             }

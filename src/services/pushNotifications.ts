@@ -23,6 +23,13 @@ export function setOnPushReceived(cb: ((remoteMessage?: any) => void) | null) {
   onPushReceived = cb
 }
 
+// Callback para cuando un administrador cierra la sesión de este usuario
+// (push silencioso 'force_logout'). La app lo usa para expulsar al usuario.
+let onForceLogout: ((data?: any) => void) | null = null
+export function setOnForceLogout(cb: ((data?: any) => void) | null) {
+  onForceLogout = cb
+}
+
 // Pide permiso de notificaciones (iOS + Android 13+).
 async function requestPermission(): Promise<boolean> {
   try {
@@ -64,9 +71,21 @@ async function ensureChannel() {
 
 // Muestra una notificación local (para mensajes recibidos en primer plano).
 async function displayForeground(remoteMessage: any) {
+  // Mensaje de control 'force_logout': no se muestra banner; se expulsa al usuario.
+  if (remoteMessage?.data?.type === 'force_logout') {
+    try { onForceLogout?.(remoteMessage.data) } catch {}
+    return
+  }
   try {
-    const title = remoteMessage?.notification?.title ?? 'Visitas'
-    const body = remoteMessage?.notification?.body ?? ''
+    const noti = remoteMessage?.notification
+    // Push "data-only" (sin bloque notification): NO mostramos una notificación
+    // vacía/fantasma. Nuestro backend siempre envía title+body; un push sin ellos
+    // viene de fuera (p. ej. una prueba de Firebase Console). Solo refrescamos la
+    // bandeja (en el finally) y no mostramos nada.
+    if (!noti?.title && !noti?.body) return
+
+    const title = noti?.title ?? 'IMCore'
+    const body = noti?.body ?? ''
     await notifee.displayNotification({
       title,
       body,

@@ -27,6 +27,57 @@ export const puedeOperarTicket = (
   (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
   hasRole(roles, ROLES_OPERAR)
 
+// Diagnosticar (tipo de falla + causa): Admin, Sup. Mantenimiento, Mecánico,
+// Técnico, el mecánico asignado, o acceso 'DiagnosticarTickets'. (El backend revalida.)
+const ROLES_DIAGNOSTICAR = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico']
+export const puedeDiagnosticar = (
+  roles?: RoleLike[] | null,
+  access?: string | null,
+  userCode?: string | null,
+  mecanicoUserCode?: string | null,
+) =>
+  hasRole(roles, ROLES_DIAGNOSTICAR) ||
+  (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
+  hasAccess(access, 'DiagnosticarTickets')
+
+// Validar / rechazar la reparación (sello de producción): el creador de su propio
+// ticket, rol Sup. Producción/Administrador, o acceso 'ValidarTickets'. (El backend revalida.)
+const ROLES_VALIDAR = ['Administrador', 'Supervisor de Producción']
+export const puedeValidar = (
+  roles?: RoleLike[] | null,
+  access?: string | null,
+  userCode?: string | null,
+  createdBy?: string | null,
+) =>
+  (!!userCode && !!createdBy && userCode === createdBy) ||
+  hasRole(roles, ROLES_VALIDAR) ||
+  hasAccess(access, 'ValidarTickets')
+
+// Configurar el recordatorio del ticket (minutos): rol Sup. Mantenimiento o
+// Administrador, o acceso 'ConfigRecordatorioTicket'. (El backend revalida.)
+const ROLES_CONFIG_RECORDATORIO = ['Administrador', 'Supervisor de Mantenimiento']
+export const puedeConfigRecordatorio = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_CONFIG_RECORDATORIO) || hasAccess(access, 'ConfigRecordatorioTicket')
+
+// Ver el "pool" de TODOS los tickets (para descubrir y autoasignarse): rol
+// Mecánico/Técnico/Sup. Mtto/Admin, o acceso 'AsignarTickets'. Habilita el toggle
+// "Todos" en el listado. (El backend revalida el alcance.)
+const ROLES_POOL = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico']
+export const puedeVerPool = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_POOL) || hasAccess(access, 'AsignarTickets')
+
+// Despachar: asignar un ticket a CUALQUIER mecánico/técnico. Sup. Mtto/Admin o
+// acceso 'AsignarTickets'. (El backend revalida.)
+const ROLES_DESPACHAR = ['Administrador', 'Supervisor de Mantenimiento']
+export const puedeDespachar = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_DESPACHAR) || hasAccess(access, 'AsignarTickets')
+
+// Autoasignarse (tomar un ticket para sí mismo): rol Mecánico o Técnico. El
+// backend solo permite tickets libres o el propio (no "robar" el de otro).
+const ROLES_AUTOASIGNAR = ['Mecánico', 'Técnico']
+export const puedeAutoasignar = (roles?: RoleLike[] | null) =>
+  hasRole(roles, ROLES_AUTOASIGNAR)
+
 // ── Paletas (mismas del dashboard de Streamlit) ──────────────────────────────
 export const MESES: Record<number, string> = {
   1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -40,6 +91,7 @@ export const PALETA_ESTADO: Record<string, string> = {
   Pausado: '#a855f7',
   Pendiente: '#f59e0b',
   Cancelado: '#dc2626',
+  Rechazado: '#f43f5e',   // reabierto por producción (rosa/rojo — requiere atención)
 }
 
 export const COLORES_PRIO: Record<string, string> = {
@@ -54,6 +106,20 @@ export const ACCENT = '#FF551A'
 const COLOR_FALLBACK = '#94A3B8'
 export const colorEstado = (e: string) => PALETA_ESTADO[e] ?? COLOR_FALLBACK
 export const colorPrioridad = (p: string) => COLORES_PRIO[p] ?? COLOR_FALLBACK
+
+// Estado derivado "Asignado": el ticket sigue Pendiente pero ya tiene mecánico/
+// técnico asignado. Color propio (teal), distinto del resto de estados.
+export const COLOR_ASIGNADO = '#14b8a6'
+export function estadoVisual(
+  estadoCode?: string | null,
+  estadoLabel?: string | null,
+  mecanicoUserCode?: string | null,
+): { label: string; color: string } {
+  if (estadoCode === 'PENDIENTE' && !!mecanicoUserCode)
+    return { label: 'Asignado', color: COLOR_ASIGNADO }
+  const label = estadoLabel ?? '—'
+  return { label, color: colorEstado(label) }
+}
 
 // Escalas de degradado [claro, oscuro] (≈ color_continuous_scale de plotly).
 export type Escala = [string, string]

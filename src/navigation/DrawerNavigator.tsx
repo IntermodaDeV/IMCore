@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage, Platform } from 'react-native'
+import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image as RNImage, Platform, RefreshControl } from 'react-native'
 import { Moon, Sun, LogOut, ChevronDown, ChevronRight, FileText } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
 import { createDrawerNavigator, DrawerContentScrollView, DrawerContentComponentProps } from '@react-navigation/drawer'
@@ -19,8 +19,13 @@ import * as Icons from 'lucide-react-native'
 import { HeaderProvider } from '../context/HeaderContext'
 import { AppHeader } from '../components/commons/AppHeader'
 import { puedeCrearTickets } from '../screens/Mantenimiento/mantenimiento.helpers'
+import DeviceInfo from 'react-native-device-info'
 
 const Drawer = createDrawerNavigator()
+
+// Versión de la app leída de forma dinámica del build nativo (no hardcodear):
+// getVersion() = versionName/MARKETING_VERSION, getBuildNumber() = versionCode/build.
+const APP_VERSION = `${DeviceInfo.getVersion()} (${DeviceInfo.getBuildNumber()})`
 
 const createDrawerContent = (setTheme: any, menu: MenuDTO[] = []) => {
   return function DrawerContent(props: any) {
@@ -80,6 +85,8 @@ export default function DrawerNavigator({ setTheme }: any) {
         header: ({route, options}) => <AppHeader  route={route} options={options} />,
         headerShown: true,
         drawerType: 'slide',
+        // Sin gesto de swipe: el drawer se abre únicamente con el botón ☰ del header.
+        swipeEnabled: false,
         drawerStyle: {
           backgroundColor: theme.background?.val,
           width: 290,
@@ -141,43 +148,27 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
     if (!grupo) inject.push({ Id: -901, Name: 'Mantenimiento', Route: 'mantenimiento', Icon: 'SquareMenu', ParentMenu_Id: null, MenuOrder: 99 })
     inject.push({ Id: -902, Name: 'Tickets', Route: 'mantenimientoTickets', Icon: 'Wrench', ParentMenu_Id: grupo?.Id ?? -901, MenuOrder: 1 })
   }
-  // Recursos Humanos / Pases: cualquier empleado con usuario puede crear pases y ver
-  // los suyos, así que Crear pase / Mis pases se inyectan para todo usuario autenticado
-  // aunque el menú del servidor no los asigne. "Aprobaciones" solo para quien tiene el
-  // rol "Aprobador de pases".
-  if (user?.Code) {
-    const roles = (user?.Roles ?? []) as any[]
-    const esAprobador = roles.some(r => r?.RoleName === 'Aprobador de pases')
-    const esAdmin = roles.some(r => r?.RoleName === 'Administrador')
-    const esSeguridad = roles.some(r => r?.RoleName === 'Seguridad')
-    const hasCrear = baseMenu.some(m => m.Route === 'paseCrear')
-    const hasHist = baseMenu.some(m => m.Route === 'paseHistorial')
-    const hasAprob = baseMenu.some(m => m.Route === 'paseAprobaciones')
-    const hasValidar = baseMenu.some(m => m.Route === 'paseValidar')
-    const hasCategorias = baseMenu.some(m => m.Route === 'paseCategorias')
-    const needAprob = esAprobador && !hasAprob
-    const needValidar = (esSeguridad || esAdmin) && !hasValidar
-    const needCategorias = esAdmin && !hasCategorias
-    const hasHistTodos = baseMenu.some(m => m.Route === 'paseHistorialTodos')
-    const verTodosPases = esAdmin || (user?.Access ?? '').split(',').map(s => s.trim()).includes('TodoHistorialPases')
-    const needHistorial = verTodosPases && !hasHistTodos
-    if (!hasCrear || !hasHist || needAprob || needValidar || needCategorias || needHistorial) {
-      const grupoRH = baseMenu.find(m => m.Route === 'rrhh')
-      let parentId = grupoRH?.Id
-      if (!grupoRH) { inject.push({ Id: -910, Name: 'Recursos Humanos', Route: 'rrhh', Icon: 'Building2', ParentMenu_Id: null, MenuOrder: 98 }); parentId = -910 }
-      if (!hasCrear) inject.push({ Id: -911, Name: 'Crear pase', Route: 'paseCrear', Icon: 'DoorOpen', ParentMenu_Id: parentId, MenuOrder: 1 })
-      if (!hasHist) inject.push({ Id: -912, Name: 'Mis pases', Route: 'paseHistorial', Icon: 'History', ParentMenu_Id: parentId, MenuOrder: 2 })
-      if (needAprob) inject.push({ Id: -913, Name: 'Aprobaciones', Route: 'paseAprobaciones', Icon: 'CheckCheck', ParentMenu_Id: parentId, MenuOrder: 3 })
-      if (needValidar) inject.push({ Id: -914, Name: 'Validar pase', Route: 'paseValidar', Icon: 'ScanLine', ParentMenu_Id: parentId, MenuOrder: 4 })
-      if (needCategorias) inject.push({ Id: -915, Name: 'Categorías de pase', Route: 'paseCategorias', Icon: 'Tags', ParentMenu_Id: parentId, MenuOrder: 5 })
-      if (needHistorial) inject.push({ Id: -916, Name: 'Historial de pases', Route: 'paseHistorialTodos', Icon: 'FileStack', ParentMenu_Id: parentId, MenuOrder: 6 })
-    }
-  }
+  // Recursos Humanos / Pases: los ítems (Crear pase, Mis pases, Aprobaciones,
+  // Validar pase, Categorías, Historial) NO se inyectan. Se gobiernan por el menú
+  // del servidor (permiso por usuario/acceso/rol), igual que el resto del menú:
+  // solo aparecen si están asignados. Así, no todo usuario puede crear pases.
   const MENU = buildMenuTree([...baseMenu, ...inject])
   const insets = useSafeAreaInsets()
 
   const logoutUser = async () => {
     await logout()
+  }
+
+  // Refresca menú + accesos/roles del usuario (para reflejar permisos recién
+  // otorgados sin necesidad de cerrar sesión). Lo usan el botón y el pull-to-refresh.
+  const handleRefresh = async () => {
+    if (!user?.Code) return
+    try {
+      setRefreshing(true)
+      await Promise.all([refreshMenu(user.Code), refreshUser()])
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   return (
@@ -200,18 +191,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
             right: 10,
             zIndex: 1,
           }}
-          onPress={async () => {
-            if (!user?.Code) return
-
-            try {
-              setRefreshing(true)
-              // Refresca menú + accesos/roles del usuario (para reflejar permisos
-              // recién otorgados sin necesidad de cerrar sesión).
-              await Promise.all([refreshMenu(user.Code), refreshUser()])
-            } finally {
-              setRefreshing(false)
-            }
-          }}
+          onPress={handleRefresh}
         >
           <LucideIcons.RotateCw size={16} color={theme.primary?.val}  />
         </TouchableOpacity>
@@ -270,6 +250,14 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
               paddingTop: 12,
               paddingBottom: 20,
             }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={[theme.primary?.val ?? '#FF551A']}
+                tintColor={theme.primary?.val ?? '#FF551A'}
+              />
+            }
           >
             <View>
             {MENU.map((item, index) => (
@@ -326,7 +314,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
           width="100%"
         >
           <Text color="$textMuted" fontSize={11}>
-            1.2.3
+            {APP_VERSION}
           </Text>
 
           <ThemeToggle/>
@@ -417,18 +405,24 @@ function TreeItem({
       setNavLoading && setNavLoading(route)
     } catch (e) {}
 
-    if (navigation.getState().routeNames.includes(route)) {
-      navigation.navigate(route)
-    } else {
-      navigation.navigate('not_found', { name: route })
-    }
-
-    // close drawer and clear loading after short delay
+    // Cierra el drawer PRIMERO y navega en el siguiente tick. La animación de
+    // cierre corre en el hilo de UI (reanimated); si navegáramos antes, el montaje
+    // de una pantalla que hace trabajo pesado (fetch grande, muchos cards, etc.)
+    // bloquea el hilo de JS y el cierre nunca se dispara → el drawer se queda
+    // pegado. Al cerrar primero, el cierre ya va en marcha cuando arranca la
+    // navegación, y termina en el hilo de UI aunque el JS esté ocupado.
     try {
       navigation.closeDrawer && navigation.closeDrawer()
     } catch (e) {}
 
-    setTimeout(() => setNavLoading && setNavLoading(null), 500)
+    setTimeout(() => {
+      if (navigation.getState().routeNames.includes(route)) {
+        navigation.navigate(route)
+      } else {
+        navigation.navigate('not_found', { name: route })
+      }
+      setTimeout(() => setNavLoading && setNavLoading(null), 500)
+    }, 80)
   }
 
   return (

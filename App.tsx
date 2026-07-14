@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Button, TamaguiProvider, Text, Theme, View } from 'tamagui'
 import { config } from './src/theme/tamagui.config'
 import { NavigationContainer } from '@react-navigation/native'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { navigationRef } from './src/navigation/navigationRef'
 import { setupNotificationOpenHandlers } from './src/services/pushNotifications'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -24,10 +25,11 @@ import { AppHeader } from './src/components/commons/AppHeader'
 import { SCREENS } from './src/screens/screens'
 import { rootSecurity } from './src/screens/Security/rootSecurity'
 import SessionExpiredScreen from './src/navigation/SessionExpiredScreen'
+import SessionClosedByAdminScreen from './src/navigation/SessionClosedByAdminScreen'
 import RegisterScreen from './src/screens/Auth/RegistroScreen'
 
 function Root() {
-  const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired } = useAuth()
+  const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired, sessionClosedByAdmin } = useAuth()
   const Stack = createNativeStackNavigator()
   const { position: toastPosition } = useToastPosition()
 
@@ -70,6 +72,19 @@ function Root() {
               setTransitionMessage(null)
             }}
           />
+        </Theme>
+      </TamaguiProvider>
+    )
+  }
+
+  // El cierre por administrador tiene prioridad sobre "sesión expirada": si una
+  // petición concurrente dispara el refresh y este falla (notifyExpired), no debe
+  // tapar la pantalla de cierre forzado.
+  if (sessionClosedByAdmin) {
+    return (
+      <TamaguiProvider config={config} defaultTheme={theme}>
+        <Theme name={theme}>
+          <SessionClosedByAdminScreen />
         </Theme>
       </TamaguiProvider>
     )
@@ -183,14 +198,16 @@ function Root() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MenuProvider>
-        <ToastPositionProvider>
-          <NotificationsProvider>
-            <Root />
-          </NotificationsProvider>
-        </ToastPositionProvider>
-      </MenuProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <MenuProvider>
+          <ToastPositionProvider>
+            <NotificationsProvider>
+              <Root />
+            </NotificationsProvider>
+          </ToastPositionProvider>
+        </MenuProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   )
 }

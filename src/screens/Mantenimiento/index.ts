@@ -5,6 +5,8 @@ import NewTicketScreen from './Tickets/NewTicketScreen'
 import TicketDetailScreen from './Tickets/TicketDetailScreen'
 import TiposParoScreen from './Catalogos/TiposParoScreen'
 import EstructuraScreen from './Catalogos/EstructuraScreen'
+import FallasCausasScreen from './Catalogos/FallasCausasScreen'
+import MaquinasScreen from './Catalogos/MaquinasScreen'
 
 // La key debe coincidir con el `Route` del item de menú en la BD de seguridad.
 export const ScreensMantenimiento: TScreens = {
@@ -22,5 +24,7 @@ export const ScreensMantenimiento: TScreens = {
   },
   // Catálogos (gateados por permiso de menú).
   mantenimientoEstructura: { Screen: EstructuraScreen, Childs: {} },  // Áreas y operaciones (árbol)
+  mantenimientoFallas: { Screen: FallasCausasScreen, Childs: {} },    // Fallas y causas (maestro)
+  mantenimientoMaquinas: { Screen: MaquinasScreen, Childs: {} },      // Máquinas (maestro)
   mantenimientoTiposParo: { Screen: TiposParoScreen, Childs: {} },
 }

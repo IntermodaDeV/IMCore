@@ -17,6 +17,7 @@ import {
   ITicketEvento,
   ITicketResumen,
 } from './tickets.types'
+import { MantenimientoPeriodo } from '../sharepoint/mantenimiento.types'
 
 // Consume los endpoints de api/Tickets. baseUrl (API_URL) ya incluye /api/,
 // por eso las rutas van como 'Tickets/...'.
@@ -74,6 +75,29 @@ export const ticketsService = {
       cierre ?? {},
     ),
 
+  // Diagnóstico (tipo de falla + causa).
+  diagnosticar: (id: number, dto: { TipoFalla?: string | null; Causa?: string | null }) =>
+    httpClient.post<ExecutionResponse<ITicketResult>, { TipoFalla?: string | null; Causa?: string | null }>(
+      `${schema}/Diagnosticar?id=${id}`,
+      dto,
+    ),
+
+  // ── Validación de producción (post-completado) ──────────────────────────────
+  // Validar/aprobar (el backend valida rol Sup. Producción/Admin o acceso 'ValidarTickets').
+  validar: (id: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Validar?id=${id}`),
+
+  // Rechazar/reabrir con motivo obligatorio.
+  rechazar: (id: number, motivo: string) =>
+    httpClient.post<ExecutionResponse<ITicketResult>, { Motivo: string }>(
+      `${schema}/Rechazar?id=${id}`,
+      { Motivo: motivo },
+    ),
+
+  // Configurar el recordatorio recurrente (0/15/30/60 min). Permiso validado en el backend.
+  configurarRecordatorio: (id: number, minutos: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Recordatorio?id=${id}&minutos=${minutos}`),
+
   // Bitácora de acciones (línea de tiempo).
   getEventos: (id: number) =>
     httpClient.get<ExecutionResponse<ITicketEvento[]>>(`${schema}/Eventos`, { id }),
@@ -81,6 +105,11 @@ export const ticketsService = {
   // Resumen por período (KPIs + desglose por mecánico). desde/hasta en ISO.
   getResumen: (desde: string, hasta: string) =>
     httpClient.get<ExecutionResponse<ITicketResumen[]>>(`${schema}/Resumen`, { desde, hasta }),
+
+  // Dashboard principal (global) desde nuestra BD — reemplaza al de SharePoint.
+  // Devuelve el período (registros + filtros) con la misma forma para reutilizar los gráficos.
+  getDashboard: (params?: { anio?: number; mes?: number; semana?: number; tipoDestino?: string }) =>
+    httpClient.get<ExecutionResponse<MantenimientoPeriodo>>(`${schema}/Dashboard`, { ...params }),
 
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>

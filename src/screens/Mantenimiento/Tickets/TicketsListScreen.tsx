@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, RefreshControl, useWindowDimensions } from 'react-native'
-import { ScrollView, Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
+import { Animated, RefreshControl, useWindowDimensions, FlatList } from 'react-native'
+import { Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
 import { Search, Plus, Wrench, RefreshCw } from 'lucide-react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
+// ScrollView de gesture-handler: permite scroll horizontal fiable AUN dentro del
+// pager horizontal (coordina el gesto), a diferencia del ScrollView de RN.
+import { ScrollView as GestureScrollView } from 'react-native-gesture-handler'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useAuth } from '../../../context/AuthContext'
@@ -10,7 +13,7 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT, puedeCrearTickets } from '../mantenimiento.helpers'
+import { colorEstado, colorPrioridad, ACCENT, estadoVisual, puedeCrearTickets, puedeVerPool } from '../mantenimiento.helpers'
 import TicketsResumen from './TicketsResumen'
 import { shadows } from '../../../theme/shadows'
 import { NotificationBell } from '../../../components/notifications/NotificationBell'
@@ -68,6 +71,8 @@ export default function TicketsListScreen() {
   const [tickets, setTickets] = useState<ITicket[]>([])
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
+  // Recarga por cambio de filtro/alcance (feedback al mover Míos/Todos).
+  const [recargando, setRecargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Catálogos para filtros
@@ -80,9 +85,17 @@ export default function TicketsListScreen() {
   const [areaId, setAreaId] = useState<number | undefined>(undefined)
   const [prioridadId, setPrioridadId] = useState<number | undefined>(undefined)
   const [search, setSearch] = useState('')
+  // Alcance: 'mias' (por rol) | 'todos' (pool, para autoasignarse). Default 'mias'.
+  const [scope, setScope] = useState<'mias' | 'todos'>('mias')
 
   const puedeCrear = useMemo(
     () => puedeCrearTickets(user?.Roles, user?.Access),
+    [user],
+  )
+  // ¿Puede ver el pool "Todos"? (mecánico/técnico/sup. mtto/admin o acceso). Solo
+  // entonces mostramos el toggle Mías/Todos.
+  const verPool = useMemo(
+    () => puedeVerPool(user?.Roles, user?.Access),
     [user],
   )
 
@@ -103,12 +116,14 @@ export default function TicketsListScreen() {
 
   const cargarTickets = useCallback(async () => {
     setError(null)
+    setRecargando(true)
     try {
       const res = await ticketsService.getTickets({
         estado_Id: estadoId,
         prioridad_Id: prioridadId,
         area_Id: areaId,
         search: search.trim() || undefined,
+        scope,
         take: 100,
       })
       if (!res.Success) {
@@ -120,8 +135,10 @@ export default function TicketsListScreen() {
     } catch (e: any) {
       setError(e?.message || 'Error de conexión')
       setTickets([])
+    } finally {
+      setRecargando(false)
     }
-  }, [estadoId, prioridadId, areaId, search])
+  }, [estadoId, prioridadId, areaId, search, scope])
 
   useEffect(() => {
     ;(async () => {
@@ -133,13 +150,22 @@ export default function TicketsListScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Recarga al cambiar filtros (con pequeño debounce para la búsqueda).
+  // Búsqueda: recarga con debounce (evita pegarle a la API en cada tecla).
+  const primerBusqueda = useRef(true)
   useEffect(() => {
-    const t = setTimeout(() => {
-      cargarTickets()
-    }, 350)
+    if (primerBusqueda.current) { primerBusqueda.current = false; return }
+    const t = setTimeout(() => { cargarTickets() }, 350)
     return () => clearTimeout(t)
-  }, [estadoId, prioridadId, areaId, search, cargarTickets])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  // Alcance (Míos/Todos) y filtros: recarga inmediata (sin retardo ni doble carga).
+  const primerFiltro = useRef(true)
+  useEffect(() => {
+    if (primerFiltro.current) { primerFiltro.current = false; return }
+    cargarTickets()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, estadoId, areaId, prioridadId])
 
   const onRefresh = useCallback(async () => {
     setRefrescando(true)
@@ -176,6 +202,18 @@ export default function TicketsListScreen() {
   const opcionesPrioridad = useMemo(
     () => [{ label: 'Todas las prioridades', value: 'all' }, ...prioridades.map(p => ({ label: p.Name, value: String(p.Id) }))],
     [prioridades],
+  )
+
+  // Total de tickets del alcance/filtros actuales (COUNT(*) OVER() viaja en cada fila).
+  const totalTickets = tickets.length ? (tickets[0].TotalCount ?? tickets.length) : 0
+  // Conteo / indicador de recarga (feedback al mover Míos↔Todos o filtros).
+  const countNode = recargando ? (
+    <XStack alignItems="center" gap="$1.5">
+      <Spinner size="small" color={ACCENT} />
+      <Text fontSize="$2" color="$textMuted">Actualizando…</Text>
+    </XStack>
+  ) : (
+    <Text fontSize="$2" fontWeight="700" color={ACCENT}>{totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'}</Text>
   )
 
   return (
@@ -217,6 +255,20 @@ export default function TicketsListScreen() {
       <View width={width} height="100%">
       {/* Filtros */}
       <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
+        {/* Alcance Mías / Todos (solo para quien puede ver el pool). "Todos" muestra
+            el universo para descubrir y autoasignarse; combina con el filtro de Área. */}
+        {verPool ? (
+          <XStack alignItems="center" gap="$2">
+            <Text fontSize="$2" color="$textMuted" fontWeight="700">Ver:</Text>
+            <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
+            <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
+            <View flex={1} />
+            {countNode}
+          </XStack>
+        ) : (
+          <XStack justifyContent="flex-end">{countNode}</XStack>
+        )}
+
         {/* Buscador */}
         <XStack
           alignItems="center"
@@ -239,21 +291,24 @@ export default function TicketsListScreen() {
           />
         </XStack>
 
-        {/* Chips de estado */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <XStack gap="$2" paddingVertical="$1">
-            <EstadoChip label="Todos" active={estadoId === undefined} color={ACCENT} onPress={() => setEstadoId(undefined)} />
-            {estados.map(e => (
-              <EstadoChip
-                key={e.Id}
-                label={e.Name}
-                active={estadoId === e.Id}
-                color={colorEstado(e.Name)}
-                onPress={() => setEstadoId(prev => (prev === e.Id ? undefined : e.Id))}
-              />
-            ))}
-          </XStack>
-        </ScrollView>
+        {/* Chips de estado en una sola línea con scroll horizontal (gesture-handler
+            para que funcione dentro del pager). paddingRight deja respirar al último. */}
+        <GestureScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingVertical: 4, paddingRight: 16, alignItems: 'center' }}
+        >
+          <EstadoChip label="Todos" active={estadoId === undefined} color={ACCENT} onPress={() => setEstadoId(undefined)} />
+          {estados.map(e => (
+            <EstadoChip
+              key={e.Id}
+              label={e.Name}
+              active={estadoId === e.Id}
+              color={colorEstado(e.Name)}
+              onPress={() => setEstadoId(prev => (prev === e.Id ? undefined : e.Id))}
+            />
+          ))}
+        </GestureScrollView>
 
         {/* Área / Prioridad */}
         <XStack gap="$2">
@@ -283,40 +338,44 @@ export default function TicketsListScreen() {
           <Text color="$textMuted">Cargando tickets…</Text>
         </YStack>
       ) : (
-        <ScrollView
-          flex={1}
-          contentContainerStyle={{ padding: 12, paddingBottom: 96 }}
+        // FlatList (virtualizado) en vez de ScrollView + map: evita renderizar de
+        // golpe todas las tarjetas (hasta 100) y saturar el hilo de JS al montar/
+        // hacer scroll, lo que provocaba jank y contribuía al drawer pegado.
+        // numColumns con key de remonte para alternar 1↔2 columnas (isWide).
+        <FlatList
+          data={error ? [] : tickets}
+          key={isWide ? 'grid' : 'list'}
+          numColumns={isWide ? 2 : 1}
+          columnWrapperStyle={isWide ? { justifyContent: 'space-between' } : undefined}
+          keyExtractor={(t) => String(t.Id)}
+          style={{ flex: 1, opacity: recargando ? 0.45 : 1 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 96, width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center', flexGrow: 1 }}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={9}
+          keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />}
-        >
-          {error ? (
-            <EmptyState
-              icon={<RefreshCw size={28} color={theme.textMuted?.val} />}
-              title="No se pudieron cargar los tickets"
-              subtitle={error}
-            />
-          ) : tickets.length === 0 ? (
-            <EmptyState
-              icon={<Wrench size={28} color={theme.textMuted?.val} />}
-              title="Sin tickets"
-              subtitle="No hay tickets que coincidan con los filtros."
-            />
-          ) : (
-            <View
-              width="100%"
-              maxWidth={CONTENT_MAX}
-              alignSelf="center"
-              flexDirection="row"
-              flexWrap="wrap"
-              justifyContent="space-between"
-            >
-              {tickets.map(t => (
-                <View key={t.Id} width={isWide ? '49%' : '100%'} marginBottom="$2.5">
-                  <TicketCard t={t} onPress={() => irADetalle(t)} theme={theme} />
-                </View>
-              ))}
+          ListEmptyComponent={
+            error ? (
+              <EmptyState
+                icon={<RefreshCw size={28} color={theme.textMuted?.val} />}
+                title="No se pudieron cargar los tickets"
+                subtitle={error}
+              />
+            ) : (
+              <EmptyState
+                icon={<Wrench size={28} color={theme.textMuted?.val} />}
+                title="Sin tickets"
+                subtitle="No hay tickets que coincidan con los filtros."
+              />
+            )
+          }
+          renderItem={({ item: t }) => (
+            <View width={isWide ? '49%' : '100%'} marginBottom="$2.5">
+              <TicketCard t={t} onPress={() => irADetalle(t)} theme={theme} />
             </View>
           )}
-        </ScrollView>
+        />
       )}
       </View>
       </Animated.ScrollView>
@@ -395,26 +454,31 @@ function EstadoChip({ label, active, color, onPress }: { label: string; active: 
 }
 
 function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; theme: any }) {
-  const estadoC = colorEstado(t.Estado ?? '')
+  const estadoVis = estadoVisual(t.EstadoCode, t.Estado, t.Mecanico_UserCode)
+  const estadoC = estadoVis.color
   const prioC = colorPrioridad(t.Prioridad ?? '')
+  // Prioridad Alta: realce sutil en rojo para captar la atención en el listado
+  // (fondo levemente teñido + marco rojo tenue + halo suave en iOS).
+  const esAlta = t.Prioridad === 'Alta'
   return (
     <View
       onPress={onPress}
       pressStyle={{ opacity: 0.9, scale: 0.997 }}
-      backgroundColor="$backgroundElevated"
+      backgroundColor={esAlta ? 'rgba(239, 68, 68, 0.06)' : '$backgroundElevated'}
       borderRadius="$5"
       borderLeftWidth={4}
       borderLeftColor={estadoC}
-      borderWidth={1}
-      borderColor="$border"
+      borderWidth={esAlta ? 1.5 : 1}
+      borderColor={esAlta ? 'rgba(239, 68, 68, 0.43)' : '$border'}
       padding="$3"
       gap="$2"
       {...shadows.sm}
+      {...(esAlta ? { shadowColor: '#EF4444', shadowOpacity: 0.19 } : {})}
     >
       <XStack alignItems="center" justifyContent="space-between">
         <Text fontSize="$4" fontWeight="800" color="$text">{t.CodigoTicket}</Text>
         <View backgroundColor={estadoC} borderRadius="$10" paddingHorizontal="$2.5" paddingVertical="$1">
-          <Text fontSize="$1" fontWeight="700" color="#fff">{t.Estado}</Text>
+          <Text fontSize="$1" fontWeight="700" color="#fff">{estadoVis.label}</Text>
         </View>
       </XStack>
 
@@ -422,11 +486,16 @@ function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; th
         {!!t.Prioridad && (
           <XStack alignItems="center" gap="$1.5">
             <View width={8} height={8} borderRadius={4} backgroundColor={prioC} />
-            <Text fontSize="$2" color="$textMuted">{t.Prioridad}</Text>
+            <Text fontSize="$2" color={esAlta ? prioC : '$textMuted'} fontWeight={esAlta ? '800' : '400'}>{t.Prioridad}</Text>
           </XStack>
         )}
         {!!t.Area && <Text fontSize="$2" color="$textMuted">· {t.Area}</Text>}
         {!!t.Operacion && <Text fontSize="$2" color="$textMuted">· {t.Operacion}</Text>}
+        {!!t.ValidadoPor && (
+          <View backgroundColor="rgba(5,150,105,0.15)" borderRadius="$10" paddingHorizontal="$2" paddingVertical={2}>
+            <Text fontSize={10} color="#059669" fontWeight="800">✓ Validado</Text>
+          </View>
+        )}
       </XStack>
 
       <XStack alignItems="center" justifyContent="space-between">

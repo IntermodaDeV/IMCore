@@ -37,11 +37,21 @@ export interface ITicket {
   Mecanico: string | null
 
   IdOperador: number | null
+  FechaAsignacion: string | null   // sella el último momento de asignación/reasignación
   HoraInicio: string | null
   HoraFinal: string | null
   TiempoRespuestaMin: number | null
   TiempoResolucionMin: number | null
   TiempoNetoMin: number | null   // tiempo activo neto (excluye pausas)
+  TiempoValidacionMin: number | null   // primer completado → validación
+
+  // Sello de validación de producción (no es un estado; el estado sigue COMPLETADO).
+  ValidadoPor: string | null
+  ValidadoNombre: string | null
+  FechaValidacion: string | null
+
+  // Recordatorio recurrente (minutos) mientras esté En Proceso. Default 30; 0 = sin aviso.
+  RecordatorioMin: number
 
   Observaciones: string | null
   Vigente: boolean
@@ -86,6 +96,9 @@ export interface ITicketResult {
   EventAssigned: boolean
   EventStarted: boolean
   EventFinished: boolean
+  EventValidated?: boolean
+  EventRejected?: boolean
+  AutoAsignado?: boolean   // el que asigna es el mismo asignado (autoasignación)
 }
 
 // Filtros del listado (nombres alineados a los query params de api/Tickets).
@@ -95,6 +108,8 @@ export interface ITicketFiltros {
   mecanico_UserCode?: string
   area_Id?: number
   search?: string
+  // Alcance del listado: 'mias' (default, por rol) | 'todos' (pool, requiere permiso).
+  scope?: 'mias' | 'todos'
   skip?: number
   take?: number
 }

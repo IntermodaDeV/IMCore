@@ -40,7 +40,9 @@ export default function AppSelect({
     [value, options]
   )
 
-  const floating = open || !!value
+  // Flota también cuando hay placeholder, para que el label no se encime con el
+  // texto del placeholder en el estado vacío.
+  const floating = open || !!value || !!placeholder
 
   const borderColor = disabled
     ? '$border'
@@ -127,7 +129,10 @@ export default function AppSelect({
           statusBarTranslucent
           onRequestClose={() => setOpen(false)}
         >
-          <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
+          {/* Backdrop atenuado: sin fondo, el Modal transparente dejaba ver el
+              drawer que queda montado detrás (drawerType:'slide') y todo se
+              encimaba. El scrim tapa lo que hay detrás, como el resto de modales. */}
+          <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }} onPress={() => setOpen(false)} />
 
           <View
             position="absolute"

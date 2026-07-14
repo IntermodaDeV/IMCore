@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { UsersDTO, IDefaultCompany } from '../api/modules/security/security.types'
 import { securityService } from '../api/modules/security/security.service'
 import { sessionManager } from '../api/core/sessionManager'
-import { registerForUser, unregisterCurrent } from '../services/pushNotifications'
+import { registerForUser, unregisterCurrent, setOnForceLogout } from '../services/pushNotifications'
 
 type AuthContextType = {
   user: UsersDTO | null
@@ -23,6 +23,8 @@ type AuthContextType = {
   setTransitionMessage: (value: string | null) => void
   sessionExpired: boolean
   setSessionExpired: (value: boolean) => void
+  sessionClosedByAdmin: boolean
+  setSessionClosedByAdmin: (value: boolean) => void
 }
 
 const AuthContext = createContext<AuthContextType>(
@@ -42,10 +44,28 @@ export const AuthProvider = ({
   const [transitioning, setTransitioning] = useState(false)
   const [transitionMessage, setTransitionMessage] = useState<string | null>(null)
   const [sessionExpired, setSessionExpired] = useState(false)
+  const [sessionClosedByAdmin, setSessionClosedByAdmin] = useState(false)
 
   useEffect(() => {
     const loadSession = async () => {
       try {
+        // Si un admin cerró la sesión mientras la app estaba en 2.º plano/cerrada,
+        // el handler de background dejó esta marca: mostramos la pantalla y no
+        // restauramos la sesión.
+        const forced = await AsyncStorage.getItem('forcedLogout')
+        if (forced === '1') {
+          await Promise.all([
+            AsyncStorage.removeItem('forcedLogout'),
+            AsyncStorage.removeItem('accessToken'),
+            AsyncStorage.removeItem('refreshToken'),
+            AsyncStorage.removeItem('user'),
+          ])
+          setSessionExpired(false)
+          setSessionClosedByAdmin(true)
+          setLoading(false)
+          return
+        }
+
         const savedUser = await AsyncStorage.getItem('user')
         const savedTheme = await AsyncStorage.getItem('theme')
         const savedCompanyId = await AsyncStorage.getItem('companyId')
@@ -86,6 +106,42 @@ export const AuthProvider = ({
     })
 
     return unsubscribe
+  }, [])
+
+  // Cierre forzado por admin detectado por el httpClient (401 con motivo 'forced').
+  useEffect(() => {
+    const unsubscribe = sessionManager.subscribeForced(async () => {
+      try {
+        await Promise.all([
+          AsyncStorage.removeItem('accessToken'),
+          AsyncStorage.removeItem('refreshToken'),
+        ])
+      } catch {}
+      setSessionExpired(false)
+      setSessionClosedByAdmin(true)
+    })
+
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    if (user?.Code) registerForUser(user.Code)
+  }, [user?.Code])
+
+  // Cierre de sesión forzado por un admin recibido en PRIMER PLANO: limpia los
+  // tokens y muestra la pantalla "sesión cerrada por administrador".
+  useEffect(() => {
+    setOnForceLogout(async () => {
+      try {
+        await Promise.all([
+          AsyncStorage.removeItem('accessToken'),
+          AsyncStorage.removeItem('refreshToken'),
+        ])
+      } catch {}
+      setSessionExpired(false)
+      setSessionClosedByAdmin(true)
+    })
+    return () => setOnForceLogout(null)
   }, [])
 
   const setTheme = async (
@@ -152,11 +208,8 @@ export const AuthProvider = ({
 
       setTransitionMessage('Iniciando sesión...')
       setTransitioning(true)
-
-      // Registra el dispositivo para notificaciones push (best-effort)
-      if (userData?.Code) {
-        registerForUser(userData.Code)
-      }
+      // El registro de push lo dispara el useEffect sobre user.Code (cubre login
+      // y restauración de sesión), así no se duplica aquí.
     } catch (error) {
       console.log('Login error', error)
     }
@@ -239,6 +292,8 @@ export const AuthProvider = ({
         setTransitionMessage,
         sessionExpired,
         setSessionExpired,
+        sessionClosedByAdmin,
+        setSessionClosedByAdmin,
       }}
     >
       {children}

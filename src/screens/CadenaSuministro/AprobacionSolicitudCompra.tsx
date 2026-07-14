@@ -27,6 +27,7 @@ import { useShowToast } from '../../utils/useShowToast';
 import EmptyState from '../AdmSys/EmptyState';
 import { Pressable } from 'react-native';
 import RecordCount from '../../components/commons/RecordCount';
+import { NotificationBell } from '../../components/notifications/NotificationBell';
 
 export default function AprobacionSolicitudCompra() {
 
@@ -98,6 +99,7 @@ export default function AprobacionSolicitudCompra() {
         Preparador: solicitudSelected?.Preparador ?? '',
         ImporteNeto: solicitudSelected?.ImporteNeto ?? 0,
         Categoria: solicitudSelected?.Categoria ?? '',
+        Comentario: solicitudSelected?.Comentario ?? ''
       }
       const response = await cadenaSuministroService.aprobarSolicitud(info)
       if (response?.Success) {
@@ -184,10 +186,11 @@ export default function AprobacionSolicitudCompra() {
       </Text>
     ),
     right: (
-      <XStack gap="$2">
+      <XStack gap="$3" alignItems="center">
         <View onPress={() => getInfo()}>
           <RotateCwStyled size={18}  />
         </View>
+        <NotificationBell size={18} />
       </XStack>
     )
   })
@@ -343,6 +346,24 @@ export default function AprobacionSolicitudCompra() {
                         </Text>
                       </YStack>
                     </XStack>
+
+                    {!!solicitud.Comentario?.trim() && (
+                      <YStack
+                        borderWidth={1}
+                        borderColor="$backgroundSurface"
+                        borderRadius="$3"
+                        padding="$3"
+                        gap="$1"
+                      >
+                        <Text fontSize={9} color="$textMuted" fontWeight="700">
+                          COMENTARIO
+                        </Text>
+
+                        <Text fontSize="$2" color="$text" lineHeight={18}>
+                          {solicitud.Comentario}
+                        </Text>
+                      </YStack>
+                    )}
 
                     <Pressable
                       onPress={() => toggleDetalle(solicitud.Solicitud)}

@@ -8,6 +8,9 @@ export const securityService = {
   // Sesión del usuario autenticado (InfoUser fresco) para refrescar Access/Roles sin re-loguear.
   getSessionInfo: () => httpClient.get<ExecutionResponse<string>>(`${schema}/SessionInfo`),
   logout: (User_Code : string) => httpClient.post(`${schema}/logout?User_Code=${User_Code}`),
+  // Cierre de sesión forzado de otro usuario (requiere acceso 'logoutUser').
+  forceLogout: (data: { TargetUserCode: string; Reason?: string }) =>
+    httpClient.post<ExecutionResponse<boolean>>(`${schema}/ForceLogout`, data),
   getUsers: () => httpClient.get<ExecutionResponse<UsersDTO[]>>(`${schema}/Users`),
   saveUsers: (data: UsersDTO[]) => httpClient.post<ExecutionResponse<UsersDTO[]>>(`${schema}/Users`, data),
   saveUsersSettings: (data: UsersSettingsDTO[]) => httpClient.post<ExecutionResponse<UsersSettingsDTO[]>>(`${schema}/UserSettings`, data),

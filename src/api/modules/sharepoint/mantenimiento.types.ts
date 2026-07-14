@@ -27,6 +27,7 @@ export interface MantenimientoRegistro {
   TiempoRespuestaMin: number | null
   TiempoResolucionMin: number | null
   Atendido: boolean
+  TipoDestino: string   // MAQUINA | AREA (para el toggle del dashboard)
 }
 
 // Opciones disponibles para los filtros finos (calculadas por el backend sobre el mes).

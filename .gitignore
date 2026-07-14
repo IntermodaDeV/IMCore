@@ -77,3 +77,4 @@ yarn-error.log
 
 # Carpeta de build temporal para device (xcodebuild -derivedDataPath)
 ios/build_device/
+IMCore.code-workspace
