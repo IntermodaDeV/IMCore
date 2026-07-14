@@ -8,7 +8,7 @@ import {
   LucideIcon,
 } from 'lucide-react-native'
 import { usePageHeader } from '../../hooks/usePageHeader'
-import { IGastoHistorialDetail, IGiraApiResponse } from '../../api/modules/GastosViaje/gastosViaje.types'
+import { IGastoHistorialDetail } from '../../api/modules/GastosViaje/gastosViaje.types'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useLoader } from '../../providers/LoaderProvider'
@@ -18,8 +18,7 @@ import CountryFlag from '../../components/commons/CountryFlag'
 import AppInput from '../../components/commons/AppInput'
 import dayjs from 'dayjs'
 import { formatCurrency } from './GastosViaje.utils'
-import {TCompany, ECompany} from '../../api/modules/GastosViaje/gastosViaje.types'
-import { ExecutionResponse } from '../../api/modules/response.type'
+import {ECompany} from '../../api/modules/GastosViaje/gastosViaje.types'
 
 function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
   if (value === null || value === undefined || value === '') return null
@@ -147,9 +146,9 @@ export default function DetalleGastoScreen({ route }: any) {
 
   return (
     <>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1, backgroundColor: theme.backgroundPage?.val as string }} showsVerticalScrollIndicator={false}>
 
-        <YStack backgroundColor="$backgroundPage">
+        <YStack backgroundColor="$backgroundPage" paddingBottom="$4" >
 
           {/* ── Hero: imagen (solo si viene ImagePath) ── */}
           {!!gasto.ImagePath && (

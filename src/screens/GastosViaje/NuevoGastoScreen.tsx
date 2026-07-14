@@ -139,6 +139,7 @@ export default function NuevoGastoScreen() {
   const isCombustible    = selectedCategory?.Name?.toLowerCase().includes('combustible') && defaultCompany?.Code === 'IMGT'
   const isHospedaje      = selectedTypeName === 'Hospedaje'
   const isIMHN           = defaultCompany?.Code === 'IMHN'
+  const isIMCR           = defaultCompany?.Code === 'IMCR'
   const hasPredefined    = !!selectedCategory?.VendAccount
 
   const section1Complete = !!watchedTypeId && !!watchedCatId &&
@@ -290,7 +291,7 @@ export default function NuevoGastoScreen() {
         gravadoAmount:     graved,
         invoiceAmount:     total,
         invoiceDate:       data.InvoiceDate,
-        imagePath:         '',
+        imagePath:         data.imageBase64 ?? '',
         personalCodeAdmin: null,
         rejectionMotive:   null,
         journalNum:        null,
@@ -570,20 +571,23 @@ export default function NuevoGastoScreen() {
                 {!isIMHN && (
                   <>
                     <XStack gap="$3">
-                      <YStack flex={1}>
-                        <Controller
-                          control={control}
-                          name="SeriesNum"
-                          render={({ field }) => (
-                            <AppInput
-                              label="No. de serie"
-                              value={field.value}
-                              keyboardType="numbers-and-punctuation"
-                              onChangeText={field.onChange}
-                            />
-                          )}
-                        />
-                      </YStack>
+                      {!isIMCR && (
+                        <YStack flex={1}>
+                          <Controller
+                            control={control}
+                            name="SeriesNum"
+                            render={({ field }) => (
+                              <AppInput
+                                label="No. de serie"
+                                value={field.value}
+                                keyboardType="numbers-and-punctuation"
+                                onChangeText={field.onChange}
+                              />
+                            )}
+                          />
+                        </YStack>
+                      )}
+
                       <YStack flex={1}>
                         <Controller
                           control={control}
@@ -642,7 +646,7 @@ export default function NuevoGastoScreen() {
                           value={field.value}
                           onChangeText={v => field.onChange(formatAmount(v))}
                           keyboardType="decimal-pad"
-                          prefix={providerCurrency ? <Text>{providerCurrency}</Text> : <Text>-</Text>}
+                          prefix={providerCurrency ? <Text color="$text" >{providerCurrency}</Text> : <Text>-</Text>}
                           error={errors.InvoiceAmount?.message}
                         />
                       )}

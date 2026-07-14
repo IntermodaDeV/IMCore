@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { FlatList, Pressable, RefreshControl } from 'react-native'
+import { FlatList, Pressable } from 'react-native'
 import { YStack, XStack, Text, Card, View, useTheme } from 'tamagui'
-import { Badge, CheckCircle2, ChevronRight, Image as ImageIcon, RefreshCw, XCircle } from 'lucide-react-native'
+import { CheckCircle2, Image as ImageIcon, RefreshCw, XCircle } from 'lucide-react-native'
 import dayjs from 'dayjs'
 
 import { useAuth } from '../../context/AuthContext'
@@ -13,7 +13,6 @@ import ErrorState from '../AdmSys/ErrorState'
 import EmptyState from '../AdmSys/EmptyState'
 import SkeletonList from '../../components/Skeletons/SkeletonList'
 import SearchInput from '../../components/commons/SearchInput'
-import AppDatePicker from '../../components/commons/AppDatePicker'
 import CountryFlag from '../../components/commons/CountryFlag'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
 import { IGastoHistorialDetail } from '../../api/modules/GastosViaje/gastosViaje.types'
@@ -118,7 +117,7 @@ function ApprovalCard({ item, onPress }: { item: IGastoHistorialDetail; onPress:
         borderWidth={1}
         borderColor="$border"
       >
-        <XStack gap="$3">
+        <XStack gap="$3" backgroundColor="$backgroundElevated">
           <View
             width={44} height={44} borderRadius={12}
             backgroundColor={`${theme.success?.val}1f`}
@@ -135,7 +134,7 @@ function ApprovalCard({ item, onPress }: { item: IGastoHistorialDetail; onPress:
               </Text>
             </XStack>
 
-            <Text fontSize={12} marginBottom="$2" numberOfLines={1}>
+            <Text fontSize={12} color="$text" marginBottom="$2" numberOfLines={1}>
               {item.InvoiceId}
             </Text>
 

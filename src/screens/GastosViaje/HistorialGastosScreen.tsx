@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { FlatList, Pressable, RefreshControl, ScrollView } from 'react-native'
+import { Animated, FlatList, Pressable, RefreshControl, ScrollView } from 'react-native'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
 import {
   RefreshCw, CheckCircle2, XCircle,
@@ -51,6 +51,20 @@ export default function HistorialGastosScreen({ navigation }: any) {
   const [expenseTypes, setExpenseTypes] = useState<IExpenseType[]>([])
   const [syncing, setSyncing] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const spinAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    if (syncing) {
+      Animated.loop(
+        Animated.timing(spinAnim, { toValue: 1, duration: 800, useNativeDriver: true })
+      ).start()
+    } else {
+      spinAnim.stopAnimation()
+      spinAnim.setValue(0)
+    }
+  }, [syncing])
+
+  const spin = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
   const { openDrawer } = useRightDrawer()
 
   usePageHeader({
@@ -96,10 +110,27 @@ export default function HistorialGastosScreen({ navigation }: any) {
       const res = await gastosViajeService.getPendingApprovals( defaultCompany?.Code ?? '', user?.Payweb ?? '', user?.Code ?? '')
       if (res.Success) {
         loadData(typeFilter);
-        showToast('success', 'Sincronización', 'Gastos actualizados correctamente', 3000, 'top')
+        showToast('success', 'Sincronización', res.Data ?? 'Gastos actualizados correctamente', 3000, 'top')
       }
-    } catch {
-      showToast('error', 'Error', 'No se pudo sincronizar', 4000, 'top')
+    } catch(error:any) {
+      let responseData;
+        
+        try {
+          responseData =
+            typeof error.response === 'string'
+              ? JSON.parse(error.response)
+              : error.response?.data;
+        } catch {
+          responseData = null;
+        }
+
+        showToast(
+          'info',
+          'Informacion',
+          responseData?.Message ?? 'Ocurrió un error inesperado',
+          10000,
+          'top'
+        );
     } finally {
       setSyncing(false)
     }
@@ -135,7 +166,9 @@ export default function HistorialGastosScreen({ navigation }: any) {
               borderWidth={1}
               borderColor={`${theme.warning?.val}40`}
             >
-              <RefreshCw size={18} color={theme.warning?.val as string} />
+              <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                <RefreshCw size={18} color={theme.warning?.val as string} />
+              </Animated.View>
               <YStack flex={1} gap={2}>
                 <Text fontSize={13} fontWeight="700" color="$warning">
                   {pendingCount} {pendingCount === 1 ? 'gasto pendiente' : 'gastos pendientes'}
@@ -202,7 +235,7 @@ export default function HistorialGastosScreen({ navigation }: any) {
           keyExtractor={item => String(item.Id)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 10 }}
           renderItem={({ item }) => <GastoCard item={item} onPress={() => navigation.navigate('detalleGasto', { gasto: item })} />}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadData(typeFilter, true)} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { if (!syncing) loadData(typeFilter, true) }} />}
         />
       )}
 
