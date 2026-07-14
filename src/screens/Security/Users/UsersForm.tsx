@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
+import { KeyboardAvoidingView, Platform } from 'react-native'
 import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox,styled } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
+import { useHeaderHeight } from '@react-navigation/elements'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
 import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, IUserCompanies, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
@@ -24,6 +26,7 @@ type TabType = 'general' | 'accesos' | 'permisos'
 export default function UsersForm() {
     const { updateHeader } = useUpdatePageHeader()
     const navigation = useNavigation()
+    const headerHeight = useHeaderHeight()
     const route = useRoute()
     const { Id } = route.params as { Id?: number }
     const [loading, setLoading] = useState(false)
@@ -419,6 +422,11 @@ export default function UsersForm() {
     
 
     return (
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={headerHeight}
+        >
         <YStack backgroundColor="$backgroundPage" flex={1}>
 
             {loading ? (
@@ -464,7 +472,13 @@ export default function UsersForm() {
 
                     {activeTab === 'general' && (
                         <>
-                            <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+                            <ScrollView
+                                flex={1}
+                                showsVerticalScrollIndicator={false}
+                                keyboardShouldPersistTaps="handled"
+                                keyboardDismissMode="on-drag"
+                                contentContainerStyle={{ paddingBottom: 24 }}
+                            >
                                 <YStack flex={1} padding="$4" gap="$1">
                                     <Controller
                                         control={control}
@@ -476,6 +490,8 @@ export default function UsersForm() {
                                                 value={value}
                                                 onChangeText={onChange}
                                                 error={errors.Code?.message}
+                                                autoCapitalize="none"
+                                                autoCorrect={false}
                                             />
                                         )}
                                     />
@@ -895,6 +911,10 @@ export default function UsersForm() {
                                                                 value={value}
                                                                 onChangeText={onChange}
                                                                 secureTextEntry={!showPassword}
+                                                                autoCapitalize="none"
+                                                                autoCorrect={false}
+                                                                autoComplete="off"
+                                                                textContentType="oneTimeCode"
                                                                 rightElement={
                                                                     <View
                                                                         onPress={() => setShowPassword((prev) => !prev)}
@@ -930,6 +950,10 @@ export default function UsersForm() {
                                                                 onChangeText={onChange}
                                                                 secureTextEntry={!showConfirmPassword}
                                                                 error={errors.ConfirmPassword?.message}
+                                                                autoCapitalize="none"
+                                                                autoCorrect={false}
+                                                                autoComplete="off"
+                                                                textContentType="oneTimeCode"
                                                                 rightElement={
                                                                     <View
                                                                         onPress={() => setShowConfirmPassword((prev) => !prev)}
@@ -1160,5 +1184,6 @@ export default function UsersForm() {
                 </>
             )}
         </YStack>
+        </KeyboardAvoidingView>
     )
 }
