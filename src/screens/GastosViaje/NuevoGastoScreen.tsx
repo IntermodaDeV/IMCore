@@ -274,7 +274,7 @@ export default function NuevoGastoScreen() {
       const graved = toNum(data.GravadoAmount)
       const exempt = toNum(data.ExemptAmount)
       const total  = isIMHN ? computedTotal : toNum(data.InvoiceAmount)
-      
+
       const res = await gastosViajeService.createGasto({
         id:                0,
         expenseCategoryId: data.ExpenseCategoryId,
@@ -290,14 +290,14 @@ export default function NuevoGastoScreen() {
         gravadoAmount:     graved,
         invoiceAmount:     total,
         invoiceDate:       data.InvoiceDate,
-        imagePath:         data.imageBase64 ?? '',
+        imagePath:         '',
         personalCodeAdmin: null,
         rejectionMotive:   null,
         journalNum:        null,
         companyCode:       defaultCompany?.Code ?? '',
         axMessage:         null,
         inUse:             true,
-      })
+      }, user?.Code ?? '')
       
       if (res.Succeeded === true) {
         showToast('success', 'Gasto registrado', 'Tu gasto fue enviado correctamente', 3000, 'top')

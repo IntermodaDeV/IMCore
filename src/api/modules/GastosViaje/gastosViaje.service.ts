@@ -168,8 +168,8 @@ export const gastosViajeService = {
     }
   },
 
-  createGasto: async (data: ICreateGastoRequest): Promise<IGiraApiResponse<IGastoHistorialDetail>> => {
-    const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail>>('Gira/ExpenseDetail', data)
+  createGasto: async (data: ICreateGastoRequest, userCode: string): Promise<IGiraApiResponse<IGastoHistorialDetail>> => {
+    const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail>>(`Gira/ExpenseDetail/${userCode}`, data)
     return {
       Succeeded: res.Succeeded,
       Data: res.Data,
@@ -197,16 +197,16 @@ export const gastosViajeService = {
   },
 
   
-  getPendingApprovals: async (_company: string, _userCode: string): Promise<ExecutionResponse<string>> => {
+  getPendingApprovals: async (_company: string, finansiiCode: string, personalCode: string): Promise<ExecutionResponse<string>> => {
     const res = await httpClient.post<IGiraApiResponse<string>>(
-      `Gira/PendingAX/${_company}/${_userCode}`
+      `Gira/PendingAX/${_company}/${finansiiCode}/${personalCode}`
     );
     return { Success: res.Succeeded, Data: res.Data, SuccessMessage: res.Message ?? "", ErrorMessage: res.Errors ?? "" }
   },
 
-  approveGasto: async (_data: IApproveGastoRequest): Promise<ExecutionResponse<boolean>> => {
+  approveGasto: async (_data: IApproveGastoRequest, _userCode: string): Promise<ExecutionResponse<boolean>> => {
     const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail[]>>(
-      `Gira/ApproveExpense/${_data.Company}/${_data.GastoId}/${_data.FinansiCode}`
+      `Gira/ApproveExpense/${_data.Company}/${_data.GastoId}/${_data.FinansiCode}/${_userCode}`
     );
 
     return {
@@ -217,9 +217,9 @@ export const gastosViajeService = {
     };
   },
 
-  rejectGasto: async (_data: IRejectGastoRequest): Promise<ExecutionResponse<boolean>> => {
+  rejectGasto: async (_data: IRejectGastoRequest, _userCode: string): Promise<ExecutionResponse<boolean>> => {
     const res = await httpClient.post<IGiraApiResponse<IGastoHistorialDetail[]>>(
-      `Gira/ApproveExpense/${_data.Company}/${_data.GastoId}/${_data.FinansiCode}/${_data.Reason}`
+      `Gira/ApproveExpense/${_data.Company}/${_data.GastoId}/${_data.FinansiCode}/${_userCode}${_data.Reason}`
     );
 
     return {

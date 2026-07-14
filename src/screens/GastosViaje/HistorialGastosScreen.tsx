@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { FlatList, Pressable, ScrollView } from 'react-native'
+import { FlatList, Pressable, RefreshControl, ScrollView } from 'react-native'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
 import {
   RefreshCw, CheckCircle2, XCircle,
@@ -29,6 +29,7 @@ const STATUS_OPTIONS = [
   { label: 'Todos',     value: 'Todos' },
   { label: 'Aprobado',  value: 'Aprobado' },
   { label: 'Pendiente', value: 'Pendiente' },
+  { label: 'PendienteAX', value: 'PendienteAX' },
   { label: 'Rechazado', value: 'Rechazado' },
 ]
 
@@ -49,6 +50,7 @@ export default function HistorialGastosScreen({ navigation }: any) {
   const [dateTo, setDateTo] = useState<string | null>(dayjs().format('YYYY-MM-DD'))
   const [expenseTypes, setExpenseTypes] = useState<IExpenseType[]>([])
   const [syncing, setSyncing] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const { openDrawer } = useRightDrawer()
 
   usePageHeader({
@@ -58,10 +60,9 @@ export default function HistorialGastosScreen({ navigation }: any) {
 
   const [pendingCount, setpendingCount] = useState(0)
 
-  const loadData = useCallback(async (_typeFilter?:number) => {
+  const loadData = useCallback(async (_typeFilter?: number, silent = false) => {
     try {
-      loader.show()
-      setLoading(true)
+      if (silent) { setRefreshing(true) } else { loader.show(); setLoading(true) }
       setError(null)
       
       const from = dateFrom ?? dayjs().subtract(14, 'day').format('YYYY-MM-DD');
@@ -80,6 +81,7 @@ export default function HistorialGastosScreen({ navigation }: any) {
       setError(handleError(err))
     } finally {
       setLoading(false)
+      setRefreshing(false)
       loader.hide()
     }
   }, [user?.Code, dateFrom, dateTo])
@@ -91,7 +93,7 @@ export default function HistorialGastosScreen({ navigation }: any) {
   const handleSync = async () => {
     try {
       setSyncing(true)
-      const res = await gastosViajeService.getPendingApprovals( defaultCompany?.Code ?? '', user?.Payweb ?? '')
+      const res = await gastosViajeService.getPendingApprovals( defaultCompany?.Code ?? '', user?.Payweb ?? '', user?.Code ?? '')
       if (res.Success) {
         loadData(typeFilter);
         showToast('success', 'Sincronización', 'Gastos actualizados correctamente', 3000, 'top')
@@ -200,6 +202,7 @@ export default function HistorialGastosScreen({ navigation }: any) {
           keyExtractor={item => String(item.Id)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 10 }}
           renderItem={({ item }) => <GastoCard item={item} onPress={() => navigation.navigate('detalleGasto', { gasto: item })} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadData(typeFilter, true)} />}
         />
       )}
 
@@ -233,7 +236,8 @@ function GastoCard({ item, onPress }: { item: IGastoHistorialDetail; onPress: ()
   
    const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; Icon: any }> = {
     Aprobado:  { label: 'Aprobado',  bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
-    Pendiente: { label: 'Pendiente', bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
+    Pendiente: { label: 'Pendiente', bg: `${theme.gray?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
+    PendienteAX: { label: 'PendienteAX', bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
     Rechazado: { label: 'Rechazado', bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
   }
   

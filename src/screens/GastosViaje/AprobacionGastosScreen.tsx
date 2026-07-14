@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { FlatList, Pressable } from 'react-native'
+import { FlatList, Pressable, RefreshControl } from 'react-native'
 import { YStack, XStack, Text, Card, View, useTheme } from 'tamagui'
 import { Badge, CheckCircle2, ChevronRight, Image as ImageIcon, RefreshCw, XCircle } from 'lucide-react-native'
 import dayjs from 'dayjs'
@@ -25,6 +25,7 @@ export default function AprobacionGastosScreen({ navigation }: any) {
   const [data, setData] = useState<IGastoHistorialDetail[]>([])
   const [filtered, setFiltered] = useState<IGastoHistorialDetail[]>([])
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
   const [dateFrom, setDateFrom] = useState<string | null>(dayjs().subtract(14, 'day').format('YYYY-MM-DD'))
   const [dateTo, setDateTo]     = useState<string | null>(dayjs().format('YYYY-MM-DD'))
@@ -34,10 +35,9 @@ export default function AprobacionGastosScreen({ navigation }: any) {
     right: <CountryFlag countryCode={defaultCompany?.CodeIcon ?? 'HN'} width={28} height={20} />,
   })
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     try {
-      loader.show()
-      setLoading(true)
+      if (silent) { setRefreshing(true) } else { loader.show(); setLoading(true) }
       setError(null)
       const from = dateFrom ?? dayjs().subtract(14, 'day').format('YYYY-MM-DD')
       const to   = dateTo   ?? dayjs().format('YYYY-MM-DD')
@@ -103,7 +103,8 @@ function ApprovalCard({ item, onPress }: { item: IGastoHistorialDetail; onPress:
   const TypeIcon = getIconFromFa(item.Icon)
   const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; Icon: any }> = {
     Aprobado:  { label: 'Aprobado',  bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
-    Pendiente: { label: 'Pendiente', bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
+    Pendiente: { label: 'Pendiente', bg: `${theme.gray?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
+    PendienteAX: { label: 'PendienteAX', bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
     Rechazado: { label: 'Rechazado', bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
   }
   const status = STATUS_CONFIG[item.StatusName] ?? STATUS_CONFIG['Pendiente']

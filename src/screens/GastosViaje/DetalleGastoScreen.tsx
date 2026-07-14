@@ -83,7 +83,7 @@ export default function DetalleGastoScreen({ route }: any) {
         ApproverCode: user?.Code ?? '',
         Company: defaultCompany?.Code ?? '',
         FinansiCode: user?.Payweb ?? '',
-      })
+      }, user?.Code ?? '')
       if (res.Success) {
         showToast('success', 'Aprobado', 'El gasto fue aprobado correctamente', 3000, 'top')
         navigation.goBack()
@@ -129,7 +129,7 @@ export default function DetalleGastoScreen({ route }: any) {
         Company: defaultCompany?.Code ?? '',
         Reason: rejectReason.trim(),
         FinansiCode: user?.Payweb ?? '',
-      })
+      }, user?.Code ?? '')
       if (res.Success) {
         setRejectModalVisible(false)
         showToast('success', 'Rechazado', 'El gasto fue rechazado correctamente', 3000, 'top')
