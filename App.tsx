@@ -3,6 +3,7 @@ import { Button, TamaguiProvider, Text, Theme, View } from 'tamagui'
 import { config } from './src/theme/tamagui.config'
 import { NavigationContainer } from '@react-navigation/native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { navigationRef } from './src/navigation/navigationRef'
 import { setupNotificationOpenHandlers } from './src/services/pushNotifications'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -32,6 +33,13 @@ function Root() {
   const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired, sessionClosedByAdmin } = useAuth()
   const Stack = createNativeStackNavigator()
   const { position: toastPosition } = useToastPosition()
+  const insets = useSafeAreaInsets()
+  // Fix edge-to-edge (New Arch): reserva el alto de la barra de navegación del
+  // sistema en TODOS los dispositivos. insets.bottom es auto-adaptativo: 0 donde
+  // no hay barra (equipos con gestos) → sin cambio; >0 donde sí la hay (3 botones
+  // Android, home indicator) → sube el contenido sobre la barra. Evita que
+  // FABs/botones anclados abajo queden ocultos tras la barra del sistema.
+  const bottomInset = insets.bottom
 
   // Engancha el tap de notificaciones (deep-link al detalle) una sola vez.
   useEffect(() => { setupNotificationOpenHandlers() }, [])
@@ -111,6 +119,7 @@ function Root() {
             <ToastProvider swipeDirection="horizontal">
               
               
+              <View flex={1} paddingBottom={bottomInset}>
               <NavigationContainer ref={navigationRef}>
                 <RightDrawerProvider>
                 <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -179,6 +188,7 @@ function Root() {
 
                 </RightDrawerProvider>
               </NavigationContainer>
+              </View>
 
               <CustomToast />
 
@@ -199,15 +209,17 @@ function Root() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <MenuProvider>
-          <ToastPositionProvider>
-            <NotificationsProvider>
-              <Root />
-            </NotificationsProvider>
-          </ToastPositionProvider>
-        </MenuProvider>
-      </AuthProvider>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <MenuProvider>
+            <ToastPositionProvider>
+              <NotificationsProvider>
+                <Root />
+              </NotificationsProvider>
+            </ToastPositionProvider>
+          </MenuProvider>
+        </AuthProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   )
 }

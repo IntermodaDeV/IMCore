@@ -43,10 +43,9 @@ export default function TicketsListScreen() {
   const { user } = useAuth()
   const { showToast } = useShowToast()
 
-  // Responsive: en tablets/pantallas anchas centramos el contenido y usamos
-  // grid de 2 columnas para aprovechar el espacio.
+  // Responsive: en pantallas anchas centramos el contenido (maxWidth).
+  // El listado es siempre de 1 columna en todos los dispositivos.
   const { width } = useWindowDimensions()
-  const isWide = width >= 700
   const CONTENT_MAX = 1000
 
   // Vista por defecto: Resumen (home de tickets); se alterna con el listado.
@@ -341,12 +340,9 @@ export default function TicketsListScreen() {
         // FlatList (virtualizado) en vez de ScrollView + map: evita renderizar de
         // golpe todas las tarjetas (hasta 100) y saturar el hilo de JS al montar/
         // hacer scroll, lo que provocaba jank y contribuía al drawer pegado.
-        // numColumns con key de remonte para alternar 1↔2 columnas (isWide).
+        // Siempre 1 columna (numColumns por defecto), en todos los dispositivos.
         <FlatList
           data={error ? [] : tickets}
-          key={isWide ? 'grid' : 'list'}
-          numColumns={isWide ? 2 : 1}
-          columnWrapperStyle={isWide ? { justifyContent: 'space-between' } : undefined}
           keyExtractor={(t) => String(t.Id)}
           style={{ flex: 1, opacity: recargando ? 0.45 : 1 }}
           contentContainerStyle={{ padding: 12, paddingBottom: 96, width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center', flexGrow: 1 }}
@@ -371,7 +367,7 @@ export default function TicketsListScreen() {
             )
           }
           renderItem={({ item: t }) => (
-            <View width={isWide ? '49%' : '100%'} marginBottom="$2.5">
+            <View width="100%" marginBottom="$2.5">
               <TicketCard t={t} onPress={() => irADetalle(t)} theme={theme} />
             </View>
           )}
