@@ -105,7 +105,9 @@ function Root() {
             <ToastProvider swipeDirection="horizontal">
               
               
-              <View flex={1} paddingBottom={bottomInset}>
+              {/* backgroundColor evita la franja blanca en la zona del inset
+                  (home indicator iOS / barra Android): la tiñe del fondo del tema. */}
+              <View flex={1} paddingBottom={bottomInset} backgroundColor="$background">
               <NavigationContainer ref={navigationRef}>
                 <RightDrawerProvider>
                 <Stack.Navigator screenOptions={{ headerShown: false }}>
