@@ -3,6 +3,7 @@ import { Button, TamaguiProvider, Text, Theme, View } from 'tamagui'
 import { config } from './src/theme/tamagui.config'
 import { NavigationContainer } from '@react-navigation/native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { Platform } from 'react-native'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { navigationRef } from './src/navigation/navigationRef'
 import { setupNotificationOpenHandlers } from './src/services/pushNotifications'
@@ -33,12 +34,12 @@ function Root() {
   const Stack = createNativeStackNavigator()
   const { position: toastPosition } = useToastPosition()
   const insets = useSafeAreaInsets()
-  // Fix edge-to-edge (New Arch): reserva el alto de la barra de navegación del
-  // sistema en TODOS los dispositivos. insets.bottom es auto-adaptativo: 0 donde
-  // no hay barra (equipos con gestos) → sin cambio; >0 donde sí la hay (3 botones
-  // Android, home indicator) → sube el contenido sobre la barra. Evita que
-  // FABs/botones anclados abajo queden ocultos tras la barra del sistema.
-  const bottomInset = insets.bottom
+  // Fix edge-to-edge SOLO en Android: reserva el alto de la barra de navegación
+  // (opaca) del sistema, que tapa FABs/botones anclados abajo. Es auto-adaptativo:
+  // 0 donde no hay barra (gestos) → sin cambio; >0 con barra de 3 botones.
+  // En iOS NO se aplica: el home indicator flota sobre el contenido y reservar su
+  // alto dejaba una franja fija visible abajo. Así iOS queda edge-to-edge normal.
+  const bottomInset = Platform.OS === 'android' ? insets.bottom : 0
 
   // Engancha el tap de notificaciones (deep-link al detalle) una sola vez.
   useEffect(() => { setupNotificationOpenHandlers() }, [])
