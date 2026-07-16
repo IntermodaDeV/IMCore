@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { Button, TamaguiProvider, Text, Theme, View } from 'tamagui'
 import { config } from './src/theme/tamagui.config'
-import { NavigationContainer } from '@react-navigation/native'
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import { Platform } from 'react-native'
+import { Platform, StatusBar } from 'react-native'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { navigationRef } from './src/navigation/navigationRef'
 import { setupNotificationOpenHandlers } from './src/services/pushNotifications'
@@ -47,18 +47,30 @@ function Root() {
   
   const navigationTheme = {
     light: {
-      background: '#dcd6d6',
+      background: '#F8FAFC',
       text: '#0F172A',
       primary: '#FF551A',
     },
     dark: {
-      background: '#0d1c32',
+      background: '#12161D',
       text: '#ffffff',
       primary: '#FF551A',
     },
   }
 
   const navColors = navigationTheme[theme]
+  // Tema del navegador: fija el fondo de ESCENA (oscuro/claro según theme). Sin
+  // esto el fondo de escena de React Navigation es BLANCO por defecto y se veía
+  // una franja blanca abajo (p. ej. al cerrar el teclado en Android con adjustResize).
+  const navTheme = {
+    ...(theme === 'dark' ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(theme === 'dark' ? DarkTheme.colors : DefaultTheme.colors),
+      background: navColors.background,
+      primary: navColors.primary,
+      text: navColors.text,
+    },
+  }
   if (loading) {
     return (
       <TamaguiProvider config={config} defaultTheme={theme}>
@@ -117,13 +129,21 @@ function Root() {
 
           <Theme name={theme}>
 
+            {/* Barra de estado adaptada al tema: iconos oscuros en claro, claros
+                en oscuro (si no, en tema claro batería/señal quedaban invisibles). */}
+            <StatusBar
+              barStyle={theme === 'dark' ? 'light-content' : 'dark-content'}
+              backgroundColor="transparent"
+              translucent
+            />
+
             <ToastProvider swipeDirection="horizontal">
               
               
               {/* backgroundColor evita la franja blanca en la zona del inset
                   (home indicator iOS / barra Android): la tiñe del fondo del tema. */}
-              <View flex={1} paddingBottom={bottomInset} backgroundColor="$background">
-              <NavigationContainer ref={navigationRef}>
+              <View flex={1} paddingBottom={bottomInset} backgroundColor="$backgroundPage">
+              <NavigationContainer ref={navigationRef} theme={navTheme}>
                 <RightDrawerProvider>
                 <Stack.Navigator screenOptions={{ headerShown: false }}>
                   {user ? (

@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { KeyboardAvoidingView, Platform } from 'react-native'
+import { KeyboardAvoidingView, Platform, Keyboard, ScrollView as RNScrollView } from 'react-native'
 import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox,styled } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
-import { useHeaderHeight } from '@react-navigation/elements'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
 import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, IUserCompanies, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
@@ -26,7 +25,15 @@ type TabType = 'general' | 'accesos' | 'permisos'
 export default function UsersForm() {
     const { updateHeader } = useUpdatePageHeader()
     const navigation = useNavigation()
-    const headerHeight = useHeaderHeight()
+    const scrollRef = React.useRef<any>(null)
+    // ¿Hay un campo de contraseña enfocado? Al mostrarse el teclado, bajamos al
+    // final para que el campo + botones queden visibles (funciona aunque el teclado
+    // se oculte/reabra al pasar de Contraseña a Confirmar).
+    const passwordFocused = React.useRef(false)
+    // Alto real del teclado. En Android (New Arch + edge-to-edge) el adjustResize
+    // no achica la ventana, así que reservamos este alto como paddingBottom en el
+    // ScrollView para poder scrollear el contenido por encima del teclado.
+    const [kbHeight, setKbHeight] = useState(0)
     const route = useRoute()
     const { Id } = route.params as { Id?: number }
     const [loading, setLoading] = useState(false)
@@ -374,6 +381,21 @@ export default function UsersForm() {
     }
 
     useEffect(() => { getInfo() }, [])
+
+    // Guardar el alto del teclado (para el paddingBottom del ScrollView) y, si hay
+    // un campo de contraseña enfocado, bajar al final para dejarlo + los botones
+    // por encima del teclado. Se hace en keyboardDidShow (cuando ya conocemos el
+    // alto y el padding ya se aplicó) para que el scroll tenga a dónde ir.
+    useEffect(() => {
+        const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+            setKbHeight(e.endCoordinates?.height ?? 0)
+            if (passwordFocused.current) {
+                setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60)
+            }
+        })
+        const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0))
+        return () => { showSub.remove(); hideSub.remove() }
+    }, [])
     
     usePageHeader({
         left:(
@@ -424,8 +446,11 @@ export default function UsersForm() {
     return (
         <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={headerHeight}
+            // iOS: 'padding' (funciona bien). Android: undefined — el KAV no maneja
+            // bien el teclado bajo edge-to-edge/New Arch; ahí lo resuelve el
+            // paddingBottom dinámico (= alto del teclado) + scrollToEnd del ScrollView.
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={0}
         >
         <YStack backgroundColor="$backgroundPage" flex={1}>
 
@@ -472,12 +497,17 @@ export default function UsersForm() {
 
                     {activeTab === 'general' && (
                         <>
-                            <ScrollView
-                                flex={1}
+                            <RNScrollView
+                                ref={scrollRef}
+                                style={{ flex: 1 }}
                                 showsVerticalScrollIndicator={false}
                                 keyboardShouldPersistTaps="handled"
                                 keyboardDismissMode="on-drag"
-                                contentContainerStyle={{ paddingBottom: 24 }}
+                                // flexGrow: el spacer empuja los botones al fondo cuando
+                                // el form es corto. paddingBottom = alto del teclado en
+                                // Android: reserva espacio para poder scrollear el campo
+                                // enfocado + botones por encima del teclado (edge-to-edge).
+                                contentContainerStyle={{ flexGrow: 1, paddingBottom: (Platform.OS === 'android' ? kbHeight : 0) + 12 }}
                             >
                                 <YStack flex={1} padding="$4" gap="$1">
                                     <Controller
@@ -910,6 +940,8 @@ export default function UsersForm() {
                                                                 label="Contraseña"
                                                                 value={value}
                                                                 onChangeText={onChange}
+                                                                onFocus={() => { passwordFocused.current = true; scrollRef.current?.scrollToEnd({ animated: true }) }}
+                                                                onBlur={() => { passwordFocused.current = false }}
                                                                 secureTextEntry={!showPassword}
                                                                 autoCapitalize="none"
                                                                 autoCorrect={false}
@@ -948,6 +980,8 @@ export default function UsersForm() {
                                                                 label="Confirmar contraseña"
                                                                 value={value}
                                                                 onChangeText={onChange}
+                                                                onFocus={() => { passwordFocused.current = true; scrollRef.current?.scrollToEnd({ animated: true }) }}
+                                                                onBlur={() => { passwordFocused.current = false }}
                                                                 secureTextEntry={!showConfirmPassword}
                                                                 error={errors.ConfirmPassword?.message}
                                                                 autoCapitalize="none"
@@ -973,48 +1007,46 @@ export default function UsersForm() {
                                             )}
                                         </>
                                     )}
+
+                                    {/* Spacer flexible: empuja los botones al fondo
+                                        (cerca de la barra del sistema) cuando el form es
+                                        corto; deja mínimo 20 de separación del último
+                                        campo cuando el form es largo. */}
+                                    <View flex={1} minHeight={20} />
+
+                                    <XStack gap="$3" marginBottom="$2">
+                                        <Button
+                                            flex={1}
+                                            backgroundColor="$buttonSecondary"
+                                            height={45}
+                                            borderRadius="$3"
+                                            justifyContent="center"
+                                            alignItems="center"
+                                            pressStyle={{ opacity: 0.7 }}
+                                            onPress={() => navigation.goBack()}
+                                            disabled={loadingSave}
+                                            opacity={loadingSave ? 0.5 : 1}
+                                        >
+                                            <Text color="$text" fontWeight="700">Cancelar</Text>
+                                        </Button>
+
+                                        <Button
+                                            flex={1}
+                                            backgroundColor="$primary"
+                                            height={45}
+                                            borderRadius="$3"
+                                            justifyContent="center"
+                                            alignItems="center"
+                                            pressStyle={{ opacity: 0.7 }}
+                                            onPress={save}
+                                            disabled={loadingSave}
+                                            opacity={loadingSave ? 0.5 : 1}
+                                        >
+                                            <Text color="$white" fontWeight="700">Guardar</Text>
+                                        </Button>
+                                    </XStack>
                                 </YStack>
-                            </ScrollView>
-
-                            {/* BOTONES solo en tab General */}
-                            <XStack
-                                paddingTop="$2"
-                                paddingBottom="$4"
-                                paddingHorizontal="$4"
-                                gap="$3"
-                                marginBottom="$3"
-                                style={{ zIndex: 12 }}
-                            >
-                                <Button
-                                    flex={1}
-                                    backgroundColor="$buttonSecondary"
-                                    height={45}
-                                    borderRadius="$3"
-                                    justifyContent="center"
-                                    alignItems="center"
-                                    pressStyle={{ opacity: 0.7 }}
-                                    onPress={() => navigation.goBack()}
-                                    disabled={loadingSave}
-                                    opacity={loadingSave ? 0.5 : 1}
-                                >
-                                    <Text color="$text" fontWeight="700">Cancelar</Text>
-                                </Button>
-
-                                <Button
-                                    flex={1}
-                                    backgroundColor="$primary"
-                                    height={45}
-                                    borderRadius="$3"
-                                    justifyContent="center"
-                                    alignItems="center"
-                                    pressStyle={{ opacity: 0.7 }}
-                                    onPress={save}
-                                    disabled={loadingSave}
-                                    opacity={loadingSave ? 0.5 : 1}
-                                >
-                                    <Text color="$white" fontWeight="700">Guardar</Text>
-                                </Button>
-                            </XStack>
+                            </RNScrollView>
                         </>
                     )}
 
