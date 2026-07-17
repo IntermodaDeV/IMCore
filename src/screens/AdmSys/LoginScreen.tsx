@@ -171,7 +171,12 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      // iOS necesita 'padding' porque no redimensiona la ventana con el teclado.
+      // Android NO lleva behavior: el AndroidManifest ya usa windowSoftInputMode
+      // ="adjustResize", así que el SO redimensiona la ventana solo. Poner
+      // behavior="height" encima duplicaba el ajuste y las dos animaciones se
+      // peleaban → en equipos viejos el login quedaba "saltando" al cerrar el teclado.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
 
       <ImageBackground
