@@ -404,10 +404,11 @@ export default function UsersForm() {
                     if (kbTop && node?.measureInWindow) {
                         node.measureInWindow((_x: number, y: number, _w: number, h: number) => {
                             const overlap = (y + h) - kbTop
-                            // Margen generoso uniforme (mismo criterio que el login): absorbe
-                            // desfases de medición en ciertas tablets sin hardcodear por equipo.
-                            if (overlap > -44) {
-                                scrollRef.current?.scrollTo({ y: scrollY.current + overlap + 44, animated: true })
+                            // Margen generoso uniforme (mismo criterio y valor que el login, 80):
+                            // absorbe la barra del teclado que ciertos IME no incluyen en screenY
+                            // (visto en tablets Honor/Lenovo). No hardcodeado por equipo.
+                            if (overlap > -80) {
+                                scrollRef.current?.scrollTo({ y: scrollY.current + overlap + 80, animated: true })
                             }
                         })
                     } else {

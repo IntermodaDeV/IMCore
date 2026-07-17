@@ -182,7 +182,7 @@ export default function LoginScreen() {
           // Margen generoso (uniforme para todos los equipos, no hardcodeado a uno):
           // absorbe posibles desfases de medición entre measureInWindow y screenY en
           // ciertas tablets/teclados. En equipos que ya iban bien solo agrega unos px.
-          const newLift = Math.max(0, restingBottom - kbTop + 44)
+          const newLift = Math.max(0, restingBottom - kbTop + 80)
           liftRef.current = newLift
           setLift(newLift)
         })
