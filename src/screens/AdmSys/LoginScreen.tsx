@@ -3,7 +3,16 @@ import DeviceInfo from 'react-native-device-info'
 import { YStack, Card, Input, Button, Text, XStack, Spinner, ScrollView, AlertDialog  } from 'tamagui'
 import { ImageBackground, Image, KeyboardAvoidingView, Platform, Keyboard, View } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
-import { User, Lock, LogIn,Eye, EyeOff, KeyRound, MailCheck } from 'lucide-react-native'
+import { User, Lock, LogIn,Eye, EyeOff, KeyRound, MailCheck, Fingerprint, ScanFace } from 'lucide-react-native'
+import {
+  getBiometryType,
+  isBiometricEnabled,
+  enableBiometric,
+  getBiometricCredentials,
+  biometryLabel,
+  isFaceBiometry,
+  type BiometryKind,
+} from '../../services/biometricAuth'
 import { shadows } from '../../theme/shadows'
 import { useForm, Controller } from 'react-hook-form'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -28,6 +37,11 @@ export default function LoginScreen() {
   const { refreshMenu } = useMenu()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  // Biometría: tipo soportado por el equipo, si ya está activada, y el check para
+  // activarla en el próximo login exitoso.
+  const [biometryType, setBiometryType] = useState<BiometryKind>(null)
+  const [bioEnabled, setBioEnabled] = useState(false)
+  const [rememberBio, setRememberBio] = useState(false)
   const [lift, setLift] = useState(0)
   const liftRef = React.useRef(0)
   const btnRef = React.useRef<any>(null)
@@ -54,7 +68,13 @@ export default function LoginScreen() {
   })
 
 
-  const loginUser = async (data: FormData) => {
+  // Lógica central de login, reutilizada por el formulario (usuario+contraseña) y
+  // por el ingreso biométrico (credenciales recuperadas del Keychain).
+  const performLogin = async (
+    code: string,
+    password: string,
+    opts?: { remember?: boolean }
+  ) => {
     try {
       setLoading(true)
       const device = await DeviceInfo.getDeviceName()
@@ -63,9 +83,10 @@ export default function LoginScreen() {
       const systemName = DeviceInfo.getSystemName()
       const systemVersion = DeviceInfo.getSystemVersion()
 
+      const cleanCode = code.replace(/\s+/g, '') // el usuario nunca lleva espacios
       let info = {
-        Code: data.Code.replace(/\s+/g, ''), // el usuario nunca lleva espacios
-        password: data.password,
+        Code: cleanCode,
+        password: password,
         IPAddress: ipAddress,
         Device: `${brand} ${device} (${systemName} ${systemVersion})`,
       }
@@ -83,6 +104,13 @@ export default function LoginScreen() {
         await AsyncStorage.setItem('refreshToken', response.RefreshToken)
       }
 
+      // Si el usuario pidió recordar con biometría, guardamos las credenciales
+      // (cifradas + protegidas por biometría) tras el login exitoso.
+      if (opts?.remember && biometryType) {
+        const ok = await enableBiometric(cleanCode, password)
+        if (ok) setBioEnabled(true)
+      }
+
       const user = JSON.parse(response.InfoUser)
       await AsyncStorage.setItem('userCode', user.Code)
       await refreshMenu(user.Code)
@@ -95,6 +123,32 @@ export default function LoginScreen() {
       setLoading(false)
     }
   }
+
+  const loginUser = (data: FormData) => performLogin(data.Code, data.password, { remember: rememberBio })
+
+  // Ingreso con huella/Face ID: pide la biometría, recupera las credenciales del
+  // Keychain y hace el login. Si el usuario cancela o falla, no hace nada (queda
+  // el login normal disponible).
+  const handleBiometricLogin = async () => {
+    if (loading) return
+    const label = biometryLabel(biometryType)
+    const creds = await getBiometricCredentials(`Ingresa con ${label}`)
+    if (!creds?.code || !creds?.password) return
+    await performLogin(creds.code, creds.password)
+  }
+
+  // Al montar el login: detectar si el equipo soporta biometría y si el usuario
+  // ya activó el ingreso biométrico (para mostrar el botón / el check).
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const [type, enabled] = await Promise.all([getBiometryType(), isBiometricEnabled()])
+      if (!alive) return
+      setBiometryType(type)
+      setBioEnabled(enabled && !!type)
+    })()
+    return () => { alive = false }
+  }, [])
 
   const openReactivateDialog = () => {
     setReactivateInput('')
@@ -357,6 +411,38 @@ export default function LoginScreen() {
                 )}
               />
 
+              {/* Activar biometría: solo si el equipo la soporta y aún no está activa.
+                  Al tildar, tras el próximo login exitoso se guardan las credenciales. */}
+              {biometryType && !bioEnabled && (
+                <XStack
+                  alignItems="center"
+                  gap="$2"
+                  marginBottom="$4"
+                  paddingVertical="$1"
+                  onPress={() => setRememberBio((v) => !v)}
+                  pressStyle={{ opacity: 0.7 }}
+                >
+                  <YStack
+                    width={22}
+                    height={22}
+                    borderRadius={6}
+                    borderWidth={2}
+                    borderColor={rememberBio ? '#FF551A' : '#cbd5e1'}
+                    backgroundColor={rememberBio ? '#FF551A' : 'transparent'}
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    {rememberBio && <LogIn size={12} color="white" />}
+                  </YStack>
+                  {isFaceBiometry(biometryType)
+                    ? <ScanFace size={18} color="#64748b" />
+                    : <Fingerprint size={18} color="#64748b" />}
+                  <Text fontSize={13} color="#475569">
+                    Activar ingreso con {biometryLabel(biometryType)}
+                  </Text>
+                </XStack>
+              )}
+
               <XStack
                 justifyContent="center"
                 alignItems="center"
@@ -417,6 +503,29 @@ export default function LoginScreen() {
                       </>
                     )}
                   </Button>
+
+                {/* Ingreso biométrico: solo si el usuario ya lo activó y el equipo lo soporta.
+                    Va DENTRO del mismo View medido (btnRef) para que el lift del teclado
+                    considere ambos botones como grupo y los deje a los dos por encima. */}
+                {bioEnabled && biometryType && (
+                  <Button
+                    marginTop="$3"
+                    height={45}
+                    backgroundColor="transparent"
+                    borderWidth={1.5}
+                    borderColor="$primary"
+                    disabled={loading}
+                    opacity={loading ? 0.6 : 1}
+                    onPress={handleBiometricLogin}
+                  >
+                    {isFaceBiometry(biometryType)
+                      ? <ScanFace size={20} color="#FF551A" />
+                      : <Fingerprint size={20} color="#FF551A" />}
+                    <Text color="$primary" fontWeight="700" marginLeft="$2">
+                      Ingresar con {biometryLabel(biometryType)}
+                    </Text>
+                  </Button>
+                )}
                 </View>
 
             </YStack>
