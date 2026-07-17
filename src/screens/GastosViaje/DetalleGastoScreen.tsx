@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ScrollView, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator } from 'react-native'
+import { ScrollView, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, Linking } from 'react-native'
 import ImageViewing from 'react-native-image-viewing'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
 import {
@@ -49,6 +49,7 @@ export default function DetalleGastoScreen({ route }: any) {
   const StatusIcon = status?.Icon ?? CheckCircle2;
   const [imageOpen, setImageOpen] = useState(false)
   const [imageError, setImageError] = useState(false)
+  const [imageErrorMsg, setImageErrorMsg] = useState('')
   const [imageLoading, setImageLoading] = useState(!!gasto.ImagePath)
   const [rejectModalVisible, setRejectModalVisible] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
@@ -170,7 +171,7 @@ export default function DetalleGastoScreen({ route }: any) {
                     style={{ width: '100%', height: 340 }}
                     resizeMode="cover"
                     onLoadEnd={() => setImageLoading(false)}
-                    onError={() => { setImageError(true); setImageLoading(false) }}
+                    onError={(e) => { setImageError(true); setImageLoading(false); setImageErrorMsg(JSON.stringify(e.nativeEvent)) }}
                   />
                   {imageLoading && (
                     <View
@@ -192,6 +193,16 @@ export default function DetalleGastoScreen({ route }: any) {
                     <ImageOff size={38} color={theme.textMuted?.val as string} opacity={0.5} />
                   </View>
                   <Text fontSize={13} color="$textMuted">No se pudo cargar la imagen</Text>
+                  {!!imageErrorMsg && (
+                    <Text fontSize={10} color="$textMuted" textAlign="center" paddingHorizontal="$4" selectable>
+                      {imageErrorMsg}
+                    </Text>
+                  )}
+                  <TouchableOpacity onPress={() => Linking.openURL(encodeURI(gasto.ImagePath ?? ''))}>
+                    <Text fontSize={12} color="$primary" textAlign="center" paddingHorizontal="$4" textDecorationLine="underline">
+                      Ver imagen en navegador
+                    </Text>
+                  </TouchableOpacity>
                 </YStack>
               )}
             </View>
