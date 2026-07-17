@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
+import { FlatList } from 'react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Plus, RotateCw, Pencil, KeyRound, Eye, EyeOff, ChevronDown, ChevronUp, Trash2, LogOut  } from 'lucide-react-native'
-import { YStack, Text, ScrollView, Card, XStack, View, useTheme, Button, Dialog, Spinner, styled } from 'tamagui'
+import { YStack, Text, Card, XStack, View, useTheme, Button, Dialog, Spinner, styled } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { IUserExternalCodes, UsersDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
@@ -315,15 +316,14 @@ export default function UsersScreen() {
     setDeletingCode(null)
   }
 
+  // Solo useFocusEffect: cubre el montaje inicial y cada vez que la pantalla
+  // recupera foco. Antes había además un useEffect([]) que duplicaba el fetch y
+  // el render pesado al entrar (agravaba el bloqueo del drawer).
   useFocusEffect(
     React.useCallback(() => {
       getInfo()
     }, [getInfo])
   )
-
-  useEffect(() => {
-    getInfo()
-  }, [])
 
   useEffect(() => {
     setFiltered(data)
@@ -354,12 +354,19 @@ export default function UsersScreen() {
               onResults={setFiltered}
               placeholder="Buscar..."
             />
-            <ScrollView showsVerticalScrollIndicator={false} marginBottom="$3">
-
-              {(filtered?.length ?? 0) === 0 ? (
-                <EmptyState onAction={() => getInfo()} />
-              ) : (
-                (filtered ?? []).map((item) => {
+            <FlatList
+              data={filtered ?? []}
+              keyExtractor={(item) => String(item.Id)}
+              showsVerticalScrollIndicator={false}
+              style={{ marginBottom: 12 }}
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={11}
+              removeClippedSubviews
+              ListEmptyComponent={<EmptyState onAction={() => getInfo()} />}
+              renderItem={({ item }) => {
                   const roles = item.Roles ? item.Roles.split(',').map(r => r.trim()) : []
                   const visibleRoles = roles.slice(0, 3)
                   const remainingRoles = roles.length - 3
@@ -628,9 +635,8 @@ export default function UsersScreen() {
                       )}
                     </Card>
                   )
-                })
-              )}
-            </ScrollView>
+                }}
+            />
           </>
         )}
       </YStack>
