@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import DeviceInfo from 'react-native-device-info'
 import { YStack, Card, Input, Button, Text, XStack, Spinner, ScrollView, AlertDialog  } from 'tamagui'
-import { ImageBackground, Image, KeyboardAvoidingView, Platform } from 'react-native'
+import { ImageBackground, Image, KeyboardAvoidingView, Platform, Keyboard, View } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { User, Lock, LogIn,Eye, EyeOff, KeyRound, MailCheck } from 'lucide-react-native'
 import { shadows } from '../../theme/shadows'
@@ -28,6 +28,9 @@ export default function LoginScreen() {
   const { refreshMenu } = useMenu()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [lift, setLift] = useState(0)
+  const liftRef = React.useRef(0)
+  const btnRef = React.useRef<any>(null)
   const { login } = useAuth()
 
   // Reactivar cuenta
@@ -157,6 +160,38 @@ export default function LoginScreen() {
     }
   }
 
+  // En Android (New Arch + edge-to-edge) adjustResize no achica la ventana, así que
+  // KeyboardAvoidingView behavior="height" parpadea al cerrar el teclado. En su lugar,
+  // al abrir el teclado medimos cuánto queda tapado el botón (su borde inferior vs. el
+  // borde superior del teclado, endCoordinates.screenY) y subimos SOLO ese solape.
+  // Así el botón queda pegado al teclado y el campo Usuario sigue visible arriba.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      const kbTop = e.endCoordinates?.screenY ?? 0
+      const node = btnRef.current
+      if (!kbTop || !node?.measureInWindow) return
+      // Delay para que un lift previo ya esté aplicado en el layout antes de medir
+      // (algunos teclados de tablet re-disparan keyboardDidShow al cambiar de campo).
+      setTimeout(() => {
+        node.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+          // 'y' incluye el translate y={-lift} actual, así que reconstruimos la
+          // posición EN REPOSO (medida + lift actual). Así el cálculo es idempotente:
+          // dé una o varias veces, el botón queda 16px por encima del teclado.
+          const restingBottom = (y + h) + liftRef.current
+          // Margen generoso (uniforme para todos los equipos, no hardcodeado a uno):
+          // absorbe posibles desfases de medición entre measureInWindow y screenY en
+          // ciertas tablets/teclados. En equipos que ya iban bien solo agrega unos px.
+          const newLift = Math.max(0, restingBottom - kbTop + 44)
+          liftRef.current = newLift
+          setLift(newLift)
+        })
+      }, 40)
+    })
+    const hide = Keyboard.addListener('keyboardDidHide', () => { liftRef.current = 0; setLift(0) })
+    return () => { show.remove(); hide.remove() }
+  }, [])
+
   useEffect(() => {
     const params = route.params as any
 
@@ -171,11 +206,6 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      // iOS necesita 'padding' porque no redimensiona la ventana con el teclado.
-      // Android NO lleva behavior: el AndroidManifest ya usa windowSoftInputMode
-      // ="adjustResize", así que el SO redimensiona la ventana solo. Poner
-      // behavior="height" encima duplicaba el ajuste y las dos animaciones se
-      // peleaban → en equipos viejos el login quedaba "saltando" al cerrar el teclado.
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
 
@@ -189,6 +219,7 @@ export default function LoginScreen() {
           justifyContent="flex-end"
           alignItems="center"
           paddingBottom="$10"
+          y={-lift}
           backgroundColor="#1e3a5fc7"
         >
           {/* LOGO */}
@@ -361,30 +392,32 @@ export default function LoginScreen() {
                 </Text>
               </XStack>
 
-                <Button
-                  backgroundColor="$primary"
-                  height={45}
-                  disabled={loading}
-                  opacity={loading ? 0.7 : 1}
-                  onPress={handleSubmit(loginUser)}
-                >
-                  {loading ? (
-                    <XStack alignItems="center" gap="$2">
-                      <Spinner color="white" />
-                      <Text color="white" fontWeight="700">
-                        Iniciando...
-                      </Text>
-                    </XStack>
-                  ) : (
-                    <>
-                      <LogIn size={18} color="white" />
+                <View ref={btnRef} collapsable={false}>
+                  <Button
+                    backgroundColor="$primary"
+                    height={45}
+                    disabled={loading}
+                    opacity={loading ? 0.7 : 1}
+                    onPress={handleSubmit(loginUser)}
+                  >
+                    {loading ? (
+                      <XStack alignItems="center" gap="$2">
+                        <Spinner color="white" />
+                        <Text color="white" fontWeight="700">
+                          Iniciando...
+                        </Text>
+                      </XStack>
+                    ) : (
+                      <>
+                        <LogIn size={18} color="white" />
 
-                      <Text color="white" fontWeight="700" marginLeft="$2">
-                        Iniciar Sesión
-                      </Text>
-                    </>
-                  )}
-                </Button>
+                        <Text color="white" fontWeight="700" marginLeft="$2">
+                          Iniciar Sesión
+                        </Text>
+                      </>
+                    )}
+                  </Button>
+                </View>
 
             </YStack>
           </Card>
