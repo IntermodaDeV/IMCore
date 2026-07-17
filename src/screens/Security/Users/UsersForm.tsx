@@ -26,6 +26,10 @@ export default function UsersForm() {
     const { updateHeader } = useUpdatePageHeader()
     const navigation = useNavigation()
     const scrollRef = React.useRef<any>(null)
+    // Offset actual del scroll (para calcular el scrollTo exacto) y ref a los
+    // botones (para medir su posición vs. el teclado y subir solo el solape).
+    const scrollY = React.useRef(0)
+    const btnRef = React.useRef<any>(null)
     // ¿Hay un campo de contraseña enfocado? Al mostrarse el teclado, bajamos al
     // final para que el campo + botones queden visibles (funciona aunque el teclado
     // se oculte/reabra al pasar de Contraseña a Confirmar).
@@ -390,7 +394,26 @@ export default function UsersForm() {
         const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
             setKbHeight(e.endCoordinates?.height ?? 0)
             if (passwordFocused.current) {
-                setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60)
+                // Medir los botones vs. el borde superior del teclado (screenY) y
+                // subir SOLO el solape (+16). Así quedan justo sobre el teclado, sin
+                // el hueco enorme que dejaba scrollToEnd (que se iba hasta el final
+                // del paddingBottom). Delay para que el paddingBottom ya esté aplicado.
+                setTimeout(() => {
+                    const kbTop = e.endCoordinates?.screenY ?? 0
+                    const node = btnRef.current
+                    if (kbTop && node?.measureInWindow) {
+                        node.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+                            const overlap = (y + h) - kbTop
+                            // Margen generoso uniforme (mismo criterio que el login): absorbe
+                            // desfases de medición en ciertas tablets sin hardcodear por equipo.
+                            if (overlap > -44) {
+                                scrollRef.current?.scrollTo({ y: scrollY.current + overlap + 44, animated: true })
+                            }
+                        })
+                    } else {
+                        scrollRef.current?.scrollToEnd({ animated: true })
+                    }
+                }, 80)
             }
         })
         const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0))
@@ -503,10 +526,13 @@ export default function UsersForm() {
                                 showsVerticalScrollIndicator={false}
                                 keyboardShouldPersistTaps="handled"
                                 keyboardDismissMode="on-drag"
-                                // flexGrow: el spacer empuja los botones al fondo cuando
-                                // el form es corto. paddingBottom = alto del teclado en
-                                // Android: reserva espacio para poder scrollear el campo
-                                // enfocado + botones por encima del teclado (edge-to-edge).
+                                // flexGrow: el spacer empuja los botones al fondo cuando el
+                                // form es corto. paddingBottom = alto del teclado (Android):
+                                // da rango de scroll para subir campo+botones por encima del
+                                // teclado. El scroll exacto lo calcula el listener de teclado
+                                // (mide los botones vs. el borde del teclado), no scrollToEnd.
+                                onScroll={(e) => { scrollY.current = e.nativeEvent.contentOffset.y }}
+                                scrollEventThrottle={16}
                                 contentContainerStyle={{ flexGrow: 1, paddingBottom: (Platform.OS === 'android' ? kbHeight : 0) + 12 }}
                             >
                                 <YStack flex={1} padding="$4" gap="$1">
@@ -940,7 +966,7 @@ export default function UsersForm() {
                                                                 label="Contraseña"
                                                                 value={value}
                                                                 onChangeText={onChange}
-                                                                onFocus={() => { passwordFocused.current = true; scrollRef.current?.scrollToEnd({ animated: true }) }}
+                                                                onFocus={() => { passwordFocused.current = true }}
                                                                 onBlur={() => { passwordFocused.current = false }}
                                                                 secureTextEntry={!showPassword}
                                                                 autoCapitalize="none"
@@ -980,7 +1006,7 @@ export default function UsersForm() {
                                                                 label="Confirmar contraseña"
                                                                 value={value}
                                                                 onChangeText={onChange}
-                                                                onFocus={() => { passwordFocused.current = true; scrollRef.current?.scrollToEnd({ animated: true }) }}
+                                                                onFocus={() => { passwordFocused.current = true }}
                                                                 onBlur={() => { passwordFocused.current = false }}
                                                                 secureTextEntry={!showConfirmPassword}
                                                                 error={errors.ConfirmPassword?.message}
@@ -1014,7 +1040,7 @@ export default function UsersForm() {
                                         campo cuando el form es largo. */}
                                     <View flex={1} minHeight={20} />
 
-                                    <XStack gap="$3" marginBottom="$2">
+                                    <XStack ref={btnRef} gap="$3" marginBottom="$2">
                                         <Button
                                             flex={1}
                                             backgroundColor="$buttonSecondary"
