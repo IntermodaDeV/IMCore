@@ -18,7 +18,7 @@ export interface IMaquinaManage { Id?: number; CodigoActivo?: string | null; Tip
 export interface IAreaPrincipal { Id: number; Name: string; PermiteMaquinas: boolean; Orden: number; Status_Id: number }
 export interface IAreaPrincipalManage { Id?: number; Name: string; PermiteMaquinas: boolean; Status_Id?: number }
 export interface IAreaManage { Id?: number; Name: string; AreaPrincipal_Id: number; Status_Id?: number }
-export interface IOperacionManage { Id?: number; Area_Id: number; Name: string; Status_Id?: number }
+export interface IOperacionManage { Id?: number; Area_Id: number; Name: string; Orden?: number; Status_Id?: number }
 export interface ITipoParoManage { Id?: number; Name: string }
 
 export const catalogosService = {

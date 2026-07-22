@@ -36,6 +36,7 @@ export default function EstructuraScreen() {
   const [fPermite, setFPermite] = useState(false)
   const [fPrincipalId, setFPrincipalId] = useState<number | undefined>(undefined)
   const [fActivo, setFActivo] = useState(true)
+  const [fOrden, setFOrden] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [confirm, setConfirm] = useState<Toggle>(null)
 
@@ -70,12 +71,13 @@ export default function EstructuraScreen() {
   const areasDe = (principalId: number) => areas.filter(a => a.AreaPrincipal_Id === principalId)
 
   // ── Modales ────────────────────────────────────────────────────────────────
-  const abrir = (nivel: Nivel, opts?: { editId?: number; areaPrincipalId?: number; areaId?: number; name?: string; permite?: boolean; principalId?: number; status?: number }) => {
+  const abrir = (nivel: Nivel, opts?: { editId?: number; areaPrincipalId?: number; areaId?: number; name?: string; permite?: boolean; principalId?: number; status?: number; orden?: number | null }) => {
     setModal({ nivel, editId: opts?.editId, areaPrincipalId: opts?.areaPrincipalId, areaId: opts?.areaId })
     setFName(opts?.name ?? '')
     setFPermite(opts?.permite ?? false)
     setFPrincipalId(opts?.principalId ?? opts?.areaPrincipalId)
     setFActivo(opts?.status != null ? opts.status === 1 : true)
+    setFOrden(opts?.orden != null ? String(opts.orden) : '')
   }
 
   const guardar = async () => {
@@ -93,7 +95,7 @@ export default function EstructuraScreen() {
         const dto = { Id: modal.editId, Name: fName.trim(), AreaPrincipal_Id: fPrincipalId!, ...estado }
         res = modal.editId ? await catalogosService.editarArea(dto) : await catalogosService.crearArea(dto)
       } else {
-        const dto = { Id: modal.editId, Area_Id: modal.areaId!, Name: fName.trim(), ...estado }
+        const dto = { Id: modal.editId, Area_Id: modal.areaId!, Name: fName.trim(), Orden: fOrden.trim() ? Number(fOrden) : undefined, ...estado }
         res = modal.editId ? await catalogosService.editarOperacion(dto) : await catalogosService.crearOperacion(dto)
       }
       if (res.Success) {
@@ -200,10 +202,10 @@ export default function EstructuraScreen() {
                               <Text fontSize={12} color="$textMuted" paddingVertical="$1">Sin operaciones</Text>
                             ) : ops.map(o => (
                               <XStack key={o.Id} alignItems="center" gap="$2" paddingVertical="$1.5">
-                                <View width={6} height={6} borderRadius={3} backgroundColor={o.Status_Id === 1 ? '$primary' : '$border'} />
+                                <Text fontSize={11} color="$textMuted" minWidth={20} textAlign="right">{o.Orden ?? '·'}</Text>
                                 <Text flex={1} fontSize={13} color={o.Status_Id === 1 ? '$text' : '$textMuted'}>{o.Name}</Text>
                                 <Badge activo={o.Status_Id === 1} small onPress={(e) => { e?.stopPropagation?.(); setConfirm({ nivel: 'operacion', Id: o.Id, Name: o.Name, Status_Id: o.Status_Id }) }} />
-                                <IconBtn small onPress={(e) => { e?.stopPropagation?.(); abrir('operacion', { editId: o.Id, areaId: a.Id, name: o.Name, status: o.Status_Id }) }} color={theme.primary?.val} />
+                                <IconBtn small onPress={(e) => { e?.stopPropagation?.(); abrir('operacion', { editId: o.Id, areaId: a.Id, name: o.Name, status: o.Status_Id, orden: o.Orden }) }} color={theme.primary?.val} />
                               </XStack>
                             ))}
                             <AddRow label="Agregar operación" onPress={() => abrir('operacion', { areaId: a.Id })} />
@@ -228,6 +230,11 @@ export default function EstructuraScreen() {
               {modal?.editId ? 'Editar' : 'Nuevo'} · {modal?.nivel === 'principal' ? 'Área principal' : modal?.nivel === 'area' ? 'Área' : 'Operación'}
             </Text>
             <AppInput label="Nombre" value={fName} onChangeText={setFName} />
+
+            {modal?.nivel === 'operacion' && (
+              <AppInput label="Orden" value={fOrden} onChangeText={setFOrden} keyboardType="number-pad"
+                statusMessage="Menor número aparece primero en el ticket. Vacío = al final." />
+            )}
 
             {modal?.nivel === 'principal' && (
               <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
