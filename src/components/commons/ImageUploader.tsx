@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Button, YStack, XStack, Text, Card, View, styled } from 'tamagui'
+import ImageCropPicker from 'react-native-image-crop-picker'
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker'
-import { Camera, Image as ImageIcon, Trash2 } from 'lucide-react-native'
+import { Camera, Image as ImageIcon, Trash2, Crop } from 'lucide-react-native'
 import { Image, PermissionsAndroid, Platform, Pressable } from 'react-native'
 import ImageViewing from 'react-native-image-viewing'
 
@@ -11,28 +12,19 @@ type Props = {
   onChangeWithBase64?: (uri: string | null, base64: string | null) => void
 }
 
+
+
 export function ImageUploader({ title = 'Imagen', onChange, onChangeWithBase64 }: Props) {
   const [imageUri, setImageUri] = useState<string | null>(null)
   const [zoomVisible, setZoomVisible] = useState(false)
 
-  const ImageIconStyled = styled(ImageIcon, {color:"$buttonSecondaryText"});
-  const CameraStyled = styled(Camera, {color:"$buttonSecondaryText"});
+  const ImageIconStyled = styled(ImageIcon, { color: '$buttonSecondaryText' })
+  const CameraStyled = styled(Camera, { color: '$buttonSecondaryText' })
 
   const handleResult = (uri: string | null, base64: string | null) => {
     setImageUri(uri)
     onChange?.(uri)
     onChangeWithBase64?.(uri, base64)
-  }
-
-  const pickImage = () => {
-    launchImageLibrary(
-      { mediaType: 'photo', quality: 0.8, selectionLimit: 1, includeBase64: true },
-      (res) => {
-        if (res.didCancel || res.errorCode) return
-        const asset = res.assets?.[0]
-        if (asset?.uri) handleResult(asset.uri, asset.base64 ?? null)
-      }
-    )
   }
 
   const requestCameraPermission = async () => {
@@ -45,17 +37,48 @@ export function ImageUploader({ title = 'Imagen', onChange, onChangeWithBase64 }
     return granted === PermissionsAndroid.RESULTS.GRANTED
   }
 
-  const takePhoto = async () => {
-    const hasPermission = await requestCameraPermission()
-    if (!hasPermission) return
-    launchCamera(
-      { mediaType: 'photo', quality: 0.8, cameraType: 'back', includeBase64: true },
+  const pickImage = () => {
+    launchImageLibrary(
+      { mediaType: 'photo', quality: 1, selectionLimit: 1, includeBase64: true },
       (res) => {
         if (res.didCancel || res.errorCode) return
         const asset = res.assets?.[0]
         if (asset?.uri) handleResult(asset.uri, asset.base64 ?? null)
       }
     )
+  }
+
+  const takePhoto = async () => {
+    const hasPermission = await requestCameraPermission()
+    if (!hasPermission) return
+    launchCamera(
+      { mediaType: 'photo', quality: 1, cameraType: 'back', includeBase64: true },
+      (res) => {
+        if (res.didCancel || res.errorCode) return
+        const asset = res.assets?.[0]
+        if (asset?.uri) handleResult(asset.uri, asset.base64 ?? null)
+      }
+    )
+  }
+
+  const openCropEditor = () => {
+    if (!imageUri) return
+    
+    ImageCropPicker.openCropper({ 
+      cropping: true, 
+      mediaType: 'photo',
+      width:800,
+      height:800,
+      includeBase64: true,
+      freeStyleCropEnabled: true,
+      compressImageQuality: Platform.OS === 'ios' ? 0.8 : 1,
+      hideBottomControls: false
+  
+    , path: imageUri })
+      .then(image => {
+        handleResult(image.path, image.data ?? null)
+      })
+      .catch(() => {})
   }
 
   const removeImage = () => handleResult(null, null)
@@ -102,7 +125,7 @@ export function ImageUploader({ title = 'Imagen', onChange, onChangeWithBase64 }
                 onPress={takePhoto}
               >
                 <XStack gap="$2" alignItems="center">
-                  <CameraStyled size={18} color="$buttonSecondaryText" />
+                  <CameraStyled size={18} />
                   <Text color="$buttonSecondaryText" fontWeight="700">Cámara</Text>
                 </XStack>
               </Button>
@@ -117,7 +140,7 @@ export function ImageUploader({ title = 'Imagen', onChange, onChangeWithBase64 }
                 onPress={pickImage}
               >
                 <XStack gap="$2" alignItems="center">
-                  <ImageIconStyled size={18}  />
+                  <ImageIconStyled size={18} />
                   <Text color="$buttonSecondaryText" fontWeight="700">Galería</Text>
                 </XStack>
               </Button>
@@ -131,6 +154,19 @@ export function ImageUploader({ title = 'Imagen', onChange, onChangeWithBase64 }
               </Pressable>
 
               <View position="absolute" bottom={10} right={10} flexDirection="row" gap="$2">
+                <Button
+                  width={34}
+                  height={34}
+                  borderRadius={999}
+                  backgroundColor="rgba(0,0,0,0.55)"
+                  justifyContent="center"
+                  alignItems="center"
+                  pressStyle={{ opacity: 0.7 }}
+                  onPress={openCropEditor}
+                  padding={0}
+                >
+                  <Crop size={16} color="white" />
+                </Button>
                 <Button
                   width={34}
                   height={34}

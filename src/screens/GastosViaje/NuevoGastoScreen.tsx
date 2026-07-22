@@ -16,7 +16,7 @@ import dayjs from 'dayjs'
 import { ImageUploader } from '../../components/commons/ImageUploader'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
 import {
-  TCompany, IExpenseType, IExpenseCategory,
+  IExpenseType, IExpenseCategory,
   IAlimentacionSubtype, IFuelType,
   IGiraVendorResponse
 } from '../../api/modules/GastosViaje/gastosViaje.types'
@@ -137,8 +137,9 @@ export default function NuevoGastoScreen() {
   const selectedTypeName = expenseTypes.find(t => t.Id === watchedTypeId)?.Name ?? ''
   const isAlimentacion   = selectedCategory?.Name?.toLowerCase().includes('alimentaci') ?? false
   const isCombustible    = selectedCategory?.Name?.toLowerCase().includes('combustible') && defaultCompany?.Code === 'IMGT'
-  const isHospedaje      = selectedTypeName === 'Hospedaje'
+  const isHospedaje      = selectedCategory?.Name?.toLowerCase() === 'hospedaje'
   const isIMHN           = defaultCompany?.Code === 'IMHN'
+  const isIMGT           = defaultCompany?.Code === 'IMGT'
   const isIMCR           = defaultCompany?.Code === 'IMCR'
   const hasPredefined    = !!selectedCategory?.VendAccount
 
@@ -254,7 +255,9 @@ export default function NuevoGastoScreen() {
       try {
         setIsSearchingProviders(true)
         const res = await gastosViajeService.searchProvider(q, defaultCompany?.Code ?? '')
-        if (res.Success) setAllProviders(res.Data)
+        if (res.Success) {
+          setAllProviders(res.Data)
+        }
       } catch {} finally {
         setIsSearchingProviders(false)
       }
@@ -477,8 +480,17 @@ export default function NuevoGastoScreen() {
                   </YStack>
                 )}
 
-                <TouchableOpacity onPress={() => navigation.navigate('solicitarProveedor')}>
-                  <Text fontSize={13} color="$primary" fontWeight="600" marginTop="$1">
+                <TouchableOpacity
+                  disabled={!!selectedProviderId}
+                  onPress={() => navigation.navigate('solicitarProveedor')}
+                >
+                  <Text
+                    fontSize={13}
+                    color={selectedProviderId ? '$textMuted' : '$primary'}
+                    fontWeight="600"
+                    marginTop="$1"
+                    opacity={selectedProviderId ? 0.4 : 1}
+                  >
                     + Solicitar crear nuevo proveedor
                   </Text>
                 </TouchableOpacity>
@@ -621,7 +633,7 @@ export default function NuevoGastoScreen() {
                       />
                     )}
 
-                    {isHospedaje && (
+                    {isHospedaje && isIMGT && (
                       <Controller
                         control={control}
                         name="ExemptAmount"
