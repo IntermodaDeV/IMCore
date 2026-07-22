@@ -100,6 +100,10 @@ export default function NuevoGastoScreen() {
   const [alimentacionSubtypes, setAlimentacionSubtypes] = useState<IAlimentacionSubtype[]>([])
   const [fuelTypes, setFuelTypes]                     = useState<IFuelType[]>([])
   const [taxRate, setTaxRate]                         = useState(0)
+  const today     = dayjs()
+  const daysToMon = today.day() === 0 ? 6 : today.day() - 1
+  const weekStart = today.subtract(daysToMon, 'day').format('YYYY-MM-DD')
+  const weekEnd   = today.subtract(daysToMon, 'day').add(6, 'day').format('YYYY-MM-DD')
   const [allProviders, setAllProviders]               = useState<IGiraVendorResponse[]>([])
   const [selectedProviderId, setSelectedProviderId]   = useState('')
   const [providerCurrency, setProviderCurrency]       = useState('')
@@ -219,6 +223,8 @@ export default function NuevoGastoScreen() {
 
   useEffect(() => {
     if (!watchedCatId) return
+    setValue('MealId', 0)
+    setValue('FuelTypeId', 0)
     setValue('useCustomProvider', hasPredefined ? 'false' : 'true')
     setSelectedProviderId('')
     setProviderCurrency('')
@@ -301,6 +307,7 @@ export default function NuevoGastoScreen() {
         companyCode:       defaultCompany?.Code ?? '',
         axMessage:         null,
         inUse:             true,
+        taxAmount:         ((Number(taxRate )) * 100)
       }, user?.Code ?? '')
       
       if (res.Succeeded === true) {
@@ -547,14 +554,14 @@ export default function NuevoGastoScreen() {
                         <Controller
                           control={control}
                           name="GravadoAmount"
-                          
+
                           render={({ field }) => (
                             <AppInput
                               label="Importe gravado"
                               value={field.value}
                               onChangeText={v => field.onChange(formatAmount(v))}
                               keyboardType="decimal-pad"
-                              prefix={<Text>{providerCurrency}</Text>}
+                              prefix={<Text color="$text" >{providerCurrency}</Text>}
                               error={errors.GravadoAmount?.message}
                             />
                           )}
@@ -570,7 +577,7 @@ export default function NuevoGastoScreen() {
                               value={field.value}
                               onChangeText={v => field.onChange(formatAmount(v))}
                               keyboardType="decimal-pad"
-                              prefix={<Text>{providerCurrency}</Text>}
+                              prefix={<Text color="$text" >{providerCurrency}</Text>}
                             />
                           )}
                         />
@@ -666,6 +673,18 @@ export default function NuevoGastoScreen() {
                   </>
                 )}
 
+                {(isIMHN &&(
+                  <XStack alignItems="center" gap="$1" paddingVertical="$1" borderWidth={1} marginBottom="$2" borderColor="$border" padding="$3" backgroundColor="$backgroundElevated" borderRadius={10}>
+                    <Text fontSize={12} color="$textMuted">
+                      ISV ({(taxRate * 100).toFixed(0)}%):
+                    </Text>
+                    <Text fontSize={12} fontWeight="700" color="$primary">
+                      {( providerCurrency + ' ' + (Number(getValues('GravadoAmount') ?? 0) * (taxRate)).toFixed(2)) }
+                    </Text>
+                  </XStack>
+                ))}
+
+
                 {/* Fecha de factura — siempre */}
                 <Controller
                   control={control}
@@ -677,7 +696,8 @@ export default function NuevoGastoScreen() {
                       value={field.value || null}
                       onChange={v => field.onChange(v ?? '')}
                       displayFormat="DD/MM/YYYY"
-                      direction="past"
+                      minDate={weekStart}
+                      maxDate={weekEnd}
                       error={errors.InvoiceDate?.message}
                     />
                   )}
@@ -689,7 +709,7 @@ export default function NuevoGastoScreen() {
                     <XStack justifyContent="space-between" alignItems="center">
                       <Text color="white" fontSize={14} fontWeight="600">Total de la factura</Text>
                       <Text color="white" fontSize={20} fontWeight="800">
-                        Lps. {computedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {providerCurrency + ' '+ computedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </Text>
                     </XStack>
                   </Card>

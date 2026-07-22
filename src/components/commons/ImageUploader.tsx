@@ -64,17 +64,16 @@ export function ImageUploader({ title = 'Imagen', onChange, onChangeWithBase64 }
   const openCropEditor = () => {
     if (!imageUri) return
     
-    ImageCropPicker.openCropper({ 
-      cropping: true, 
+    ImageCropPicker.openCropper({
+      cropping: true,
       mediaType: 'photo',
-      width:800,
-      height:800,
       includeBase64: true,
       freeStyleCropEnabled: true,
       compressImageQuality: Platform.OS === 'ios' ? 0.8 : 1,
-      hideBottomControls: false
-  
-    , path: imageUri })
+      hideBottomControls: false,
+      path: imageUri,
+      ...(Platform.OS === 'ios' && { width: 800, height: 800 }),
+    })
       .then(image => {
         handleResult(image.path, image.data ?? null)
       })

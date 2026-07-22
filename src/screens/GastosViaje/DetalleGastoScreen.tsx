@@ -261,6 +261,11 @@ export default function DetalleGastoScreen({ route }: any) {
               <InfoRow label="Descripción"         value={gasto.Description} />
               <InfoRow label="Importe gravado"     value={gasto.Currency + ' ' + formatCurrency(gasto.GravadoAmount)} />
               <InfoRow label="Importe exento"      value={gasto.Currency + ' ' + formatCurrency(gasto.ExemptAmount)} />
+              
+              {gasto.CompanyCode === ECompany.IMHN && (
+                <InfoRow label={`ISV (${Number(gasto.TaxAmount ?? 0).toFixed(0)}%)`} value={`${gasto.Currency} ${formatCurrency(Number(gasto.GravadoAmount ?? 0) * (Number(gasto.TaxAmount ?? 0) / 100))}`} />
+              )}
+              
               <InfoRow label="Total"               value={gasto.Currency + ' ' + formatCurrency(gasto.InvoiceAmount)} />
               
               <InfoRow label="Tipo de combustible" value={gasto.FuelTypeName} />

@@ -10,6 +10,8 @@ type BaseProps = {
   label: string
   displayFormat?: string
   direction?: 'past' | 'future'
+  minDate?: string
+  maxDate?: string
   error?: string
   disabled?: boolean
 }
@@ -42,7 +44,7 @@ function buildRangeDisplay(start?: string | null, end?: string | null): string {
 }
 
 export default function AppDatePicker(props: Props) {
-  const { label, displayFormat = 'DD/MM/YYYY', direction, error, disabled = false } = props
+  const { label, displayFormat = 'DD/MM/YYYY', direction, minDate: minDateProp, maxDate: maxDateProp, error, disabled = false } = props
   const theme = useTheme()
   const [open, setOpen] = useState(false)
 
@@ -196,8 +198,8 @@ export default function AppDatePicker(props: Props) {
                     locale="es"
                     startDate={tempStart ? dayjs(tempStart) : undefined}
                     endDate={tempEnd ? dayjs(tempEnd) : undefined}
-                    maxDate={direction === 'past' ? today : undefined}
-                    minDate={direction === 'future' ? today : undefined}
+                    maxDate={maxDateProp ? dayjs(maxDateProp) : direction === 'past' ? today : undefined}
+                    minDate={minDateProp ? dayjs(minDateProp) : direction === 'future' ? today : undefined}
                     onChange={({ startDate, endDate }: any) => {
                       setTempStart(startDate ? dayjs(startDate).format('YYYY-MM-DD') : null)
                       setTempEnd(endDate     ? dayjs(endDate).format('YYYY-MM-DD')   : null)
@@ -238,8 +240,8 @@ export default function AppDatePicker(props: Props) {
                   mode="single"
                   locale="es"
                   date={props.value ? dayjs(props.value) : undefined}
-                  maxDate={direction === 'past' ? today : undefined}
-                  minDate={direction === 'future' ? today : undefined}
+                  maxDate={maxDateProp ? dayjs(maxDateProp) : direction === 'past' ? today : undefined}
+                  minDate={minDateProp ? dayjs(minDateProp) : direction === 'future' ? today : undefined}
                   onChange={({ date }: any) => {
                     if (date) {
                       props.onChange(dayjs(date).format('YYYY-MM-DD'))

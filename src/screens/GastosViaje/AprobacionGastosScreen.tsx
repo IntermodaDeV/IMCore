@@ -102,8 +102,8 @@ function ApprovalCard({ item, onPress }: { item: IGastoHistorialDetail; onPress:
   const TypeIcon = getIconFromFa(item.Icon)
   const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; Icon: any }> = {
     Aprobado:  { label: 'Aprobado',  bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
-    Pendiente: { label: 'Pendiente', bg: `${theme.gray?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
-    PendienteAX: { label: 'PendienteAX', bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
+    Pendiente: { label: 'Pendiente', bg: `${theme.gray?.val}1f`, color: theme.gray?.val as string, Icon: RefreshCw },
+    PendienteAX: { label: 'Pendiente AX', bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
     Rechazado: { label: 'Rechazado', bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
   }
   const status = STATUS_CONFIG[item.StatusName] ?? STATUS_CONFIG['Pendiente']
