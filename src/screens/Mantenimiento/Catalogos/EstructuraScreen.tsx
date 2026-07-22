@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal, RefreshControl } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { useFocusEffect } from '@react-navigation/native'
-import { ChevronDown, ChevronRight, Plus, Pencil, Wrench } from 'lucide-react-native'
+import { ChevronDown, ChevronRight, ChevronUp, Plus, Pencil, Wrench } from 'lucide-react-native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
@@ -38,6 +38,7 @@ export default function EstructuraScreen() {
   const [fActivo, setFActivo] = useState(true)
   const [fOrden, setFOrden] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const [moviendo, setMoviendo] = useState(false)
   const [confirm, setConfirm] = useState<Toggle>(null)
 
   const cargar = useCallback(async () => {
@@ -61,6 +62,29 @@ export default function EstructuraScreen() {
     const r = await catalogosService.getOperaciones(areaId, false)
     setOpsByArea(prev => ({ ...prev, [areaId]: r.Data ?? [] }))
   }, [])
+
+  // Subir/bajar una operación dentro de su área. Reordena las ACTIVAS y persiste
+  // el nuevo orden (backend fija Orden 1..N). Optimista: actualiza la UI al toque.
+  const moverOp = useCallback(async (areaId: number, opId: number, dir: -1 | 1) => {
+    if (moviendo) return
+    const lista = opsByArea[areaId] ?? []
+    const activos = lista.filter(o => o.Status_Id === 1)
+    const inactivos = lista.filter(o => o.Status_Id !== 1)
+    const i = activos.findIndex(o => o.Id === opId)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= activos.length) return
+    const nuevos = [...activos]
+    ;[nuevos[i], nuevos[j]] = [nuevos[j], nuevos[i]]
+    const reordenados = nuevos.map((o, idx) => ({ ...o, Orden: idx + 1 }))
+    setOpsByArea(prev => ({ ...prev, [areaId]: [...reordenados, ...inactivos] }))  // optimista
+    setMoviendo(true)
+    try {
+      const res = await catalogosService.reordenarOperaciones(areaId, nuevos.map(o => o.Id))
+      if (!res.Success) { showToast('error', 'No se pudo reordenar', res.ErrorMessage || 'Intenta de nuevo'); await cargarOps(areaId) }
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo reordenar'); await cargarOps(areaId)
+    } finally { setMoviendo(false) }
+  }, [opsByArea, moviendo, cargarOps])
 
   const toggleArea = (areaId: number) => {
     const willOpen = !expA[areaId]
@@ -183,6 +207,9 @@ export default function EstructuraScreen() {
                   {hijos.map(a => {
                     const openA = !!expA[a.Id]
                     const ops = opsByArea[a.Id] ?? []
+                    const idsActivos = ops.filter(o => o.Status_Id === 1).map(o => o.Id)
+                    const primerActivo = idsActivos[0]
+                    const ultimoActivo = idsActivos[idsActivos.length - 1]
                     const activoA = a.Status_Id === 1
                     return (
                       <YStack key={a.Id} marginLeft="$2" borderLeftWidth={2} borderLeftColor="$border" paddingLeft="$2">
@@ -201,9 +228,15 @@ export default function EstructuraScreen() {
                             {ops.length === 0 ? (
                               <Text fontSize={12} color="$textMuted" paddingVertical="$1">Sin operaciones</Text>
                             ) : ops.map(o => (
-                              <XStack key={o.Id} alignItems="center" gap="$2" paddingVertical="$1.5">
+                              <XStack key={o.Id} alignItems="center" gap="$1.5" paddingVertical="$1.5">
                                 <Text fontSize={11} color="$textMuted" minWidth={20} textAlign="right">{o.Orden ?? '·'}</Text>
                                 <Text flex={1} fontSize={13} color={o.Status_Id === 1 ? '$text' : '$textMuted'}>{o.Name}</Text>
+                                {o.Status_Id === 1 && (
+                                  <XStack gap="$1">
+                                    <MoveBtn dir="up" disabled={moviendo || o.Id === primerActivo} onPress={() => moverOp(a.Id, o.Id, -1)} />
+                                    <MoveBtn dir="down" disabled={moviendo || o.Id === ultimoActivo} onPress={() => moverOp(a.Id, o.Id, 1)} />
+                                  </XStack>
+                                )}
                                 <Badge activo={o.Status_Id === 1} small onPress={(e) => { e?.stopPropagation?.(); setConfirm({ nivel: 'operacion', Id: o.Id, Name: o.Name, Status_Id: o.Status_Id }) }} />
                                 <IconBtn small onPress={(e) => { e?.stopPropagation?.(); abrir('operacion', { editId: o.Id, areaId: a.Id, name: o.Name, status: o.Status_Id, orden: o.Orden }) }} color={theme.primary?.val} />
                               </XStack>
@@ -314,6 +347,17 @@ function IconBtn({ onPress, color, small }: { onPress: (e?: any) => void; color?
   return (
     <View onPress={onPress} pressStyle={{ opacity: 0.6 }} padding="$1.5" hitSlop={6}>
       <Pencil size={small ? 14 : 16} color={color} />
+    </View>
+  )
+}
+
+function MoveBtn({ dir, disabled, onPress }: { dir: 'up' | 'down'; disabled?: boolean; onPress: (e?: any) => void }) {
+  const Icon = dir === 'up' ? ChevronUp : ChevronDown
+  return (
+    <View onPress={disabled ? undefined : (e: any) => { e?.stopPropagation?.(); onPress(e) }}
+      pressStyle={{ opacity: 0.5 }} opacity={disabled ? 0.25 : 1}
+      borderWidth={1} borderColor="$border" borderRadius="$3" padding={4} hitSlop={4}>
+      <Icon size={16} color={ACCENT} />
     </View>
   )
 }

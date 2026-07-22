@@ -51,6 +51,10 @@ export const catalogosService = {
     httpClient.put<ExecutionResponse<null>, IOperacionManage>(`${schema}/Operaciones`, data),
   toggleOperacion: (id: number) =>
     httpClient.post<ExecutionResponse<null>>(`${schema}/Operaciones/Toggle?id=${id}`),
+  // Reordenar operaciones de un área: ids en el orden deseado → backend fija Orden 1..N.
+  reordenarOperaciones: (areaId: number, ids: number[]) =>
+    httpClient.post<ExecutionResponse<null>, { Area_Id: number; Ids: number[] }>(
+      `${schema}/Operaciones/Reordenar`, { Area_Id: areaId, Ids: ids }),
 
   // ── Máquinas ────────────────────────────────────────────────────────────────
   getMaquinas: (search?: string, areaId?: number, onlyActive = false) =>
