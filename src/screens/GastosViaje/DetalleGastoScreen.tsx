@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { ScrollView, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, Linking } from 'react-native'
 import ImageViewing from 'react-native-image-viewing'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
@@ -32,29 +32,34 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
 
 export default function DetalleGastoScreen({ route }: any) {
   const theme = useTheme()
-  const gasto: IGastoHistorialDetail = route.params?.gasto
+  const gastoPrompt: IGastoHistorialDetail | null = route.params.id ? null : route.params?.gasto;
+  const gastoId: string | null = route.params.id ?? null;
   const isApprovalMode: boolean = route.params?.mode === 'approval'
   const navigation = useNavigation()
   const { user, defaultCompany } = useAuth()
   const loader = useLoader()
   const { showToast } = useShowToast()
 
-  const STATUS_CONFIG: Record<string, { bg: string; color: string; Icon: LucideIcon }> = {
-    Sincronizado: { bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
-    Pendiente:    { bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw },
-    Rechazado:    { bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
-  }
-
-  const status = STATUS_CONFIG[gasto.StatusName]
-  const StatusIcon = status?.Icon ?? CheckCircle2;
+  const [gasto, setGasto] = useState<IGastoHistorialDetail | null>(gastoPrompt ?? null)
+  const [loadingById, setLoadingById] = useState(!!gastoId && !gastoPrompt)
   const [imageOpen, setImageOpen] = useState(false)
   const [imageError, setImageError] = useState(false)
   const [imageErrorMsg, setImageErrorMsg] = useState('')
-  const [imageLoading, setImageLoading] = useState(!!gasto.ImagePath)
+  const [imageLoading, setImageLoading] = useState(false)
   const [rejectModalVisible, setRejectModalVisible] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [rejectError, setRejectError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+
+  const STATUS_CONFIG: Record<string, { bg: string; color: string; Icon: LucideIcon }> = {
+    Sincronizado: { bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
+    Pendiente:    { bg: `${theme.gray?.val}1f`, color: theme.gray?.val as string, Icon: RefreshCw },
+    Rechazado:    { bg: `${theme.error?.val}1f`,   color: theme.error?.val as string,   Icon: XCircle },
+    PendienteAX:  { bg: `${theme.warning?.val}1f`, color: theme.warning?.val as string, Icon: RefreshCw }
+  }
+
+  const status = STATUS_CONFIG[gasto?.StatusName ?? 'Pendiente']
+  const StatusIcon = status?.Icon ?? CheckCircle2
 
   usePageHeader({
     left: (
@@ -65,6 +70,36 @@ export default function DetalleGastoScreen({ route }: any) {
     center: <Text fontSize={16} fontWeight="700" color="$text">Detalle de Gasto</Text>,
     right: <CountryFlag countryCode={defaultCompany?.CodeIcon ?? 'HN'} width={28} height={20} />,
   })
+
+  useEffect(() => {
+    if (!gastoId) return
+    const load = async () => {
+      try {
+        loader.show()
+        const res = await gastosViajeService.getHistoricalDetailById(gastoId)
+        if (res.Success) {
+          setGasto(res.Data)
+          setImageLoading(!!res.Data?.ImagePath)
+        } else {
+          showToast('error', 'Error', 'No se pudo cargar el detalle', 4000, 'top')
+        }
+      } catch {
+        showToast('error', 'Error', 'Ocurrió un error inesperado', 4000, 'top')
+      } finally {
+        setLoadingById(false)
+        loader.hide()
+      }
+    }
+    load()
+  }, [])
+
+  if (loadingById) {
+    return (
+      <View flex={1} justifyContent="center" alignItems="center">
+        <ActivityIndicator size="large" color={theme.primary?.val as string} />
+      </View>
+    )
+  }
 
   if (!gasto) {
     return (
