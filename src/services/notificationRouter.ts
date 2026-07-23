@@ -53,5 +53,11 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
+  if(category === 'expense') {
+    const gastoId = data.ExpenseId ?? data.ExpenseId
+    navigateWhenReady('detalleGasto', gastoId ? { gasto: null, id: String(gastoId) } : undefined)
+    return true
+  }
+
   return false
 }
