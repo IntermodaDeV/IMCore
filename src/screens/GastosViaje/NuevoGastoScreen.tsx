@@ -282,7 +282,7 @@ export default function NuevoGastoScreen() {
     try {
       loader.show()
       const graved = toNum(data.GravadoAmount)
-      const exempt = toNum(data.ExemptAmount)
+      const exempt = toNum(data.gallons ?? data.ExemptAmount)
       const total  = isIMHN ? computedTotal : toNum(data.InvoiceAmount)
 
       const res = await gastosViajeService.createGasto({
