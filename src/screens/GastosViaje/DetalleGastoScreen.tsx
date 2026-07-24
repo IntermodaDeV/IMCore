@@ -50,6 +50,7 @@ export default function DetalleGastoScreen({ route }: any) {
   const [rejectReason, setRejectReason] = useState('')
   const [rejectError, setRejectError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const isCombustible    =  gasto?.ExpenseCategoryName?.toLowerCase().includes('combustible') && gasto.CompanyCode=== 'IMGT'
 
   const STATUS_CONFIG: Record<string, { bg: string; color: string; Icon: LucideIcon }> = {
     Sincronizado: { bg: `${theme.success?.val}1f`, color: theme.success?.val as string, Icon: CheckCircle2 },
@@ -295,7 +296,7 @@ export default function DetalleGastoScreen({ route }: any) {
               <InfoRow label="Número de serie"     value={gasto.JournalNum} />
               <InfoRow label="Descripción"         value={gasto.Description} />
               <InfoRow label="Importe gravado"     value={gasto.Currency + ' ' + formatCurrency(gasto.GravadoAmount)} />
-              <InfoRow label="Importe exento"      value={gasto.Currency + ' ' + formatCurrency(gasto.ExemptAmount)} />
+              <InfoRow label={isCombustible ? "Galones" : "Importe exento"}      value={( isCombustible ? '' : gasto.Currency + ' ' )  + formatCurrency(gasto.ExemptAmount)} />
               
               {gasto.CompanyCode === ECompany.IMHN && (
                 <InfoRow label={`ISV (${Number(gasto.TaxAmount ?? 0).toFixed(0)}%)`} value={`${gasto.Currency} ${formatCurrency(Number(gasto.GravadoAmount ?? 0) * (Number(gasto.TaxAmount ?? 0) / 100))}`} />

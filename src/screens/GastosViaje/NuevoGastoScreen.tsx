@@ -282,7 +282,10 @@ export default function NuevoGastoScreen() {
     try {
       loader.show()
       const graved = toNum(data.GravadoAmount)
-      const exempt = toNum(data.gallons ?? data.ExemptAmount)
+      const gallons = toNum(data.gallons);
+      const exempt = gallons > 0
+        ? gallons
+        : toNum(data.ExemptAmount);
       const total  = isIMHN ? computedTotal : toNum(data.InvoiceAmount)
 
       const res = await gastosViajeService.createGasto({
@@ -639,6 +642,25 @@ export default function NuevoGastoScreen() {
                         )}
                       />
                     )}
+                    
+                     <Controller
+                      control={control}
+                      name="Description"
+                      rules={selectedCategory?.IsDescriptionRequired ? { required: 'La descripción es requerida', maxLength: { value: 250, message: 'Máximo 250 caracteres' } } : { maxLength: { value: 250, message: 'Máximo 250 caracteres' } }}
+                      render={({ field }) => (
+                        <AppInput
+                          label={`Descripción${selectedCategory?.IsDescriptionRequired ? '' : ' (Opcional)'}`}
+                          placeholder="Ej. Gastos de viaje semana 43"
+                          value={field.value}
+                          onChangeText={field.onChange}
+                          multiline
+                          numberOfLines={3}
+                          maxLength={250}
+                          error={errors.Description?.message}
+                          style={{ height: 80}}
+                        />
+                      )}
+                    />
 
                     {isHospedaje && isIMGT && (
                       <Controller
