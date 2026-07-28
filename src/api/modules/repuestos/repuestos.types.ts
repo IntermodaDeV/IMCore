@@ -28,6 +28,7 @@ export interface ILinea {
   Ticket_Id: number | null
   TicketCodigo: string | null
   Costo: number | null   // costo unitario congelado (solo diarios posteados)
+  Fecha: string | null   // fecha/hora en que se agregó la línea (local)
 }
 
 // Costo unitario de referencia (promedio AX) de un repuesto.

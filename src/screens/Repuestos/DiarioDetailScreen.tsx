@@ -11,7 +11,7 @@ import { ILinea } from '../../api/modules/repuestos/repuestos.types'
 import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
 import { ITicket } from '../../api/modules/mantenimiento/tickets.types'
 import { shadows } from '../../theme/shadows'
-import { ACCENT, Field, ScannerModal, puedeDespachar } from './components'
+import { ACCENT, Field, ScannerModal, puedeDespachar, fmtFechaHora, ts } from './components'
 
 const ERR = '#ef4444'
 
@@ -241,14 +241,16 @@ export default function DiarioDetailScreen() {
   }, [lineas, filtro])
 
   // Líneas agrupadas por ticket (un diario puede tener varios tickets).
+  // Ordenado DESC por fecha: líneas más recientes primero y grupos por su línea más nueva.
   const grupos = useMemo(() => {
+    const ordenadas = [...lineasFiltradas].sort((a, b) => ts(b.Fecha) - ts(a.Fecha))
     const map = new Map<string, ILinea[]>()
-    for (const l of lineasFiltradas) {
+    for (const l of ordenadas) {
       const key = l.TicketCodigo || 'Sin ticket'
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(l)
     }
-    return Array.from(map.entries())
+    return Array.from(map.entries()).sort((A, B) => ts(B[1][0]?.Fecha) - ts(A[1][0]?.Fecha))
   }, [lineasFiltradas])
 
   const onScan = (code: string) => {
@@ -477,6 +479,7 @@ export default function DiarioDetailScreen() {
                             C/U: L {l.Costo.toFixed(2)}  ·  Total: L {(l.Costo * Math.abs(l.Cantidad)).toFixed(2)}
                           </Text>
                         )}
+                        {!!l.Fecha && <Text fontSize="$1" color="$textMuted" marginTop="$1">{fmtFechaHora(l.Fecha)}</Text>}
                       </YStack>
                       {!cerrado && (
                         <View onPress={() => confirmarBorrar(l)} pressStyle={{ opacity: 0.6 }} hitSlop={8} padding="$1">

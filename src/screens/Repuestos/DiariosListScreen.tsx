@@ -9,7 +9,7 @@ import { useShowToast } from '../../utils/useShowToast'
 import { repuestosService } from '../../api/modules/repuestos/repuestos.service'
 import { IDiario } from '../../api/modules/repuestos/repuestos.types'
 import { shadows } from '../../theme/shadows'
-import { ACCENT } from './components'
+import { ACCENT, fmtFechaHora } from './components'
 
 type Periodo = 'semana' | 'mes' | 'anio'
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -102,6 +102,8 @@ export default function DiariosListScreen() {
       : estado === 'POSTEADO'
         ? { bg: 'rgba(107,114,128,0.15)', fg: '#6b7280', label: 'POSTEADO' }
         : { bg: 'rgba(34,197,94,0.15)', fg: '#16a34a', label: 'ABIERTO' }
+    const fechaRef = item.FechaPosteo || item.FechaCreacion
+    const fechaLabel = item.FechaPosteo ? 'Posteado' : 'Creado'
     return (
       <View onPress={() => irADetalle(item)} pressStyle={{ opacity: 0.85 }}
         backgroundColor="$backgroundElevated" borderRadius="$4" borderWidth={1} borderColor="$border"
@@ -125,6 +127,7 @@ export default function DiariosListScreen() {
               </Text>
               {item.CostoTotal > 0 && <Text fontSize="$2" color="$text" fontWeight="800">{fmtL(item.CostoTotal)}</Text>}
             </XStack>
+            {!!fechaRef && <Text fontSize="$1" color="$textMuted">{fechaLabel} · {fmtFechaHora(fechaRef)}</Text>}
           </YStack>
           <ChevronRight size={20} color={theme.textMuted?.val} />
         </XStack>

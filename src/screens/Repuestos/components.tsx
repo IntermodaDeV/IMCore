@@ -14,6 +14,23 @@ export const ESTADOS_DESPACHO = ['PENDIENTE', 'EN_PROCESO', 'PAUSADO', 'RECHAZAD
 export const puedeDespachar = (estadoCode?: string | null) =>
   ESTADOS_DESPACHO.includes((estadoCode ?? '').toUpperCase())
 
+// ms de una fecha ISO (para ordenar desc); 0 si vacía/ inválida.
+export const ts = (iso?: string | null): number => {
+  if (!iso) return 0
+  const t = new Date(iso).getTime()
+  return isNaN(t) ? 0 : t
+}
+
+// "mié 28 jul · 14:01" (día + fecha + hora). Vacío si no hay fecha.
+export function fmtFechaHora(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const f = d.toLocaleDateString('es-HN', { weekday: 'short', day: '2-digit', month: 'short' })
+  const h = d.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' })
+  return `${f} · ${h}`
+}
+
 // Extrae el código del evento de react-native-camera-kit (el shape varía por
 // versión/plataforma). Mismo criterio que NewTicketScreen (máquinas).
 export function readCode(event: any): string {
