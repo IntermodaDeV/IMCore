@@ -1,5 +1,5 @@
-import React, { useRef } from 'react'
-import { Modal, StyleSheet } from 'react-native'
+import React, { useRef, useState } from 'react'
+import { Modal, StyleSheet, Platform, PermissionsAndroid } from 'react-native'
 import { Text, XStack, YStack, View } from 'tamagui'
 import { X } from 'lucide-react-native'
 import { Camera } from 'react-native-camera-kit'
@@ -59,10 +59,22 @@ export function ScannerModal({
   onRead: (code: string) => void
 }) {
   const lock = useRef(false)
+  // Permiso de cámara: null=pidiendo, true=concedido, false=denegado. iOS lo pide el SO.
+  const [perm, setPerm] = useState<boolean | null>(null)
 
-  // Al (re)abrir, liberamos el lock.
+  // Al (re)abrir: libera el lock y solicita el permiso de cámara en Android
+  // (imprescindible en release; sin esto la cámara sale en negro).
   React.useEffect(() => {
-    if (open) lock.current = false
+    if (!open) return
+    lock.current = false
+    if (Platform.OS !== 'android') { setPerm(true); return }
+    setPerm(null)
+    PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+      title: 'Cámara', message: 'Se necesita la cámara para escanear.',
+      buttonPositive: 'Permitir', buttonNegative: 'Cancelar',
+    })
+      .then(g => setPerm(g === PermissionsAndroid.RESULTS.GRANTED))
+      .catch(() => setPerm(false))
   }, [open])
 
   const handle = (event: any) => {
@@ -76,8 +88,16 @@ export function ScannerModal({
   return (
     <Modal visible={open} animationType="slide" onRequestClose={onClose}>
       <View flex={1} backgroundColor="#000">
-        {open && (
+        {open && perm === true && (
           <Camera style={StyleSheet.absoluteFill} scanBarcode onReadCode={handle} scanThrottleDelay={400} />
+        )}
+        {open && perm === false && (
+          <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal="$6" gap="$2">
+            <Text color="#fff" fontSize="$5" fontWeight="800">Sin acceso a la cámara</Text>
+            <Text color="#fff" opacity={0.8} fontSize="$2" textAlign="center">
+              Habilita el permiso de cámara en los ajustes del dispositivo. También puedes usar el lector físico o el ingreso manual.
+            </Text>
+          </YStack>
         )}
         <YStack position="absolute" top={0} left={0} right={0} paddingTop="$8" paddingHorizontal="$4" gap="$2">
           <XStack alignItems="center" justifyContent="space-between">
