@@ -8,18 +8,22 @@ const schema = 'Repuestos'
 
 // El AX puede tardar (net.tcp interno): subimos el timeout de las escrituras.
 const AX_TIMEOUT = 60000
+// Lecturas: fallar más rápido para no dejar la pantalla "cargando" ante un
+// tropiezo intermitente de AX dev; el usuario reintenta.
+const READ_TIMEOUT = 30000
 
 export const repuestosService = {
-  // Diarios del usuario autenticado (desde IMCore).
-  getDiarios: () =>
-    httpClient.get<ExecutionResponse<IDiario[]>>(`${schema}/Diarios`),
+  // Diarios del usuario autenticado (desde IMCore). Filtro opcional por rango de creación
+  // (ISO local 'YYYY-MM-DDTHH:mm:ss'): @Desde inclusivo, @Hasta exclusivo.
+  getDiarios: (desde?: string, hasta?: string) =>
+    httpClient.get<ExecutionResponse<IDiario[]>>(`${schema}/Diarios`, { desde, hasta }),
 
   // Líneas del diario (AX) enriquecidas con el ticket local.
   getLineas: (journalId: string, company = 'IMHN') =>
     httpClient.get<ExecutionResponse<ILinea[]>>(
       `${schema}/Diarios/${encodeURIComponent(journalId)}/Lineas`,
       { company },
-      { timeoutMs: AX_TIMEOUT },
+      { timeoutMs: READ_TIMEOUT },
     ),
 
   // Crea un diario (AX + persistencia local). Devuelve AxResult con el JournalId real.

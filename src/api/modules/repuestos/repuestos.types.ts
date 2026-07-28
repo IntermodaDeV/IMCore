@@ -7,7 +7,10 @@ export interface IDiario {
   JournalId: string
   Descripcion: string
   NumeroLineas: number
-  Estado: string   // ABIERTO | POSTEADO
+  Estado: string   // ABIERTO | POSTEADO | ELIMINADO
+  FechaCreacion: string | null
+  FechaPosteo: string | null
+  CostoTotal: number
 }
 
 // Línea de diario (AX) enriquecida con el ticket local. Varias filas pueden
