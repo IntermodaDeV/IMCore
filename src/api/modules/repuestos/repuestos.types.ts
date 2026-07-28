@@ -7,6 +7,7 @@ export interface IDiario {
   JournalId: string
   Descripcion: string
   NumeroLineas: number
+  Almacen: string
   Estado: string   // ABIERTO | POSTEADO | ELIMINADO
   FechaCreacion: string | null
   FechaPosteo: string | null

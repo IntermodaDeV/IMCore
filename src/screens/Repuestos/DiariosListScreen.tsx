@@ -93,7 +93,7 @@ export default function DiariosListScreen() {
 
   const irANuevo = () => navigation.navigate('repuestosNuevo')
   const irADetalle = (d: IDiario) =>
-    navigation.navigate('repuestosDetalle', { journalId: d.JournalId, descripcion: d.Descripcion, estado: d.Estado })
+    navigation.navigate('repuestosDetalle', { journalId: d.JournalId, descripcion: d.Descripcion, estado: d.Estado, almacen: d.Almacen })
 
   const renderItem = ({ item }: { item: IDiario }) => {
     const estado = (item.Estado || 'ABIERTO').toUpperCase()
@@ -126,6 +126,7 @@ export default function DiariosListScreen() {
                 {item.NumeroLineas} {item.NumeroLineas === 1 ? 'línea' : 'líneas'}
               </Text>
               {item.CostoTotal > 0 && <Text fontSize="$2" color="$text" fontWeight="800">{fmtL(item.CostoTotal)}</Text>}
+              {!!item.Almacen && <Text fontSize="$2" color="$textMuted">Alm {item.Almacen}</Text>}
             </XStack>
             {!!fechaRef && <Text fontSize="$1" color="$textMuted">{fechaLabel} · {fmtFechaHora(fechaRef)}</Text>}
           </YStack>

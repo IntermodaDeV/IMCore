@@ -267,8 +267,11 @@ export default function DiarioDetailScreen() {
         keyboardShouldPersistTaps="handled">
         <YStack width="100%" maxWidth={800} alignSelf="center">
 
-          {!!descripcion && (
-            <Text fontSize="$3" color="$textMuted" marginBottom="$3">{descripcion}</Text>
+          {(!!descripcion || !!almacenDiario) && (
+            <XStack marginBottom="$3" gap="$2" alignItems="center" flexWrap="wrap">
+              {!!descripcion && <Text fontSize="$3" color="$textMuted">{descripcion}</Text>}
+              {!!almacenDiario && <Text fontSize="$2" color="$textMuted">· Almacén {almacenDiario}</Text>}
+            </XStack>
           )}
 
           {cerrado && (
