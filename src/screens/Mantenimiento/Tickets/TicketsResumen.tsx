@@ -9,7 +9,7 @@ import { ITicketResumen } from '../../../api/modules/mantenimiento/tickets.types
 import { ACCENT, MESES, colorEstado } from '../mantenimiento.helpers'
 import { SectionCard } from '../components'
 import { shadows } from '../../../theme/shadows'
-import AppSelect from '../../../components/commons/AppSelect'
+import { ChevronLeft, ChevronRight } from 'lucide-react-native'
 
 type Modo = 'semana' | 'mes' | 'anio'
 
@@ -49,6 +49,25 @@ export default function TicketsResumen() {
   const [modo, setModo] = useState<Modo>('semana')
   const [mes, setMes] = useState<number>(HOY.getMonth() + 1)
   const [anio, setAnio] = useState<number>(HOY.getFullYear())
+  // Ancla de la semana mostrada (permite navegar a semanas anteriores con las flechas).
+  const [semRef, setSemRef] = useState<Date>(HOY)
+
+  // Cambiar de modo reinicia el período al actual.
+  const cambiarModo = (m: Modo) => {
+    setModo(m); setSemRef(HOY); setMes(HOY.getMonth() + 1); setAnio(HOY.getFullYear())
+  }
+  // Navegar ‹ / › según el modo (anterior / siguiente).
+  const navegar = (dir: -1 | 1) => {
+    if (modo === 'semana') {
+      setSemRef(prev => { const d = new Date(prev); d.setDate(d.getDate() + dir * 7); return d })
+    } else if (modo === 'mes') {
+      let m = mes + dir, a = anio
+      if (m < 1) { m = 12; a -= 1 } else if (m > 12) { m = 1; a += 1 }
+      setMes(m); setAnio(a)
+    } else {
+      setAnio(a => a + dir)
+    }
+  }
 
   const [data, setData] = useState<ITicketResumen[]>([])
   const [cargando, setCargando] = useState(true)
@@ -58,9 +77,9 @@ export default function TicketsResumen() {
   // Rango [desde, hasta) según el modo seleccionado.
   const { desde, hasta, etiqueta } = useMemo(() => {
     if (modo === 'semana') {
-      const now = new Date()
-      const diffToMon = (now.getDay() + 6) % 7 // lunes = inicio de semana
-      const lunes = new Date(now); lunes.setHours(0, 0, 0, 0); lunes.setDate(now.getDate() - diffToMon)
+      const base = new Date(semRef)
+      const diffToMon = (base.getDay() + 6) % 7 // lunes = inicio de semana
+      const lunes = new Date(base); lunes.setHours(0, 0, 0, 0); lunes.setDate(base.getDate() - diffToMon)
       const sigLunes = new Date(lunes); sigLunes.setDate(lunes.getDate() + 7)
       return {
         desde: lunes,
@@ -76,7 +95,10 @@ export default function TicketsResumen() {
       }
     }
     return { desde: new Date(anio, 0, 1), hasta: new Date(anio + 1, 0, 1), etiqueta: `Año ${anio}` }
-  }, [modo, mes, anio])
+  }, [modo, mes, anio, semRef])
+
+  // No permitir avanzar al futuro: el período mostrado ya alcanza/incluye hoy.
+  const puedeAvanzar = hasta.getTime() <= Date.now()
 
   const cargar = useCallback(async () => {
     setError(null)
@@ -118,15 +140,6 @@ export default function TicketsResumen() {
   }, [global])
   const totalDona = dona.reduce((a, d) => a + d.value, 0) || 1
 
-  const aniosOpts = useMemo(() => {
-    const y = HOY.getFullYear()
-    return [y, y - 1, y - 2].map(a => ({ label: String(a), value: String(a) }))
-  }, [])
-  const mesesOpts = useMemo(
-    () => Object.entries(MESES).map(([k, v]) => ({ label: v, value: k })),
-    [],
-  )
-
   return (
     <ScrollView
       style={{ flex: 1 }}
@@ -137,27 +150,23 @@ export default function TicketsResumen() {
 
         {/* Filtro de período */}
         <XStack gap="$2">
-          <PeriodoChip label="Semana" active={modo === 'semana'} onPress={() => setModo('semana')} />
-          <PeriodoChip label="Mes" active={modo === 'mes'} onPress={() => setModo('mes')} />
-          <PeriodoChip label="Año" active={modo === 'anio'} onPress={() => setModo('anio')} />
+          <PeriodoChip label="Semana" active={modo === 'semana'} onPress={() => cambiarModo('semana')} />
+          <PeriodoChip label="Mes" active={modo === 'mes'} onPress={() => cambiarModo('mes')} />
+          <PeriodoChip label="Año" active={modo === 'anio'} onPress={() => cambiarModo('anio')} />
         </XStack>
 
-        {modo !== 'semana' && (
-          <XStack gap="$2">
-            {modo === 'mes' && (
-              <View flex={1}>
-                <AppSelect label="Mes" value={String(mes)} options={mesesOpts}
-                  onValueChange={v => setMes(Number(v))} />
-              </View>
-            )}
-            <View flex={1}>
-              <AppSelect label="Año" value={String(anio)} options={aniosOpts}
-                onValueChange={v => setAnio(Number(v))} />
-            </View>
-          </XStack>
-        )}
-
-        <Text fontSize="$2" color="$textMuted">📅 {etiqueta}</Text>
+        {/* Navegador ‹ › del período (estilo Despacho de Repuestos), con la etiqueta de semana */}
+        <XStack alignItems="center" justifyContent="space-between" gap="$2"
+          borderWidth={1} borderColor="$border" borderRadius="$4" paddingVertical="$2" paddingHorizontal="$3">
+          <View onPress={() => navegar(-1)} pressStyle={{ opacity: 0.6 }} padding="$1" hitSlop={8}>
+            <ChevronLeft size={22} color={ACCENT} />
+          </View>
+          <Text fontSize="$4" fontWeight="800" color="$text" textAlign="center" flex={1}>{etiqueta}</Text>
+          <View onPress={puedeAvanzar ? () => navegar(1) : undefined} pressStyle={{ opacity: 0.6 }}
+            padding="$1" hitSlop={8} opacity={puedeAvanzar ? 1 : 0.3}>
+            <ChevronRight size={22} color={ACCENT} />
+          </View>
+        </XStack>
 
         {cargando ? (
           <YStack alignItems="center" justifyContent="center" paddingVertical="$10" gap="$3">

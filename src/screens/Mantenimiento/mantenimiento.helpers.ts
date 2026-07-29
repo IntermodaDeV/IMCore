@@ -27,6 +27,20 @@ export const puedeOperarTicket = (
   (!!userCode && !!mecanicoUserCode && userCode === mecanicoUserCode) ||
   hasRole(roles, ROLES_OPERAR)
 
+// Editar un ticket (info completa: máquina, área, operación, etc.): Admin o
+// Supervisor de Mantenimiento, o acceso 'EditarTickets'. Solo en estados
+// Pendiente/Pausado/En Proceso (el estado se valida en la pantalla). Backend revalida.
+const ROLES_EDITAR = ['Administrador', 'Supervisor de Mantenimiento']
+export const puedeEditarTicket = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_EDITAR) || hasAccess(access, 'EditarTickets')
+
+// Cancelar por rol/acceso: Admin, Supervisor de Mantenimiento, o acceso
+// 'CancelarTickets' → en Pendiente/Pausado/En Proceso. (El CREADOR puede cancelar
+// su propio ticket solo en Pendiente; eso se combina en la pantalla.) Backend revalida.
+const ROLES_CANCELAR = ['Administrador', 'Supervisor de Mantenimiento']
+export const puedeCancelarTicket = (roles?: RoleLike[] | null, access?: string | null) =>
+  hasRole(roles, ROLES_CANCELAR) || hasAccess(access, 'CancelarTickets')
+
 // Diagnosticar (tipo de falla + causa): Admin, Sup. Mantenimiento, Mecánico,
 // Técnico, el mecánico asignado, o acceso 'DiagnosticarTickets'. (El backend revalida.)
 const ROLES_DIAGNOSTICAR = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico']
