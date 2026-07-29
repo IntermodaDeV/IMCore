@@ -128,9 +128,9 @@ export function Field({
   children: React.ReactNode
 }) {
   return (
-    <YStack marginBottom="$5" gap="$2">
+    <YStack marginBottom="$2" gap="$1.5">
       <XStack alignItems="center" gap="$2">
-        <Text fontSize="$3" fontWeight="700" color="$text">{label}</Text>
+        <Text fontSize="$2" fontWeight="700" color="$text">{label}</Text>
         {!!hint && <Text fontSize="$1" color="$textMuted">· {hint}</Text>}
       </XStack>
       {children}

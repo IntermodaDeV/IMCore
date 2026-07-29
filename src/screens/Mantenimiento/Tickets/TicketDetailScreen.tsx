@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Modal, RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, TextArea, useTheme } from 'tamagui'
-import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2, ShieldCheck, XCircle, Eye, X } from 'lucide-react-native'
+import { ArrowLeft, Wrench, MapPin, User, Clock, AlertTriangle, Ban, Play, Pause, RotateCcw, CheckCircle2, ShieldCheck, XCircle, Eye, X, Pencil } from 'lucide-react-native'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
 import QRCode from 'react-native-qrcode-svg'
 
@@ -12,7 +12,7 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IMecanico, ITicketEvento } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT, COLOR_ASIGNADO, estadoVisual, puedeOperarTicket, puedeDiagnosticar, puedeValidar, puedeConfigRecordatorio, puedeDespachar, puedeAutoasignar } from '../mantenimiento.helpers'
+import { colorEstado, colorPrioridad, ACCENT, COLOR_ASIGNADO, estadoVisual, puedeOperarTicket, puedeDiagnosticar, puedeValidar, puedeConfigRecordatorio, puedeDespachar, puedeAutoasignar, puedeEditarTicket, puedeCancelarTicket } from '../mantenimiento.helpers'
 
 const COLOR_VALIDADO = '#059669'   // sello de producción (esmeralda)
 
@@ -182,10 +182,15 @@ export default function TicketDetailScreen() {
   const orden = t.EstadoOrden ?? 1
   const cancelado = t.EstadoCode === 'CANCELADO'
 
-  // Cancelar: solo Pendiente, por el creador o un Administrador
+  // Estados abiertos donde rol/acceso pueden editar/cancelar.
+  const estadoEditable = ['PENDIENTE', 'PAUSADO', 'EN_PROCESO'].includes(t.EstadoCode ?? '')
+  // El creador puede editar/cancelar su propio ticket SOLO mientras esté Pendiente.
   const esCreador = !!user?.Code && t.Create_By === user.Code
-  const esAdmin = (user?.Roles ?? []).some(r => r.RoleName === 'Administrador')
-  const puedeCancelar = t.EstadoCode === 'PENDIENTE' && (esCreador || esAdmin)
+  const creadorPendiente = esCreador && t.EstadoCode === 'PENDIENTE'
+  // Editar: Admin/Sup. Mtto/acceso 'EditarTickets' (estados abiertos) o el creador en Pendiente.
+  const puedeEditar = (estadoEditable && puedeEditarTicket(user?.Roles, user?.Access)) || creadorPendiente
+  // Cancelar: Admin/Sup. Mtto/acceso 'CancelarTickets' (estados abiertos) o el creador en Pendiente.
+  const puedeCancelar = (estadoEditable && puedeCancelarTicket(user?.Roles, user?.Access)) || creadorPendiente
 
   const doCancelar = async () => {
     setCancelando(true)
@@ -650,7 +655,17 @@ export default function TicketDetailScreen() {
             </Section>
           )}
 
-          {/* Cancelar ticket (solo Pendiente; creador o admin) */}
+          {/* Editar ticket (info completa) — Admin/Sup. Mtto o acceso, en Pend/Pausado/Proceso */}
+          {puedeEditar && (
+            <View onPress={() => navigation.navigate('mantenimientoTicketNuevo', { edit: t })} pressStyle={{ opacity: 0.85 }}
+              marginTop="$2" borderWidth={1.5} borderColor={ACCENT} borderRadius="$4" height={50}
+              alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+              <Pencil size={18} color={ACCENT} />
+              <Text color={ACCENT} fontWeight="800" fontSize="$4">Editar ticket</Text>
+            </View>
+          )}
+
+          {/* Cancelar ticket (Pendiente/Pausado/Proceso; creador, Admin, Sup. Mtto o acceso) */}
           {puedeCancelar && (
             <View onPress={cancelando ? undefined : confirmarCancelar} pressStyle={{ opacity: 0.85 }}
               opacity={cancelando ? 0.6 : 1} marginTop="$2" borderWidth={1.5}

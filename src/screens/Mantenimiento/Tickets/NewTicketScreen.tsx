@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions, Modal, StyleSheet } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Input, TextArea, useTheme } from 'tamagui'
 import { Check, Wrench, MapPin, ScanLine, ArrowLeft, X, RotateCcw } from 'lucide-react-native'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useRoute } from '@react-navigation/native'
 import { Camera } from 'react-native-camera-kit'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -11,7 +11,7 @@ import { useAuth } from '../../../context/AuthContext'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { catalogosService, IMaquina } from '../../../api/modules/mantenimiento/catalogos.service'
-import { IArea, IOperacion, IModelo, ITipoParo, IPrioridad, ITicketManage } from '../../../api/modules/mantenimiento/tickets.types'
+import { IArea, IOperacion, IModelo, ITipoParo, IPrioridad, ITicketManage, ITicket } from '../../../api/modules/mantenimiento/tickets.types'
 import { ACCENT, puedeCrearMaquina } from '../mantenimiento.helpers'
 
 type Opt = { label: string; value: string }
@@ -37,14 +37,24 @@ function Field({ label, hint, error, children }: { label: string; hint?: string;
 export default function NewTicketScreen() {
   const theme = useTheme()
   const navigation = useNavigation<any>()
+  const route = useRoute<any>()
   const { showToast } = useShowToast()
   const { user } = useAuth()
+
+  // Modo edición: se navega con { edit: ITicket }. Si viene, precargamos el
+  // formulario y al guardar hacemos PUT (updateAdmin) en vez de crear.
+  const edit = route.params?.edit as ITicket | undefined
+  const editId = edit?.Id
+  const esEdicion = editId != null
+  // Durante la hidratación inicial se saltan los resets encadenados (tipo→área→
+  // operación→modelo) para no borrar los valores precargados.
+  const hidratando = useRef(esEdicion)
 
   // Pantalla "push": botón de regresar (vuelve al listado; si no se guardó, el
   // ticket queda cancelado). El ☰ del drawer no aplica aquí.
   usePageHeader({
     left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
-    center: <Text fontSize="$4" fontWeight="700" color="$text">Crear ticket</Text>,
+    center: <Text fontSize="$4" fontWeight="700" color="$text">{esEdicion ? 'Editar ticket' : 'Crear ticket'}</Text>,
   })
   const { width } = useWindowDimensions()
   const FORM_MAX = 680
@@ -59,17 +69,21 @@ export default function NewTicketScreen() {
   const [prioridades, setPrioridades] = useState<IPrioridad[]>([])
   const [cargandoCat, setCargandoCat] = useState(true)
 
-  const [tipo, setTipo] = useState<Tipo>(puedeMaquina ? 'MAQUINA' : 'AREA')
+  const [tipo, setTipo] = useState<Tipo>(
+    esEdicion ? (edit!.TipoDestino === 'AREA' ? 'AREA' : 'MAQUINA') : (puedeMaquina ? 'MAQUINA' : 'AREA'),
+  )
 
-  const [areaId, setAreaId] = useState<number | undefined>()
+  // areaId y los campos simples se precargan directo; operacionId y modelo los
+  // fija la hidratación tras cargar sus catálogos dependientes (ver efectos).
+  const [areaId, setAreaId] = useState<number | undefined>(edit?.Area_Id ?? undefined)
   const [operacionId, setOperacionId] = useState<number | undefined>()
   const [modelo, setModelo] = useState<string | undefined>()
-  const [numero, setNumero] = useState('')
-  const [objeto, setObjeto] = useState('')
-  const [tipoParoId, setTipoParoId] = useState<number | undefined>()
-  const [prioridadId, setPrioridadId] = useState<number | undefined>()
-  const [idOperador, setIdOperador] = useState('')
-  const [observaciones, setObservaciones] = useState('')
+  const [numero, setNumero] = useState(edit?.NumeroMaquina ?? '')
+  const [objeto, setObjeto] = useState(edit?.Objeto ?? '')
+  const [tipoParoId, setTipoParoId] = useState<number | undefined>(edit?.TipoParo_Id ?? undefined)
+  const [prioridadId, setPrioridadId] = useState<number | undefined>(edit?.Prioridad_Id ?? undefined)
+  const [idOperador, setIdOperador] = useState(edit?.IdOperador != null ? String(edit.IdOperador) : '')
+  const [observaciones, setObservaciones] = useState(edit?.Observaciones ?? '')
   const [enviando, setEnviando] = useState(false)
   const [intentado, setIntentado] = useState(false)
 
@@ -138,23 +152,32 @@ export default function NewTicketScreen() {
   }, [])
 
   useEffect(() => {
+    if (hidratando.current) return   // no resetear durante la hidratación inicial
     setAreaId(undefined); setOperacionId(undefined); setOperaciones([])
     setModelo(undefined); setModelos([]); setNumero(''); setObjeto('')
     setIdOperador(''); setTipoParoId(undefined); setIntentado(false); setMaquina(null)
   }, [tipo])
 
   useEffect(() => {
-    setOperacionId(undefined); setOperaciones([]); setModelo(undefined); setModelos([])
+    if (!hidratando.current) { setOperacionId(undefined); setModelo(undefined); setModelos([]) }
+    setOperaciones([])
     if (areaId == null) return
     // La operación aplica a ambos tipos (máquina y área/general).
-    ticketsService.getOperaciones(areaId).then(r => setOperaciones(r.Data ?? [])).catch(() => {})
+    ticketsService.getOperaciones(areaId).then(r => {
+      setOperaciones(r.Data ?? [])
+      if (hidratando.current) setOperacionId(edit?.Operacion_Id ?? undefined)
+    }).catch(() => {})
   }, [areaId])
 
   useEffect(() => {
-    // Cambiar de operación reinicia el modelo y la máquina escaneada.
-    setModelo(undefined); setModelos([]); setMaquina(null); setNumero('')
-    if (!esMaquina || operacionId == null) return
-    ticketsService.getModelos(operacionId).then(r => setModelos(r.Data ?? [])).catch(() => {})
+    // Cambiar de operación reinicia el modelo y la máquina escaneada (salvo hidratación).
+    if (!hidratando.current) { setModelo(undefined); setModelos([]); setMaquina(null); setNumero('') }
+    if (operacionId == null) return
+    if (!esMaquina) { hidratando.current = false; return }
+    ticketsService.getModelos(operacionId).then(r => {
+      setModelos(r.Data ?? [])
+      if (hidratando.current) { setModelo(edit?.Modelo ?? undefined); hidratando.current = false }
+    }).catch(() => { hidratando.current = false })
   }, [operacionId, esMaquina])
 
   // Válido: 4 dígitos (entrada manual → AF-0000####) o un código AF completo (escaneo).
@@ -184,19 +207,22 @@ export default function NewTicketScreen() {
             Objeto: objeto.trim() || undefined,
             Prioridad_Id: prioridadId, Observaciones: observaciones.trim() || undefined,
           }
-      const res = await ticketsService.create(payload)
+      const res = esEdicion
+        ? await ticketsService.updateAdmin({ ...payload, Id: editId })
+        : await ticketsService.create(payload)
       if (res.Success && res.Data?.Success) {
-        showToast('success', 'Ticket creado', res.Data.CodigoTicket ?? '')
+        showToast('success', esEdicion ? 'Ticket actualizado' : 'Ticket creado', res.Data.CodigoTicket ?? '')
         navigation.goBack()
       } else {
-        showToast('error', 'No se pudo crear', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+        const accion = esEdicion ? 'actualizar' : 'crear'
+        showToast('error', `No se pudo ${accion}`, res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
       }
     } catch (e: any) {
-      showToast('error', 'Error', e?.message || 'No se pudo crear el ticket')
+      showToast('error', 'Error', e?.message || (esEdicion ? 'No se pudo actualizar el ticket' : 'No se pudo crear el ticket'))
     } finally {
       setEnviando(false)
     }
-  }, [puedeGuardar, esMaquina, areaId, operacionId, modelo, numero, objeto, tipoParoId, prioridadId, idOperador, observaciones])
+  }, [esEdicion, editId, puedeGuardar, esMaquina, areaId, operacionId, modelo, numero, objeto, tipoParoId, prioridadId, idOperador, observaciones])
 
   // Máquina: solo áreas que permiten máquinas (producción).
   // Área/General: solo áreas que NO permiten máquinas (administrativas / generales).
@@ -232,7 +258,9 @@ export default function NewTicketScreen() {
         keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <YStack width="100%" maxWidth={FORM_MAX} alignSelf="center">
 
-          {puedeMaquina && (
+          {/* Selector Máquina/Área: solo al CREAR. En edición la categoría queda fija
+              (la del ticket) — cambiarla limpiaría el formulario y no debe modificarse. */}
+          {!esEdicion && puedeMaquina && (
             <>
               <Text fontSize="$3" fontWeight="700" color="$text" marginBottom="$2">¿Qué vas a reportar?</Text>
               <XStack borderWidth={1} borderColor="$border" borderRadius="$4" padding="$1" marginBottom="$5" backgroundColor="$backgroundElevated">
@@ -359,7 +387,7 @@ export default function NewTicketScreen() {
             opacity={enviando ? 0.7 : 1} backgroundColor={ACCENT} borderRadius="$4" height={52}
             alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
             {enviando ? <Spinner color="#fff" /> : <Check size={20} color="#fff" />}
-            <Text color="#fff" fontWeight="800" fontSize="$4">{enviando ? 'Creando…' : 'Crear ticket'}</Text>
+            <Text color="#fff" fontWeight="800" fontSize="$4">{enviando ? (esEdicion ? 'Guardando…' : 'Creando…') : (esEdicion ? 'Guardar cambios' : 'Crear ticket')}</Text>
           </View>
         </YStack>
       </ScrollView>
