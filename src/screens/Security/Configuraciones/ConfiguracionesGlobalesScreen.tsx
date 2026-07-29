@@ -9,9 +9,18 @@ import { configuracionService, IConfiguracion } from '../../../api/modules/confi
 
 const ACCENT = '#FF551A'
 
-// Etiquetas amigables por clave conocida (si no, se muestra la clave).
-const LABELS: Record<string, string> = {
-  'Mtto.UnTicketPorMaquina': 'Un ticket por máquina',
+// Metadatos por clave conocida: etiqueta amigable y tipo de control.
+//  - 'bool': switch on/off (Valor '1'/'0').
+//  - 'options': selector de chips (Valor = uno de options, como texto).
+// Si la clave no está aquí, se asume 'bool' y se muestra la clave tal cual.
+type ConfigKind = 'bool' | 'options'
+const CONFIG_META: Record<string, { label: string; kind: ConfigKind; options?: number[] }> = {
+  'Mtto.UnTicketPorMaquina': { label: 'Un ticket por máquina', kind: 'bool' },
+  'Mtto.RecordatorioTicketMinDefault': {
+    label: 'Recordatorio por defecto',
+    kind: 'options',
+    options: [0, 15, 30, 60],
+  },
 }
 
 export default function ConfiguracionesGlobalesScreen() {
@@ -43,8 +52,9 @@ export default function ConfiguracionesGlobalesScreen() {
     setRefrescando(true); await cargar(); setRefrescando(false)
   }, [cargar])
 
-  const toggle = useCallback(async (c: IConfiguracion) => {
-    const nuevo = c.Valor === '1' ? '0' : '1'
+  // Guarda un valor (optimista) con reversión y toast. okMsg = detalle del éxito.
+  const guardarValor = useCallback(async (c: IConfiguracion, nuevo: string, okMsg: string) => {
+    if (nuevo === (c.Valor ?? '')) return
     setGuardando(c.Clave)
     setItems(prev => prev.map(x => (x.Clave === c.Clave ? { ...x, Valor: nuevo } : x)))  // optimista
     try {
@@ -53,7 +63,7 @@ export default function ConfiguracionesGlobalesScreen() {
         setItems(prev => prev.map(x => (x.Clave === c.Clave ? { ...x, Valor: c.Valor } : x)))  // revertir
         showToast('error', 'No se pudo cambiar', res.ErrorMessage || 'Sin permiso o error')
       } else {
-        showToast('success', 'Guardado', nuevo === '1' ? 'Activada' : 'Desactivada')
+        showToast('success', 'Guardado', okMsg)
       }
     } catch (e: any) {
       setItems(prev => prev.map(x => (x.Clave === c.Clave ? { ...x, Valor: c.Valor } : x)))
@@ -62,6 +72,15 @@ export default function ConfiguracionesGlobalesScreen() {
       setGuardando(null)
     }
   }, [showToast])
+
+  const toggle = useCallback((c: IConfiguracion) => {
+    const nuevo = c.Valor === '1' ? '0' : '1'
+    guardarValor(c, nuevo, nuevo === '1' ? 'Activada' : 'Desactivada')
+  }, [guardarValor])
+
+  const elegirMinutos = useCallback((c: IConfiguracion, min: number) => {
+    guardarValor(c, String(min), min === 0 ? 'Sin aviso' : `Cada ${min} min`)
+  }, [guardarValor])
 
   if (cargando) {
     return (
@@ -90,17 +109,40 @@ export default function ConfiguracionesGlobalesScreen() {
             </YStack>
           ) : (
             items.map(c => {
-              const on = c.Valor === '1'
+              const meta = CONFIG_META[c.Clave] ?? { label: c.Clave, kind: 'bool' as ConfigKind }
+              const saving = guardando === c.Clave
               return (
                 <View key={c.Clave} backgroundColor="$backgroundElevated" borderRadius="$5"
                   borderWidth={1} borderColor="$border" padding="$4">
-                  <XStack alignItems="center" justifyContent="space-between" gap="$3">
-                    <YStack flex={1} gap="$1">
-                      <Text fontSize="$4" fontWeight="800" color="$text">{LABELS[c.Clave] ?? c.Clave}</Text>
-                      {!!c.Descripcion && <Text fontSize="$2" color="$textMuted">{c.Descripcion}</Text>}
+                  {meta.kind === 'options' ? (
+                    <YStack gap="$3">
+                      <YStack gap="$1">
+                        <Text fontSize="$4" fontWeight="800" color="$text">{meta.label}</Text>
+                        {!!c.Descripcion && <Text fontSize="$2" color="$textMuted">{c.Descripcion}</Text>}
+                      </YStack>
+                      <XStack gap="$2" flexWrap="wrap">
+                        {(meta.options ?? []).map(m => {
+                          const on = Number(c.Valor ?? 0) === m
+                          return (
+                            <View key={m} onPress={saving ? undefined : () => elegirMinutos(c, m)} pressStyle={{ opacity: 0.8 }}
+                              backgroundColor={on ? ACCENT : '$backgroundHover'} borderRadius="$10"
+                              paddingHorizontal="$3.5" paddingVertical="$2" borderWidth={1} borderColor={on ? ACCENT : '$border'}>
+                              <Text fontSize="$2" fontWeight="700" color={on ? '#fff' : '$text'}>{m === 0 ? 'Sin aviso' : `${m} min`}</Text>
+                            </View>
+                          )
+                        })}
+                        {saving ? <Spinner size="small" color={ACCENT} alignSelf="center" /> : null}
+                      </XStack>
                     </YStack>
-                    <ToggleSwitch on={on} loading={guardando === c.Clave} onPress={() => toggle(c)} />
-                  </XStack>
+                  ) : (
+                    <XStack alignItems="center" justifyContent="space-between" gap="$3">
+                      <YStack flex={1} gap="$1">
+                        <Text fontSize="$4" fontWeight="800" color="$text">{meta.label}</Text>
+                        {!!c.Descripcion && <Text fontSize="$2" color="$textMuted">{c.Descripcion}</Text>}
+                      </YStack>
+                      <ToggleSwitch on={c.Valor === '1'} loading={saving} onPress={() => toggle(c)} />
+                    </XStack>
+                  )}
                 </View>
               )
             })
