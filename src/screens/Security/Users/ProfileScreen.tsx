@@ -18,6 +18,15 @@ import { useHeader } from '../../../context/HeaderContext'
 import { useNavigation } from '@react-navigation/native'
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useLoader } from '../../../providers/LoaderProvider'
+import { useKeyboardInset } from '../../../hooks/useKeyboardInset'
+import {
+  getBiometryType,
+  isBiometricEnabled,
+  disableBiometric,
+  biometryLabel,
+  isFaceBiometry,
+  type BiometryKind,
+} from '../../../services/biometricAuth'
 export default function ProfileScreen() {
     const loader = useLoader();
     const { user, logout } = useAuth()
@@ -30,6 +39,8 @@ export default function ProfileScreen() {
     const [showDeletePassword, setShowDeletePassword] = useState(false)
     const [deletePasswordError, setDeletePasswordError] = useState('')
     const [deleting, setDeleting] = useState(false)
+    // El diálogo vive en un Portal, así que subimos su contenedor lo que tape el teclado.
+    const { inset: keyboardInset, onLayout: onDeleteDialogLayout } = useKeyboardInset()
 
     const [data, setData] = useState<any[]>([])
     const initials = `${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
@@ -407,7 +418,7 @@ export default function ProfileScreen() {
                 open={deleteOpen}
                 onOpenChange={(value) => { if (!deleting) setDeleteOpen(value) }}
             >
-                <AlertDialog.Portal>
+                <AlertDialog.Portal paddingBottom={keyboardInset} onLayout={onDeleteDialogLayout}>
                     <AlertDialog.Overlay
                         key="overlay"
                         enterStyle={{ opacity: 0 }}

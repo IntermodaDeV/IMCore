@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Plus, RotateCw, Pencil, KeyRound, Eye, EyeOff, ChevronDown, ChevronUp, Trash2, LogOut  } from 'lucide-react-native'
-import { YStack, Text, ScrollView, Card, XStack, View, useTheme, Button, Dialog, Spinner, styled } from 'tamagui'
+import { YStack, Text, ScrollView, Card, XStack, View, useTheme, styled } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { IUserExternalCodes, UsersDTO } from '../../../api/modules/security/security.types'
 import Page from '../../../components/commons/Page'
@@ -10,6 +10,7 @@ import SkeletonList from '../../../components/Skeletons/SkeletonList'
 import { ExecutionResponse } from '../../../api/modules/response.type'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
+import FormDialog from '../../../components/commons/FormDialog'
 import SearchInput from '../../../components/commons/SearchInput'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
@@ -675,293 +676,189 @@ export default function UsersScreen() {
         }}
       />
 
-      <Dialog
-        modal
+      <FormDialog
         open={passwordDialogOpen}
         onOpenChange={setPasswordDialogOpen}
+        title="Cambiar contraseña"
+        description={`Usuario: ${selectedItem?.Name ?? ''} ${selectedItem?.LastName ?? ''}`}
+        loading={loadingSave}
+        onCancel={() => reset(defaultValues)}
+        onConfirm={handleSubmit(savePassword)}
       >
-        <Dialog.Portal>
-          <Dialog.Overlay
-            bg="rgba(0,0,0,0.5)"
-            animation="quick"
-            enterStyle={{ opacity: 0 }}
-            exitStyle={{ opacity: 0 }}
-          />
+        <YStack gap="$3">
+        <Controller
+          control={control}
+          name="ValidateAD"
+          render={({ field: { value, onChange } }) => (
+            <XStack
+              backgroundColor={value ? 'rgba(255, 85, 26, 0.06)' : '$backgroundElevated'}
+              borderWidth={1.5}
+              borderColor={value ? '$primary' : '$border'}
+              borderRadius="$5"
+              padding="$3"
+              marginTop="$3"
+              alignItems="center"
+              gap="$3"
+              pressStyle={{ opacity: 0.8 }}
+              onPress={() => {
+                onChange(!value)
+                if (!value) {
+                  clearErrors(['NewPassword', 'ConfirmPassword'])
+                }
+              }}
+            >
+              <YStack flex={1} gap="$0.5">
+                <Text fontSize={14} fontWeight="700" color="$text">
+                  Active Directory
+                </Text>
+                <Text fontSize={12} color="$textMuted" lineHeight={18}>
+                  El usuario iniciará sesión utilizando sus credenciales de dominio.
+                </Text>
+              </YStack>
 
-          <Dialog.Content
-            width="90%"
-            bordered
-            elevate
-            padding={0}
-            enterStyle={{ opacity: 0, scale: 0.95, y: 20 }}
-            exitStyle={{ opacity: 0, scale: 0.95, y: 10 }}
-          >
-            <View position="relative" padding="$4" borderRadius="$4" overflow="hidden">
-
-              {/* Overlay loading */}
-              {loadingSave && (
+              <View
+                width={42}
+                height={24}
+                borderRadius={12}
+                backgroundColor={value ? '$primary' : '$textDisabled'}
+                justifyContent="center"
+                paddingHorizontal={3}
+              >
                 <View
-                  position="absolute"
-                  top={0} left={0} right={0} bottom={0}
-                  backgroundColor="rgba(0,0,0,0.45)"
-                  justifyContent="center"
-                  alignItems="center"
-                  zIndex={999}
-                >
-                  <Spinner size="large" color="$primary" />
-                </View>
-              )}
+                  width={18}
+                  height={18}
+                  borderRadius={9}
+                  backgroundColor="white"
+                  alignSelf={value ? 'flex-end' : 'flex-start'}
+                  shadowColor="#000"
+                  shadowOffset={{ width: 0, height: 1 }}
+                  shadowOpacity={0.15}
+                  shadowRadius={2}
+                />
+              </View>
+            </XStack>
+          )}
+        />
 
-              <Dialog.Title fontSize={18} fontWeight="700">
-                Cambiar contraseña
-              </Dialog.Title>
-
-              <Dialog.Description fontSize={14} marginBottom="$2">
-                Usuario: {selectedItem?.Name} {selectedItem?.LastName}
-              </Dialog.Description>
-
-              <YStack gap="$3">
-                <Controller
-                  control={control}
-                  name="ValidateAD"
-                  render={({ field: { value, onChange } }) => (
-                    <XStack
-                      backgroundColor={value ? 'rgba(255, 85, 26, 0.06)' : '$backgroundElevated'}
-                      borderWidth={1.5}
-                      borderColor={value ? '$primary' : '$border'}
-                      borderRadius="$5"
-                      padding="$3"
-                      marginTop="$3"
-                      alignItems="center"
-                      gap="$3"
-                      pressStyle={{ opacity: 0.8 }}
-                      onPress={() => {
-                        onChange(!value)
-                        if (!value) {
-                          clearErrors(['NewPassword', 'ConfirmPassword'])
-                        }
-                      }}
+        {!validateAD && (
+          <>
+            <Controller
+              control={control}
+              name="CurrentPassword"
+              rules={{ required: 'La contraseña actual es requerida' }}
+              render={({ field: { onChange, value } }) => (
+                <AppInput
+                  label="Contraseña actual"
+                  value={value}
+                  onChangeText={onChange}
+                  secureTextEntry={!showCurrentPassword}
+                  error={errors.CurrentPassword?.message}
+                  rightElement={
+                    <View
+                      onPress={() => setShowCurrentPassword((prev) => !prev)}
+                      pressStyle={{ opacity: 0.6 }}
+                      padding="$2"
                     >
-                      <YStack flex={1} gap="$0.5">
-                        <Text fontSize={14} fontWeight="700" color="$text">
-                          Active Directory
-                        </Text>
-                        <Text fontSize={12} color="$textMuted" lineHeight={18}>
-                          El usuario iniciará sesión utilizando sus credenciales de dominio.
-                        </Text>
-                      </YStack>
-
-                      <View
-                        width={42}
-                        height={24}
-                        borderRadius={12}
-                        backgroundColor={value ? '$primary' : '$textDisabled'}
-                        justifyContent="center"
-                        paddingHorizontal={3}
-                      >
-                        <View
-                          width={18}
-                          height={18}
-                          borderRadius={9}
-                          backgroundColor="white"
-                          alignSelf={value ? 'flex-end' : 'flex-start'}
-                          shadowColor="#000"
-                          shadowOffset={{ width: 0, height: 1 }}
-                          shadowOpacity={0.15}
-                          shadowRadius={2}
-                        />
-                      </View>
-                    </XStack>
-                  )}
+                      {showCurrentPassword
+                        ? <EyeOff size={18} color="#94A3B8" />
+                        : <Eye size={18} color="#94A3B8" />
+                      }
+                    </View>
+                  }
                 />
+              )}
+            />
 
-                {!validateAD && (
-                  <>
-                    <Controller
-                      control={control}
-                      name="CurrentPassword"
-                      rules={{ required: 'La contraseña actual es requerida' }}
-                      render={({ field: { onChange, value } }) => (
-                        <AppInput
-                          label="Contraseña actual"
-                          value={value}
-                          onChangeText={onChange}
-                          secureTextEntry={!showCurrentPassword}
-                          error={errors.CurrentPassword?.message}
-                          rightElement={
-                            <View
-                              onPress={() => setShowCurrentPassword((prev) => !prev)}
-                              pressStyle={{ opacity: 0.6 }}
-                              padding="$2"
-                            >
-                              {showCurrentPassword
-                                ? <EyeOff size={18} color="#94A3B8" />
-                                : <Eye size={18} color="#94A3B8" />
-                              }
-                            </View>
-                          }
-                        />
-                      )}
-                    />
-
-                    <Controller
-                      control={control}
-                      name="NewPassword"
-                      rules={{
-                        required: 'La nueva contraseña es requerida',
-                        minLength: { value: 8, message: 'Debe contener al menos 8 caracteres' },
-                      }}
-                      render={({ field: { onChange, value } }) => (
-                        <AppInput
-                          label="Nueva contraseña"
-                          value={value}
-                          onChangeText={onChange}
-                          secureTextEntry={!showNewPassword}
-                          error={errors.NewPassword?.message}
-                          rightElement={
-                            <View
-                              onPress={() => setShowNewPassword((prev) => !prev)}
-                              pressStyle={{ opacity: 0.6 }}
-                              padding="$2"
-                            >
-                              {showNewPassword
-                                ? <EyeOff size={18} color="#94A3B8" />
-                                : <Eye size={18} color="#94A3B8" />
-                              }
-                            </View>
-                          }
-                        />
-                      )}
-                    />
-
-                    <Controller
-                      control={control}
-                      name="ConfirmPassword"
-                      rules={{
-                        required: 'Debe confirmar la contraseña',
-                        validate: (value) =>
-                          value === watch('NewPassword') || 'Las contraseñas no coinciden',
-                      }}
-                      render={({ field: { onChange, value } }) => (
-                        <AppInput
-                          label="Confirmar contraseña"
-                          value={value}
-                          onChangeText={onChange}
-                          secureTextEntry={!showConfirmPassword}
-                          error={errors.ConfirmPassword?.message}
-                          rightElement={
-                            <View
-                              onPress={() => setShowConfirmPassword((prev) => !prev)}
-                              pressStyle={{ opacity: 0.6 }}
-                              padding="$2"
-                            >
-                              {showConfirmPassword
-                                ? <EyeOff size={18} color="#94A3B8" />
-                                : <Eye size={18} color="#94A3B8" />
-                              }
-                            </View>
-                          }
-                        />
-                      )}
-                    />
-                  </>
-                )}
-              </YStack>
-
-              <XStack gap="$2" marginTop="$4">
-                <Dialog.Close asChild>
-                  <Button
-                    flex={1}
-                    backgroundColor="$buttonSecondary"
-                    height={45}
-                    borderRadius="$3"
-                    justifyContent="center"
-                    alignItems="center"
-                    pressStyle={{ opacity: 0.7 }}
-                    disabled={loadingSave}
-                    opacity={loadingSave ? 0.5 : 1}
-                    onPress={() => reset(defaultValues)}
-                  >
-                    <Text color="$text" fontWeight="700">Cancelar</Text>
-                  </Button>
-                </Dialog.Close>
-
-                <Button
-                  flex={1}
-                  backgroundColor="$primary"
-                  height={45}
-                  borderRadius="$3"
-                  justifyContent="center"
-                  alignItems="center"
-                  pressStyle={{ opacity: 0.7 }}
-                  disabled={loadingSave}
-                  opacity={loadingSave ? 0.5 : 1}
-                  onPress={handleSubmit(savePassword)}
-                >
-                  <Text color="$white" fontWeight="700">Aceptar</Text>
-                </Button>
-              </XStack>
-
-            </View>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog>
-
-
-      <Dialog modal open={externalCodeDialog} onOpenChange={setExternalCodeDialog}>
-        <Dialog.Portal>
-          <Dialog.Overlay bg="rgba(0,0,0,0.5)" animation="quick" enterStyle={{ opacity: 0 }} exitStyle={{ opacity: 0 }} />
-          <Dialog.Content width="90%" bordered elevate padding={0} enterStyle={{ opacity: 0, scale: 0.95, y: 20 }} exitStyle={{ opacity: 0, scale: 0.95, y: 10 }}>
-            <View padding="$4" borderRadius="$4">
-
-              <Dialog.Title fontSize={16} fontWeight="700">
-                {editingCode ? 'Editar código externo' : 'Agregar código externo'}
-              </Dialog.Title>
-              <Dialog.Description fontSize={13} marginBottom="$3">
-                {selectedUserForCode?.Name} {selectedUserForCode?.LastName}
-              </Dialog.Description>
-
-              <YStack gap="$3">
+            <Controller
+              control={control}
+              name="NewPassword"
+              rules={{
+                required: 'La nueva contraseña es requerida',
+                minLength: { value: 8, message: 'Debe contener al menos 8 caracteres' },
+              }}
+              render={({ field: { onChange, value } }) => (
                 <AppInput
-                  label="Clave (KeyVar)"
-                  value={newKeyVar}
-                  onChangeText={setNewKeyVar}
-                  // editable={!editingCode} // si edita, la clave no cambia
-                  opacity={editingCode ? 0.5 : 1}
+                  label="Nueva contraseña"
+                  value={value}
+                  onChangeText={onChange}
+                  secureTextEntry={!showNewPassword}
+                  error={errors.NewPassword?.message}
+                  rightElement={
+                    <View
+                      onPress={() => setShowNewPassword((prev) => !prev)}
+                      pressStyle={{ opacity: 0.6 }}
+                      padding="$2"
+                    >
+                      {showNewPassword
+                        ? <EyeOff size={18} color="#94A3B8" />
+                        : <Eye size={18} color="#94A3B8" />
+                      }
+                    </View>
+                  }
                 />
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="ConfirmPassword"
+              rules={{
+                required: 'Debe confirmar la contraseña',
+                validate: (value) =>
+                  value === watch('NewPassword') || 'Las contraseñas no coinciden',
+              }}
+              render={({ field: { onChange, value } }) => (
                 <AppInput
-                  label="Código externo"
-                  value={newExternalCode}
-                  onChangeText={setNewExternalCode}
+                  label="Confirmar contraseña"
+                  value={value}
+                  onChangeText={onChange}
+                  secureTextEntry={!showConfirmPassword}
+                  error={errors.ConfirmPassword?.message}
+                  rightElement={
+                    <View
+                      onPress={() => setShowConfirmPassword((prev) => !prev)}
+                      pressStyle={{ opacity: 0.6 }}
+                      padding="$2"
+                    >
+                      {showConfirmPassword
+                        ? <EyeOff size={18} color="#94A3B8" />
+                        : <Eye size={18} color="#94A3B8" />
+                      }
+                    </View>
+                  }
                 />
-              </YStack>
+              )}
+            />
+          </>
+        )}
+        </YStack>
+      </FormDialog>
 
-              <XStack gap="$2" marginTop="$4">
-                <Dialog.Close asChild>
-                  <Button flex={1} backgroundColor="$buttonSecondary" height={45} borderRadius="$3" pressStyle={{ opacity: 0.7 }}>
-                    <Text color="$text" fontWeight="700">Cancelar</Text>
-                  </Button>
-                </Dialog.Close>
 
-                <Button
-                  flex={1}
-                  backgroundColor="$primary"
-                  height={45}
-                  borderRadius="$3"
-                  pressStyle={{ opacity: 0.7 }}
-                  disabled={!newKeyVar.trim() || !newExternalCode.trim()}
-                  opacity={!newKeyVar.trim() || !newExternalCode.trim() ? 0.5 : 1}
-                  onPress={() => {
-                    saveExternalCode()
-                  }}
-                >
-                  <Text color="$white" fontWeight="700">Guardar</Text>
-                </Button>
-              </XStack>
-            </View>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog>
+      <FormDialog
+        open={externalCodeDialog}
+        onOpenChange={setExternalCodeDialog}
+        title={editingCode ? 'Editar código externo' : 'Agregar código externo'}
+        description={`${selectedUserForCode?.Name ?? ''} ${selectedUserForCode?.LastName ?? ''}`}
+        confirmLabel="Guardar"
+        confirmDisabled={!newKeyVar.trim() || !newExternalCode.trim()}
+        onConfirm={saveExternalCode}
+      >
+        <YStack gap="$3">
+          <AppInput
+            label="Clave (KeyVar)"
+            value={newKeyVar}
+            onChangeText={setNewKeyVar}
+            // editable={!editingCode} // si edita, la clave no cambia
+            opacity={editingCode ? 0.5 : 1}
+          />
+          <AppInput
+            label="Código externo"
+            value={newExternalCode}
+            onChangeText={setNewExternalCode}
+          />
+        </YStack>
+      </FormDialog>
     </Page>
   )
 }

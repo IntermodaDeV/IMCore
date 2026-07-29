@@ -10,6 +10,7 @@ import { shadows } from '../../theme/shadows'
 import { ExecutionResponse } from '../../api/modules/response.type'
 import { IRegister } from '../../api/modules/security/security.types'
 import { securityService } from '../../api/modules/security/security.service'
+import { useKeyboardInset } from '../../hooks/useKeyboardInset'
 import { CircleCheckBig, Eye, EyeOff, KeyRound, MailCheck, Lock } from 'lucide-react-native'
 
 type RegisterForm = {
@@ -40,6 +41,8 @@ export default function RegisterScreen() {
   const [recoverIsAD, setRecoverIsAD] = useState(false)
   const [recoverPassword, setRecoverPassword] = useState('')
   const [showRecoverPassword, setShowRecoverPassword] = useState(false)
+  // El diálogo vive en un Portal, así que subimos su contenedor lo que tape el teclado.
+  const { inset: keyboardInset, onLayout: onRecoverDialogLayout } = useKeyboardInset()
 
   const {
     control,
@@ -455,7 +458,7 @@ export default function RegisterScreen() {
             open={openRecover}
             onOpenChange={(v) => { if (!recovering) setOpenRecover(v) }}
         >
-            <AlertDialog.Portal>
+            <AlertDialog.Portal paddingBottom={keyboardInset} onLayout={onRecoverDialogLayout}>
                 <AlertDialog.Overlay opacity={0.6} backgroundColor="black" />
                 <AlertDialog.Content
                     elevate
