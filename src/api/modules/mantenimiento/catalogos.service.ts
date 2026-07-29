@@ -18,7 +18,7 @@ export interface IMaquinaManage { Id?: number; CodigoActivo?: string | null; Tip
 export interface IAreaPrincipal { Id: number; Name: string; PermiteMaquinas: boolean; Orden: number; Status_Id: number }
 export interface IAreaPrincipalManage { Id?: number; Name: string; PermiteMaquinas: boolean; Status_Id?: number }
 export interface IAreaManage { Id?: number; Name: string; AreaPrincipal_Id: number; Status_Id?: number }
-export interface IOperacionManage { Id?: number; Area_Id: number; Name: string; Status_Id?: number }
+export interface IOperacionManage { Id?: number; Area_Id: number; Name: string; Orden?: number; Status_Id?: number }
 export interface ITipoParoManage { Id?: number; Name: string }
 
 export const catalogosService = {
@@ -51,6 +51,10 @@ export const catalogosService = {
     httpClient.put<ExecutionResponse<null>, IOperacionManage>(`${schema}/Operaciones`, data),
   toggleOperacion: (id: number) =>
     httpClient.post<ExecutionResponse<null>>(`${schema}/Operaciones/Toggle?id=${id}`),
+  // Reordenar operaciones de un área: ids en el orden deseado → backend fija Orden 1..N.
+  reordenarOperaciones: (areaId: number, ids: number[]) =>
+    httpClient.post<ExecutionResponse<null>, { Area_Id: number; Ids: number[] }>(
+      `${schema}/Operaciones/Reordenar`, { Area_Id: areaId, Ids: ids }),
 
   // ── Máquinas ────────────────────────────────────────────────────────────────
   getMaquinas: (search?: string, areaId?: number, onlyActive = false) =>

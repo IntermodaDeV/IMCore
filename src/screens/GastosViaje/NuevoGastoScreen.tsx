@@ -16,7 +16,7 @@ import dayjs from 'dayjs'
 import { ImageUploader } from '../../components/commons/ImageUploader'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
 import {
-  TCompany, IExpenseType, IExpenseCategory,
+  IExpenseType, IExpenseCategory,
   IAlimentacionSubtype, IFuelType,
   IGiraVendorResponse
 } from '../../api/modules/GastosViaje/gastosViaje.types'
@@ -100,6 +100,10 @@ export default function NuevoGastoScreen() {
   const [alimentacionSubtypes, setAlimentacionSubtypes] = useState<IAlimentacionSubtype[]>([])
   const [fuelTypes, setFuelTypes]                     = useState<IFuelType[]>([])
   const [taxRate, setTaxRate]                         = useState(0)
+  const today     = dayjs()
+  const daysToMon = today.day() === 0 ? 6 : today.day() - 1
+  const weekStart = today.subtract(daysToMon, 'day').format('YYYY-MM-DD')
+  const weekEnd   = today.subtract(daysToMon, 'day').add(6, 'day').format('YYYY-MM-DD')
   const [allProviders, setAllProviders]               = useState<IGiraVendorResponse[]>([])
   const [selectedProviderId, setSelectedProviderId]   = useState('')
   const [providerCurrency, setProviderCurrency]       = useState('')
@@ -137,8 +141,9 @@ export default function NuevoGastoScreen() {
   const selectedTypeName = expenseTypes.find(t => t.Id === watchedTypeId)?.Name ?? ''
   const isAlimentacion   = selectedCategory?.Name?.toLowerCase().includes('alimentaci') ?? false
   const isCombustible    = selectedCategory?.Name?.toLowerCase().includes('combustible') && defaultCompany?.Code === 'IMGT'
-  const isHospedaje      = selectedTypeName === 'Hospedaje'
+  const isHospedaje      = selectedCategory?.Name?.toLowerCase() === 'hospedaje'
   const isIMHN           = defaultCompany?.Code === 'IMHN'
+  const isIMGT           = defaultCompany?.Code === 'IMGT'
   const isIMCR           = defaultCompany?.Code === 'IMCR'
   const hasPredefined    = !!selectedCategory?.VendAccount
 
@@ -218,6 +223,8 @@ export default function NuevoGastoScreen() {
 
   useEffect(() => {
     if (!watchedCatId) return
+    setValue('MealId', 0)
+    setValue('FuelTypeId', 0)
     setValue('useCustomProvider', hasPredefined ? 'false' : 'true')
     setSelectedProviderId('')
     setProviderCurrency('')
@@ -254,7 +261,9 @@ export default function NuevoGastoScreen() {
       try {
         setIsSearchingProviders(true)
         const res = await gastosViajeService.searchProvider(q, defaultCompany?.Code ?? '')
-        if (res.Success) setAllProviders(res.Data)
+        if (res.Success) {
+          setAllProviders(res.Data)
+        }
       } catch {} finally {
         setIsSearchingProviders(false)
       }
@@ -273,7 +282,10 @@ export default function NuevoGastoScreen() {
     try {
       loader.show()
       const graved = toNum(data.GravadoAmount)
-      const exempt = toNum(data.ExemptAmount)
+      const gallons = toNum(data.gallons);
+      const exempt = gallons > 0
+        ? gallons
+        : toNum(data.ExemptAmount);
       const total  = isIMHN ? computedTotal : toNum(data.InvoiceAmount)
 
       const res = await gastosViajeService.createGasto({
@@ -298,6 +310,7 @@ export default function NuevoGastoScreen() {
         companyCode:       defaultCompany?.Code ?? '',
         axMessage:         null,
         inUse:             true,
+        taxAmount:         ((Number(taxRate )) * 100)
       }, user?.Code ?? '')
       
       if (res.Succeeded === true) {
@@ -477,8 +490,17 @@ export default function NuevoGastoScreen() {
                   </YStack>
                 )}
 
-                <TouchableOpacity onPress={() => navigation.navigate('solicitarProveedor')}>
-                  <Text fontSize={13} color="$primary" fontWeight="600" marginTop="$1">
+                <TouchableOpacity
+                  disabled={!!selectedProviderId}
+                  onPress={() => navigation.navigate('solicitarProveedor')}
+                >
+                  <Text
+                    fontSize={13}
+                    color={selectedProviderId ? '$textMuted' : '$primary'}
+                    fontWeight="600"
+                    marginTop="$1"
+                    opacity={selectedProviderId ? 0.4 : 1}
+                  >
                     + Solicitar crear nuevo proveedor
                   </Text>
                 </TouchableOpacity>
@@ -535,14 +557,14 @@ export default function NuevoGastoScreen() {
                         <Controller
                           control={control}
                           name="GravadoAmount"
-                          
+
                           render={({ field }) => (
                             <AppInput
                               label="Importe gravado"
                               value={field.value}
                               onChangeText={v => field.onChange(formatAmount(v))}
                               keyboardType="decimal-pad"
-                              prefix={<Text>{providerCurrency}</Text>}
+                              prefix={<Text color="$text" >{providerCurrency}</Text>}
                               error={errors.GravadoAmount?.message}
                             />
                           )}
@@ -558,7 +580,7 @@ export default function NuevoGastoScreen() {
                               value={field.value}
                               onChangeText={v => field.onChange(formatAmount(v))}
                               keyboardType="decimal-pad"
-                              prefix={<Text>{providerCurrency}</Text>}
+                              prefix={<Text color="$text" >{providerCurrency}</Text>}
                             />
                           )}
                         />
@@ -620,8 +642,27 @@ export default function NuevoGastoScreen() {
                         )}
                       />
                     )}
+                    
+                     <Controller
+                      control={control}
+                      name="Description"
+                      rules={selectedCategory?.IsDescriptionRequired ? { required: 'La descripción es requerida', maxLength: { value: 250, message: 'Máximo 250 caracteres' } } : { maxLength: { value: 250, message: 'Máximo 250 caracteres' } }}
+                      render={({ field }) => (
+                        <AppInput
+                          label={`Descripción${selectedCategory?.IsDescriptionRequired ? '' : ' (Opcional)'}`}
+                          placeholder="Ej. Gastos de viaje semana 43"
+                          value={field.value}
+                          onChangeText={field.onChange}
+                          multiline
+                          numberOfLines={3}
+                          maxLength={250}
+                          error={errors.Description?.message}
+                          style={{ height: 80}}
+                        />
+                      )}
+                    />
 
-                    {isHospedaje && (
+                    {isHospedaje && isIMGT && (
                       <Controller
                         control={control}
                         name="ExemptAmount"
@@ -654,6 +695,18 @@ export default function NuevoGastoScreen() {
                   </>
                 )}
 
+                {(isIMHN &&(
+                  <XStack alignItems="center" gap="$1" paddingVertical="$1" borderWidth={1} marginBottom="$2" borderColor="$border" padding="$3" backgroundColor="$backgroundElevated" borderRadius={10}>
+                    <Text fontSize={12} color="$textMuted">
+                      ISV ({(taxRate * 100).toFixed(0)}%):
+                    </Text>
+                    <Text fontSize={12} fontWeight="700" color="$primary">
+                      {( providerCurrency + ' ' + (Number(getValues('GravadoAmount') ?? 0) * (taxRate)).toFixed(2)) }
+                    </Text>
+                  </XStack>
+                ))}
+
+
                 {/* Fecha de factura — siempre */}
                 <Controller
                   control={control}
@@ -665,7 +718,8 @@ export default function NuevoGastoScreen() {
                       value={field.value || null}
                       onChange={v => field.onChange(v ?? '')}
                       displayFormat="DD/MM/YYYY"
-                      direction="past"
+                      minDate={weekStart}
+                      maxDate={weekEnd}
                       error={errors.InvoiceDate?.message}
                     />
                   )}
@@ -677,7 +731,7 @@ export default function NuevoGastoScreen() {
                     <XStack justifyContent="space-between" alignItems="center">
                       <Text color="white" fontSize={14} fontWeight="600">Total de la factura</Text>
                       <Text color="white" fontSize={20} fontWeight="800">
-                        Lps. {computedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {providerCurrency + ' '+ computedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </Text>
                     </XStack>
                   </Card>

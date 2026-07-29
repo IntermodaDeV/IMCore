@@ -51,6 +51,9 @@ export default function ProfileScreen() {
     const { setTheme } = useAuth()
     const themeName = useThemeName()
     const [loading, setLoading] = useState(false)
+    // Biometría: tipo soportado por el equipo y si el ingreso biométrico está activo.
+    const [biometryType, setBiometryType] = useState<BiometryKind>(null)
+    const [bioEnabled, setBioEnabled] = useState(false)
     const isDark = themeName === 'dark'
     const theme = useTheme()
     
@@ -149,6 +152,27 @@ export default function ProfileScreen() {
             setDeletePasswordError('Ocurrió un error inesperado. Intenta de nuevo.')
         }
         setDeleting(false)
+    }
+
+    // Cargar estado de biometría (tipo soportado + si está activada).
+    useEffect(() => {
+        let alive = true
+        ;(async () => {
+            const [type, enabled] = await Promise.all([getBiometryType(), isBiometricEnabled()])
+            if (!alive) return
+            setBiometryType(type)
+            setBioEnabled(enabled && !!type)
+        })()
+        return () => { alive = false }
+    }, [])
+
+    // Desactivar/desvincular el ingreso biométrico: borra las credenciales del
+    // Keychain y la bandera. Para reactivarlo, se hace desde el login con la contraseña.
+    const handleDisableBiometric = async () => {
+        const label = biometryLabel(biometryType)
+        await disableBiometric()
+        setBioEnabled(false)
+        showToast('success', 'Listo', `Se desactivó el ingreso con ${label}`, 4000, 'top')
     }
 
     useEffect(() => {
@@ -372,6 +396,68 @@ export default function ProfileScreen() {
                         </TouchableOpacity>
                     </XStack>
                 </YStack>
+
+                {/* Seguridad: ingreso biométrico (solo si el equipo lo soporta) */}
+                {biometryType && (
+                    <YStack backgroundColor="$backgroundElevated" borderRadius="$6" padding="$4" gap="$3" marginBottom="$3" {...shadows.sm}>
+                        <XStack alignItems="center" gap="$2">
+                            <Icons.ShieldCheck size={16} color={'#FF551A'} />
+                            <Text fontSize={15} fontWeight="700" color="$text">Seguridad</Text>
+                        </XStack>
+
+                        <YStack height={1} backgroundColor="$border" />
+
+                        <XStack alignItems="center" justifyContent="space-between">
+                            <XStack alignItems="center" gap="$3" flex={1} paddingRight="$3">
+                                <YStack
+                                    width={38}
+                                    height={38}
+                                    borderRadius={10}
+                                    backgroundColor={bioEnabled ? 'rgba(255,85,26,0.12)' : 'rgba(100,116,139,0.08)'}
+                                    justifyContent="center"
+                                    alignItems="center"
+                                >
+                                    {isFaceBiometry(biometryType)
+                                        ? <Icons.ScanFace size={18} color={bioEnabled ? '#FF551A' : '#94A3B8'} />
+                                        : <Icons.Fingerprint size={18} color={bioEnabled ? '#FF551A' : '#94A3B8'} />}
+                                </YStack>
+                                <YStack flex={1}>
+                                    <Text fontSize={14} fontWeight="600" color="$text">
+                                        Ingreso con {biometryLabel(biometryType)}
+                                    </Text>
+                                    <Text fontSize={12} color="$textMuted" lineHeight={17}>
+                                        {bioEnabled
+                                            ? 'Activado. Desactívalo para dejar de usarlo en este dispositivo.'
+                                            : 'Actívalo al iniciar sesión con tu contraseña.'}
+                                    </Text>
+                                </YStack>
+                            </XStack>
+
+                            <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                    if (bioEnabled) {
+                                        handleDisableBiometric()
+                                    } else {
+                                        showToast('info', 'Información', `Para activarlo, marca la opción al iniciar sesión con tu contraseña.`, 5000, 'top')
+                                    }
+                                }}
+                            >
+                                <YStack
+                                    width={56}
+                                    height={30}
+                                    borderRadius={999}
+                                    padding={3}
+                                    backgroundColor={bioEnabled ? '$primary' : '$backgroundSurface'}
+                                    justifyContent="center"
+                                    alignItems={bioEnabled ? 'flex-end' : 'flex-start'}
+                                >
+                                    <YStack width={24} height={24} borderRadius={999} backgroundColor="white" />
+                                </YStack>
+                            </TouchableOpacity>
+                        </XStack>
+                    </YStack>
+                )}
 
                 {/* Zona de peligro */}
                 <YStack

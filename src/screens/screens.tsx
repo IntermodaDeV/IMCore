@@ -9,6 +9,7 @@ import { ScreensRecursosHumanos } from './RecursosHumanos'
 import { rootSecurity } from './Security/rootSecurity'
 import ProfileScreen from './Security/Users/ProfileScreen'
 import { ScreensGastosViaje } from './GastosViaje'
+import { ScreensRepuestos } from './Repuestos'
 
 export const SCREENS: Record<string, TScreenEntry> = {
   inicio: HomeScreen,
@@ -18,6 +19,7 @@ export const SCREENS: Record<string, TScreenEntry> = {
   ...ScreensCadenaSuministro,
   ...ScreensMantenimiento,
   ...ScreensGastosViaje,
+  ...ScreensRepuestos,
   ...ScreensVisitas,
   ...ScreensRecursosHumanos,
 

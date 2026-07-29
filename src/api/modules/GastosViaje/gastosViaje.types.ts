@@ -139,6 +139,7 @@ export interface IGastoHistorialDetail {
   StatusName: string
   Code: string
   Name: string
+  TaxAmount: number | null
 }
 
 export interface IGastoHistorialResponse {
@@ -182,7 +183,8 @@ export interface ICreateGastoRequest {
   journalNum: string | null
   companyCode: string 
   axMessage: string | null
-  inUse: boolean
+  inUse: boolean,
+  taxAmount: number | null
 }
 
 export interface ISolicitarProveedorRequest {
