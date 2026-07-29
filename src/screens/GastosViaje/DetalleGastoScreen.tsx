@@ -4,7 +4,7 @@ import ImageViewing from 'react-native-image-viewing'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
 import {
   ArrowLeft, CheckCircle2, RefreshCw, XCircle, AlertTriangle,
-  ImageOff, ThumbsUp, ThumbsDown,
+  ImageOff, ThumbsUp, ThumbsDown, X,
   LucideIcon,
 } from 'lucide-react-native'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -16,7 +16,7 @@ import { useShowToast } from '../../utils/useShowToast'
 import { gastosViajeService } from '../../api/modules/GastosViaje/gastosViaje.service'
 import CountryFlag from '../../components/commons/CountryFlag'
 import AppInput from '../../components/commons/AppInput'
-import { useKeyboardInset } from '../../hooks/useKeyboardInset'
+import { useKeyboardHeight } from '../../hooks/useKeyboardInset'
 import dayjs from 'dayjs'
 import { formatCurrency } from './GastosViaje.utils'
 import {ECompany} from '../../api/modules/GastosViaje/gastosViaje.types'
@@ -51,9 +51,7 @@ export default function DetalleGastoScreen({ route }: any) {
   const [rejectReason, setRejectReason] = useState('')
   const [rejectError, setRejectError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
-  // El Modal de RN abre su propia ventana en Android, así que ni adjustResize ni un
-  // KeyboardAvoidingView lo suben: le restamos al backdrop lo que tapa el teclado.
-  const { inset: keyboardInset, onLayout: onRejectBackdropLayout } = useKeyboardInset()
+  const keyboardHeight = useKeyboardHeight()
   const isCombustible    =  gasto?.ExpenseCategoryName?.toLowerCase().includes('combustible') && gasto.CompanyCode=== 'IMGT'
 
   const STATUS_CONFIG: Record<string, { bg: string; color: string; Icon: LucideIcon }> = {
@@ -381,42 +379,48 @@ export default function DetalleGastoScreen({ route }: any) {
         statusBarTranslucent
         onRequestClose={() => setRejectModalVisible(false)}
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[styles.backdrop, { paddingBottom: 24 + keyboardInset }]}
-          onLayout={onRejectBackdropLayout}
-          onPress={() => setRejectModalVisible(false)}
+        <ScrollView
+          style={styles.backdrop}
+          contentContainerStyle={[styles.backdropContent, { paddingBottom: 15 + keyboardHeight }]}
+          keyboardShouldPersistTaps="handled"
+          scrollsChildToFocus={false}
         >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.modalCard, { backgroundColor: theme.backgroundElevated?.val as string }]}
-          >
-            {/* El texto y el campo scrollean; los botones quedan siempre visibles abajo. */}
-            <ScrollView
-              style={styles.modalBody}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text fontSize={17} fontWeight="700" color="$text" marginBottom="$1">
-                Motivo de rechazo
-              </Text>
-              <Text fontSize={13} color="$textMuted" marginBottom="$3">
-                Indica por qué rechazas este gasto
-              </Text>
-              <AppInput
-                label="Motivo"
-                multiline
-                minLines={4}
-                placeholder="Ej: Factura ilegible, monto incorrecto..."
-                value={rejectReason}
-                onChangeText={v => { setRejectReason(v); setRejectError('') }}
-                error={rejectError}
-                style={{height: 140}}
-                autoFocus
-              />
-            </ScrollView>
+          <View style={[styles.modalCard, { backgroundColor: theme.backgroundElevated?.val as string }]}>
+            <XStack justifyContent="space-between" alignItems="flex-start" gap="$3">
+              <YStack flex={1}>
+                <Text fontSize={17} fontWeight="700" color="$text" marginBottom="$1">
+                  Motivo de rechazo
+                </Text>
+                <Text fontSize={13} color="$textMuted" marginBottom="$3">
+                  Indica por qué rechazas este gasto
+                </Text>
+              </YStack>
 
-            <XStack gap="$3" marginTop={16} flexShrink={0}>
+              <View
+                padding="$2"
+                marginTop={-8}
+                marginRight={-8}
+                borderRadius={999}
+                pressStyle={{ opacity: 0.6 }}
+                onPress={() => setRejectModalVisible(false)}
+              >
+                <X size={20} color={theme.textMuted?.val as string} />
+              </View>
+            </XStack>
+
+            <AppInput
+              label="Motivo"
+              multiline
+              minLines={4}
+              placeholder="Ej: Factura ilegible, monto incorrecto..."
+              value={rejectReason}
+              onChangeText={v => { setRejectReason(v); setRejectError('') }}
+              error={rejectError}
+              style={{height: 140}}
+              autoFocus
+            />
+
+            <XStack gap="$3" marginTop={16}>
               <Button
                 flex={1} height={44} borderRadius={10}
                 backgroundColor="$backgroundSurface"
@@ -436,8 +440,8 @@ export default function DetalleGastoScreen({ route }: any) {
                 <Text color="white" fontWeight="700">Confirmar</Text>
               </Button>
             </XStack>
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </View>
+        </ScrollView>
       </Modal>
     </>
   )
@@ -447,6 +451,11 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  // flexGrow + center: mientras la tarjeta quepa queda centrada; cuando el teclado suma
+  // paddingBottom y ya no cabe, el ScrollView habilita recorrido en lugar de recortarla.
+  backdropContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -455,12 +464,5 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 16,
     padding: 20,
-    // Con el teclado abierto el backdrop tiene menos espacio: la tarjeta se encoge hasta
-    // ese máximo en lugar de desbordarse fuera de la pantalla.
-    flexShrink: 1,
-  },
-  modalBody: {
-    flexShrink: 1,
-    flexGrow: 0,
   }
 })
