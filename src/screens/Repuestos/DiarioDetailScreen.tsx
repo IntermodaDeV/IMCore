@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { Alert, ScrollView, TextInput } from 'react-native'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, ScrollView, TextInput, Keyboard } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
-import { ArrowLeft, ScanLine, QrCode, Plus, Trash2, Upload, Package, Ticket, RotateCcw, TriangleAlert, RefreshCw, Search, X } from 'lucide-react-native'
+import { ArrowLeft, ScanLine, QrCode, Plus, Trash2, Upload, Package, Ticket, RotateCcw, TriangleAlert, RefreshCw, Search, X, Keyboard as KeyboardIcon } from 'lucide-react-native'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -14,6 +14,7 @@ import { shadows } from '../../theme/shadows'
 import { ACCENT, Field, ScannerModal, puedeDespachar, fmtFechaHora, ts } from './components'
 
 const ERR = '#ef4444'
+const GREEN = '#16a34a'   // ticket disponible para despachar
 
 type ActiveTicket = { Id: number; CodigoTicket: string; Area?: string | null; Operacion?: string | null; Estado?: string | null }
 type ScanMode = 'ticket' | 'barcode' | 'ubicacion' | null
@@ -51,9 +52,12 @@ export default function DiarioDetailScreen() {
 
   const [scanMode, setScanMode] = useState<ScanMode>(null)
   const [posteando, setPosteando] = useState(false)
+  // Campo con teclado manual habilitado (null = modo láser, teclado suprimido).
+  const [teclado, setTeclado] = useState<null | 'ticket' | 'ubicacion' | 'barcode'>(null)
 
   const barcodeRef = useRef<TextInput>(null)
   const ubicacionRef = useRef<TextInput>(null)
+  const manualRef = useRef<TextInput>(null)   // campo del código de ticket (destino del lector para el QR)
 
   const cargarLineas = useCallback(async () => {
     setErrorCarga(null)
@@ -83,6 +87,30 @@ export default function DiarioDetailScreen() {
       : <RefreshCw color={theme.text?.val} onPress={refrescar} />,
   }, [refrescando, journalId])
 
+  // Sin ticket activo: enfocar el campo del código (con el teclado suprimido) para
+  // que el lector físico dispare el QR directo al campo → resuelve el ticket sin
+  // cámara. No roba el foco mientras se resuelve ni con la cámara abierta.
+  useEffect(() => {
+    if (cerrado || ticket || resolviendo || scanMode !== null || teclado) return
+    const t = setTimeout(() => manualRef.current?.focus(), 350)
+    return () => clearTimeout(t)
+  }, [cerrado, ticket, resolviendo, scanMode, teclado])
+
+  // Al ocultarse el teclado (por cualquier medio: enter, back, tap fuera) volvemos
+  // a modo láser en todos los campos.
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidHide', () => setTeclado(null))
+    return () => sub.remove()
+  }, [])
+
+  // Abre el teclado manual para un campo (blur + refocus para que tome
+  // showSoftInputOnFocus). Para escribir a mano: correcciones o teléfonos sin lector.
+  const abrirTeclado = (campo: 'ticket' | 'ubicacion' | 'barcode', ref: any) => {
+    setTeclado(campo)
+    ref.current?.blur()
+    setTimeout(() => ref.current?.focus(), 80)
+  }
+
   // Valida el estado y activa el ticket. Solo tickets abiertos/activos admiten
   // despacho (PENDIENTE/EN_PROCESO/PAUSADO/RECHAZADO); se bloquea CANCELADO y
   // COMPLETADO (incluido validado). Devuelve false si el ticket no aplica.
@@ -97,8 +125,12 @@ export default function DiarioDetailScreen() {
       return false
     }
     setTicket({ Id: t.Id, CodigoTicket: t.CodigoTicket, Area: t.Area, Operacion: t.Operacion, Estado: t.Estado })
-    showToast('success', 'Ticket seleccionado', `${t.CodigoTicket}${t.Estado ? ` · ${t.Estado}` : ''}`)
-    setTimeout(() => barcodeRef.current?.focus(), 300)
+    // Ticket nuevo → limpiar ubicación y código de barras (empezar de cero). Sin toast
+    // de éxito: el borde verde de la tarjeta indica que está disponible para despachar.
+    setUbicacion('')
+    setBarcode('')
+    // Encadenar el flujo del lector: primero la ubicación (teclado suprimido).
+    setTimeout(() => ubicacionRef.current?.focus(), 300)
     return true
   }, [showToast])
 
@@ -128,6 +160,18 @@ export default function DiarioDetailScreen() {
     }
   }, [aplicarTicket, showToast])
 
+  // Auto-buscar tras el escaneo del lector: con el teclado suprimido el ENTER de
+  // DataWedge no dispara onSubmitEditing, así que al terminar la ráfaga de
+  // caracteres del QR resolvemos el ticket solos (limpia \r\n del final).
+  // Va después de resolverTicket para no referenciarlo en TDZ.
+  useEffect(() => {
+    if (ticket || resolviendo || teclado === 'ticket') return   // en modo teclado se busca con Enter/Buscar
+    const c = manual.replace(/[\r\n]/g, '').trim()
+    if (!c) return
+    const t = setTimeout(() => { resolverTicket(c); setManual('') }, 300)
+    return () => clearTimeout(t)
+  }, [manual, ticket, resolviendo, resolverTicket, teclado])
+
   // ── Agregar repuesto (línea) al ticket activo ────────────────────────────────
   const agregarRepuesto = useCallback(async (codigoBarras?: string) => {
     const bc = (codigoBarras ?? barcode).trim()
@@ -147,18 +191,15 @@ export default function DiarioDetailScreen() {
       })
       const ax = res.Data
       if (res.Success && ax?.Ok) {
-        showToast('success', 'Repuesto agregado', ax.Descripcion || bc)
-        // Costo de referencia (no bloquea; degrada si el proxy aún no expone costo).
-        repuestosService.getCosto(bc)
-          .then(r => {
-            if (r.Success && (r.Data?.CostoUnitario ?? 0) > 0)
-              showToast('info', 'Costo referencia', `${ax.Descripcion || bc}: L ${r.Data.CostoUnitario.toFixed(2)}`, 3000)
-          })
-          .catch(() => {})
+        // Sin notificación en éxito: la confirmación es que la línea aparece en la
+        // lista (con su costo de referencia). Solo notificamos cuando NO se agrega.
+        // Reinicia el ciclo: limpia barcode + ubicación (y cantidad) y vuelve el
+        // foco a Ubicación para escanear el siguiente repuesto desde cero.
         setBarcode('')
+        setUbicacion('')
         setCantidad('1')
         await cargarLineas()
-        setTimeout(() => barcodeRef.current?.focus(), 200)
+        setTimeout(() => ubicacionRef.current?.focus(), 200)
       } else if (ax?.Code === 'NO_RESPONSE') {
         showToast('warning', 'AX no respondió', 'La línea quedó pendiente de reconciliar. Revisa antes de reintentar.', 5000)
         await cargarLineas()
@@ -171,6 +212,18 @@ export default function DiarioDetailScreen() {
       setAgregando(false)
     }
   }, [ticket, barcode, cantidad, ubicacion, almacen, almacenDiario, journalId, cargarLineas, showToast])
+
+  // Encadenado del lector (teclado suprimido, el ENTER no dispara onSubmitEditing):
+  // al terminar la ráfaga de la UBICACIÓN saltamos el foco al código de barras.
+  useEffect(() => {
+    if (!ticket || agregando || !ubicacion.trim() || barcode || teclado === 'ubicacion') return
+    const t = setTimeout(() => barcodeRef.current?.focus(), 250)
+    return () => clearTimeout(t)
+  }, [ubicacion, ticket, barcode, agregando, teclado])
+
+  // El CÓDIGO DE BARRAS NO se auto-agrega: al escanearlo queda en el campo para
+  // que el usuario confirme la cantidad y presione "Agregar repuesto". (Evita
+  // altas equivocadas y da control de la cantidad.)
 
   // ── Borrar línea ─────────────────────────────────────────────────────────────
   const confirmarBorrar = (l: ILinea) => {
@@ -256,19 +309,20 @@ export default function DiarioDetailScreen() {
   const onScan = (code: string) => {
     const mode = scanMode
     setScanMode(null)
-    if (mode === 'ticket') resolverTicket(code)
-    else if (mode === 'ubicacion') { setUbicacion(code); setTimeout(() => barcodeRef.current?.focus(), 250) }
-    else if (mode === 'barcode') { setBarcode(code); agregarRepuesto(code) }
+    const clean = code.replace(/[\r\n]/g, '')
+    if (mode === 'ticket') resolverTicket(clean)
+    else if (mode === 'ubicacion') setUbicacion(clean)   // el efecto avanza el foco al barcode
+    else if (mode === 'barcode') setBarcode(clean)        // queda en el campo; el usuario confirma cantidad y agrega
   }
 
   return (
     <View flex={1} backgroundColor="$background">
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 140 }}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 140 }}
         keyboardShouldPersistTaps="handled">
         <YStack width="100%" maxWidth={800} alignSelf="center">
 
           {(!!descripcion || !!almacenDiario) && (
-            <XStack marginBottom="$3" gap="$2" alignItems="center" flexWrap="wrap">
+            <XStack marginBottom="$2" gap="$2" alignItems="center" flexWrap="wrap">
               {!!descripcion && <Text fontSize="$3" color="$textMuted">{descripcion}</Text>}
               {!!almacenDiario && <Text fontSize="$2" color="$textMuted">· Almacén {almacenDiario}</Text>}
             </XStack>
@@ -292,47 +346,53 @@ export default function DiarioDetailScreen() {
 
           {!cerrado && (<>
           {/* Ticket activo */}
-          <YStack marginBottom="$4" gap="$2">
-            <Text fontSize="$3" fontWeight="700" color="$text">Ticket de mantenimiento</Text>
+          <YStack marginBottom="$3" gap="$1.5">
+            <Text fontSize="$2" fontWeight="700" color="$text">Ticket de mantenimiento</Text>
             {ticket ? (
-              <View borderWidth={1.5} borderColor={ACCENT} borderRadius={12} backgroundColor="$backgroundElevated"
-                padding="$3.5" gap="$1.5" {...shadows.sm}>
-                <XStack alignItems="center" justifyContent="space-between">
-                  <XStack alignItems="center" gap="$2">
-                    <Ticket size={18} color={ACCENT} />
-                    <Text fontSize="$6" fontWeight="900" color={ACCENT}>{ticket.CodigoTicket}</Text>
+              <View borderWidth={1.5} borderColor={GREEN} borderRadius={12} backgroundColor="rgba(34,197,94,0.06)"
+                padding="$3" gap="$1" {...shadows.sm}>
+                <XStack alignItems="center" justifyContent="space-between" gap="$2">
+                  <XStack alignItems="center" gap="$2" flex={1} minWidth={0}>
+                    <Ticket size={18} color={GREEN} />
+                    <Text fontSize="$6" fontWeight="900" color={GREEN} numberOfLines={1}>{ticket.CodigoTicket}</Text>
                   </XStack>
-                  <XStack alignItems="center" gap="$1.5" onPress={() => setScanMode('ticket')} pressStyle={{ opacity: 0.7 }} hitSlop={8}>
-                    <RotateCcw size={15} color={theme.textMuted?.val} />
-                    <Text fontSize="$2" color="$textMuted">Cambiar</Text>
-                  </XStack>
+                  <View flexShrink={0} onPress={() => setTicket(null)} pressStyle={{ opacity: 0.7 }} hitSlop={8}
+                    width={38} height={38} borderRadius={10} borderWidth={1} borderColor={ACCENT}
+                    alignItems="center" justifyContent="center" backgroundColor="$backgroundElevated">
+                    <ScanLine size={20} color={ACCENT} />
+                  </View>
                 </XStack>
-                {(ticket.Area || ticket.Operacion) && (
-                  <Text fontSize="$2" color="$textMuted">
-                    {[ticket.Area, ticket.Operacion].filter(Boolean).join('  ·  ')}
-                  </Text>
+                {(!!ticket.Area || !!ticket.Estado) && (
+                  <XStack alignItems="center" gap="$2" flexWrap="wrap">
+                    {!!ticket.Area && <Text fontSize="$2" color="$textMuted">{ticket.Area}</Text>}
+                    {!!ticket.Area && !!ticket.Estado && <Text fontSize="$2" color="$textMuted">·</Text>}
+                    {!!ticket.Estado && <Text fontSize="$2" color="$textMuted">{ticket.Estado}</Text>}
+                  </XStack>
                 )}
-                {!!ticket.Estado && <Text fontSize="$2" color="$textMuted">Estado: {ticket.Estado}</Text>}
               </View>
             ) : (
               <YStack gap="$2">
                 <View onPress={() => setScanMode('ticket')} pressStyle={{ opacity: 0.85 }}
                   borderWidth={1.5} borderColor={ACCENT} borderStyle="dashed" borderRadius={12}
-                  padding="$4" alignItems="center" justifyContent="center" gap="$2" backgroundColor="$backgroundElevated">
-                  {resolviendo ? <Spinner color={ACCENT} /> : <QrCode size={30} color={ACCENT} />}
+                  paddingVertical="$3" paddingHorizontal="$4" flexDirection="row" alignItems="center"
+                  justifyContent="center" gap="$2.5" backgroundColor="$backgroundElevated">
+                  {resolviendo ? <Spinner color={ACCENT} /> : <QrCode size={22} color={ACCENT} />}
                   <Text fontSize="$4" fontWeight="800" color={ACCENT}>Escanear QR del ticket</Text>
-                  <Text fontSize="$2" color="$textMuted" textAlign="center">
-                    Escanea el ticket para ligarle los repuestos que despacharás.
-                  </Text>
                 </View>
                 {/* Respaldo: ingresar el código del ticket manualmente (QR dañado o sin lector). */}
                 <XStack alignItems="center" gap="$2">
-                  <Input flex={1} height={46} borderWidth={1} borderColor="$border" borderRadius={8}
-                    backgroundColor="$backgroundElevated" paddingHorizontal="$3" fontSize="$4" color="$text"
-                    autoCapitalize="characters" placeholder="o escribe el código (MTTO-…)"
-                    placeholderTextColor={theme.textMuted?.val}
-                    value={manual} onChangeText={setManual}
-                    onSubmitEditing={() => { const c = manual.trim(); if (c) { resolverTicket(c); setManual('') } }} />
+                  <XStack flex={1} alignItems="center" height={46} borderWidth={1} borderColor="$border"
+                    borderRadius={8} backgroundColor="$backgroundElevated" overflow="hidden">
+                    <Input ref={manualRef as any} flex={1} unstyled height="100%" paddingHorizontal="$3" fontSize="$4" color="$text"
+                      autoCapitalize="characters" showSoftInputOnFocus={teclado === 'ticket'} placeholder="Código de ticket"
+                      placeholderTextColor={theme.textMuted?.val}
+                      value={manual} onChangeText={t => setManual(t.replace(/[\r\n]/g, ''))}
+                      onSubmitEditing={() => { const c = manual.trim(); if (c) { resolverTicket(c); setManual('') } }} />
+                    <View onPress={() => abrirTeclado('ticket', manualRef)} hitSlop={8} pressStyle={{ opacity: 0.6 }}
+                      height="100%" width={40} alignItems="center" justifyContent="center">
+                      <KeyboardIcon size={18} color={teclado === 'ticket' ? ACCENT : theme.textMuted?.val} />
+                    </View>
+                  </XStack>
                   <View onPress={() => { const c = manual.trim(); if (c) { resolverTicket(c); setManual('') } }}
                     pressStyle={{ opacity: 0.8 }} backgroundColor={ACCENT} borderRadius={8}
                     height={46} paddingHorizontal="$4" alignItems="center" justifyContent="center">
@@ -345,19 +405,29 @@ export default function DiarioDetailScreen() {
 
           {/* Agregar repuesto (sólo con ticket activo) */}
           {ticket && (
-            <YStack marginBottom="$4" padding="$3.5" borderWidth={1} borderColor="$border" borderRadius={12}
+            <YStack marginBottom="$3" padding="$3" borderWidth={1} borderColor="$border" borderRadius={12}
               backgroundColor="$backgroundElevated" gap="$1">
-              <Text fontSize="$3" fontWeight="700" color="$text" marginBottom="$2">Agregar repuesto</Text>
+              <Text fontSize="$2" fontWeight="700" color="$text" marginBottom="$1.5">Agregar repuesto</Text>
 
               {/* Ubicación primero: en la PDA se escanea la etiqueta de ubicación y el
                   foco salta al código de barras; al escanear el repuesto se agrega. */}
               <Field label="Ubicación" hint="escanea la ubicación (opcional)">
-                <XStack alignItems="center" height={50} borderWidth={1} borderColor="$border" borderRadius={8}
+                <XStack alignItems="center" height={44} borderWidth={1} borderColor="$border" borderRadius={8}
                   backgroundColor="$background" overflow="hidden">
                   <Input ref={ubicacionRef as any} flex={1} unstyled height="100%" paddingHorizontal="$3" fontSize="$5" color="$text"
-                    placeholder="Ej. 021112-01" placeholderTextColor={theme.textMuted?.val}
-                    autoCapitalize="characters" returnKeyType="next" blurOnSubmit={false}
-                    value={ubicacion} onChangeText={setUbicacion} onSubmitEditing={() => barcodeRef.current?.focus()} />
+                    placeholder="Escanea la ubicación" placeholderTextColor={theme.textMuted?.val}
+                    autoCapitalize="characters" returnKeyType="next" blurOnSubmit={false} showSoftInputOnFocus={teclado === 'ubicacion'}
+                    value={ubicacion} onChangeText={t => setUbicacion(t.replace(/[\r\n]/g, ''))} onSubmitEditing={() => barcodeRef.current?.focus()} />
+                  {ubicacion.length > 0 && (
+                    <View onPress={() => { setUbicacion(''); ubicacionRef.current?.focus() }} hitSlop={8} pressStyle={{ opacity: 0.6 }}
+                      height="100%" width={34} alignItems="center" justifyContent="center">
+                      <X size={18} color={theme.textMuted?.val} />
+                    </View>
+                  )}
+                  <View onPress={() => abrirTeclado('ubicacion', ubicacionRef)} hitSlop={8} pressStyle={{ opacity: 0.6 }}
+                    height="100%" width={40} alignItems="center" justifyContent="center">
+                    <KeyboardIcon size={18} color={teclado === 'ubicacion' ? ACCENT : theme.textMuted?.val} />
+                  </View>
                   <View height="100%" width={54} alignItems="center" justifyContent="center"
                     backgroundColor={ACCENT} pressStyle={{ opacity: 0.8 }} onPress={() => setScanMode('ubicacion')}>
                     <ScanLine size={22} color="#fff" />
@@ -366,12 +436,22 @@ export default function DiarioDetailScreen() {
               </Field>
 
               <Field label="Código de barras" hint="escanea o usa el lector">
-                <XStack alignItems="center" height={50} borderWidth={1} borderColor="$border" borderRadius={8}
+                <XStack alignItems="center" height={44} borderWidth={1} borderColor="$border" borderRadius={8}
                   backgroundColor="$background" overflow="hidden">
                   <Input ref={barcodeRef as any} flex={1} unstyled height="100%" paddingHorizontal="$3" fontSize="$5" color="$text"
-                    placeholder="Escanea o escribe" placeholderTextColor={theme.textMuted?.val}
-                    autoCapitalize="characters" returnKeyType="done" blurOnSubmit={false}
-                    value={barcode} onChangeText={setBarcode} onSubmitEditing={() => agregarRepuesto()} />
+                    placeholder="Escanea el código de barras" placeholderTextColor={theme.textMuted?.val}
+                    autoCapitalize="characters" returnKeyType="done" blurOnSubmit={false} showSoftInputOnFocus={teclado === 'barcode'}
+                    value={barcode} onChangeText={t => setBarcode(t.replace(/[\r\n]/g, ''))} />
+                  {barcode.length > 0 && (
+                    <View onPress={() => { setBarcode(''); barcodeRef.current?.focus() }} hitSlop={8} pressStyle={{ opacity: 0.6 }}
+                      height="100%" width={34} alignItems="center" justifyContent="center">
+                      <X size={18} color={theme.textMuted?.val} />
+                    </View>
+                  )}
+                  <View onPress={() => abrirTeclado('barcode', barcodeRef)} hitSlop={8} pressStyle={{ opacity: 0.6 }}
+                    height="100%" width={40} alignItems="center" justifyContent="center">
+                    <KeyboardIcon size={18} color={teclado === 'barcode' ? ACCENT : theme.textMuted?.val} />
+                  </View>
                   <View height="100%" width={54} alignItems="center" justifyContent="center"
                     backgroundColor={ACCENT} pressStyle={{ opacity: 0.8 }} onPress={() => setScanMode('barcode')}>
                     <ScanLine size={22} color="#fff" />
@@ -382,7 +462,7 @@ export default function DiarioDetailScreen() {
               <XStack gap="$3">
                 <YStack flex={1}>
                   <Field label="Cantidad">
-                    <Input height={48} borderWidth={1} borderColor="$border" borderRadius={8}
+                    <Input height={44} borderWidth={1} borderColor="$border" borderRadius={8}
                       backgroundColor="$background" paddingHorizontal="$3" fontSize="$5" color="$text"
                       keyboardType="numeric" value={cantidad}
                       onChangeText={t => setCantidad(t.replace(/[^\d.]/g, ''))} />
@@ -390,16 +470,15 @@ export default function DiarioDetailScreen() {
                 </YStack>
                 <YStack flex={1}>
                   <Field label="Almacén">
-                    <Input height={48} borderWidth={1} borderColor="$border" borderRadius={8}
-                      backgroundColor="$background" paddingHorizontal="$3" fontSize="$5" color="$text"
-                      keyboardType="number-pad" value={almacen}
-                      onChangeText={t => setAlmacen(t.replace(/\D/g, ''))} />
+                    <Input height={44} borderWidth={1} borderColor="$border" borderRadius={8}
+                      backgroundColor="$backgroundElevated" paddingHorizontal="$3" fontSize="$5" color="$textMuted"
+                      editable={false} value={almacen} />
                   </Field>
                 </YStack>
               </XStack>
 
               <View onPress={agregando ? undefined : () => agregarRepuesto()} pressStyle={{ opacity: 0.85 }}
-                opacity={agregando ? 0.7 : 1} backgroundColor={ACCENT} borderRadius="$4" height={48}
+                opacity={agregando ? 0.7 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
                 alignItems="center" justifyContent="center" flexDirection="row" gap="$2" marginTop="$1">
                 {agregando ? <Spinner color="#fff" /> : <Plus size={20} color="#fff" />}
                 <Text color="#fff" fontWeight="800" fontSize="$4">{agregando ? 'Agregando…' : 'Agregar repuesto'}</Text>
@@ -505,10 +584,10 @@ export default function DiarioDetailScreen() {
           backgroundColor="$background" borderTopWidth={1} borderTopColor="$border">
           <View onPress={posteando ? undefined : confirmarPostear} pressStyle={{ opacity: 0.85 }}
             opacity={posteando || lineas.length === 0 ? 0.6 : 1}
-            backgroundColor={ACCENT} borderRadius="$4" height={52}
+            backgroundColor={ACCENT} borderRadius="$4" height={46}
             alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
-            {posteando ? <Spinner color="#fff" /> : <Upload size={20} color="#fff" />}
-            <Text color="#fff" fontWeight="800" fontSize="$4">{posteando ? 'Posteando…' : 'Postear diario'}</Text>
+            {posteando ? <Spinner color="#fff" /> : <Upload size={18} color="#fff" />}
+            <Text color="#fff" fontWeight="800" fontSize="$3">{posteando ? 'Posteando…' : 'Postear diario'}</Text>
           </View>
         </View>
       )}
