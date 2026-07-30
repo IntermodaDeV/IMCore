@@ -4,6 +4,7 @@ import TicketsListScreen from './Tickets/TicketsListScreen'
 import NewTicketScreen from './Tickets/NewTicketScreen'
 import TicketDetailScreen from './Tickets/TicketDetailScreen'
 import TiposParoScreen from './Catalogos/TiposParoScreen'
+import MotivosPausaScreen from './Catalogos/MotivosPausaScreen'
 import EstructuraScreen from './Catalogos/EstructuraScreen'
 import FallasCausasScreen from './Catalogos/FallasCausasScreen'
 import MaquinasScreen from './Catalogos/MaquinasScreen'
@@ -27,4 +28,5 @@ export const ScreensMantenimiento: TScreens = {
   mantenimientoFallas: { Screen: FallasCausasScreen, Childs: {} },    // Fallas y causas (maestro)
   mantenimientoMaquinas: { Screen: MaquinasScreen, Childs: {} },      // Máquinas (maestro)
   mantenimientoTiposParo: { Screen: TiposParoScreen, Childs: {} },
+  mantenimientoMotivosPausa: { Screen: MotivosPausaScreen, Childs: {} },
 }

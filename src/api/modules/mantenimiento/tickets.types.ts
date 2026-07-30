@@ -124,6 +124,7 @@ export interface IOperacion { Id: number; Area_Id: number; Name: string; Orden?:
 export interface IEstado { Id: number; Code: string; Name: string; Orden: number }
 export interface IPrioridad { Id: number; Name: string; Orden: number; Color?: string | null }
 export interface ITipoParo { Id: number; Name: string; Status_Id: number }
+export interface IMotivoPausa { Id: number; Name: string; Status_Id: number }
 export interface IModelo { Modelo: string }
 export interface ITipoFalla { TipoFalla: string }
 export interface ICausa { Causa: string }

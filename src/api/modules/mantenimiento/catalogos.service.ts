@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { IArea, IOperacion, ITipoParo } from './tickets.types'
+import { IArea, IOperacion, ITipoParo, IMotivoPausa } from './tickets.types'
 
 // CRUD de catálogos de mantenimiento (api/Catalogos). El acceso lo gobierna el
 // permiso de menú de cada pantalla; el backend solo exige autenticación.
@@ -20,6 +20,7 @@ export interface IAreaPrincipalManage { Id?: number; Name: string; PermiteMaquin
 export interface IAreaManage { Id?: number; Name: string; AreaPrincipal_Id: number; Status_Id?: number }
 export interface IOperacionManage { Id?: number; Area_Id: number; Name: string; Orden?: number; Status_Id?: number }
 export interface ITipoParoManage { Id?: number; Name: string }
+export interface IMotivoPausaManage { Id?: number; Name: string }
 
 export const catalogosService = {
   // ── Áreas principales ─────────────────────────────────────────────────────
@@ -102,4 +103,14 @@ export const catalogosService = {
     httpClient.put<ExecutionResponse<null>, ITipoParoManage>(`${schema}/TiposParo`, data),
   toggleTipoParo: (id: number) =>
     httpClient.post<ExecutionResponse<null>>(`${schema}/TiposParo/Toggle?id=${id}`),
+
+  // ── Motivos de pausa ──────────────────────────────────────────────────────
+  getMotivosPausa: (onlyActive = false) =>
+    httpClient.get<ExecutionResponse<IMotivoPausa[]>>(`${schema}/MotivosPausa`, { onlyActive }),
+  crearMotivoPausa: (data: IMotivoPausaManage) =>
+    httpClient.post<ExecutionResponse<null>, IMotivoPausaManage>(`${schema}/MotivosPausa`, data),
+  editarMotivoPausa: (data: IMotivoPausaManage) =>
+    httpClient.put<ExecutionResponse<null>, IMotivoPausaManage>(`${schema}/MotivosPausa`, data),
+  toggleMotivoPausa: (id: number) =>
+    httpClient.post<ExecutionResponse<null>>(`${schema}/MotivosPausa/Toggle?id=${id}`),
 }

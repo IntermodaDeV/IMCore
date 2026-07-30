@@ -11,7 +11,8 @@ import { useAuth } from '../../../context/AuthContext'
 import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
-import { ITicket, IMecanico, ITicketEvento } from '../../../api/modules/mantenimiento/tickets.types'
+import { catalogosService } from '../../../api/modules/mantenimiento/catalogos.service'
+import { ITicket, IMecanico, ITicketEvento, IMotivoPausa } from '../../../api/modules/mantenimiento/tickets.types'
 import { colorEstado, colorPrioridad, ACCENT, COLOR_ASIGNADO, estadoVisual, puedeOperarTicket, puedeDiagnosticar, puedeValidar, puedeConfigRecordatorio, puedeDespachar, puedeAutoasignar, puedeEditarTicket, puedeCancelarTicket } from '../mantenimiento.helpers'
 
 const COLOR_VALIDADO = '#059669'   // sello de producción (esmeralda)
@@ -79,6 +80,11 @@ export default function TicketDetailScreen() {
 
   // Recordatorio recurrente (config por ticket)
   const [recSaving, setRecSaving] = useState(false)
+
+  // Pausa: motivo obligatorio (catálogo MotivoPausa, solo activos)
+  const [showPausa, setShowPausa] = useState(false)
+  const [motivosPausa, setMotivosPausa] = useState<IMotivoPausa[]>([])
+  const [motivoPausaId, setMotivoPausaId] = useState<number | undefined>()
 
   usePageHeader({
     left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
@@ -291,6 +297,25 @@ export default function TicketDetailScreen() {
     } finally {
       setAccionando(false)
     }
+  }
+
+  // Abre el modal de pausa cargando los motivos activos (dropdown obligatorio).
+  const abrirPausa = async () => {
+    setMotivoPausaId(undefined)
+    setShowPausa(true)
+    try { const r = await catalogosService.getMotivosPausa(true); setMotivosPausa(r.Data ?? []) }
+    catch { setMotivosPausa([]) }
+  }
+
+  const doPausar = async () => {
+    if (motivoPausaId == null) { showToast('warning', 'Falta el motivo', 'Selecciona por qué se pausa el ticket'); return }
+    setAccionando(true)
+    try {
+      const res = await ticketsService.pausar(id, motivoPausaId)
+      if (res.Success && res.Data?.Success) { showToast('success', 'Ticket pausado', t.CodigoTicket); setShowPausa(false); await cargar() }
+      else showToast('error', 'No se pudo', res.Data?.ErrorMessage || res.ErrorMessage || 'Intenta de nuevo')
+    } catch (e: any) { showToast('error', 'Error', e?.message || 'Operación fallida') }
+    finally { setAccionando(false) }
   }
 
   const doValidar = async () => {
@@ -554,7 +579,7 @@ export default function TicketDetailScreen() {
                 )}
                 {estado === 'EN_PROCESO' && (
                   <ActionBtn icon={<Pause size={18} color="#fff" />} label="Pausar" color={colorEstado('Pausado')}
-                    loading={accionando} onPress={() => doAccion(ticketsService.pausar, 'Ticket pausado')} />
+                    loading={accionando} onPress={abrirPausa} />
                 )}
                 {(estado === 'PAUSADO' || estado === 'RECHAZADO') && (
                   <ActionBtn icon={<RotateCcw size={18} color="#fff" />} label="Reanudar" color={colorEstado('En Proceso')}
@@ -712,6 +737,37 @@ export default function TicketDetailScreen() {
                 alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
                 {accionando ? <Spinner color="#fff" /> : <CheckCircle2 size={18} color="#fff" />}
                 <Text color="#fff" fontWeight="800" fontSize="$3">Completar</Text>
+              </View>
+            </XStack>
+          </YStack>
+        </View>
+      </Modal>
+
+      {/* Modal de pausa (motivo OBLIGATORIO, dropdown de motivos activos) */}
+      <Modal visible={showPausa} transparent animationType="fade" onRequestClose={() => setShowPausa(false)}>
+        <View flex={1} backgroundColor="rgba(0,0,0,0.45)" alignItems="center" justifyContent="center" padding="$4">
+          <YStack width="100%" maxWidth={480} backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3">
+            <Text fontSize="$5" fontWeight="900" color="$text">Pausar ticket</Text>
+            <Text fontSize="$2" color="$textMuted">Indica el motivo por el que se pausa. Queda registrado en la bitácora del ticket.</Text>
+
+            <YStack gap="$1.5">
+              <Text fontSize="$2" color="$textMuted">Motivo de la pausa *</Text>
+              <AppSelect label="" placeholder="Selecciona un motivo"
+                value={motivoPausaId != null ? String(motivoPausaId) : undefined}
+                options={motivosPausa.map(m => ({ label: m.Name, value: String(m.Id) }))}
+                onValueChange={v => setMotivoPausaId(v ? Number(v) : undefined)} />
+            </YStack>
+
+            <XStack gap="$2.5" marginTop="$1">
+              <View flex={1} onPress={accionando ? undefined : () => setShowPausa(false)} pressStyle={{ opacity: 0.85 }}
+                borderWidth={1.5} borderColor="$border" borderRadius="$4" height={46} alignItems="center" justifyContent="center">
+                <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
+              </View>
+              <View flex={1} onPress={(accionando || motivoPausaId == null) ? undefined : doPausar} pressStyle={{ opacity: 0.85 }}
+                opacity={(accionando || motivoPausaId == null) ? 0.6 : 1} backgroundColor={colorEstado('Pausado')} borderRadius="$4" height={46}
+                alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+                {accionando ? <Spinner color="#fff" /> : <Pause size={18} color="#fff" />}
+                <Text color="#fff" fontWeight="800" fontSize="$3">Pausar</Text>
               </View>
             </XStack>
           </YStack>

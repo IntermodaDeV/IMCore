@@ -62,8 +62,9 @@ export const ticketsService = {
   iniciar: (id: number) =>
     httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Iniciar?id=${id}`),
 
-  pausar: (id: number) =>
-    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Pausar?id=${id}`),
+  // Pausar requiere motivo obligatorio (catálogo MotivoPausa).
+  pausar: (id: number, motivoPausaId: number) =>
+    httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Pausar?id=${id}&motivoPausa_Id=${motivoPausaId}`),
 
   reanudar: (id: number) =>
     httpClient.post<ExecutionResponse<ITicketResult>>(`${schema}/Reanudar?id=${id}`),
