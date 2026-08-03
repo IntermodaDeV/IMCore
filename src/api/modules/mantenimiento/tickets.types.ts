@@ -110,6 +110,10 @@ export interface ITicketFiltros {
   search?: string
   // Alcance del listado: 'mias' (default, por rol) | 'todos' (pool, requiere permiso).
   scope?: 'mias' | 'todos'
+  // Rango de fechas [desde, hasta) del período (ISO local 'YYYY-MM-DDTHH:mm:ss').
+  // Acota la carga en el servidor (el SP solo trae los tickets del rango).
+  desde?: string
+  hasta?: string
   skip?: number
   take?: number
 }

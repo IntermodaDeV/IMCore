@@ -15,6 +15,7 @@ import { ticketsService } from '../../../api/modules/mantenimiento/tickets.servi
 import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/mantenimiento/tickets.types'
 import { colorEstado, colorPrioridad, ACCENT, estadoVisual, puedeCrearTickets, puedeVerPool } from '../mantenimiento.helpers'
 import TicketsResumen from './TicketsResumen'
+import { usePeriodo, PeriodoFiltro, fmtLocal } from '../periodo'
 import { shadows } from '../../../theme/shadows'
 import { NotificationBell } from '../../../components/notifications/NotificationBell'
 
@@ -86,6 +87,9 @@ export default function TicketsListScreen() {
   const [search, setSearch] = useState('')
   // Alcance: 'mias' (por rol) | 'todos' (pool, para autoasignarse). Default 'mias'.
   const [scope, setScope] = useState<'mias' | 'todos'>('mias')
+  // Filtro de período (mismo selector del Resumen). Acota la carga en el servidor:
+  // el SP solo trae los tickets del rango, no todos. Default: semana actual.
+  const periodo = usePeriodo('semana')
 
   const puedeCrear = useMemo(
     () => puedeCrearTickets(user?.Roles, user?.Access),
@@ -123,6 +127,8 @@ export default function TicketsListScreen() {
         area_Id: areaId,
         search: search.trim() || undefined,
         scope,
+        desde: fmtLocal(periodo.desde),
+        hasta: fmtLocal(periodo.hasta),
         take: 100,
       })
       if (!res.Success) {
@@ -137,7 +143,7 @@ export default function TicketsListScreen() {
     } finally {
       setRecargando(false)
     }
-  }, [estadoId, prioridadId, areaId, search, scope])
+  }, [estadoId, prioridadId, areaId, search, scope, periodo.desde, periodo.hasta])
 
   useEffect(() => {
     ;(async () => {
@@ -164,7 +170,7 @@ export default function TicketsListScreen() {
     if (primerFiltro.current) { primerFiltro.current = false; return }
     cargarTickets()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, estadoId, areaId, prioridadId])
+  }, [scope, estadoId, areaId, prioridadId, periodo.desde, periodo.hasta])
 
   const onRefresh = useCallback(async () => {
     setRefrescando(true)
@@ -254,6 +260,10 @@ export default function TicketsListScreen() {
       <View width={width} height="100%">
       {/* Filtros */}
       <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
+        {/* Filtro de período (mismo selector del Resumen). Acota la carga: el servidor
+            solo trae los tickets del rango seleccionado. */}
+        <PeriodoFiltro {...periodo} />
+
         {/* Alcance Mías / Todos (solo para quien puede ver el pool). "Todos" muestra
             el universo para descubrir y autoasignarse; combina con el filtro de Área. */}
         {verPool ? (
