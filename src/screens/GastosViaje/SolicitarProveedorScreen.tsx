@@ -70,7 +70,7 @@ export default function SolicitarProveedorScreen() {
         <ArrowLeftStyled  />
       </View>
     ),
-    right: <CountryFlag countryCode="HN" width={28} height={20} />,
+    right: <CountryFlag countryCode={defaultCompany?.CodeIcon ?? 'HN'} width={28} height={20} />,
   })
 
   const onSubmit = async (data: FormData) => {
