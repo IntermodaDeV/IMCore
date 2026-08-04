@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { RefreshControl } from 'react-native'
-import { ScrollView, Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
-import { Settings } from 'lucide-react-native'
+import { ScrollView, Text, XStack, YStack, View, Spinner, Input, Button, useTheme } from 'tamagui'
+import { Settings, Check } from 'lucide-react-native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
@@ -12,14 +12,20 @@ const ACCENT = '#FF551A'
 // Metadatos por clave conocida: etiqueta amigable y tipo de control.
 //  - 'bool': switch on/off (Valor '1'/'0').
 //  - 'options': selector de chips (Valor = uno de options, como texto).
+//  - 'number': campo numérico con botón guardar (Valor = entero como texto). unidad opcional.
 // Si la clave no está aquí, se asume 'bool' y se muestra la clave tal cual.
-type ConfigKind = 'bool' | 'options'
-const CONFIG_META: Record<string, { label: string; kind: ConfigKind; options?: number[] }> = {
+type ConfigKind = 'bool' | 'options' | 'number'
+const CONFIG_META: Record<string, { label: string; kind: ConfigKind; options?: number[]; unidad?: string }> = {
   'Mtto.UnTicketPorMaquina': { label: 'Un ticket por máquina', kind: 'bool' },
   'Mtto.RecordatorioTicketMinDefault': {
     label: 'Recordatorio por defecto',
     kind: 'options',
     options: [0, 15, 30, 60],
+  },
+  'Mtto.MetaMinutosSemanalMecanico': {
+    label: 'Meta de minutos por mecánico (semanal)',
+    kind: 'number',
+    unidad: 'min/sem',
   },
 }
 
@@ -114,7 +120,16 @@ export default function ConfiguracionesGlobalesScreen() {
               return (
                 <View key={c.Clave} backgroundColor="$backgroundElevated" borderRadius="$5"
                   borderWidth={1} borderColor="$border" padding="$4">
-                  {meta.kind === 'options' ? (
+                  {meta.kind === 'number' ? (
+                    <NumberConfigRow
+                      label={meta.label}
+                      descripcion={c.Descripcion}
+                      unidad={meta.unidad}
+                      valor={c.Valor ?? ''}
+                      saving={saving}
+                      onSave={(v) => guardarValor(c, v, `${v} ${meta.unidad ?? ''}`.trim())}
+                    />
+                  ) : meta.kind === 'options' ? (
                     <YStack gap="$3">
                       <YStack gap="$1">
                         <Text fontSize="$4" fontWeight="800" color="$text">{meta.label}</Text>
@@ -150,6 +165,49 @@ export default function ConfiguracionesGlobalesScreen() {
         </YStack>
       </ScrollView>
     </View>
+  )
+}
+
+function NumberConfigRow({
+  label, descripcion, unidad, valor, saving, onSave,
+}: {
+  label: string; descripcion?: string | null; unidad?: string; valor: string; saving: boolean; onSave: (v: string) => void
+}) {
+  const [txt, setTxt] = useState(valor)
+  // Sincroniza si el valor externo cambia (recarga / guardado optimista).
+  useEffect(() => { setTxt(valor) }, [valor])
+
+  const limpio = txt.replace(/[^0-9]/g, '')
+  const valido = limpio !== '' && Number(limpio) >= 0
+  const cambiado = limpio !== (valor ?? '').trim()
+
+  return (
+    <YStack gap="$3">
+      <YStack gap="$1">
+        <Text fontSize="$4" fontWeight="800" color="$text">{label}</Text>
+        {!!descripcion && <Text fontSize="$2" color="$textMuted">{descripcion}</Text>}
+      </YStack>
+      <XStack gap="$2" alignItems="center">
+        <Input
+          flex={1}
+          keyboardType="number-pad"
+          value={txt}
+          onChangeText={setTxt}
+          placeholder="0"
+          maxLength={7}
+        />
+        {!!unidad && <Text fontSize="$3" color="$textMuted">{unidad}</Text>}
+        <Button
+          height={44}
+          paddingHorizontal="$3"
+          backgroundColor={valido && cambiado ? ACCENT : '$backgroundHover'}
+          disabled={!valido || !cambiado || saving}
+          onPress={() => onSave(limpio)}
+        >
+          {saving ? <Spinner size="small" color="white" /> : <Check size={18} color={valido && cambiado ? 'white' : ACCENT} />}
+        </Button>
+      </XStack>
+    </YStack>
   )
 }
 

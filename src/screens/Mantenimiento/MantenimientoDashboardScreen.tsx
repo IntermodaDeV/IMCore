@@ -8,7 +8,9 @@ import { RefreshCw } from 'lucide-react-native'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import AppSelect from '../../components/commons/AppSelect'
 import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
+import { ITiempoMecanico, IActivoPeriodo } from '../../api/modules/mantenimiento/tickets.types'
 import { MantenimientoPeriodo } from '../../api/modules/sharepoint/mantenimiento.types'
+import { usePeriodo, PeriodoFiltro, fmtLocal } from './periodo'
 import {
   ACCENT,
   MESES,
@@ -31,7 +33,7 @@ import {
 } from './mantenimiento.helpers'
 import { FiltrosColapsables, HBarList, KpiCard, SectionCard, TabBar } from './components'
 
-const TABS = ['📊 Resumen', '📈 Análisis', '🏆 Rankings', '📋 Detalle']
+const TABS = ['📊 Resumen', '📈 Análisis', '🏆 Rankings', '⏱ Tiempos', '🏭 Activos', '📋 Detalle']
 
 export default function MantenimientoDashboardScreen() {
   usePageHeader({
@@ -62,6 +64,11 @@ export default function MantenimientoDashboardScreen() {
   const [tipoDest, setTipoDest] = useState<'Todos' | 'MAQUINA' | 'AREA'>('Todos')
   // Breve indicador de carga al cambiar filtros de cliente (toggle / área / prioridad).
   const [filtrando, setFiltrando] = useState(false)
+
+  // Pestaña "Tiempos": minutos netos por mecánico (atribuidos a quien trabajó).
+  // Se recarga con el período (anio/mes/semana), independiente del dashboard.
+  const [tiempos, setTiempos] = useState<ITiempoMecanico[]>([])
+  const [cargandoTiempos, setCargandoTiempos] = useState(false)
 
   const fetchData = useCallback(
     async (params?: { anio?: number; mes?: number; semana?: number }) => {
@@ -110,6 +117,25 @@ export default function MantenimientoDashboardScreen() {
     await fetchData({ anio, mes, semana })
     setRefrescando(false)
   }, [anio, mes, semana, fetchData])
+
+  // Carga de tiempos por mecánico al resolverse/cambiar el período. Va aparte del
+  // dashboard porque usa datos a nivel de evento (SP_GetTiempoPorMecanico).
+  useEffect(() => {
+    if (!anio || !mes) return
+    let vivo = true
+    ;(async () => {
+      setCargandoTiempos(true)
+      try {
+        const resp = await ticketsService.getTiempoMecanicos({ anio, mes, semana })
+        if (vivo) setTiempos(resp.Success && resp.Data ? resp.Data : [])
+      } catch {
+        if (vivo) setTiempos([])
+      } finally {
+        if (vivo) setCargandoTiempos(false)
+      }
+    })()
+    return () => { vivo = false }
+  }, [anio, mes, semana])
 
   // Flash breve de "carga" al cambiar filtros de cliente (toggle Máquina/Área, área,
   // prioridad, tipo de paro): el filtrado es instantáneo, pero da feedback visual.
@@ -309,6 +335,12 @@ export default function MantenimientoDashboardScreen() {
           <YStack height={200} alignItems="center" justifyContent="center">
             <Spinner size="large" color={ACCENT} />
           </YStack>
+        ) : tab === 3 ? (
+          // Tiempos usa datos propios (por evento), independiente de los registros del dashboard.
+          <TabTiempos tiempos={tiempos} cargando={cargandoTiempos} periodoTxt={periodoTxt} />
+        ) : tab === 4 ? (
+          // Activos tiene su propio período (semana/mes/año) y datos propios.
+          <TabActivos />
         ) : registros.length === 0 ? (
           <YStack height={160} alignItems="center" justifyContent="center">
             <Text color="$textMuted" fontSize={13}>
@@ -334,7 +366,7 @@ export default function MantenimientoDashboardScreen() {
               />
             )}
             {tab === 2 && <TabRankings topMecanicos={topMecanicos} topFallas={topFallas} />}
-            {tab === 3 && <TabDetalle registros={registros} />}
+            {tab === 5 && <TabDetalle registros={registros} />}
           </>
         )}
       </YStack>
@@ -534,6 +566,207 @@ function TabRankings({ topMecanicos, topFallas }: any) {
       <SectionCard titulo="Top 10 Tipos de Falla" ejeX="Cantidad">
         <HBarList datos={topFallas} escala={ESCALA_ROJA} />
       </SectionCard>
+    </YStack>
+  )
+}
+
+// ════════ TAB: Tiempos (minutos netos por mecánico vs meta) ════════
+function fmtHM(min: number) {
+  const m = Math.max(0, Math.round(min))
+  const h = Math.floor(m / 60)
+  const mm = m % 60
+  return h > 0 ? `${h}h ${mm}m` : `${mm}m`
+}
+
+function TabTiempos({ tiempos, cargando, periodoTxt }: { tiempos: ITiempoMecanico[]; cargando: boolean; periodoTxt: string }) {
+  const VERDE = '#22c55e'
+  if (cargando) {
+    return (
+      <YStack height={200} alignItems="center" justifyContent="center">
+        <Spinner size="large" color={ACCENT} />
+      </YStack>
+    )
+  }
+  if (!tiempos.length) {
+    return (
+      <YStack height={160} alignItems="center" justifyContent="center" gap="$2" paddingHorizontal="$4">
+        <Text color="$textMuted" fontSize={13} textAlign="center">
+          No hay tiempo de trabajo registrado en este período.
+        </Text>
+      </YStack>
+    )
+  }
+
+  const metaSemanal = tiempos[0].MetaSemanal
+  const semanas = tiempos[0].SemanasPeriodo
+  const metaPeriodo = tiempos[0].MetaPeriodo || 1
+  const totalMin = tiempos.reduce((a, t) => a + t.MinNetos, 0)
+  const cumplen = tiempos.filter(t => t.MinNetos >= metaPeriodo).length
+
+  return (
+    <YStack gap="$3">
+      {/* Resumen de meta del período */}
+      <XStack flexWrap="wrap" gap="$2">
+        <KpiCard titulo="Meta del período" valor={`${metaPeriodo.toLocaleString()} min`} />
+        <KpiCard titulo="Mecánicos que cumplen" valor={`${cumplen} / ${tiempos.length}`} />
+        <KpiCard titulo="Total trabajado" valor={fmtHM(totalMin)} />
+      </XStack>
+
+      <SectionCard titulo="⏱ Minutos por mecánico" ejeX={`Meta ${metaSemanal.toLocaleString()}/sem · ${semanas} sem = ${metaPeriodo.toLocaleString()} min`}>
+        <YStack gap="$3">
+          {tiempos.map(t => {
+            const pct = Math.round((t.MinNetos / metaPeriodo) * 100)
+            const cumple = t.MinNetos >= metaPeriodo
+            const barColor = cumple ? VERDE : ACCENT
+            return (
+              <YStack key={t.Mecanico_UserCode ?? t.Mecanico ?? Math.random()} gap="$1.5">
+                <XStack justifyContent="space-between" alignItems="center">
+                  <Text fontSize={13} fontWeight="700" color="$text" flex={1} numberOfLines={1}>
+                    {t.Mecanico || t.Mecanico_UserCode || '—'}
+                  </Text>
+                  <Text fontSize={12} color="$textMuted">
+                    {t.TicketsTocados} {t.TicketsTocados === 1 ? 'ticket' : 'tickets'}
+                  </Text>
+                </XStack>
+                {/* Barra de progreso vs meta del período */}
+                <View height={10} borderRadius={6} backgroundColor="$backgroundHover" overflow="hidden">
+                  <View
+                    height={10}
+                    borderRadius={6}
+                    width={`${Math.min(100, pct)}%`}
+                    backgroundColor={barColor}
+                  />
+                </View>
+                <XStack justifyContent="space-between">
+                  <Text fontSize={11} color="$textMuted">
+                    {t.MinNetos.toLocaleString()} / {metaPeriodo.toLocaleString()} min
+                  </Text>
+                  <Text fontSize={12} fontWeight="800" color={cumple ? VERDE : '$textMuted'}>
+                    {pct}%{cumple ? ' ✓' : ''}
+                  </Text>
+                </XStack>
+              </YStack>
+            )
+          })}
+        </YStack>
+      </SectionCard>
+    </YStack>
+  )
+}
+
+// ════════ TAB: Activos/Máquinas (minutos y costo por período, sin meta) ════════
+function fmtLps(n: number) {
+  return `L ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+// Subtítulo de un activo: nº de máquina (si el título ya es el modelo) + área.
+function subActivo(a: IActivoPeriodo): string | null {
+  return [a.Modelo ? a.NumeroMaquina : null, a.Area].filter(Boolean).join(' · ') || null
+}
+
+function BarraActivo({
+  titulo, subtitulo, valor, pct, color, pie,
+}: { titulo: string; subtitulo?: string | null; valor: string; pct: number; color: string; pie?: string }) {
+  return (
+    <YStack gap="$1">
+      <XStack justifyContent="space-between" alignItems="center" gap="$2">
+        <YStack flex={1}>
+          <Text fontSize={13} fontWeight="700" color="$text" numberOfLines={1}>{titulo}</Text>
+          {!!subtitulo && <Text fontSize={10} color="$textMuted" numberOfLines={1}>{subtitulo}</Text>}
+        </YStack>
+        <Text fontSize={13} fontWeight="800" color="$text">{valor}</Text>
+      </XStack>
+      <View height={10} borderRadius={6} backgroundColor="$backgroundHover" overflow="hidden">
+        <View height={10} borderRadius={6} width={`${Math.max(3, Math.min(100, pct))}%`} backgroundColor={color} />
+      </View>
+      {!!pie && <Text fontSize={10} color="$textMuted">{pie}</Text>}
+    </YStack>
+  )
+}
+
+const AZUL_COSTO = '#0ea5e9'
+const TOP_ACTIVOS = 15
+
+function TabActivos() {
+  const periodo = usePeriodo('semana')
+  const [activos, setActivos] = useState<IActivoPeriodo[]>([])
+  const [cargando, setCargando] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      setCargando(true)
+      try {
+        const resp = await ticketsService.getActivos(fmtLocal(periodo.desde), fmtLocal(periodo.hasta))
+        if (vivo) setActivos(resp.Success && resp.Data ? resp.Data : [])
+      } catch {
+        if (vivo) setActivos([])
+      } finally {
+        if (vivo) setCargando(false)
+      }
+    })()
+    return () => { vivo = false }
+  }, [periodo.desde, periodo.hasta])
+
+  // El SP ya viene ordenado por minutos; el costo lo reordenamos y filtramos > 0.
+  const porMinutos = useMemo(() => activos.filter(a => a.MinNetos > 0).slice(0, TOP_ACTIVOS), [activos])
+  const porCosto = useMemo(
+    () => activos.filter(a => a.CostoTotal > 0).sort((a, b) => b.CostoTotal - a.CostoTotal).slice(0, TOP_ACTIVOS),
+    [activos],
+  )
+  const maxMin = porMinutos.length ? porMinutos[0].MinNetos : 1
+  const maxCosto = porCosto.length ? porCosto[0].CostoTotal : 1
+
+  return (
+    <YStack gap="$3">
+      <PeriodoFiltro {...periodo} />
+      {cargando ? (
+        <YStack height={160} alignItems="center" justifyContent="center">
+          <Spinner size="large" color={ACCENT} />
+        </YStack>
+      ) : (
+        <>
+          <SectionCard titulo="🕒 Máquinas con más minutos" ejeX="Minutos de mantenimiento en el período">
+            {porMinutos.length === 0 ? (
+              <Text fontSize={12} color="$textMuted">No hay minutos de mantenimiento en este período.</Text>
+            ) : (
+              <YStack gap="$3">
+                {porMinutos.map(a => (
+                  <BarraActivo
+                    key={`m-${a.NumeroMaquina}`}
+                    titulo={a.Modelo || a.NumeroMaquina || '—'}
+                    subtitulo={subActivo(a)}
+                    valor={`${a.MinNetos.toLocaleString()} min`}
+                    pct={(a.MinNetos / maxMin) * 100}
+                    color={ACCENT}
+                    pie={`${a.TicketsCount} ${a.TicketsCount === 1 ? 'ticket' : 'tickets'}`}
+                  />
+                ))}
+              </YStack>
+            )}
+          </SectionCard>
+
+          <SectionCard titulo="💰 Mayor costo de repuestos" ejeX="Costo de repuestos (Lempiras) en el período">
+            {porCosto.length === 0 ? (
+              <Text fontSize={12} color="$textMuted">No hay costo de repuestos registrado en este período.</Text>
+            ) : (
+              <YStack gap="$3">
+                {porCosto.map(a => (
+                  <BarraActivo
+                    key={`c-${a.NumeroMaquina}`}
+                    titulo={a.Modelo || a.NumeroMaquina || '—'}
+                    subtitulo={subActivo(a)}
+                    valor={fmtLps(a.CostoTotal)}
+                    pct={(a.CostoTotal / maxCosto) * 100}
+                    color={AZUL_COSTO}
+                    pie={`${a.RepuestosCount} ${a.RepuestosCount === 1 ? 'repuesto' : 'repuestos'}`}
+                  />
+                ))}
+              </YStack>
+            )}
+          </SectionCard>
+        </>
+      )}
     </YStack>
   )
 }

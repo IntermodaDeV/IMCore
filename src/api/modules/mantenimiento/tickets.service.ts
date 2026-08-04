@@ -16,6 +16,8 @@ import {
   IMecanico,
   ITicketEvento,
   ITicketResumen,
+  ITiempoMecanico,
+  IActivoPeriodo,
 } from './tickets.types'
 import { MantenimientoPeriodo } from '../sharepoint/mantenimiento.types'
 
@@ -111,6 +113,15 @@ export const ticketsService = {
   // Devuelve el período (registros + filtros) con la misma forma para reutilizar los gráficos.
   getDashboard: (params?: { anio?: number; mes?: number; semana?: number; tipoDestino?: string }) =>
     httpClient.get<ExecutionResponse<MantenimientoPeriodo>>(`${schema}/Dashboard`, { ...params }),
+
+  // Minutos netos de trabajo por mecánico en el período (pestaña "Tiempos").
+  // Atribuido a quien realmente trabajó (no al asignado actual). Mismo período que Dashboard.
+  getTiempoMecanicos: (params?: { anio?: number; mes?: number; semana?: number }) =>
+    httpClient.get<ExecutionResponse<ITiempoMecanico[]>>(`${schema}/TiempoMecanicos`, { ...params }),
+
+  // Ranking de activos/máquinas por período (minutos de mantenimiento + costo de repuestos).
+  getActivos: (desde: string, hasta: string) =>
+    httpClient.get<ExecutionResponse<IActivoPeriodo[]>>(`${schema}/Activos`, { desde, hasta }),
 
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>

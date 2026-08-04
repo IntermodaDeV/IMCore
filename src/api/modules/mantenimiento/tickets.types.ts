@@ -150,6 +150,29 @@ export interface ITicketResumen {
   TiempoResolucionProm: number | null
 }
 
+// Minutos netos de trabajo por mecánico en el período (SP_GetTiempoPorMecanico).
+// Atribuido a quien REALMENTE trabajó (User_Code del evento), no al asignado actual.
+export interface ITiempoMecanico {
+  Mecanico_UserCode: string | null
+  Mecanico: string | null
+  MinNetos: number
+  TicketsTocados: number
+  MetaSemanal: number
+  SemanasPeriodo: number
+  MetaPeriodo: number
+}
+
+// Ranking de activos/máquinas por período (SP_GetActivosPeriodo). Sin meta.
+export interface IActivoPeriodo {
+  NumeroMaquina: string | null
+  Modelo: string | null
+  Area: string | null
+  MinNetos: number
+  TicketsCount: number
+  CostoTotal: number
+  RepuestosCount: number
+}
+
 // Bitácora de acciones del mecánico (línea de tiempo).
 export interface ITicketEvento {
   Id: number
