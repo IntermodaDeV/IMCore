@@ -13,7 +13,7 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppSelect from '../../../components/commons/AppSelect'
 import { ticketsService } from '../../../api/modules/mantenimiento/tickets.service'
 import { ITicket, IArea, IPrioridad, IEstado } from '../../../api/modules/mantenimiento/tickets.types'
-import { colorEstado, colorPrioridad, ACCENT, estadoVisual, puedeCrearTickets, puedeVerPool } from '../mantenimiento.helpers'
+import { colorEstado, colorPrioridad, ACCENT, estadoVisual, puedeCrearTickets, puedeVerPool, scopeInicialTickets } from '../mantenimiento.helpers'
 import TicketsResumen from './TicketsResumen'
 import { usePeriodo, PeriodoFiltro, fmtLocal } from '../periodo'
 import { shadows } from '../../../theme/shadows'
@@ -90,8 +90,9 @@ export default function TicketsListScreen() {
   const [areaId, setAreaId] = useState<number | undefined>(undefined)
   const [prioridadId, setPrioridadId] = useState<number | undefined>(undefined)
   const [search, setSearch] = useState('')
-  // Alcance: 'mias' (por rol) | 'todos' (pool, para autoasignarse). Default 'mias'.
-  const [scope, setScope] = useState<'mias' | 'todos'>('mias')
+  // Alcance: 'mias' (por rol) | 'todos' (pool). Default 'mias', salvo el
+  // despachador de repuestos (sin tickets propios) que arranca en 'todos'.
+  const [scope, setScope] = useState<'mias' | 'todos'>(() => scopeInicialTickets(user?.Roles, user?.Access))
   // Filtro de período (mismo selector del Resumen). Acota la carga en el servidor:
   // el SP solo trae los tickets del rango, no todos. Default: semana actual.
   const periodo = usePeriodo('semana')

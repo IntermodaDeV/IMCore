@@ -73,12 +73,24 @@ const ROLES_CONFIG_RECORDATORIO = ['Administrador', 'Supervisor de Mantenimiento
 export const puedeConfigRecordatorio = (roles?: RoleLike[] | null, access?: string | null) =>
   hasRole(roles, ROLES_CONFIG_RECORDATORIO) || hasAccess(access, 'ConfigRecordatorioTicket')
 
-// Ver el "pool" de TODOS los tickets (para descubrir y autoasignarse): rol
-// Mecánico/Técnico/Sup. Mtto/Admin, o acceso 'AsignarTickets'. Habilita el toggle
-// "Todos" en el listado. (El backend revalida el alcance.)
+// Ver el "pool" de TODOS los tickets: rol Mecánico/Técnico/Sup. Mtto/Admin, o
+// acceso 'AsignarTickets' (para descubrir y autoasignarse), o acceso
+// 'DespacharRepuestos' (el despachador ve todos los tickets en SOLO LECTURA: no
+// crea, edita ni opera; esas acciones se gatean aparte). Habilita el toggle
+// "Todos" en el listado. (El backend ya revalida el mismo alcance en SP_GetTickets.)
 const ROLES_POOL = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico']
 export const puedeVerPool = (roles?: RoleLike[] | null, access?: string | null) =>
-  hasRole(roles, ROLES_POOL) || hasAccess(access, 'AsignarTickets')
+  hasRole(roles, ROLES_POOL) || hasAccess(access, 'AsignarTickets') || hasAccess(access, 'DespacharRepuestos')
+
+// Alcance inicial del listado de tickets. El despachador de repuestos no crea ni
+// tiene tickets propios, así que su pestaña "Míos" saldría vacía → arranca en
+// "Todos". Solo aplica si NO tiene un rol/acceso con tickets propios (mecánico/
+// técnico/supervisores/creador querrían ver primero los suyos).
+const ROLES_PERSONALES = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico', 'Supervisor de Producción']
+export const scopeInicialTickets = (roles?: RoleLike[] | null, access?: string | null): 'mias' | 'todos' => {
+  const tienePersonales = hasRole(roles, ROLES_PERSONALES) || hasAccess(access, 'CrearTickets')
+  return (!tienePersonales && hasAccess(access, 'DespacharRepuestos')) ? 'todos' : 'mias'
+}
 
 // Despachar: asignar un ticket a CUALQUIER mecánico/técnico. Sup. Mtto/Admin o
 // acceso 'AsignarTickets'. (El backend revalida.)
