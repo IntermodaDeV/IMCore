@@ -21,6 +21,11 @@ import { NotificationBell } from '../../../components/notifications/Notification
 
 type Vista = 'resumen' | 'listado'
 
+// Filtros Área/Prioridad OCULTOS: el buscador de texto ya cubre esos campos
+// (área, prioridad, máquina, ticket, etc.) y así se libera espacio. El estado y
+// los catálogos se conservan; poner en true para volver a mostrar los dropdowns.
+const MOSTRAR_FILTROS_DROPDOWN = false
+
 const fmtFecha = (iso: string | null): string => {
   if (!iso) return ''
   const d = new Date(iso)
@@ -291,7 +296,7 @@ export default function TicketsListScreen() {
           <Input
             flex={1}
             unstyled
-            placeholder="Buscar por folio, máquina o modelo"
+            placeholder="Buscar: ticket, máquina, área, prioridad…"
             placeholderTextColor={theme.textMuted?.val}
             color="$text"
             fontSize="$3"
@@ -319,7 +324,8 @@ export default function TicketsListScreen() {
           ))}
         </GestureScrollView>
 
-        {/* Área / Prioridad */}
+        {/* Área / Prioridad — OCULTOS (el buscador ya cubre estos campos). */}
+        {MOSTRAR_FILTROS_DROPDOWN && (
         <XStack gap="$2">
           <View flex={1}>
             <AppSelect
@@ -338,6 +344,7 @@ export default function TicketsListScreen() {
             />
           </View>
         </XStack>
+        )}
       </YStack>
 
       {/* Lista */}
