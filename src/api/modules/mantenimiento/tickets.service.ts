@@ -111,13 +111,13 @@ export const ticketsService = {
 
   // Dashboard principal (global) desde nuestra BD — reemplaza al de SharePoint.
   // Devuelve el período (registros + filtros) con la misma forma para reutilizar los gráficos.
-  getDashboard: (params?: { anio?: number; mes?: number; semana?: number; tipoDestino?: string }) =>
-    httpClient.get<ExecutionResponse<MantenimientoPeriodo>>(`${schema}/Dashboard`, { ...params }),
+  getDashboard: (desde: string, hasta: string, tipoDestino?: string) =>
+    httpClient.get<ExecutionResponse<MantenimientoPeriodo>>(`${schema}/Dashboard`, { desde, hasta, tipoDestino }),
 
   // Minutos netos de trabajo por mecánico en el período (pestaña "Tiempos").
   // Atribuido a quien realmente trabajó (no al asignado actual). Mismo período que Dashboard.
-  getTiempoMecanicos: (params?: { anio?: number; mes?: number; semana?: number }) =>
-    httpClient.get<ExecutionResponse<ITiempoMecanico[]>>(`${schema}/TiempoMecanicos`, { ...params }),
+  getTiempoMecanicos: (desde: string, hasta: string) =>
+    httpClient.get<ExecutionResponse<ITiempoMecanico[]>>(`${schema}/TiempoMecanicos`, { desde, hasta }),
 
   // Ranking de activos/máquinas por período (minutos de mantenimiento + costo de repuestos).
   getActivos: (desde: string, hasta: string) =>

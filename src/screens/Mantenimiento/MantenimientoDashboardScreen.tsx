@@ -3,24 +3,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshControl, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Button, useTheme } from 'tamagui'
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts'
-import { RefreshCw } from 'lucide-react-native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
-import AppSelect from '../../components/commons/AppSelect'
 import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
 import { ITiempoMecanico, IActivoPeriodo } from '../../api/modules/mantenimiento/tickets.types'
 import { MantenimientoPeriodo } from '../../api/modules/sharepoint/mantenimiento.types'
 import { usePeriodo, PeriodoFiltro, fmtLocal } from './periodo'
 import {
   ACCENT,
-  MESES,
-  FILTROS_FINOS_DEFAULT,
-  FiltrosFinos,
   ESCALA_AZUL,
   ESCALA_NARANJA,
   ESCALA_VERDE,
   ESCALA_ROJA,
-  aplicarFiltrosFinos,
   calcularKpis,
   conteoArea,
   conteoEstado,
@@ -31,7 +25,7 @@ import {
   tendenciaPorDia,
   topN,
 } from './mantenimiento.helpers'
-import { FiltrosColapsables, HBarList, KpiCard, SectionCard, TabBar } from './components'
+import { HBarList, KpiCard, SectionCard, TabBar } from './components'
 
 const TABS = ['📊 Resumen', '📈 Análisis', '🏆 Rankings', '⏱ Tiempos', '🏭 Activos', '📋 Detalle']
 
@@ -52,106 +46,61 @@ export default function MantenimientoDashboardScreen() {
   const [refrescando, setRefrescando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Período (se resuelve contra el backend). semana=0 ⇒ mes completo.
-  const [anio, setAnio] = useState<number | undefined>(undefined)
-  const [mes, setMes] = useState<number | undefined>(undefined)
-  const [semana, setSemana] = useState<number>(0)
+  // Período dinámico (Semana/Mes/Año + flechas ‹ ›). Gobierna TODO el dashboard.
+  const periodo = usePeriodo('semana')
+  const desde = useMemo(() => fmtLocal(periodo.desde), [periodo.desde])
+  const hasta = useMemo(() => fmtLocal(periodo.hasta), [periodo.hasta])
 
-  // Filtros finos (en cliente, sobre los registros del período).
-  const [filtros, setFiltros] = useState<FiltrosFinos>(FILTROS_FINOS_DEFAULT)
   const [tab, setTab] = useState(0)
   // Toggle Máquina/Área (en cliente, sobre TipoDestino de los registros).
   const [tipoDest, setTipoDest] = useState<'Todos' | 'MAQUINA' | 'AREA'>('Todos')
-  // Breve indicador de carga al cambiar filtros de cliente (toggle / área / prioridad).
+  // Breve indicador de carga al cambiar el toggle Máquina/Área (filtrado en cliente).
   const [filtrando, setFiltrando] = useState(false)
 
-  // Pestaña "Tiempos": minutos netos por mecánico (atribuidos a quien trabajó).
-  // Se recarga con el período (anio/mes/semana), independiente del dashboard.
-  const [tiempos, setTiempos] = useState<ITiempoMecanico[]>([])
-  const [cargandoTiempos, setCargandoTiempos] = useState(false)
-
-  const fetchData = useCallback(
-    async (params?: { anio?: number; mes?: number; semana?: number }) => {
-      setError(null)
-      try {
-        const resp = await ticketsService.getDashboard(params)
-        if (!resp.Success || !resp.Data) {
-          throw new Error(resp.ErrorMessage || 'No se pudo cargar la información.')
-        }
-        setData(resp.Data)
-        setAnio(resp.Data.Anio)
-        setMes(resp.Data.Mes)
-        setSemana(resp.Data.Semana ?? 0)
-      } catch (e: any) {
-        setError(e?.message ?? 'Error al conectar con el servidor.')
+  const fetchData = useCallback(async () => {
+    setError(null)
+    try {
+      const resp = await ticketsService.getDashboard(desde, hasta)
+      if (!resp.Success || !resp.Data) {
+        throw new Error(resp.ErrorMessage || 'No se pudo cargar la información.')
       }
-    },
-    [],
-  )
+      setData(resp.Data)
+    } catch (e: any) {
+      setError(e?.message ?? 'Error al conectar con el servidor.')
+    }
+  }, [desde, hasta])
 
+  // Carga inicial y cada vez que cambia el período (desde/hasta).
   useEffect(() => {
+    let vivo = true
     ;(async () => {
       setCargando(true)
       await fetchData()
-      setCargando(false)
+      if (vivo) setCargando(false)
     })()
+    return () => { vivo = false }
   }, [fetchData])
-
-  // Cambiar año/mes/semana ⇒ recarga desde el backend.
-  const cambiarPeriodo = useCallback(
-    async (p: { anio?: number; mes?: number; semana?: number }) => {
-      setCargando(true)
-      setFiltros(FILTROS_FINOS_DEFAULT)
-      await fetchData({
-        anio: p.anio ?? anio,
-        mes: p.mes ?? mes,
-        semana: p.semana ?? semana,
-      })
-      setCargando(false)
-    },
-    [anio, mes, semana, fetchData],
-  )
 
   const onRefresh = useCallback(async () => {
     setRefrescando(true)
-    await fetchData({ anio, mes, semana })
+    await fetchData()
     setRefrescando(false)
-  }, [anio, mes, semana, fetchData])
+  }, [fetchData])
 
-  // Carga de tiempos por mecánico al resolverse/cambiar el período. Va aparte del
-  // dashboard porque usa datos a nivel de evento (SP_GetTiempoPorMecanico).
-  useEffect(() => {
-    if (!anio || !mes) return
-    let vivo = true
-    ;(async () => {
-      setCargandoTiempos(true)
-      try {
-        const resp = await ticketsService.getTiempoMecanicos({ anio, mes, semana })
-        if (vivo) setTiempos(resp.Success && resp.Data ? resp.Data : [])
-      } catch {
-        if (vivo) setTiempos([])
-      } finally {
-        if (vivo) setCargandoTiempos(false)
-      }
-    })()
-    return () => { vivo = false }
-  }, [anio, mes, semana])
-
-  // Flash breve de "carga" al cambiar filtros de cliente (toggle Máquina/Área, área,
-  // prioridad, tipo de paro): el filtrado es instantáneo, pero da feedback visual.
+  // Flash breve de "carga" al cambiar el toggle Máquina/Área (filtrado instantáneo en cliente).
   const primerFiltroFino = useRef(true)
   useEffect(() => {
     if (primerFiltroFino.current) { primerFiltroFino.current = false; return }
     setFiltrando(true)
     const t = setTimeout(() => setFiltrando(false), 300)
     return () => clearTimeout(t)
-  }, [tipoDest, filtros])
+  }, [tipoDest])
 
-  // ── Datos derivados ──
+  // ── Datos derivados ── (solo el toggle Máquina/Área filtra en cliente)
   const registros = useMemo(() => {
-    const base = data ? aplicarFiltrosFinos(data.Registros, filtros) : []
+    const base = data?.Registros ?? []
     return tipoDest === 'Todos' ? base : base.filter(r => r.TipoDestino === tipoDest)
-  }, [data, filtros, tipoDest])
+  }, [data, tipoDest])
   const kpis = useMemo(() => calcularKpis(registros), [registros])
   const estado = useMemo(() => conteoEstado(registros), [registros])
   const prioridad = useMemo(() => conteoPrioridad(registros), [registros])
@@ -160,29 +109,6 @@ export default function MantenimientoDashboardScreen() {
   const topMecanicos = useMemo(() => topN(registros, r => r.Mecanico), [registros])
   const topFallas = useMemo(() => topN(registros, r => r.TipoFalla), [registros])
   const tendencia = useMemo(() => tendenciaPorDia(registros), [registros])
-
-  // ── Opciones de filtros ──
-  const opcAnios = (data?.Filtros.Anios ?? [anio ?? 0]).map(a => ({
-    label: String(a),
-    value: String(a),
-  }))
-  const opcMeses = Object.entries(MESES).map(([k, v]) => ({ label: v, value: k }))
-  const opcSemanas = [
-    { label: 'Todas', value: '0' },
-    ...(data?.Filtros.Semanas ?? []).map(s => ({ label: `Sem ${s}`, value: String(s) })),
-  ]
-  const opcAreas = [
-    { label: 'Todas', value: 'Todas' },
-    ...(data?.Filtros.Areas ?? []).map(a => ({ label: a, value: a })),
-  ]
-  const opcPrioridades = [
-    { label: 'Todas', value: 'Todas' },
-    ...(data?.Filtros.Prioridades ?? []).map(p => ({ label: p, value: p })),
-  ]
-  const opcTiposParo = [
-    { label: 'Todos', value: 'Todos' },
-    ...(data?.Filtros.TiposParo ?? []).map(t => ({ label: t, value: t })),
-  ]
 
   // ── Pantalla de carga inicial ──
   if (cargando && !data) {
@@ -205,14 +131,12 @@ export default function MantenimientoDashboardScreen() {
         <Text color="$textMuted" fontSize={12} textAlign="center">
           {error}
         </Text>
-        <Button backgroundColor={ACCENT} color="white" onPress={() => cambiarPeriodo({})}>
+        <Button backgroundColor={ACCENT} color="white" onPress={onRefresh}>
           Reintentar
         </Button>
       </YStack>
     )
   }
-
-  const periodoTxt = `${MESES[mes ?? 1]} ${anio ?? ''}` + (semana ? ` · Semana ${semana}` : '')
 
   // Vista "cargando": cambio de período (backend) o flash de filtro de cliente.
   const refetching = (cargando && !!data) || filtrando
@@ -233,10 +157,12 @@ export default function MantenimientoDashboardScreen() {
             🔧 Dashboard de Mantenimiento
           </Text>
           <Text fontSize={12} color="$text">
-            📅 {periodoTxt} · {filtros.area} · {filtros.prioridad} ·{' '}
-            <Text fontWeight="700">{registros.length}</Text> registros
+            📅 {periodo.etiqueta} · <Text fontWeight="700">{registros.length}</Text> registros
           </Text>
         </YStack>
+
+        {/* ── Filtro de período: Semana / Mes / Año + navegador ‹ › ── */}
+        <PeriodoFiltro {...periodo} />
 
         {/* ── Toggle Máquina / Área (separa los tickets por tipo de destino) ── */}
         <XStack backgroundColor="$backgroundHover" borderRadius="$4" padding={3} gap={3}>
@@ -261,73 +187,6 @@ export default function MantenimientoDashboardScreen() {
           })}
         </XStack>
 
-        {/* ── Filtros colapsables (acordeón, como Python móvil) ── */}
-        <FiltrosColapsables resumen={periodoTxt}>
-          <XStack gap="$2">
-            <View flex={1}>
-              <AppSelect
-                label="Año"
-                value={anio ? String(anio) : undefined}
-                options={opcAnios}
-                onValueChange={v => cambiarPeriodo({ anio: Number(v) })}
-              />
-            </View>
-            <View flex={1.2}>
-              <AppSelect
-                label="Mes"
-                value={mes ? String(mes) : undefined}
-                options={opcMeses}
-                onValueChange={v => cambiarPeriodo({ mes: Number(v) })}
-              />
-            </View>
-            <View flex={1.2}>
-              <AppSelect
-                label="Semana"
-                value={String(semana)}
-                options={opcSemanas}
-                onValueChange={v => cambiarPeriodo({ semana: Number(v) })}
-              />
-            </View>
-          </XStack>
-          <XStack gap="$2" alignItems="flex-end">
-            <View flex={1}>
-              <AppSelect
-                label="Área"
-                value={filtros.area}
-                options={opcAreas}
-                onValueChange={v => setFiltros(f => ({ ...f, area: String(v) }))}
-              />
-            </View>
-            <View flex={1}>
-              <AppSelect
-                label="Prioridad"
-                value={filtros.prioridad}
-                options={opcPrioridades}
-                onValueChange={v => setFiltros(f => ({ ...f, prioridad: String(v) }))}
-              />
-            </View>
-            <View flex={1}>
-              <AppSelect
-                label="Tipo de Paro"
-                value={filtros.tipoParo}
-                options={opcTiposParo}
-                onValueChange={v => setFiltros(f => ({ ...f, tipoParo: String(v) }))}
-              />
-            </View>
-            <Button
-              marginTop="$2"
-              height={40}
-              width={40}
-              padding={0}
-              backgroundColor={ACCENT}
-              onPress={onRefresh}
-              disabled={refrescando}
-            >
-              <RefreshCw size={18} color="white" />
-            </Button>
-          </XStack>
-        </FiltrosColapsables>
-
         {/* ── Tabs ── */}
         <TabBar tabs={TABS} activo={tab} onChange={setTab} />
 
@@ -336,11 +195,11 @@ export default function MantenimientoDashboardScreen() {
             <Spinner size="large" color={ACCENT} />
           </YStack>
         ) : tab === 3 ? (
-          // Tiempos usa datos propios (por evento), independiente de los registros del dashboard.
-          <TabTiempos tiempos={tiempos} cargando={cargandoTiempos} periodoTxt={periodoTxt} />
+          // Tiempos: datos por evento, mismo período que el filtro de arriba.
+          <TabTiempos desde={desde} hasta={hasta} />
         ) : tab === 4 ? (
-          // Activos tiene su propio período (semana/mes/año) y datos propios.
-          <TabActivos />
+          // Activos: datos por evento/costo, mismo período que el filtro de arriba.
+          <TabActivos desde={desde} hasta={hasta} />
         ) : registros.length === 0 ? (
           <YStack height={160} alignItems="center" justifyContent="center">
             <Text color="$textMuted" fontSize={13}>
@@ -578,78 +437,94 @@ function fmtHM(min: number) {
   return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
-function TabTiempos({ tiempos, cargando, periodoTxt }: { tiempos: ITiempoMecanico[]; cargando: boolean; periodoTxt: string }) {
+function TabTiempos({ desde, hasta }: { desde: string; hasta: string }) {
   const VERDE = '#22c55e'
-  if (cargando) {
-    return (
-      <YStack height={200} alignItems="center" justifyContent="center">
-        <Spinner size="large" color={ACCENT} />
-      </YStack>
-    )
-  }
-  if (!tiempos.length) {
-    return (
-      <YStack height={160} alignItems="center" justifyContent="center" gap="$2" paddingHorizontal="$4">
-        <Text color="$textMuted" fontSize={13} textAlign="center">
-          No hay tiempo de trabajo registrado en este período.
-        </Text>
-      </YStack>
-    )
-  }
+  const [tiempos, setTiempos] = useState<ITiempoMecanico[]>([])
+  const [cargando, setCargando] = useState(false)
 
-  const metaSemanal = tiempos[0].MetaSemanal
-  const semanas = tiempos[0].SemanasPeriodo
-  const metaPeriodo = tiempos[0].MetaPeriodo || 1
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      setCargando(true)
+      try {
+        const resp = await ticketsService.getTiempoMecanicos(desde, hasta)
+        if (vivo) setTiempos(resp.Success && resp.Data ? resp.Data : [])
+      } catch {
+        if (vivo) setTiempos([])
+      } finally {
+        if (vivo) setCargando(false)
+      }
+    })()
+    return () => { vivo = false }
+  }, [desde, hasta])
+
+  const metaSemanal = tiempos[0]?.MetaSemanal ?? 0
+  const semanas = tiempos[0]?.SemanasPeriodo ?? 0
+  const metaPeriodo = tiempos[0]?.MetaPeriodo || 1
   const totalMin = tiempos.reduce((a, t) => a + t.MinNetos, 0)
   const cumplen = tiempos.filter(t => t.MinNetos >= metaPeriodo).length
 
   return (
     <YStack gap="$3">
-      {/* Resumen de meta del período */}
-      <XStack flexWrap="wrap" gap="$2">
-        <KpiCard titulo="Meta del período" valor={`${metaPeriodo.toLocaleString()} min`} />
-        <KpiCard titulo="Mecánicos que cumplen" valor={`${cumplen} / ${tiempos.length}`} />
-        <KpiCard titulo="Total trabajado" valor={fmtHM(totalMin)} />
-      </XStack>
-
-      <SectionCard titulo="⏱ Minutos por mecánico" ejeX={`Meta ${metaSemanal.toLocaleString()}/sem · ${semanas} sem = ${metaPeriodo.toLocaleString()} min`}>
-        <YStack gap="$3">
-          {tiempos.map(t => {
-            const pct = Math.round((t.MinNetos / metaPeriodo) * 100)
-            const cumple = t.MinNetos >= metaPeriodo
-            const barColor = cumple ? VERDE : ACCENT
-            return (
-              <YStack key={t.Mecanico_UserCode ?? t.Mecanico ?? Math.random()} gap="$1.5">
-                <XStack justifyContent="space-between" alignItems="center">
-                  <Text fontSize={13} fontWeight="700" color="$text" flex={1} numberOfLines={1}>
-                    {t.Mecanico || t.Mecanico_UserCode || '—'}
-                  </Text>
-                  <Text fontSize={12} color="$textMuted">
-                    {t.TicketsTocados} {t.TicketsTocados === 1 ? 'ticket' : 'tickets'}
-                  </Text>
-                </XStack>
-                {/* Barra de progreso vs meta del período */}
-                <View height={10} borderRadius={6} backgroundColor="$backgroundHover" overflow="hidden">
-                  <View
-                    height={10}
-                    borderRadius={6}
-                    width={`${Math.min(100, pct)}%`}
-                    backgroundColor={barColor}
-                  />
-                </View>
-                <XStack justifyContent="space-between">
-                  <Text fontSize={11} color="$textMuted">
-                    {t.MinNetos.toLocaleString()} / {metaPeriodo.toLocaleString()} min
-                  </Text>
-                  <Text fontSize={12} fontWeight="800" color={cumple ? VERDE : '$textMuted'}>
-                    {pct}%{cumple ? ' ✓' : ''}
-                  </Text>
-                </XStack>
-              </YStack>
-            )
-          })}
+      {cargando ? (
+        <YStack height={160} alignItems="center" justifyContent="center">
+          <Spinner size="large" color={ACCENT} />
         </YStack>
-      </SectionCard>
+      ) : !tiempos.length ? (
+        <YStack height={140} alignItems="center" justifyContent="center" paddingHorizontal="$4">
+          <Text color="$textMuted" fontSize={13} textAlign="center">
+            No hay tiempo de trabajo registrado en este período.
+          </Text>
+        </YStack>
+      ) : (
+        <>
+          {/* Resumen de meta del período */}
+          <XStack flexWrap="wrap" gap="$2">
+            <KpiCard titulo="Meta del período" valor={`${metaPeriodo.toLocaleString()} min`} />
+            <KpiCard titulo="Mecánicos que cumplen" valor={`${cumplen} / ${tiempos.length}`} />
+            <KpiCard titulo="Total trabajado" valor={fmtHM(totalMin)} />
+          </XStack>
+
+          <SectionCard titulo="⏱ Minutos por mecánico" ejeX={`Meta ${metaSemanal.toLocaleString()}/sem · ${semanas} sem = ${metaPeriodo.toLocaleString()} min`}>
+            <YStack gap="$3">
+              {tiempos.map(t => {
+                const pct = Math.round((t.MinNetos / metaPeriodo) * 100)
+                const cumple = t.MinNetos >= metaPeriodo
+                const barColor = cumple ? VERDE : ACCENT
+                return (
+                  <YStack key={t.Mecanico_UserCode ?? t.Mecanico ?? String(t.MinNetos)} gap="$1.5">
+                    <XStack justifyContent="space-between" alignItems="center">
+                      <Text fontSize={13} fontWeight="700" color="$text" flex={1} numberOfLines={1}>
+                        {t.Mecanico || t.Mecanico_UserCode || '—'}
+                      </Text>
+                      <Text fontSize={12} color="$textMuted">
+                        {t.TicketsTocados} {t.TicketsTocados === 1 ? 'ticket' : 'tickets'}
+                      </Text>
+                    </XStack>
+                    {/* Barra de progreso vs meta del período */}
+                    <View height={10} borderRadius={6} backgroundColor="$backgroundHover" overflow="hidden">
+                      <View
+                        height={10}
+                        borderRadius={6}
+                        width={`${Math.min(100, pct)}%`}
+                        backgroundColor={barColor}
+                      />
+                    </View>
+                    <XStack justifyContent="space-between">
+                      <Text fontSize={11} color="$textMuted">
+                        {t.MinNetos.toLocaleString()} / {metaPeriodo.toLocaleString()} min
+                      </Text>
+                      <Text fontSize={12} fontWeight="800" color={cumple ? VERDE : '$textMuted'}>
+                        {pct}%{cumple ? ' ✓' : ''}
+                      </Text>
+                    </XStack>
+                  </YStack>
+                )
+              })}
+            </YStack>
+          </SectionCard>
+        </>
+      )}
     </YStack>
   )
 }
@@ -687,8 +562,7 @@ function BarraActivo({
 const AZUL_COSTO = '#0ea5e9'
 const TOP_ACTIVOS = 15
 
-function TabActivos() {
-  const periodo = usePeriodo('semana')
+function TabActivos({ desde, hasta }: { desde: string; hasta: string }) {
   const [activos, setActivos] = useState<IActivoPeriodo[]>([])
   const [cargando, setCargando] = useState(false)
 
@@ -697,7 +571,7 @@ function TabActivos() {
     ;(async () => {
       setCargando(true)
       try {
-        const resp = await ticketsService.getActivos(fmtLocal(periodo.desde), fmtLocal(periodo.hasta))
+        const resp = await ticketsService.getActivos(desde, hasta)
         if (vivo) setActivos(resp.Success && resp.Data ? resp.Data : [])
       } catch {
         if (vivo) setActivos([])
@@ -706,7 +580,7 @@ function TabActivos() {
       }
     })()
     return () => { vivo = false }
-  }, [periodo.desde, periodo.hasta])
+  }, [desde, hasta])
 
   // El SP ya viene ordenado por minutos; el costo lo reordenamos y filtramos > 0.
   const porMinutos = useMemo(() => activos.filter(a => a.MinNetos > 0).slice(0, TOP_ACTIVOS), [activos])
@@ -719,7 +593,6 @@ function TabActivos() {
 
   return (
     <YStack gap="$3">
-      <PeriodoFiltro {...periodo} />
       {cargando ? (
         <YStack height={160} alignItems="center" justifyContent="center">
           <Spinner size="large" color={ACCENT} />
