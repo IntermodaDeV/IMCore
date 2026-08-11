@@ -1,5 +1,5 @@
 
-import { Check, X, ChevronUp, ClipboardList, ChevronDown, RotateCw } from 'lucide-react-native'
+import { Check, X, ChevronUp, ClipboardList, ChevronDown, RotateCw, ArrowLeft } from 'lucide-react-native'
 import React, { useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native'
 import {
@@ -28,6 +28,7 @@ import EmptyState from '../AdmSys/EmptyState';
 import { Pressable } from 'react-native';
 import RecordCount from '../../components/commons/RecordCount';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
+import { MenuButton } from '../../components/commons/MenuBotton';
 
 export default function AprobacionSolicitudCompra() {
 
@@ -38,6 +39,7 @@ export default function AprobacionSolicitudCompra() {
   const RotateCwStyled = styled(RotateCw, { color: '$text' });
   const ChevronUpStyled = styled(ChevronUp, { color: '$text' });
   const ChevronDownStyled = styled(ChevronDown, { color: '$text' });
+  const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' });
 
   //Estados
   const [data, setData] = useState<ISolicitudCompraUsuario[]>([])
@@ -180,6 +182,17 @@ export default function AprobacionSolicitudCompra() {
   }, [focusTarget, data, loading, focusSolicitud])
 
   usePageHeader({
+    // Flecha para volver al inicio: la app corre sobre un Drawer (sin stack), así
+    // que en iOS no existe el gesto de swipe hacia atrás. Se conserva el botón ☰
+    // para seguir abriendo el menú desde esta pantalla.
+    left: (
+      <XStack alignItems="center" gap="$2">
+        <View onPress={() => navigation.navigate('inicio')} hitSlop={8}>
+          <ArrowLeftStyled size={22} />
+        </View>
+        <MenuButton />
+      </XStack>
+    ),
     center: (
       <Text fontSize="$4" fontWeight="700" color="$text">
         Aprobación de SC
