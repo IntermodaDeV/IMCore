@@ -27,6 +27,13 @@ const CONFIG_META: Record<string, { label: string; kind: ConfigKind; options?: n
     kind: 'number',
     unidad: 'min/sem',
   },
+  // Tarifa de mano de obra del dashboard web. Sin esta entrada caería en el
+  // fallback 'bool' y el interruptor la dejaría en 1 o 0 lempiras por hora.
+  'Mtto.CostoHoraMecanico': {
+    label: 'Costo por hora de mano de obra',
+    kind: 'number',
+    unidad: 'L/hora',
+  },
 }
 
 export default function ConfiguracionesGlobalesScreen() {
