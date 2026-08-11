@@ -7,12 +7,18 @@ import { Camera } from 'react-native-camera-kit'
 // Color de acento del módulo (primary de la app).
 export const ACCENT = '#FF551A'
 
-// Estados de ticket que admiten despacho de repuestos (tickets abiertos/activos).
-// Bloqueados: CANCELADO, COMPLETADO (y validado = COMPLETADO con sello). Debe
+// Estados de ticket que admiten despacho de repuestos.
+// Permitidos: PENDIENTE, EN_PROCESO, PAUSADO, RECHAZADO y COMPLETADO SIN VALIDAR.
+// Bloqueados: CANCELADO y COMPLETADO ya validado (sello de producción). Debe
 // coincidir con la validación del backend (SP_Linea_Insertar).
-export const ESTADOS_DESPACHO = ['PENDIENTE', 'EN_PROCESO', 'PAUSADO', 'RECHAZADO']
-export const puedeDespachar = (estadoCode?: string | null) =>
-  ESTADOS_DESPACHO.includes((estadoCode ?? '').toUpperCase())
+export const ESTADOS_DESPACHO = ['PENDIENTE', 'EN_PROCESO', 'PAUSADO', 'RECHAZADO', 'COMPLETADO']
+export const puedeDespachar = (estadoCode?: string | null, validadoPor?: string | null): boolean => {
+  const code = (estadoCode ?? '').toUpperCase()
+  if (!ESTADOS_DESPACHO.includes(code)) return false
+  // Un COMPLETADO ya validado (con sello de producción) no admite despacho.
+  if (code === 'COMPLETADO' && !!validadoPor) return false
+  return true
+}
 
 // ms de una fecha ISO (para ordenar desc); 0 si vacía/ inválida.
 export const ts = (iso?: string | null): number => {

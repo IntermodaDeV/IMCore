@@ -111,15 +111,18 @@ export default function DiarioDetailScreen() {
     setTimeout(() => ref.current?.focus(), 80)
   }
 
-  // Valida el estado y activa el ticket. Solo tickets abiertos/activos admiten
-  // despacho (PENDIENTE/EN_PROCESO/PAUSADO/RECHAZADO); se bloquea CANCELADO y
-  // COMPLETADO (incluido validado). Devuelve false si el ticket no aplica.
+  // Valida el estado y activa el ticket. Admiten despacho: PENDIENTE/EN_PROCESO/
+  // PAUSADO/RECHAZADO y COMPLETADO sin validar; se bloquea CANCELADO y COMPLETADO
+  // ya validado (sello de producción). Devuelve false si el ticket no aplica.
   const aplicarTicket = useCallback((t: ITicket): boolean => {
-    if (!puedeDespachar(t.EstadoCode)) {
+    if (!puedeDespachar(t.EstadoCode, t.ValidadoPor)) {
+      const validado = (t.EstadoCode ?? '').toUpperCase() === 'COMPLETADO' && !!t.ValidadoPor
       showToast(
         'warning',
         'Ticket no disponible',
-        `${t.CodigoTicket} está ${t.Estado ?? ''}. Solo se despacha a tickets Pendiente, En Proceso, Pausado o Rechazado.`,
+        validado
+          ? `${t.CodigoTicket} ya fue validado. Un ticket validado no admite despacho.`
+          : `${t.CodigoTicket} está ${t.Estado ?? ''}. Solo se despacha a tickets Pendiente, En Proceso, Pausado, Rechazado o Completado (sin validar).`,
         6000,
       )
       return false
