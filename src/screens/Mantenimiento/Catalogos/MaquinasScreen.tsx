@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Modal, RefreshControl, FlatList } from 'react-native'
+import {
+  Modal, RefreshControl, FlatList, Keyboard, KeyboardAvoidingView, Platform,
+  ScrollView as RNScrollView,
+} from 'react-native'
 import { Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
 import { useFocusEffect } from '@react-navigation/native'
 import { Plus, Pencil, Search, Cog } from 'lucide-react-native'
@@ -27,14 +30,26 @@ export default function MaquinasScreen() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | undefined>()
+  const [fCodigo, setFCodigo] = useState('')
   const [fTipo, setFTipo] = useState('')
   const [fModelo, setFModelo] = useState('')
+  const [fMarca, setFMarca] = useState('')
+  const [fSerie, setFSerie] = useState('')
   const [fAreaId, setFAreaId] = useState<number | undefined>()
   const [fActivo, setFActivo] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [confirm, setConfirm] = useState<IMaquina | null>(null)
 
   useEffect(() => { catalogosService.getAreas(true).then(r => setAreas(r.Data ?? [])).catch(() => {}) }, [])
+
+  // En Android (New Arch + edge-to-edge) el teclado se dibuja ENCIMA: hay que
+  // reservar su altura a mano para que el form no quede tapado.
+  const [kbHeight, setKbHeight] = useState(0)
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', e => setKbHeight(e.endCoordinates.height))
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0))
+    return () => { show.remove(); hide.remove() }
+  }, [])
 
   const cargar = useCallback(async () => {
     try {
@@ -48,9 +63,13 @@ export default function MaquinasScreen() {
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
   const onRefresh = useCallback(async () => { setRefrescando(true); await cargar(); setRefrescando(false) }, [cargar])
 
-  const abrirCrear = () => { setEditId(undefined); setFTipo(''); setFModelo(''); setFAreaId(areaId); setFActivo(true); setModalOpen(true) }
+  const abrirCrear = () => {
+    setEditId(undefined); setFCodigo(''); setFTipo(''); setFModelo(''); setFMarca(''); setFSerie('')
+    setFAreaId(areaId); setFActivo(true); setModalOpen(true)
+  }
   const abrirEditar = (m: IMaquina) => {
-    setEditId(m.Id); setFTipo(m.TipoMaquina ?? ''); setFModelo(m.Modelo ?? '')
+    setEditId(m.Id); setFCodigo(m.CodigoActivo ?? ''); setFTipo(m.TipoMaquina ?? ''); setFModelo(m.Modelo ?? '')
+    setFMarca(m.Marca ?? ''); setFSerie(m.NumeroSerie ?? '')
     setFAreaId(m.Area_Id ?? undefined); setFActivo(m.Status_Id === 1); setModalOpen(true)
   }
 
@@ -58,7 +77,12 @@ export default function MaquinasScreen() {
     if (!fTipo.trim() && !fModelo.trim()) { showToast('warning', 'Faltan datos', 'Indica tipo de máquina o modelo'); return }
     setGuardando(true)
     try {
-      const dto = { Id: editId, TipoMaquina: fTipo.trim() || null, Modelo: fModelo.trim() || null, Area_Id: fAreaId ?? null,
+      // Se mandan TODOS los campos: el SP de edición sobrescribe código/marca/serie
+      // con lo que reciba, así que omitirlos los borraría (y sin CodigoActivo la
+      // máquina deja de encontrarse al escanear el QR).
+      const dto = { Id: editId, CodigoActivo: fCodigo.trim() || null, TipoMaquina: fTipo.trim() || null,
+        Modelo: fModelo.trim() || null, Marca: fMarca.trim() || null, NumeroSerie: fSerie.trim() || null,
+        Area_Id: fAreaId ?? null,
         ...(editId ? { Status_Id: fActivo ? 1 : 2 } : {}) }
       const res = editId ? await catalogosService.editarMaquina(dto) : await catalogosService.crearMaquina(dto)
       if (res.Success) { showToast('success', 'Guardado', res.SuccessMessage || 'Máquina guardada'); setModalOpen(false); await cargar() }
@@ -153,36 +177,54 @@ export default function MaquinasScreen() {
       )}
 
       <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
-        <View flex={1} backgroundColor="rgba(0,0,0,0.45)" alignItems="center" justifyContent="center" padding="$4">
-          <YStack width="100%" maxWidth={460} backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3">
-            <Text fontSize="$5" fontWeight="900" color="$text">{editId ? 'Editar' : 'Nueva'} · Máquina</Text>
-            <AppInput label="Tipo de máquina" value={fTipo} onChangeText={setFTipo} />
-            <AppInput label="Modelo" value={fModelo} onChangeText={setFModelo} />
-            <AppSelect label="Área / ubicación" value={fAreaId != null ? String(fAreaId) : undefined} options={areaModalOpts}
-              onValueChange={v => setFAreaId(v ? Number(v) : undefined)} placeholder="Selecciona el área" />
-            {!!editId && (
-              <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
-                <Text fontSize="$3" color="$text" fontWeight="700">{fActivo ? 'Activo' : 'Inactivo'}</Text>
-                <View onPress={() => setFActivo(v => !v)} pressStyle={{ opacity: 0.8 }}
-                  width={52} height={30} borderRadius={15} padding={3} justifyContent="center" backgroundColor={fActivo ? ACCENT : '$border'}>
-                  <View width={24} height={24} borderRadius={12} backgroundColor="#fff" alignSelf={fActivo ? 'flex-end' : 'flex-start'} />
-                </View>
-              </XStack>
-            )}
-            <XStack gap="$2.5" marginTop="$1">
-              <View flex={1} onPress={guardando ? undefined : () => setModalOpen(false)} pressStyle={{ opacity: 0.85 }}
-                borderWidth={1.5} borderColor="$border" borderRadius="$4" height={46} alignItems="center" justifyContent="center">
-                <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
-              </View>
-              <View flex={1} onPress={guardando ? undefined : guardar} pressStyle={{ opacity: 0.85 }}
-                opacity={guardando ? 0.6 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
-                alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
-                {guardando ? <Spinner color="#fff" /> : null}
-                <Text color="#fff" fontWeight="800" fontSize="$3">Guardar</Text>
-              </View>
-            </XStack>
-          </YStack>
-        </View>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View flex={1} backgroundColor="rgba(0,0,0,0.45)" alignItems="center" justifyContent="center" padding="$4">
+            {/* El form tiene 6 campos: en pantallas chicas (o con el teclado abierto)
+                no cabe completo, así que scrollea dentro de la tarjeta. En Android el
+                teclado se dibuja encima (edge-to-edge), por eso el paddingBottom
+                dinámico con su altura. */}
+            <RNScrollView
+              style={{ width: '100%', maxWidth: 460, maxHeight: '100%' }}
+              contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <YStack width="100%" backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3"
+                marginBottom={Platform.OS === 'android' ? kbHeight : 0}>
+                <Text fontSize="$5" fontWeight="900" color="$text">{editId ? 'Editar' : 'Nueva'} · Máquina</Text>
+                <AppInput label="Código de activo" value={fCodigo} onChangeText={setFCodigo} autoCapitalize="characters"
+                  statusMessage="Es el código que se escanea. Solo dígitos se completa a AF-########." />
+                <AppInput label="Tipo de máquina" value={fTipo} onChangeText={setFTipo} />
+                <AppInput label="Modelo" value={fModelo} onChangeText={setFModelo} />
+                <AppInput label="Marca" value={fMarca} onChangeText={setFMarca} />
+                <AppInput label="N° de serie" value={fSerie} onChangeText={setFSerie} />
+                <AppSelect label="Área / ubicación" value={fAreaId != null ? String(fAreaId) : undefined} options={areaModalOpts}
+                  onValueChange={v => setFAreaId(v ? Number(v) : undefined)} placeholder="Selecciona el área" />
+                {!!editId && (
+                  <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
+                    <Text fontSize="$3" color="$text" fontWeight="700">{fActivo ? 'Activo' : 'Inactivo'}</Text>
+                    <View onPress={() => setFActivo(v => !v)} pressStyle={{ opacity: 0.8 }}
+                      width={52} height={30} borderRadius={15} padding={3} justifyContent="center" backgroundColor={fActivo ? ACCENT : '$border'}>
+                      <View width={24} height={24} borderRadius={12} backgroundColor="#fff" alignSelf={fActivo ? 'flex-end' : 'flex-start'} />
+                    </View>
+                  </XStack>
+                )}
+                <XStack gap="$2.5" marginTop="$1">
+                  <View flex={1} onPress={guardando ? undefined : () => setModalOpen(false)} pressStyle={{ opacity: 0.85 }}
+                    borderWidth={1.5} borderColor="$border" borderRadius="$4" height={46} alignItems="center" justifyContent="center">
+                    <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
+                  </View>
+                  <View flex={1} onPress={guardando ? undefined : guardar} pressStyle={{ opacity: 0.85 }}
+                    opacity={guardando ? 0.6 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
+                    alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+                    {guardando ? <Spinner color="#fff" /> : null}
+                    <Text color="#fff" fontWeight="800" fontSize="$3">Guardar</Text>
+                  </View>
+                </XStack>
+              </YStack>
+            </RNScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <ConfirmDialog
