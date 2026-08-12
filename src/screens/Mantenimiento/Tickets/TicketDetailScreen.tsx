@@ -703,8 +703,10 @@ export default function TicketDetailScreen() {
             </View>
           )}
 
+          {/* Quien reporta es quien tiene que validar el ticket al final: se muestra
+              el NOMBRE, no el usuario. Cae al código si Security.Users no lo tiene. */}
           <Text fontSize="$1" color="$textMuted" textAlign="center" marginTop="$2">
-            Reportado por {t.Create_By ?? '—'}
+            Reportado por {t.CreadoNombre || t.Create_By || '—'}
           </Text>
         </YStack>
       </ScrollView>

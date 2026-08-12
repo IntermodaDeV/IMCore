@@ -56,6 +56,9 @@ export interface ITicket {
   Observaciones: string | null
   Vigente: boolean
   Create_By: string | null
+  // Nombre de quien reportó (Security.Users). La API ya lo manda desde
+  // vw_TicketsAnalisis; se muestra en vez del código de usuario.
+  CreadoNombre: string | null
   Creation_Date: string | null
   Modified_By: string | null
   Modification_Date: string | null
