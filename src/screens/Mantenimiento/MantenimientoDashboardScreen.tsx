@@ -35,9 +35,9 @@ const TABS = [
   { key: 'resumen', label: '📊 Resumen' },
   { key: 'analisis', label: '🔎 Análisis' },
   { key: 'tiempos', label: '⏱ Tiempos' },
+  { key: 'activos', label: '🏭 Activos' },
   { key: 'distribucion', label: '📈 Distribución' },
   { key: 'rankings', label: '🏆 Rankings' },
-  { key: 'activos', label: '🏭 Activos' },
   { key: 'detalle', label: '📋 Detalle' },
 ] as const
 
