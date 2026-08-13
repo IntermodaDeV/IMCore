@@ -176,6 +176,61 @@ export interface IActivoPeriodo {
   RepuestosCount: number
 }
 
+// ── Pestaña "Análisis" del dashboard ────────────────────────────────────────
+// Los mismos DTOs que usa el dashboard del web (IMCoreWeb), para que los dos
+// muestren exactamente el mismo número a partir del mismo endpoint.
+
+// Anatomía de la espera (SP_GetEsperaAnatomia): filas planas por dimensión.
+// TOTAL alimenta el titular del paro; PRIORIDAD, AREA y MAQUINA, sus propios
+// bloques (MAQUINA requiere el script 55).
+//
+// ESPERA_AREA / ESPERA_MAQUINA (script 56) son distintas: NO miran el rango
+// desde/hasta, son lo que está detenido AHORA. En esas filas las columnas se
+// leen así: Tickets = cuántos detenidos · ParoMin = minutos del MÁS ANTIGUO
+// (lo que se pinta) · EsperaMin = suma de todos · PausaMin = la parte pausada ·
+// EsperaProm = promedio · EsperaMed = null.
+export interface IEsperaAnatomia {
+  Dim:
+    | 'TOTAL' | 'HORA' | 'DIA' | 'AREA' | 'PRIORIDAD' | 'MAQUINA'
+    | 'ESPERA_AREA' | 'ESPERA_MAQUINA'
+    | string
+  Bucket: string | null
+  Orden: number
+  Tickets: number
+  EsperaProm: number | null
+  EsperaMed: number | null
+  EsperaMin: number
+  TrabajoMin: number
+  PausaMin: number
+  ParoMin: number
+}
+
+// Minutos de paro por motivo de pausa (SP_GetPausasPorMotivo).
+export interface IPausaMotivo {
+  Motivo: string | null
+  Pausas: number
+  PausasAbiertas: number
+  MinPausa: number
+  TicketsAfectados: number
+  MaquinasAfectadas: number
+}
+
+// Pausas cruzadas por MECÁNICO y MÁQUINA (SP_GetPausasDetalle): PausasPorMotivo
+// dice POR QUÉ se pausa; ésta, QUIÉN y EN QUÉ, que es lo accionable.
+export interface IPausaDetalle {
+  Mecanico_UserCode: string | null
+  Mecanico: string | null
+  NumeroMaquina: string | null
+  Modelo: string | null
+  Area: string | null
+  Pausas: number
+  PausasAbiertas: number
+  MinPausa: number
+  MotivoDominante: string | null
+  MinMotivoDominante: number
+  UltimaPausa: string | null
+}
+
 // Bitácora de acciones del mecánico (línea de tiempo).
 export interface ITicketEvento {
   Id: number

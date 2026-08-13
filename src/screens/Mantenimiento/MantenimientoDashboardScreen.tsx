@@ -22,12 +22,26 @@ import {
   conteoTipoParo,
   colorEstado,
   colorPrioridad,
+  rangoAnterior,
   tendenciaPorDia,
   topN,
 } from './mantenimiento.helpers'
 import { HBarList, KpiCard, SectionCard, TabBar } from './components'
+import { DashboardAnalisis, EsperaAhora } from './DashboardAnalisis'
 
-const TABS = ['📊 Resumen', '📈 Análisis', '🏆 Rankings', '⏱ Tiempos', '🏭 Activos', '📋 Detalle']
+// El ORDEN de esta lista es el orden de los tabs; cada pestaña se resuelve por su
+// `key`, no por su índice, para poder reordenarlas moviendo una sola línea.
+const TABS = [
+  { key: 'resumen', label: '📊 Resumen' },
+  { key: 'analisis', label: '🔎 Análisis' },
+  { key: 'tiempos', label: '⏱ Tiempos' },
+  { key: 'distribucion', label: '📈 Distribución' },
+  { key: 'rankings', label: '🏆 Rankings' },
+  { key: 'activos', label: '🏭 Activos' },
+  { key: 'detalle', label: '📋 Detalle' },
+] as const
+
+type TabKey = (typeof TABS)[number]['key']
 
 export default function MantenimientoDashboardScreen() {
   usePageHeader({
@@ -50,8 +64,17 @@ export default function MantenimientoDashboardScreen() {
   const periodo = usePeriodo('semana')
   const desde = useMemo(() => fmtLocal(periodo.desde), [periodo.desde])
   const hasta = useMemo(() => fmtLocal(periodo.hasta), [periodo.hasta])
+  // Rango previo del mismo largo: la pestaña Análisis compara contra él.
+  const previo = useMemo(
+    () => rangoAnterior(periodo.desde, periodo.hasta, periodo.modo),
+    [periodo.desde, periodo.hasta, periodo.modo],
+  )
+  const desdePrev = useMemo(() => fmtLocal(previo.desde), [previo.desde])
+  const hastaPrev = useMemo(() => fmtLocal(previo.hasta), [previo.hasta])
 
   const [tab, setTab] = useState(0)
+  // Qué pestaña está activa, por nombre: reordenar TABS no toca el render.
+  const tabKey: TabKey = TABS[tab]?.key ?? 'resumen'
   // Toggle Máquina/Área (en cliente, sobre TipoDestino de los registros).
   const [tipoDest, setTipoDest] = useState<'Todos' | 'MAQUINA' | 'AREA'>('Todos')
   // Breve indicador de carga al cambiar el toggle Máquina/Área (filtrado en cliente).
@@ -81,9 +104,14 @@ export default function MantenimientoDashboardScreen() {
     return () => { vivo = false }
   }, [fetchData])
 
+  // Se incrementa en cada "pull to refresh": los bloques de dato VIVO (lo que
+  // está detenido ahora) lo usan para volver a pedirlo.
+  const [recarga, setRecarga] = useState(0)
+
   const onRefresh = useCallback(async () => {
     setRefrescando(true)
     await fetchData()
+    setRecarga(n => n + 1)
     setRefrescando(false)
   }, [fetchData])
 
@@ -188,16 +216,25 @@ export default function MantenimientoDashboardScreen() {
         </XStack>
 
         {/* ── Tabs ── */}
-        <TabBar tabs={TABS} activo={tab} onChange={setTab} />
+        <TabBar tabs={TABS.map(t => t.label)} activo={tab} onChange={setTab} />
 
         {cargando ? (
           <YStack height={200} alignItems="center" justifyContent="center">
             <Spinner size="large" color={ACCENT} />
           </YStack>
-        ) : tab === 3 ? (
+        ) : tabKey === 'analisis' ? (
+          // Análisis: KPIs agregados en SQL (el toggle Máquina/Área va al servidor).
+          <DashboardAnalisis
+            desde={desde}
+            hasta={hasta}
+            desdePrev={desdePrev}
+            hastaPrev={hastaPrev}
+            tipoDest={tipoDest}
+          />
+        ) : tabKey === 'tiempos' ? (
           // Tiempos: datos por evento, mismo período que el filtro de arriba.
           <TabTiempos desde={desde} hasta={hasta} />
-        ) : tab === 4 ? (
+        ) : tabKey === 'activos' ? (
           // Activos: datos por evento/costo, mismo período que el filtro de arriba.
           <TabActivos desde={desde} hasta={hasta} />
         ) : registros.length === 0 ? (
@@ -208,24 +245,28 @@ export default function MantenimientoDashboardScreen() {
           </YStack>
         ) : (
           <>
-            {tab === 0 && (
+            {tabKey === 'resumen' && (
               <TabResumen
                 kpis={kpis}
                 estado={estado}
                 prioridad={prioridad}
                 chartWidth={chartWidth}
+                desde={desde}
+                hasta={hasta}
+                tipoDest={tipoDest}
+                recarga={recarga}
               />
             )}
-            {tab === 1 && (
-              <TabAnalisis
+            {tabKey === 'distribucion' && (
+              <TabDistribucion
                 areas={areas}
                 tiposParo={tiposParo}
                 tendencia={tendencia}
                 chartWidth={chartWidth}
               />
             )}
-            {tab === 2 && <TabRankings topMecanicos={topMecanicos} topFallas={topFallas} />}
-            {tab === 5 && <TabDetalle registros={registros} />}
+            {tabKey === 'rankings' && <TabRankings topMecanicos={topMecanicos} topFallas={topFallas} />}
+            {tabKey === 'detalle' && <TabDetalle registros={registros} />}
           </>
         )}
       </YStack>
@@ -261,7 +302,7 @@ export default function MantenimientoDashboardScreen() {
 }
 
 // ════════ TAB: Resumen ════════
-function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
+function TabResumen({ kpis, estado, prioridad, chartWidth, desde, hasta, tipoDest, recarga }: any) {
   const theme = useTheme()
   const txt = theme.text?.val ?? '#0F172A'
   const muted = theme.textMuted?.val ?? '#94A3B8'
@@ -329,6 +370,9 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
         </YStack>
       </SectionCard>
 
+      {/* Lo que está detenido AHORA (no depende del período de arriba). */}
+      <EsperaAhora desde={desde} hasta={hasta} tipoDest={tipoDest} recarga={recarga} />
+
       <SectionCard titulo="Tickets por Prioridad" ejeX="Cantidad">
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <BarChart
@@ -361,8 +405,8 @@ function TabResumen({ kpis, estado, prioridad, chartWidth }: any) {
   )
 }
 
-// ════════ TAB: Análisis ════════
-function TabAnalisis({ areas, tiposParo, tendencia, chartWidth }: any) {
+// ════════ TAB: Distribución (áreas, tipo de paro y tendencia del período) ════════
+function TabDistribucion({ areas, tiposParo, tendencia, chartWidth }: any) {
   const theme = useTheme()
   const txt = theme.text?.val ?? '#0F172A'
   const muted = theme.textMuted?.val ?? '#94A3B8'

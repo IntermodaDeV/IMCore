@@ -167,6 +167,59 @@ export function shade(escala: Escala, t: number): string {
   return `#${toHex(c[0])}${toHex(c[1])}${toHex(c[2])}`
 }
 
+// ── Formateo ─────────────────────────────────────────────────────────────────
+// Minutos → "1h 30m" (compacto, para totales y barras).
+export function fmtHM(min: number): string {
+  const m = Math.max(0, Math.round(min))
+  const h = Math.floor(m / 60)
+  const mm = m % 60
+  return h > 0 ? `${h}h ${mm}m` : `${mm}m`
+}
+
+// Minutos → "746 h": para totales grandes, donde los minutos sueltos no dicen nada.
+export const fmtHoras = (min: number) => `${Math.round(min / 60).toLocaleString('es-HN')} h`
+
+export const fmtEntero = (n: number) => n.toLocaleString('es-HN')
+
+// ── Comparativo contra el período anterior ───────────────────────────────────
+// Rango [desde, hasta) inmediatamente anterior y del MISMO largo que el actual.
+// Con 'mes'/'anio' se retrocede por calendario (no por días) para que febrero se
+// compare contra enero completo y no contra "28 días atrás".
+export function rangoAnterior(
+  desde: Date,
+  hasta: Date,
+  modo: 'semana' | 'mes' | 'anio',
+): { desde: Date; hasta: Date } {
+  if (modo === 'mes') {
+    return {
+      desde: new Date(desde.getFullYear(), desde.getMonth() - 1, 1),
+      hasta: new Date(desde.getFullYear(), desde.getMonth(), 1),
+    }
+  }
+  if (modo === 'anio') {
+    return {
+      desde: new Date(desde.getFullYear() - 1, 0, 1),
+      hasta: new Date(desde.getFullYear(), 0, 1),
+    }
+  }
+  const largo = hasta.getTime() - desde.getTime()
+  return { desde: new Date(desde.getTime() - largo), hasta: new Date(desde) }
+}
+
+// Variación % contra el período anterior. null cuando no hay base de comparación
+// (antes no hubo nada: un "+∞%" no informa).
+export function variacion(actual: number, anterior: number): number | null {
+  if (!anterior) return null
+  return ((actual - anterior) / anterior) * 100
+}
+
+// Colores de los tramos del paro: se reusan los de estado para que el color
+// signifique lo mismo en toda la app (espera = pendiente, trabajo = en proceso,
+// pausa = pausado).
+export const COLOR_ESPERA = '#f59e0b'
+export const COLOR_TRABAJO = '#3b82f6'
+export const COLOR_PAUSA = '#a855f7'
+
 // ── Filtros finos (Área / Prioridad / Tipo de Paro) ──────────────────────────
 export interface FiltrosFinos {
   area: string // 'Todas' = sin filtro

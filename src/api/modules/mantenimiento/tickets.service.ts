@@ -18,6 +18,9 @@ import {
   ITicketResumen,
   ITiempoMecanico,
   IActivoPeriodo,
+  IEsperaAnatomia,
+  IPausaMotivo,
+  IPausaDetalle,
 } from './tickets.types'
 import { MantenimientoPeriodo } from '../sharepoint/mantenimiento.types'
 
@@ -122,6 +125,23 @@ export const ticketsService = {
   // Ranking de activos/máquinas por período (minutos de mantenimiento + costo de repuestos).
   getActivos: (desde: string, hasta: string) =>
     httpClient.get<ExecutionResponse<IActivoPeriodo[]>>(`${schema}/Activos`, { desde, hasta }),
+
+  // ── Pestaña "Análisis" ──────────────────────────────────────────────────────
+  // Estos KPIs se agregan en SQL (no hay filas crudas que filtrar en el cliente),
+  // así que el toggle Máquina/Área viaja al servidor como tipoDestino; 'Todos' va
+  // como undefined y el SP lo interpreta como "sin filtro".
+
+  // Anatomía del paro: espera / trabajo / pausa, por total, hora, día, área y prioridad.
+  getEsperaAnatomia: (desde: string, hasta: string, tipoDestino?: string) =>
+    httpClient.get<ExecutionResponse<IEsperaAnatomia[]>>(`${schema}/EsperaAnatomia`, { desde, hasta, tipoDestino }),
+
+  // Minutos de paro por motivo de pausa (el motivo es obligatorio al pausar).
+  getPausasPorMotivo: (desde: string, hasta: string, tipoDestino?: string) =>
+    httpClient.get<ExecutionResponse<IPausaMotivo[]>>(`${schema}/PausasPorMotivo`, { desde, hasta, tipoDestino }),
+
+  // Pausas por mecánico y máquina: quién pausó, en qué activo y por qué motivo.
+  getPausasDetalle: (desde: string, hasta: string, tipoDestino?: string) =>
+    httpClient.get<ExecutionResponse<IPausaDetalle[]>>(`${schema}/PausasDetalle`, { desde, hasta, tipoDestino }),
 
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>
