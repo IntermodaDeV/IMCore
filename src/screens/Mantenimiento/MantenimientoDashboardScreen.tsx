@@ -6,7 +6,7 @@ import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
-import { ITiempoMecanico, IActivoPeriodo } from '../../api/modules/mantenimiento/tickets.types'
+import { ITiempoMecanico, IActivoPeriodo, IMttr } from '../../api/modules/mantenimiento/tickets.types'
 import { MantenimientoPeriodo } from '../../api/modules/sharepoint/mantenimiento.types'
 import { usePeriodo, PeriodoFiltro, fmtLocal } from './periodo'
 import {
@@ -569,6 +569,11 @@ function TabTiempos({ desde, hasta }: { desde: string; hasta: string }) {
           </SectionCard>
         </>
       )}
+
+      {/* FUERA del condicional de arriba a propósito: el MTTR es otra consulta y
+          tiene su propio estado de carga/vacío. Si fuera adentro, un período sin
+          minutos registrados lo esconderría aunque sí hubiera reparaciones. */}
+      <BloqueMttr desde={desde} hasta={hasta} agrupar="MECANICO" />
     </YStack>
   )
 }
@@ -605,6 +610,146 @@ function BarraActivo({
 
 const AZUL_COSTO = '#0ea5e9'
 const TOP_ACTIVOS = 15
+
+// ════════ MTTR (Mean Time To Repair) ════════
+// El MISMO indicador en dos cortes: por mecánico (va en la pestaña Tiempos) y por
+// modelo de máquina (en Activos). El SP devuelve las mismas columnas para los dos.
+//
+// MTTR = del inicio de la reparación a su cierre, con las pausas dentro (esperar un
+// repuesto es parte de lo que tardó) pero SIN el tramo reporte → inicio (eso es
+// despacho) ni la espera del reproceso (el rato que el ticket pasa completado hasta
+// que producción lo rechaza). Ese último descuento lo hace el SP y es lo que evita
+// culpar al mecánico de la demora de quien valida.
+//
+// Con menos de estas reparaciones el promedio no describe nada: la fila se muestra
+// igual pero atenuada y fuera del ranking.
+const MTTR_MIN_REP = 3
+const TOP_MTTR = 12
+const ROJO_MTTR = '#b91c1c'
+const VERDE_MTTR = '#22c55e'
+
+function BloqueMttr({
+  desde,
+  hasta,
+  agrupar,
+}: {
+  desde: string
+  hasta: string
+  agrupar: 'MECANICO' | 'MODELO'
+}) {
+  const [filas, setFilas] = useState<IMttr[]>([])
+  const [cargando, setCargando] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      setCargando(true)
+      try {
+        const resp = await ticketsService.getMttr(desde, hasta, agrupar)
+        if (vivo) setFilas(resp.Success && resp.Data ? resp.Data : [])
+      } catch {
+        if (vivo) setFilas([])
+      } finally {
+        if (vivo) setCargando(false)
+      }
+    })()
+    return () => { vivo = false }
+  }, [desde, hasta, agrupar])
+
+  const porMecanico = agrupar === 'MECANICO'
+  const titulo = porMecanico ? '🔧 MTTR por mecánico' : '🔧 MTTR por modelo de máquina'
+
+  // Los totales del período vienen denormalizados en cada fila (iguales en todas).
+  const global = filas[0]?.MttrGlobalMin ?? 0
+  const totalRep = filas[0]?.ReparacionesTotal ?? 0
+  const confiables = useMemo(() => filas.filter(f => f.Reparaciones >= MTTR_MIN_REP), [filas])
+  const ranking = useMemo(() => confiables.slice(0, TOP_MTTR), [confiables])
+  const escasos = filas.length - confiables.length
+  const maxMttr = ranking.length ? Math.max(...ranking.map(f => f.MttrMin), 1) : 1
+  const conReproceso = filas.reduce((a, f) => a + f.ConReproceso, 0)
+
+  if (cargando)
+    return (
+      <YStack height={140} alignItems="center" justifyContent="center">
+        <Spinner size="large" color={ACCENT} />
+      </YStack>
+    )
+
+  if (!filas.length)
+    return (
+      <SectionCard titulo={titulo} ejeX="Del inicio de la reparación a su cierre">
+        <Text fontSize={12} color="$textMuted">No hay reparaciones cerradas en este período.</Text>
+      </SectionCard>
+    )
+
+  return (
+    <YStack gap="$3">
+      <XStack flexWrap="wrap" gap="$2">
+        <KpiCard titulo="MTTR del período" valor={`${global.toLocaleString()} min`} />
+        <KpiCard titulo="Reparaciones" valor={totalRep.toLocaleString()} />
+        <KpiCard titulo="Reprocesadas" valor={conReproceso.toLocaleString()} />
+      </XStack>
+
+      <SectionCard
+        titulo={titulo}
+        ejeX={`Inicio → cierre, sin la espera del reproceso · promedio ${global.toLocaleString()} min`}
+      >
+        {!ranking.length ? (
+          <Text fontSize={12} color="$textMuted">
+            Nadie alcanza {MTTR_MIN_REP} reparaciones en el período.
+          </Text>
+        ) : (
+          <YStack gap="$3">
+            {ranking.map(f => {
+              // Verde a quien tarda menos que el promedio del equipo: el MTTR no
+              // tiene meta configurada, así que la referencia es el propio período.
+              const bajoPromedio = global > 0 && f.MttrMin <= global
+              const pie = [
+                f.MttrMedianaMin != null ? `mediana ${f.MttrMedianaMin.toLocaleString()} min` : null,
+                f.NetoPromMin > 0 ? `neto ${f.NetoPromMin.toLocaleString()} min` : null,
+                f.ConReproceso > 0 ? `${f.ConReproceso} reproceso${f.ConReproceso === 1 ? '' : 's'}` : null,
+                f.RepMas24h > 0 ? `⚠ ${f.RepMas24h} de +24 h` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+              return (
+                <BarraActivo
+                  key={f.Clave ?? f.Nombre ?? String(f.MttrMin)}
+                  titulo={f.Nombre || f.Clave || '—'}
+                  // El denominador que le da sentido al promedio, distinto en cada
+                  // corte: la variedad que atiende el mecánico, o en cuántas máquinas
+                  // del modelo se repartieron esas reparaciones.
+                  subtitulo={
+                    `${f.Reparaciones} ${f.Reparaciones === 1 ? 'reparación' : 'reparaciones'}` +
+                    (porMecanico
+                      ? ` · ${f.ModelosDistintos} ${f.ModelosDistintos === 1 ? 'modelo' : 'modelos'}`
+                      : ` · ${f.MaquinasDistintas} ${f.MaquinasDistintas === 1 ? 'máquina' : 'máquinas'}`)
+                  }
+                  valor={`${f.MttrMin.toLocaleString()} min`}
+                  pct={(f.MttrMin / maxMttr) * 100}
+                  color={bajoPromedio ? VERDE_MTTR : ROJO_MTTR}
+                  pie={pie || undefined}
+                />
+              )
+            })}
+          </YStack>
+        )}
+        {/* Nada se recorta en silencio: si quedaron filas fuera, se dice cuántas. */}
+        {escasos > 0 && (
+          <Text fontSize={10} color="$textMuted" marginTop="$2">
+            {escasos === 1 ? 'Hay 1 fila con' : `Hay ${escasos} filas con`} menos de {MTTR_MIN_REP} reparaciones: no
+            entran al ranking porque con tan pocos casos el promedio no describe nada.
+          </Text>
+        )}
+        {confiables.length > TOP_MTTR && (
+          <Text fontSize={10} color="$textMuted" marginTop="$1">
+            Se muestran los {TOP_MTTR} más lentos de {confiables.length}.
+          </Text>
+        )}
+      </SectionCard>
+    </YStack>
+  )
+}
 
 function TabActivos({ desde, hasta }: { desde: string; hasta: string }) {
   const [activos, setActivos] = useState<IActivoPeriodo[]>([])
@@ -684,6 +829,10 @@ function TabActivos({ desde, hasta }: { desde: string; hasta: string }) {
           </SectionCard>
         </>
       )}
+
+      {/* Mismo indicador que en Tiempos, cortado por modelo: aquí la pregunta no es
+          quién tarda más, sino qué modelo de máquina cuesta más reparar. */}
+      <BloqueMttr desde={desde} hasta={hasta} agrupar="MODELO" />
     </YStack>
   )
 }

@@ -17,6 +17,7 @@ import {
   ITicketEvento,
   ITicketResumen,
   ITiempoMecanico,
+  IMttr,
   IActivoPeriodo,
   IEsperaAnatomia,
   IPausaMotivo,
@@ -121,6 +122,11 @@ export const ticketsService = {
   // Atribuido a quien realmente trabajó (no al asignado actual). Mismo período que Dashboard.
   getTiempoMecanicos: (desde: string, hasta: string) =>
     httpClient.get<ExecutionResponse<ITiempoMecanico[]>>(`${schema}/TiempoMecanicos`, { desde, hasta }),
+
+  // MTTR de las reparaciones cerradas en el período. agrupar = 'MECANICO' (quien la
+  // cerró) o 'MODELO'; los dos cortes traen las mismas columnas.
+  getMttr: (desde: string, hasta: string, agrupar: 'MECANICO' | 'MODELO' = 'MECANICO') =>
+    httpClient.get<ExecutionResponse<IMttr[]>>(`${schema}/Mttr`, { desde, hasta, agrupar }),
 
   // Ranking de activos/máquinas por período (minutos de mantenimiento + costo de repuestos).
   getActivos: (desde: string, hasta: string) =>
