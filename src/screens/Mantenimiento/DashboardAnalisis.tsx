@@ -290,7 +290,10 @@ function TitularParo({
   const total = actual.datos.find(r => r.Dim === 'TOTAL')
   const prev = previo.datos.find(r => r.Dim === 'TOTAL')
 
-  if (!total || !total.ParoMin) {
+  // Se avisa "sin datos" solo si no hay NADA. Antes bastaba con ParoMin = 0, y eso
+  // tapaba un período donde todos los tickets siguen abiertos: no hay cierres (paro 0)
+  // pero sí trabajo y pausa acumulados.
+  if (!total || (!total.ParoMin && !total.EsperaMin && !total.TrabajoMin && !total.PausaMin)) {
     return (
       <SectionCard titulo="Anatomía del paro del período">
         <Text fontSize={12} color="$textMuted">
@@ -300,14 +303,25 @@ function TitularParo({
     )
   }
 
-  const pctEspera = pctDe(total.EsperaMin, total.ParoMin)
-  const pctTrabajo = pctDe(total.TrabajoMin, total.ParoMin)
-  // El resto, para que los tres tramos siempre sumen 100 aunque se redondee.
-  const pctPausa = Math.max(0, 100 - pctEspera - pctTrabajo)
+  /* Los tres porcentajes se sacan sobre la SUMA DE LOS TRAMOS y no sobre ParoMin.
+     ParoMin suma reporte→cierre de los tickets CERRADOS, mientras que trabajo y pausa
+     cuentan también lo que ya llevan los ABIERTOS, así que los tramos exceden al paro
+     (16% en la semana del 17-ago). Con ParoMin de denominador la espera daba 57% y el
+     trabajo 46% —103% entre los dos— y la pausa, que se sacaba como el RESTO, quedaba
+     negativa y se mostraba 0% aunque hubiera 9 h de pausa reales.
+     Ahora cada tramo se divide por el total de los tramos: los tres salen de sus
+     propios minutos y cierran en 100. Mismo criterio que el web. */
+  const totalTramos = total.EsperaMin + total.TrabajoMin + total.PausaMin
+  const pctEspera = pctDe(total.EsperaMin, totalTramos)
+  const pctTrabajo = pctDe(total.TrabajoMin, totalTramos)
+  const pctPausa = pctDe(total.PausaMin, totalTramos)
 
   // Variación contra el período anterior (null si no hay con qué comparar).
   const dParo = prev?.ParoMin ? variacion(total.ParoMin, prev.ParoMin) : null
-  const pctEsperaPrev = prev?.ParoMin ? pctDe(prev.EsperaMin, prev.ParoMin) : null
+  // El % del período anterior con el MISMO criterio: comparar contra otra base daría
+  // un delta inventado.
+  const tramosPrev = prev ? prev.EsperaMin + prev.TrabajoMin + prev.PausaMin : 0
+  const pctEsperaPrev = tramosPrev ? pctDe(prev!.EsperaMin, tramosPrev) : null
   const dPctEspera = pctEsperaPrev ? variacion(pctEspera, pctEsperaPrev) : null
 
   return (
