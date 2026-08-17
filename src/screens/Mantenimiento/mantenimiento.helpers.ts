@@ -74,13 +74,17 @@ export const puedeConfigRecordatorio = (roles?: RoleLike[] | null, access?: stri
   hasRole(roles, ROLES_CONFIG_RECORDATORIO) || hasAccess(access, 'ConfigRecordatorioTicket')
 
 // Ver el "pool" de TODOS los tickets: rol Mecánico/Técnico/Sup. Mtto/Admin, o
-// acceso 'AsignarTickets' (para descubrir y autoasignarse), o acceso
-// 'DespacharRepuestos' (el despachador ve todos los tickets en SOLO LECTURA: no
-// crea, edita ni opera; esas acciones se gatean aparte). Habilita el toggle
-// "Todos" en el listado. (El backend ya revalida el mismo alcance en SP_GetTickets.)
+// acceso 'AsignarTickets' (para descubrir y autoasignarse), 'DespacharRepuestos'
+// (el despachador ve todos los tickets en SOLO LECTURA: no crea, edita ni opera;
+// esas acciones se gatean aparte) o 'VerTodosTickets' (consulta pura: listado y
+// detalle con su QR, sin ninguna acción). Habilita el toggle "Todos" en el
+// listado. (El backend ya revalida el mismo alcance en SP_GetTickets.)
 const ROLES_POOL = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico']
 export const puedeVerPool = (roles?: RoleLike[] | null, access?: string | null) =>
-  hasRole(roles, ROLES_POOL) || hasAccess(access, 'AsignarTickets') || hasAccess(access, 'DespacharRepuestos')
+  hasRole(roles, ROLES_POOL) ||
+  hasAccess(access, 'AsignarTickets') ||
+  hasAccess(access, 'DespacharRepuestos') ||
+  hasAccess(access, 'VerTodosTickets')
 
 // Alcance inicial del listado de tickets. El despachador de repuestos no crea ni
 // tiene tickets propios, así que su pestaña "Míos" saldría vacía → arranca en
@@ -89,7 +93,9 @@ export const puedeVerPool = (roles?: RoleLike[] | null, access?: string | null) 
 const ROLES_PERSONALES = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico', 'Supervisor de Producción']
 export const scopeInicialTickets = (roles?: RoleLike[] | null, access?: string | null): 'mias' | 'todos' => {
   const tienePersonales = hasRole(roles, ROLES_PERSONALES) || hasAccess(access, 'CrearTickets')
-  return (!tienePersonales && hasAccess(access, 'DespacharRepuestos')) ? 'todos' : 'mias'
+  // Igual que el despachador, quien solo consulta no tiene tickets propios.
+  const soloMira = hasAccess(access, 'DespacharRepuestos') || hasAccess(access, 'VerTodosTickets')
+  return !tienePersonales && soloMira ? 'todos' : 'mias'
 }
 
 // Despachar: asignar un ticket a CUALQUIER mecánico/técnico. Sup. Mtto/Admin o

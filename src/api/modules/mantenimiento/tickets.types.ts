@@ -165,6 +165,48 @@ export interface ITiempoMecanico {
   MetaPeriodo: number
 }
 
+// MTTR de las reparaciones cerradas en el período (SP_GetMttr). Los MISMOS campos
+// para los dos cortes: Clave/Nombre son el mecánico que CERRÓ la reparación o el
+// modelo de máquina, según `agrupar`.
+//
+// MttrMin = inicio → cierre SIN la espera del reproceso: el rato que el ticket pasa
+// completado hasta que producción lo rechaza no es tiempo de reparación (en agosto,
+// un caso de 8 días le multiplicaba por 5 el promedio a un mecánico). Lo descontado
+// viene en ReprocesoPromMin, a la vista.
+export interface IMttr {
+  Clave: string | null
+  Nombre: string | null
+  Reparaciones: number
+  MttrMin: number
+  MttrMedianaMin: number | null   // la reparación TÍPICA
+  MejorMin: number
+  PeorMin: number
+  NetoPromMin: number             // trabajo activo, sin pausas
+  PausaPromMin: number
+  ParoPromMin: number             // reporte → cierre (suma el tiempo que nadie lo tomó)
+  ReprocesoPromMin: number        // espera de producción excluida del MTTR
+  ConReproceso: number
+  RepMas24h: number               // >24 h = ticket que quedó abierto, no una reparación
+  MaquinasDistintas: number
+  ModelosDistintos: number
+  MecanicosDistintos: number
+  MttrGlobalMin: number           // promedio del período completo (para comparar)
+  ReparacionesTotal: number
+  SinAtribuir: number
+}
+
+// Metas de minutos de PARO ya escaladas al período (SP_GetMetaParo). Son DOS
+// porque un área suma el paro de todas sus máquinas: la cifra de una máquina no le
+// sirve. null = la configuración está vacía o no es numérica; ahí no se muestra la
+// meta, en vez de comparar contra un default que nadie puso.
+export interface IMetaParo {
+  SemanasPeriodo: number
+  MetaActivoSemanal: number | null
+  MetaActivoPeriodo: number | null
+  MetaAreaSemanal: number | null
+  MetaAreaPeriodo: number | null
+}
+
 // Ranking de activos/máquinas por período (SP_GetActivosPeriodo). Sin meta.
 export interface IActivoPeriodo {
   NumeroMaquina: string | null
