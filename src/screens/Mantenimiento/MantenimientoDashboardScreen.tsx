@@ -29,6 +29,11 @@ import {
 import { HBarList, KpiCard, SectionCard, TabBar } from './components'
 import { DashboardAnalisis, EsperaAhora } from './DashboardAnalisis'
 
+// Prioridades del catálogo, en orden. Las dos primeras entran por defecto: un
+// ticket de prioridad Baja no cuenta como paro para producción. Mismo criterio y
+// mismos valores que el dashboard del web, para que los dos den lo mismo.
+const PRIORIDADES = ['Alta', 'Media', 'Baja'] as const
+
 // El ORDEN de esta lista es el orden de los tabs; cada pestaña se resuelve por su
 // `key`, no por su índice, para poder reordenarlas moviendo una sola línea.
 const TABS = [
@@ -77,6 +82,16 @@ export default function MantenimientoDashboardScreen() {
   const tabKey: TabKey = TABS[tab]?.key ?? 'resumen'
   // Toggle Máquina/Área (en cliente, sobre TipoDestino de los registros).
   const [tipoDest, setTipoDest] = useState<'Todos' | 'MAQUINA' | 'AREA'>('Todos')
+  // Prioridades incluidas en TODO el tablero. Los indicadores agregados en SQL la
+  // reciben como el parámetro @Prioridades; a los registros del período se les
+  // aplica en el cliente, igual que el toggle Máquina/Área.
+  const [prioridades, setPrioridades] = useState<string[]>(['Alta', 'Media'])
+  // Con las tres marcadas (o ninguna) se manda undefined: el SP lo lee como
+  // "sin filtro" y no arrastra un IN innecesario.
+  const prioridadParam = useMemo(
+    () => (prioridades.length === 0 || prioridades.length === PRIORIDADES.length ? undefined : prioridades.join(',')),
+    [prioridades],
+  )
   // Breve indicador de carga al cambiar el toggle Máquina/Área (filtrado en cliente).
   const [filtrando, setFiltrando] = useState(false)
 
@@ -122,13 +137,16 @@ export default function MantenimientoDashboardScreen() {
     setFiltrando(true)
     const t = setTimeout(() => setFiltrando(false), 300)
     return () => clearTimeout(t)
-  }, [tipoDest])
+  }, [tipoDest, prioridadParam])
 
   // ── Datos derivados ── (solo el toggle Máquina/Área filtra en cliente)
   const registros = useMemo(() => {
     const base = data?.Registros ?? []
-    return tipoDest === 'Todos' ? base : base.filter(r => r.TipoDestino === tipoDest)
-  }, [data, tipoDest])
+    const porTipo = tipoDest === 'Todos' ? base : base.filter(r => r.TipoDestino === tipoDest)
+    // Lista vacía = no filtrar (no "no mostrar nada"): dejar el tablero en blanco
+    // por deseleccionar todo sería un callejón sin salida.
+    return prioridades.length ? porTipo.filter(r => prioridades.includes(r.Prioridad ?? '')) : porTipo
+  }, [data, tipoDest, prioridades])
   const kpis = useMemo(() => calcularKpis(registros), [registros])
   const estado = useMemo(() => conteoEstado(registros), [registros])
   const prioridad = useMemo(() => conteoPrioridad(registros), [registros])
@@ -186,11 +204,49 @@ export default function MantenimientoDashboardScreen() {
           </Text>
           <Text fontSize={12} color="$text">
             📅 {periodo.etiqueta} · <Text fontWeight="700">{registros.length}</Text> registros
+            {prioridades.length > 0 && prioridades.length < PRIORIDADES.length
+              ? ` · ${prioridades.join(' + ')}`
+              : ' · todas las prioridades'}
           </Text>
         </YStack>
 
         {/* ── Filtro de período: Semana / Mes / Año + navegador ‹ › ── */}
         <PeriodoFiltro {...periodo} />
+
+        {/* ── Prioridades incluidas en TODO el tablero ──
+            A la vista y no en un desplegable a propósito: cambia todos los números,
+            así que tiene que verse siempre qué está sumando. Baja arranca apagada
+            porque no cuenta como paro; se prende para comparar. */}
+        <XStack gap="$2" alignItems="center" flexWrap="wrap">
+          <Text fontSize={11} color="$textMuted">Prioridad</Text>
+          {PRIORIDADES.map(pr => {
+            const on = prioridades.includes(pr)
+            return (
+              <View
+                key={pr}
+                onPress={() =>
+                  setPrioridades(prev => (prev.includes(pr) ? prev.filter(x => x !== pr) : [...prev, pr]))
+                }
+                pressStyle={{ opacity: 0.85 }}
+                backgroundColor={on ? colorPrioridad(pr) : 'transparent'}
+                borderWidth={1}
+                borderColor={on ? colorPrioridad(pr) : '$border'}
+                borderRadius="$10"
+                paddingHorizontal="$3"
+                height={28}
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Text fontSize={12} fontWeight="700" color={on ? '#fff' : '$textMuted'}>{pr}</Text>
+              </View>
+            )
+          })}
+        </XStack>
+        {prioridades.length === 0 && (
+          <Text fontSize={10} color="$textMuted">
+            Sin prioridades marcadas se muestran todas. Marcá al menos una para acotar el tablero.
+          </Text>
+        )}
 
         {/* ── Toggle Máquina / Área (separa los tickets por tipo de destino) ── */}
         <XStack backgroundColor="$backgroundHover" borderRadius="$4" padding={3} gap={3}>
@@ -230,13 +286,14 @@ export default function MantenimientoDashboardScreen() {
             desdePrev={desdePrev}
             hastaPrev={hastaPrev}
             tipoDest={tipoDest}
+            prioridades={prioridadParam}
           />
         ) : tabKey === 'tiempos' ? (
           // Tiempos: datos por evento, mismo período que el filtro de arriba.
-          <TabTiempos desde={desde} hasta={hasta} />
+          <TabTiempos desde={desde} hasta={hasta} prioridades={prioridadParam} />
         ) : tabKey === 'activos' ? (
           // Activos: datos por evento/costo, mismo período que el filtro de arriba.
-          <TabActivos desde={desde} hasta={hasta} />
+          <TabActivos desde={desde} hasta={hasta} prioridades={prioridadParam} />
         ) : registros.length === 0 ? (
           <YStack height={160} alignItems="center" justifyContent="center">
             <Text color="$textMuted" fontSize={13}>
@@ -302,7 +359,7 @@ export default function MantenimientoDashboardScreen() {
 }
 
 // ════════ TAB: Resumen ════════
-function TabResumen({ kpis, estado, prioridad, chartWidth, desde, hasta, tipoDest, recarga }: any) {
+function TabResumen({ kpis, estado, prioridad, chartWidth, desde, hasta, tipoDest, prioridades, recarga }: any) {
   const theme = useTheme()
   const txt = theme.text?.val ?? '#0F172A'
   const muted = theme.textMuted?.val ?? '#94A3B8'
@@ -371,7 +428,7 @@ function TabResumen({ kpis, estado, prioridad, chartWidth, desde, hasta, tipoDes
       </SectionCard>
 
       {/* Lo que está detenido AHORA (no depende del período de arriba). */}
-      <EsperaAhora desde={desde} hasta={hasta} tipoDest={tipoDest} recarga={recarga} />
+      <EsperaAhora desde={desde} hasta={hasta} tipoDest={tipoDest} prioridades={prioridades} recarga={recarga} />
 
       <SectionCard titulo="Tickets por Prioridad" ejeX="Cantidad">
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -481,7 +538,7 @@ function fmtHM(min: number) {
   return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
-function TabTiempos({ desde, hasta }: { desde: string; hasta: string }) {
+function TabTiempos({ desde, hasta, prioridades }: { desde: string; hasta: string; prioridades?: string }) {
   const VERDE = '#22c55e'
   const [tiempos, setTiempos] = useState<ITiempoMecanico[]>([])
   const [cargando, setCargando] = useState(false)
@@ -491,7 +548,7 @@ function TabTiempos({ desde, hasta }: { desde: string; hasta: string }) {
     ;(async () => {
       setCargando(true)
       try {
-        const resp = await ticketsService.getTiempoMecanicos(desde, hasta)
+        const resp = await ticketsService.getTiempoMecanicos(desde, hasta, prioridades)
         if (vivo) setTiempos(resp.Success && resp.Data ? resp.Data : [])
       } catch {
         if (vivo) setTiempos([])
@@ -500,7 +557,7 @@ function TabTiempos({ desde, hasta }: { desde: string; hasta: string }) {
       }
     })()
     return () => { vivo = false }
-  }, [desde, hasta])
+  }, [desde, hasta, prioridades])
 
   const metaSemanal = tiempos[0]?.MetaSemanal ?? 0
   const semanas = tiempos[0]?.SemanasPeriodo ?? 0
@@ -573,7 +630,7 @@ function TabTiempos({ desde, hasta }: { desde: string; hasta: string }) {
       {/* FUERA del condicional de arriba a propósito: el MTTR es otra consulta y
           tiene su propio estado de carga/vacío. Si fuera adentro, un período sin
           minutos registrados lo esconderría aunque sí hubiera reparaciones. */}
-      <BloqueMttr desde={desde} hasta={hasta} agrupar="MECANICO" />
+      <BloqueMttr desde={desde} hasta={hasta} agrupar="MECANICO" prioridades={prioridades} />
     </YStack>
   )
 }
@@ -632,10 +689,12 @@ function BloqueMttr({
   desde,
   hasta,
   agrupar,
+  prioridades,
 }: {
   desde: string
   hasta: string
   agrupar: 'MECANICO' | 'MODELO'
+  prioridades?: string
 }) {
   const [filas, setFilas] = useState<IMttr[]>([])
   const [cargando, setCargando] = useState(false)
@@ -645,7 +704,7 @@ function BloqueMttr({
     ;(async () => {
       setCargando(true)
       try {
-        const resp = await ticketsService.getMttr(desde, hasta, agrupar)
+        const resp = await ticketsService.getMttr(desde, hasta, agrupar, prioridades)
         if (vivo) setFilas(resp.Success && resp.Data ? resp.Data : [])
       } catch {
         if (vivo) setFilas([])
@@ -654,7 +713,7 @@ function BloqueMttr({
       }
     })()
     return () => { vivo = false }
-  }, [desde, hasta, agrupar])
+  }, [desde, hasta, agrupar, prioridades])
 
   const porMecanico = agrupar === 'MECANICO'
   const titulo = porMecanico ? '🔧 MTTR por mecánico' : '🔧 MTTR por modelo de máquina'
@@ -751,7 +810,7 @@ function BloqueMttr({
   )
 }
 
-function TabActivos({ desde, hasta }: { desde: string; hasta: string }) {
+function TabActivos({ desde, hasta, prioridades }: { desde: string; hasta: string; prioridades?: string }) {
   const [activos, setActivos] = useState<IActivoPeriodo[]>([])
   const [cargando, setCargando] = useState(false)
 
@@ -760,7 +819,7 @@ function TabActivos({ desde, hasta }: { desde: string; hasta: string }) {
     ;(async () => {
       setCargando(true)
       try {
-        const resp = await ticketsService.getActivos(desde, hasta)
+        const resp = await ticketsService.getActivos(desde, hasta, prioridades)
         if (vivo) setActivos(resp.Success && resp.Data ? resp.Data : [])
       } catch {
         if (vivo) setActivos([])
@@ -769,7 +828,7 @@ function TabActivos({ desde, hasta }: { desde: string; hasta: string }) {
       }
     })()
     return () => { vivo = false }
-  }, [desde, hasta])
+  }, [desde, hasta, prioridades])
 
   // El SP ya viene ordenado por minutos; el costo lo reordenamos y filtramos > 0.
   const porMinutos = useMemo(() => activos.filter(a => a.MinNetos > 0).slice(0, TOP_ACTIVOS), [activos])
@@ -832,7 +891,7 @@ function TabActivos({ desde, hasta }: { desde: string; hasta: string }) {
 
       {/* Mismo indicador que en Tiempos, cortado por modelo: aquí la pregunta no es
           quién tarda más, sino qué modelo de máquina cuesta más reparar. */}
-      <BloqueMttr desde={desde} hasta={hasta} agrupar="MODELO" />
+      <BloqueMttr desde={desde} hasta={hasta} agrupar="MODELO" prioridades={prioridades} />
     </YStack>
   )
 }

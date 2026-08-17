@@ -18,6 +18,7 @@ import {
   ITicketResumen,
   ITiempoMecanico,
   IMttr,
+  IMetaParo,
   IActivoPeriodo,
   IEsperaAnatomia,
   IPausaMotivo,
@@ -120,17 +121,23 @@ export const ticketsService = {
 
   // Minutos netos de trabajo por mecánico en el período (pestaña "Tiempos").
   // Atribuido a quien realmente trabajó (no al asignado actual). Mismo período que Dashboard.
-  getTiempoMecanicos: (desde: string, hasta: string) =>
-    httpClient.get<ExecutionResponse<ITiempoMecanico[]>>(`${schema}/TiempoMecanicos`, { desde, hasta }),
+  getTiempoMecanicos: (desde: string, hasta: string, prioridades?: string) =>
+    httpClient.get<ExecutionResponse<ITiempoMecanico[]>>(`${schema}/TiempoMecanicos`, { desde, hasta, prioridades }),
 
   // MTTR de las reparaciones cerradas en el período. agrupar = 'MECANICO' (quien la
   // cerró) o 'MODELO'; los dos cortes traen las mismas columnas.
-  getMttr: (desde: string, hasta: string, agrupar: 'MECANICO' | 'MODELO' = 'MECANICO') =>
-    httpClient.get<ExecutionResponse<IMttr[]>>(`${schema}/Mttr`, { desde, hasta, agrupar }),
+  getMttr: (desde: string, hasta: string, agrupar: 'MECANICO' | 'MODELO' = 'MECANICO', prioridades?: string) =>
+    httpClient.get<ExecutionResponse<IMttr[]>>(`${schema}/Mttr`, { desde, hasta, agrupar, prioridades }),
+
+  // Metas de minutos de paro ya escaladas al período (una fila, dos metas: por
+  // máquina y por área). No lleva prioridades: no lee tickets, solo la
+  // configuración global y las semanas del rango.
+  getMetaParo: (desde: string, hasta: string) =>
+    httpClient.get<ExecutionResponse<IMetaParo[]>>(`${schema}/MetaParo`, { desde, hasta }),
 
   // Ranking de activos/máquinas por período (minutos de mantenimiento + costo de repuestos).
-  getActivos: (desde: string, hasta: string) =>
-    httpClient.get<ExecutionResponse<IActivoPeriodo[]>>(`${schema}/Activos`, { desde, hasta }),
+  getActivos: (desde: string, hasta: string, prioridades?: string) =>
+    httpClient.get<ExecutionResponse<IActivoPeriodo[]>>(`${schema}/Activos`, { desde, hasta, prioridades }),
 
   // ── Pestaña "Análisis" ──────────────────────────────────────────────────────
   // Estos KPIs se agregan en SQL (no hay filas crudas que filtrar en el cliente),
@@ -138,16 +145,16 @@ export const ticketsService = {
   // como undefined y el SP lo interpreta como "sin filtro".
 
   // Anatomía del paro: espera / trabajo / pausa, por total, hora, día, área y prioridad.
-  getEsperaAnatomia: (desde: string, hasta: string, tipoDestino?: string) =>
-    httpClient.get<ExecutionResponse<IEsperaAnatomia[]>>(`${schema}/EsperaAnatomia`, { desde, hasta, tipoDestino }),
+  getEsperaAnatomia: (desde: string, hasta: string, tipoDestino?: string, prioridades?: string) =>
+    httpClient.get<ExecutionResponse<IEsperaAnatomia[]>>(`${schema}/EsperaAnatomia`, { desde, hasta, tipoDestino, prioridades }),
 
   // Minutos de paro por motivo de pausa (el motivo es obligatorio al pausar).
-  getPausasPorMotivo: (desde: string, hasta: string, tipoDestino?: string) =>
-    httpClient.get<ExecutionResponse<IPausaMotivo[]>>(`${schema}/PausasPorMotivo`, { desde, hasta, tipoDestino }),
+  getPausasPorMotivo: (desde: string, hasta: string, tipoDestino?: string, prioridades?: string) =>
+    httpClient.get<ExecutionResponse<IPausaMotivo[]>>(`${schema}/PausasPorMotivo`, { desde, hasta, tipoDestino, prioridades }),
 
   // Pausas por mecánico y máquina: quién pausó, en qué activo y por qué motivo.
-  getPausasDetalle: (desde: string, hasta: string, tipoDestino?: string) =>
-    httpClient.get<ExecutionResponse<IPausaDetalle[]>>(`${schema}/PausasDetalle`, { desde, hasta, tipoDestino }),
+  getPausasDetalle: (desde: string, hasta: string, tipoDestino?: string, prioridades?: string) =>
+    httpClient.get<ExecutionResponse<IPausaDetalle[]>>(`${schema}/PausasDetalle`, { desde, hasta, tipoDestino, prioridades }),
 
   // ── Catálogos / cascadas ────────────────────────────────────────────────────
   getMecanicos: () =>

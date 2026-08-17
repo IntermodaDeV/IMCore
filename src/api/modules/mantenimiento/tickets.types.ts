@@ -195,6 +195,18 @@ export interface IMttr {
   SinAtribuir: number
 }
 
+// Metas de minutos de PARO ya escaladas al período (SP_GetMetaParo). Son DOS
+// porque un área suma el paro de todas sus máquinas: la cifra de una máquina no le
+// sirve. null = la configuración está vacía o no es numérica; ahí no se muestra la
+// meta, en vez de comparar contra un default que nadie puso.
+export interface IMetaParo {
+  SemanasPeriodo: number
+  MetaActivoSemanal: number | null
+  MetaActivoPeriodo: number | null
+  MetaAreaSemanal: number | null
+  MetaAreaPeriodo: number | null
+}
+
 // Ranking de activos/máquinas por período (SP_GetActivosPeriodo). Sin meta.
 export interface IActivoPeriodo {
   NumeroMaquina: string | null
