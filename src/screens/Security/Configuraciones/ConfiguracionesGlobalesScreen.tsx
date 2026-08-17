@@ -53,6 +53,20 @@ const CONFIG_META: Record<
     kind: 'number',
     unidad: 'min/sem',
   },
+  // Líneas de referencia de los gráficos de paro del dashboard web. Van acá también
+  // para que no caigan en el fallback 'bool', que las dejaría en 1 o 0 minutos.
+  // Son DOS porque un área suma el paro de todas sus máquinas: la cifra de una
+  // máquina no le sirve (con 240 min, 12 de 15 áreas la pasaban).
+  'Mtto.MetaMinutosParoActivoSemanal': {
+    label: 'Meta de minutos de paro por MÁQUINA (semanal)',
+    kind: 'number',
+    unidad: 'min/sem',
+  },
+  'Mtto.MetaMinutosParoAreaSemanal': {
+    label: 'Meta de minutos de paro por ÁREA (semanal)',
+    kind: 'number',
+    unidad: 'min/sem',
+  },
   // Tarifa de mano de obra del dashboard web. Sin esta entrada caería en el
   // fallback 'bool' y el interruptor la dejaría en 1 o 0 lempiras por hora.
   'Mtto.CostoHoraMecanico': {
