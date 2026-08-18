@@ -1,6 +1,7 @@
 import { navigateWhenReady } from '../navigation/navigationRef'
 import { requestOpenPass } from './passNavigation'
 import { requestOpenPaseAprobacion } from './paseNavigation'
+import { requestOpenHistorialHoraExtra, requestOpenSolicitudHoraExtra } from './overtimeNavigation'
 
 // Enruta una notificación (push o bandeja) a su pantalla de detalle según la
 // categoría. `data` es el payload de la notificación (FCM data o el Data del inbox).
@@ -38,6 +39,47 @@ export function routeNotification(data: any): boolean {
   // Resultado del pase (aprobado/rechazado/registrado) -> Mis pases
   if (category === 'pase_estado') {
     navigateWhenReady('paseHistorial')
+    return true
+  }
+
+  // Solicitud de horas extra esperando firma -> bandeja de aprobación, con la
+  // solicitud resaltada un momento para no tener que buscarla en la lista.
+  if (category === 'horas_extra_aprobacion') {
+    const requestId = Number(data.requestId ?? data.RequestId)
+    navigateWhenReady('RequestHours')
+    if (requestId > 0) requestOpenSolicitudHoraExtra(requestId)
+    return true
+  }
+
+  // Rechazo -> historial. La bandeja de aprobación no sirve acá: el solicitante
+  // no aprueba nada, y su solicitud rechazada solo existe en el historial.
+  if (category === 'horas_extra_rechazo') {
+    const requestId = Number(data.requestId ?? data.RequestId)
+    navigateWhenReady('HistoryHours')
+    if (requestId > 0) requestOpenHistorialHoraExtra(requestId)
+    return true
+  }
+
+  // Aprobada por todas las entidades -> historial, que es donde queda.
+  if (category === 'horas_extra_completada') {
+    const requestId = Number(data.requestId ?? data.RequestId)
+    navigateWhenReady('HistoryHours')
+    if (requestId > 0) requestOpenHistorialHoraExtra(requestId)
+    return true
+  }
+
+  // Segundo flujo: una diferencia espera autorización -> su propia bandeja.
+  if (category === 'horas_extra_revision') {
+    navigateWhenReady('ReviewHours')
+    return true
+  }
+
+  // Segundo flujo resuelto -> historial. Quien mandó la diferencia no aprueba
+  // nada, así que la bandeja de autorización no le sirve.
+  if (category === 'horas_extra_revision_resultado') {
+    const requestId = Number(data.requestId ?? data.RequestId)
+    navigateWhenReady('HistoryHours')
+    if (requestId > 0) requestOpenHistorialHoraExtra(requestId)
     return true
   }
 

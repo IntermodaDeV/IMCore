@@ -1,4 +1,4 @@
-import { DoorOpen, ShoppingCart, Bell, CheckCheck } from 'lucide-react-native'
+import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale } from 'lucide-react-native'
 import type { NotificationCategory } from '../api/modules/notifications/notifications.service'
 
 /**
@@ -43,6 +43,36 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
     Icon: DoorOpen,
     color: '#15803D',
     bg: 'rgba(34,197,94,0.12)',
+  },
+  horas_extra_aprobacion: {
+    label: 'Aprobación de horas extra',
+    Icon: Clock,
+    color: '#0284C7',
+    bg: 'rgba(2,132,199,0.12)',
+  },
+  horas_extra_rechazo: {
+    label: 'Horas extra rechazadas',
+    Icon: CircleX,
+    color: '#DC2626',
+    bg: 'rgba(220,38,38,0.12)',
+  },
+  horas_extra_completada: {
+    label: 'Horas extra aprobadas',
+    Icon: CircleCheck,
+    color: '#15803D',
+    bg: 'rgba(34,197,94,0.12)',
+  },
+  horas_extra_revision: {
+    label: 'Diferencia de horas',
+    Icon: Scale,
+    color: '#B45309',
+    bg: 'rgba(245,158,11,0.12)',
+  },
+  horas_extra_revision_resultado: {
+    label: 'Revisión de horas resuelta',
+    Icon: Scale,
+    color: '#7C3AED',
+    bg: 'rgba(124,58,237,0.12)',
   },
 }
 
