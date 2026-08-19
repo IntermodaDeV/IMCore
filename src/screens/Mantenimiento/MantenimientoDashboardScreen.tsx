@@ -646,7 +646,7 @@ function ColaValidacion({
 
   if (cargando) {
     return (
-      <SectionCard titulo="✅ Esperando validación">
+      <SectionCard titulo="⏳ Validación de producción">
         <YStack height={100} alignItems="center" justifyContent="center">
           <Spinner size="large" color={ACCENT} />
         </YStack>
@@ -655,7 +655,7 @@ function ColaValidacion({
   }
   if (error) {
     return (
-      <SectionCard titulo="✅ Esperando validación">
+      <SectionCard titulo="⏳ Validación de producción">
         <Text fontSize={12} color="$textMuted">
           {error}
         </Text>
@@ -714,15 +714,23 @@ function ColaValidacion({
         />
       </XStack>
 
+      {/* El título dice QUIÉN DEBÍA actuar y qué pasó por no hacerlo. El anterior
+          ("Se cerraron solos, por supervisor") se leía como que el supervisor los había
+          cerrado, y encima llevaba una palomita verde en un indicador que mide
+          INCUMPLIMIENTO del visto bueno. */}
       <SectionCard
-        titulo="✅ Se cerraron solos, por supervisor"
-        ejeX="Tickets a los que venció el plazo sin validar · el supervisor es quien reportó la falla"
+        titulo="⚠️ Nadie los validó y los cerró el sistema"
+        ejeX={`Por supervisor que reportó la falla · se le venció el plazo${
+          plazo != null ? ` de ${plazo} h` : ''
+        } sin revisarlos`}
       >
         <HBarList
           datos={porSupervisor.map(f => ({
-            label: `${f.Supervisor || f.Supervisor_UserCode || '—'} (${
-              f.PctCumplimiento != null ? `${Math.round(f.PctCumplimiento)}% validado` : 'sin validar'
-            }${f.PendientesDeValidar ? ` · ${f.PendientesDeValidar} en cola` : ''})`,
+            label: `${f.Supervisor || f.Supervisor_UserCode || '—'} (validó ${
+              f.PctCumplimiento != null ? `${Math.round(f.PctCumplimiento)}%` : '0%'
+            } de ${f.Completados}${
+              f.PendientesDeValidar ? ` · ${f.PendientesDeValidar} esperándolo ahora` : ''
+            })`,
             value: f.CerradosPorSistema,
           }))}
           escala={ESCALA_ROJA}
