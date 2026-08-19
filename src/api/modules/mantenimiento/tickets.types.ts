@@ -287,3 +287,19 @@ export interface ITicketEvento {
   Usuario: string | null
   Comentario: string | null
 }
+
+// Cumplimiento del SLA de validación por supervisor (SP_GetCumplimientoValidacion).
+// El supervisor es quien REPORTÓ el ticket, que es a quien le llega el aviso
+// "Ticket por validar". CerradosPorSistema = los que no validó dentro del plazo y
+// cerró el autovalidado. PlazoHoras null = el autovalidado está desactivado.
+export interface ICumplimientoValidacion {
+  Supervisor_UserCode: string | null
+  Supervisor: string | null
+  Completados: number
+  ValidadosPorPersona: number
+  CerradosPorSistema: number
+  PendientesDeValidar: number
+  PctCumplimiento: number | null
+  PromMinValidacion: number | null
+  PlazoHoras: number | null
+}

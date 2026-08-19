@@ -23,6 +23,7 @@ import {
   IEsperaAnatomia,
   IPausaMotivo,
   IPausaDetalle,
+  ICumplimientoValidacion,
 } from './tickets.types'
 import { MantenimientoPeriodo } from '../sharepoint/mantenimiento.types'
 
@@ -183,6 +184,18 @@ export const ticketsService = {
 
   getPrioridades: () =>
     httpClient.get<ExecutionResponse<IPrioridad[]>>(`${schema}/Prioridades`),
+
+  // Cumplimiento del SLA de validación, por supervisor que reportó el ticket.
+  getCumplimientoValidacion: (
+    desde: string,
+    hasta: string,
+    tipoDestino?: string,
+    prioridades?: string,
+  ) =>
+    httpClient.get<ExecutionResponse<ICumplimientoValidacion[]>>(
+      `${schema}/CumplimientoValidacion`,
+      { desde, hasta, tipoDestino, prioridades },
+    ),
 
   getTiposParo: (onlyActive: boolean = true) =>
     httpClient.get<ExecutionResponse<ITipoParo[]>>(`${schema}/TiposParo`, { onlyActive }),

@@ -5,9 +5,17 @@ import { ScrollView, Text, XStack, YStack, View, Spinner, Button, useTheme } fro
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
+import { useAuth } from '../../context/AuthContext'
 import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
-import { ITiempoMecanico, IActivoPeriodo, IMttr } from '../../api/modules/mantenimiento/tickets.types'
-import { MantenimientoPeriodo } from '../../api/modules/sharepoint/mantenimiento.types'
+import {
+  ITiempoMecanico,
+  IActivoPeriodo,
+  IMttr,
+  ITicket,
+  IMecanico,
+  ICumplimientoValidacion,
+} from '../../api/modules/mantenimiento/tickets.types'
+import { MantenimientoPeriodo, MantenimientoRegistro } from '../../api/modules/sharepoint/mantenimiento.types'
 import { usePeriodo, PeriodoFiltro, fmtLocal } from './periodo'
 import {
   ACCENT,
@@ -22,9 +30,11 @@ import {
   conteoTipoParo,
   colorEstado,
   colorPrioridad,
+  puedeVerPool,
   rangoAnterior,
   tendenciaPorDia,
   topN,
+  variacion,
 } from './mantenimiento.helpers'
 import { HBarList, KpiCard, SectionCard, TabBar } from './components'
 import { DashboardAnalisis, EsperaAhora } from './DashboardAnalisis'
@@ -33,6 +43,11 @@ import { DashboardAnalisis, EsperaAhora } from './DashboardAnalisis'
 // ticket de prioridad Baja no cuenta como paro para producción. Mismo criterio y
 // mismos valores que el dashboard del web, para que los dos den lo mismo.
 const PRIORIDADES = ['Alta', 'Media', 'Baja'] as const
+
+// Ámbar del aviso de "período en curso": no es un error, es una advertencia de lectura.
+const AMBAR = '#f59e0b'
+// Rojo del indicador que ya pasó de aviso a problema (el cierre automático).
+const ROJO_ALERTA = '#ef4444'
 
 // El ORDEN de esta lista es el orden de los tabs; cada pestaña se resuelve por su
 // `key`, no por su índice, para poder reordenarlas moviendo una sola línea.
@@ -61,6 +76,8 @@ export default function MantenimientoDashboardScreen() {
   const chartWidth = width - 90 // ancho de pantalla menos paddings de página + tarjeta
 
   const [data, setData] = useState<MantenimientoPeriodo | null>(null)
+  // Mismo payload del período ANTERIOR: es la base de comparación de las tarjetas.
+  const [dataPrev, setDataPrev] = useState<MantenimientoPeriodo | null>(null)
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,15 +115,21 @@ export default function MantenimientoDashboardScreen() {
   const fetchData = useCallback(async () => {
     setError(null)
     try {
-      const resp = await ticketsService.getDashboard(desde, hasta)
+      // El período anterior viaja en paralelo, solo para los deltas: si ese falla,
+      // el tablero sigue sirviendo y las tarjetas se muestran sin variación.
+      const [resp, respPrev] = await Promise.all([
+        ticketsService.getDashboard(desde, hasta),
+        ticketsService.getDashboard(desdePrev, hastaPrev),
+      ])
       if (!resp.Success || !resp.Data) {
         throw new Error(resp.ErrorMessage || 'No se pudo cargar la información.')
       }
       setData(resp.Data)
+      setDataPrev(respPrev.Success ? respPrev.Data ?? null : null)
     } catch (e: any) {
       setError(e?.message ?? 'Error al conectar con el servidor.')
     }
-  }, [desde, hasta])
+  }, [desde, hasta, desdePrev, hastaPrev])
 
   // Carga inicial y cada vez que cambia el período (desde/hasta).
   useEffect(() => {
@@ -140,14 +163,39 @@ export default function MantenimientoDashboardScreen() {
   }, [tipoDest, prioridadParam])
 
   // ── Datos derivados ── (solo el toggle Máquina/Área filtra en cliente)
-  const registros = useMemo(() => {
-    const base = data?.Registros ?? []
-    const porTipo = tipoDest === 'Todos' ? base : base.filter(r => r.TipoDestino === tipoDest)
-    // Lista vacía = no filtrar (no "no mostrar nada"): dejar el tablero en blanco
-    // por deseleccionar todo sería un callejón sin salida.
-    return prioridades.length ? porTipo.filter(r => prioridades.includes(r.Prioridad ?? '')) : porTipo
-  }, [data, tipoDest, prioridades])
+  // El filtro de cliente (toggle Máquina/Área + prioridades) se aplica IGUAL al
+  // período y al anterior: si no, los deltas compararían universos distintos.
+  const filtrarCliente = useCallback(
+    (base: MantenimientoRegistro[]) => {
+      const porTipo = tipoDest === 'Todos' ? base : base.filter(r => r.TipoDestino === tipoDest)
+      // Lista vacía = no filtrar (no "no mostrar nada"): dejar el tablero en blanco
+      // por deseleccionar todo sería un callejón sin salida.
+      return prioridades.length ? porTipo.filter(r => prioridades.includes(r.Prioridad ?? '')) : porTipo
+    },
+    [tipoDest, prioridades],
+  )
+  const registros = useMemo(() => filtrarCliente(data?.Registros ?? []), [data, filtrarCliente])
   const kpis = useMemo(() => calcularKpis(registros), [registros])
+  // null = todavía no hay período anterior cargado; las tarjetas no muestran delta.
+  const kpisPrev = useMemo(
+    () => (dataPrev ? calcularKpis(filtrarCliente(dataPrev.Registros ?? [])) : null),
+    [dataPrev, filtrarCliente],
+  )
+  // ¿El período todavía no terminó? Los deltas comparan contra el anterior
+  // COMPLETO, así que en el segundo día de siete un "-70%" es la semana a medias,
+  // no una mejora. La aritmética no se toca: se avisa al lado.
+  const enCurso = useMemo(() => {
+    const ahora = new Date()
+    if (periodo.hasta <= ahora) return null
+    const DIA = 864e5
+    const totales = Math.max(1, Math.round((periodo.hasta.getTime() - periodo.desde.getTime()) / DIA))
+    // Días EMPEZADOS, no terminados: el día en curso cuenta como uno.
+    const corridos = Math.min(
+      totales,
+      Math.max(1, Math.ceil((ahora.getTime() - periodo.desde.getTime()) / DIA)),
+    )
+    return { totales, corridos }
+  }, [periodo.desde, periodo.hasta])
   const estado = useMemo(() => conteoEstado(registros), [registros])
   const prioridad = useMemo(() => conteoPrioridad(registros), [registros])
   const areas = useMemo(() => conteoArea(registros), [registros])
@@ -208,6 +256,13 @@ export default function MantenimientoDashboardScreen() {
               ? ` · ${prioridades.join(' + ')}`
               : ' · todas las prioridades'}
           </Text>
+          {enCurso && (
+            <Text fontSize={11} color={AMBAR} marginTop={2} lineHeight={15}>
+              Período en curso
+              {enCurso.totales > 1 ? `: ${enCurso.corridos} de ${enCurso.totales} días` : ''} — los %
+              comparan contra el período anterior completo, así que todavía no son comparables.
+            </Text>
+          )}
         </YStack>
 
         {/* ── Filtro de período: Semana / Mes / Año + navegador ‹ › ── */}
@@ -305,12 +360,14 @@ export default function MantenimientoDashboardScreen() {
             {tabKey === 'resumen' && (
               <TabResumen
                 kpis={kpis}
+                kpisPrev={kpisPrev}
                 estado={estado}
                 prioridad={prioridad}
                 chartWidth={chartWidth}
                 desde={desde}
                 hasta={hasta}
                 tipoDest={tipoDest}
+                prioridades={prioridadParam}
                 recarga={recarga}
               />
             )}
@@ -359,13 +416,33 @@ export default function MantenimientoDashboardScreen() {
 }
 
 // ════════ TAB: Resumen ════════
-function TabResumen({ kpis, estado, prioridad, chartWidth, desde, hasta, tipoDest, prioridades, recarga }: any) {
+function TabResumen({
+  kpis,
+  kpisPrev,
+  estado,
+  prioridad,
+  chartWidth,
+  desde,
+  hasta,
+  tipoDest,
+  prioridades,
+  recarga,
+}: any) {
   const theme = useTheme()
   const txt = theme.text?.val ?? '#0F172A'
   const muted = theme.textMuted?.val ?? '#94A3B8'
   const grid = theme.border?.val ?? '#E2E8F0'
   const fmtMin = (n: number | null) => (n != null ? `${Math.round(n)} min` : '—')
   const pct = (n: number) => (kpis.total ? `${Math.round((n / kpis.total) * 100)}%` : '')
+  // Sin período anterior cargado no hay delta: la tarjeta no inventa una base.
+  const delta = (actual: number, anterior?: number | null) =>
+    kpisPrev && anterior != null ? variacion(actual, anterior) : null
+  // Cuántos tickets sin atender por máquina parada. Solo se muestra si aporta:
+  // con un ticket por máquina el dato es "1.0" y no dice nada.
+  const ticketsPorMaquina =
+    kpis.sinAtender > 0 && kpis.maquinasSinAtender > 0 && kpis.sinAtender !== kpis.maquinasSinAtender
+      ? `${(kpis.sinAtender / kpis.maquinasSinAtender).toFixed(1)} x máquina`
+      : null
   const totalEstado = estado.reduce((a: number, d: any) => a + d.value, 0) || 1
 
   const barWidth = 40;
@@ -376,20 +453,64 @@ function TabResumen({ kpis, estado, prioridad, chartWidth, desde, hasta, tipoDes
   return (
     <YStack gap="$3">
       <XStack flexWrap="wrap" gap="$2">
-        <KpiCard titulo="Total Tickets" valor={kpis.total.toLocaleString()} />
+        <KpiCard
+          titulo="Total Tickets"
+          valor={kpis.total.toLocaleString()}
+          delta={delta(kpis.total, kpisPrev?.total)}
+          hint="del período"
+          info="Tickets reportados en el período, contados por la fecha en que se reportó la falla."
+        />
         <KpiCard
           titulo="Sin Atender"
           valor={kpis.sinAtender.toLocaleString()}
           badge={{ text: pct(kpis.sinAtender) + ' del total', color: '#ef4444', up: true }}
+          delta={delta(kpis.sinAtender, kpisPrev?.sinAtender)}
+          invertido
+          info="Tickets que nadie ha empezado a trabajar todavía."
+        />
+        {/* Va pegada a "Sin Atender" a propósito: es el mismo universo contado en la
+            unidad que de verdad duele. Varios tickets pueden ser la MISMA máquina, y
+            lo que detiene la línea son máquinas, no papeles. */}
+        <KpiCard
+          titulo="Máquinas sin atender"
+          valor={kpis.maquinasSinAtender.toLocaleString()}
+          badge={
+            ticketsPorMaquina ? { text: ticketsPorMaquina, color: '#ef4444', up: true } : undefined
+          }
+          delta={delta(kpis.maquinasSinAtender, kpisPrev?.maquinasSinAtender)}
+          invertido
+          info="Máquinas distintas con al menos un ticket que nadie ha empezado. Si es menor que 'Sin Atender', hay máquinas con varios reportes abiertos. Los tickets de área no cuentan acá."
         />
         <KpiCard
           titulo="Completados"
           valor={kpis.completados.toLocaleString()}
           badge={{ text: pct(kpis.completados), color: '#22c55e', up: true }}
+          delta={delta(kpis.completados, kpisPrev?.completados)}
+          info="Tickets que el mecánico marcó como terminados. Todavía pueden estar esperando el visto bueno de producción."
         />
-        <KpiCard titulo="En Proceso" valor={kpis.enProceso.toLocaleString()} />
-        <KpiCard titulo="T. Respuesta Prom." valor={fmtMin(kpis.tRespProm)} />
-        <KpiCard titulo="T. Resolución Prom." valor={fmtMin(kpis.tResolProm)} />
+        <KpiCard
+          titulo="En Proceso"
+          valor={kpis.enProceso.toLocaleString()}
+          delta={delta(kpis.enProceso, kpisPrev?.enProceso)}
+          hint="ahora mismo"
+          info="Tickets que un mecánico está trabajando en este momento."
+        />
+        <KpiCard
+          titulo="T. Respuesta Prom."
+          valor={fmtMin(kpis.tRespProm)}
+          delta={kpis.tRespProm != null ? delta(kpis.tRespProm, kpisPrev?.tRespProm) : null}
+          invertido
+          hint="reporte → inicio"
+          info="Promedio desde que se reporta el ticket hasta que el mecánico empieza a repararlo."
+        />
+        <KpiCard
+          titulo="T. Resolución Prom."
+          valor={fmtMin(kpis.tResolProm)}
+          delta={kpis.tResolProm != null ? delta(kpis.tResolProm, kpisPrev?.tResolProm) : null}
+          invertido
+          hint="inicio → cierre"
+          info="Promedio desde que empieza la reparación hasta que se cierra el ticket. Incluye pausas y el tiempo que un ticket reprocesado pasó completado esperando el rechazo, así que sale más alto que el MTTR de Tiempos: miden distinto."
+        />
       </XStack>
 
       <SectionCard titulo="Estado de Tickets">
@@ -430,6 +551,18 @@ function TabResumen({ kpis, estado, prioridad, chartWidth, desde, hasta, tipoDes
       {/* Lo que está detenido AHORA (no depende del período de arriba). */}
       <EsperaAhora desde={desde} hasta={hasta} tipoDest={tipoDest} prioridades={prioridades} recarga={recarga} />
 
+      {/* La otra mitad de la misma pregunta: quién puede tomarlo. */}
+      <CargaAhora recarga={recarga} />
+
+      {/* El SLA que corre sin que nadie lo vea: lo completado esperando visto bueno. */}
+      <ColaValidacion
+        desde={desde}
+        hasta={hasta}
+        tipoDest={tipoDest}
+        prioridades={prioridades}
+        recarga={recarga}
+      />
+
       <SectionCard titulo="Tickets por Prioridad" ejeX="Cantidad">
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <BarChart
@@ -457,6 +590,312 @@ function TabResumen({ kpis, estado, prioridad, chartWidth, desde, hasta, tipoDes
             xAxisLabelTextStyle={{ color: txt, fontSize: 11 }}
           />
         </ScrollView>
+      </SectionCard>
+    </YStack>
+  )
+}
+
+// ════════ Cola de validación ════════
+// Un ticket completado NO libera la máquina: producción tiene que dar el visto
+// bueno. Si no lo da dentro del plazo, el autovalidado lo cierra solo — o sea que
+// el SLA corre y nadie lo está mirando. Este bloque lo pone a la vista: cuántos
+// esperan, cuántos se cerraron solos (eso es el incumplimiento) y de quién son.
+function ColaValidacion({
+  desde,
+  hasta,
+  tipoDest,
+  prioridades,
+  recarga = 0,
+}: {
+  desde: string
+  hasta: string
+  tipoDest: 'Todos' | 'MAQUINA' | 'AREA'
+  prioridades?: string
+  recarga?: number
+}) {
+  const tipoParam = tipoDest === 'Todos' ? undefined : tipoDest
+  const [filas, setFilas] = useState<ICumplimientoValidacion[]>([])
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      setCargando(true)
+      setError(null)
+      try {
+        const resp = await ticketsService.getCumplimientoValidacion(
+          desde,
+          hasta,
+          tipoParam,
+          prioridades,
+        )
+        if (!vivo) return
+        if (!resp.Success) throw new Error(resp.ErrorMessage || 'No se pudo cargar la validación.')
+        setFilas(resp.Data ?? [])
+      } catch (e: any) {
+        if (vivo) setError(e?.message ?? 'No se pudo cargar la validación.')
+      } finally {
+        if (vivo) setCargando(false)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [desde, hasta, tipoParam, prioridades, recarga])
+
+  if (cargando) {
+    return (
+      <SectionCard titulo="✅ Esperando validación">
+        <YStack height={100} alignItems="center" justifyContent="center">
+          <Spinner size="large" color={ACCENT} />
+        </YStack>
+      </SectionCard>
+    )
+  }
+  if (error) {
+    return (
+      <SectionCard titulo="✅ Esperando validación">
+        <Text fontSize={12} color="$textMuted">
+          {error}
+        </Text>
+      </SectionCard>
+    )
+  }
+  if (!filas.length) return null
+
+  const completados = filas.reduce((a, f) => a + f.Completados, 0)
+  const validados = filas.reduce((a, f) => a + f.ValidadosPorPersona, 0)
+  const porSistema = filas.reduce((a, f) => a + f.CerradosPorSistema, 0)
+  const pendientes = filas.reduce((a, f) => a + f.PendientesDeValidar, 0)
+  const pctDe = (n: number) => (completados ? Math.round((n / completados) * 100) : null)
+  const pctValidado = pctDe(validados)
+  const pctSistema = pctDe(porSistema)
+  // El plazo es global (config de mantenimiento); viene repetido en cada fila.
+  const plazo = filas.find(f => f.PlazoHoras != null)?.PlazoHoras ?? null
+  // Cuando la mayoría se cierra sola, el número que importa no es la cola de hoy:
+  // es que el visto bueno de producción dejó de funcionar como control.
+  const alarma = pctSistema != null && pctSistema >= 50
+  const porSupervisor = [...filas]
+    .filter(f => f.CerradosPorSistema > 0)
+    .sort((a, b) => b.CerradosPorSistema - a.CerradosPorSistema)
+
+  return (
+    <YStack gap="$3">
+      <XStack flexWrap="wrap" gap="$2">
+        <KpiCard
+          titulo="Cerrados sin validar"
+          valor={porSistema.toLocaleString()}
+          color={alarma ? ROJO_ALERTA : undefined}
+          badge={
+            pctSistema != null
+              ? { text: `${pctSistema}% del total`, color: alarma ? '#ef4444' : '#f59e0b', up: true }
+              : undefined
+          }
+          invertido
+          info={
+            plazo != null
+              ? `Tickets que nadie validó dentro de las ${plazo} h y cerró el autovalidado. Producción nunca los revisó: el cierre lo puso el sistema para no dejar la máquina ocupada.`
+              : 'El cierre automático está desactivado, así que ningún ticket se cierra solo.'
+          }
+        />
+        <KpiCard
+          titulo="Validados por producción"
+          valor={pctValidado != null ? `${pctValidado}%` : '—'}
+          hint={`${validados.toLocaleString()} de ${completados.toLocaleString()}`}
+          info="Porcentaje de los tickets completados en el período que un supervisor validó a mano. Es el visto bueno real de producción."
+        />
+        <KpiCard
+          titulo="Esperando validación"
+          valor={pendientes.toLocaleString()}
+          color={pendientes > 0 ? AMBAR : undefined}
+          hint={plazo != null ? `plazo ${plazo} h` : 'aún sin validar'}
+          info="Tickets completados que todavía nadie validó y a los que no se les venció el plazo. Es la cola sobre la que sí se puede actuar ahora."
+        />
+      </XStack>
+
+      <SectionCard
+        titulo="✅ Se cerraron solos, por supervisor"
+        ejeX="Tickets a los que venció el plazo sin validar · el supervisor es quien reportó la falla"
+      >
+        <HBarList
+          datos={porSupervisor.map(f => ({
+            label: `${f.Supervisor || f.Supervisor_UserCode || '—'} (${
+              f.PctCumplimiento != null ? `${Math.round(f.PctCumplimiento)}% validado` : 'sin validar'
+            }${f.PendientesDeValidar ? ` · ${f.PendientesDeValidar} en cola` : ''})`,
+            value: f.CerradosPorSistema,
+          }))}
+          escala={ESCALA_ROJA}
+          formato={v => `${v} ${v === 1 ? 'ticket' : 'tickets'}`}
+          vacioMsg="Ningún ticket se cerró solo en este período: producción validó todo a tiempo."
+        />
+        {alarma && (
+          <Text fontSize={11} color="$textMuted" lineHeight={16} marginTop="$2">
+            {pctSistema}% de lo completado se cerró sin que nadie lo revisara. A este nivel el visto
+            bueno dejó de ser un control: o el plazo de {plazo} h es muy corto para el turno, o el
+            aviso no le está llegando a quien reportó la falla.
+          </Text>
+        )}
+      </SectionCard>
+    </YStack>
+  )
+}
+
+// ════════ Carga de los mecánicos AHORA (no del período) ════════
+// La pregunta del que asigna cuando entra un paro nuevo: quién lo puede tomar.
+// "Ocupado" = tiene tickets EN PROCESO o PAUSADOS en este momento. Un pendiente
+// asignado todavía no es trabajo en curso, es cola — eso ya lo muestra
+// "Esperando ahora" arriba. No depende del período del filtro: un ticket abierto
+// puede venir de días atrás, así que se pide SIN rango.
+const CODES_OCUPADO = ['EN_PROCESO', 'PAUSADO']
+
+function CargaAhora({ recarga = 0 }: { recarga?: number }) {
+  const { user } = useAuth()
+  // Sin alcance al pool, el backend devolvería solo los tickets del usuario y el
+  // bloque mostraría su carga personal disfrazada de carga del taller. Mejor no
+  // mostrarlo que mostrarlo mal.
+  const puedePool = useMemo(() => puedeVerPool(user?.Roles, user?.Access), [user])
+  const [filas, setFilas] = useState<ITicket[]>([])
+  const [mecanicos, setMecanicos] = useState<IMecanico[]>([])
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!puedePool) {
+      setCargando(false)
+      return
+    }
+    let vivo = true
+    ;(async () => {
+      setCargando(true)
+      setError(null)
+      try {
+        const [respEstados, respMec] = await Promise.all([
+          ticketsService.getEstados(),
+          ticketsService.getMecanicos(),
+        ])
+        // Los Id salen del catálogo, no hardcodeados: el orden de la tabla puede
+        // cambiar entre bases (Dev y Pro no siempre coinciden).
+        const ids = (respEstados.Data ?? [])
+          .filter(e => CODES_OCUPADO.includes(e.Code))
+          .map(e => e.Id)
+        const resps = await Promise.all(
+          ids.map(id => ticketsService.getTickets({ estado_Id: id, scope: 'todos' })),
+        )
+        if (!vivo) return
+        setFilas(resps.flatMap(r => r.Data ?? []))
+        setMecanicos(respMec.Data ?? [])
+      } catch (e: any) {
+        if (vivo) setError(e?.message ?? 'No se pudo cargar el trabajo en curso.')
+      } finally {
+        if (vivo) setCargando(false)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [puedePool, recarga])
+
+  const porMecanico = useMemo(() => {
+    const m = new Map<
+      string,
+      { nombre: string; enProceso: number; pausados: number; desde: number | null }
+    >()
+    for (const t of filas) {
+      const code = (t.Mecanico_UserCode ?? '').trim()
+      if (!code) continue
+      const cur = m.get(code) ?? { nombre: t.Mecanico || code, enProceso: 0, pausados: 0, desde: null }
+      if (t.EstadoCode === 'PAUSADO') cur.pausados += 1
+      else cur.enProceso += 1
+      // "Desde cuándo" = el arranque más viejo que sigue abierto.
+      const ini = t.HoraInicio ? new Date(t.HoraInicio).getTime() : null
+      if (ini != null && !Number.isNaN(ini) && (cur.desde == null || ini < cur.desde)) cur.desde = ini
+      m.set(code, cur)
+    }
+    return [...m.entries()]
+      .map(([code, v]) => ({ code, ...v, total: v.enProceso + v.pausados }))
+      .sort((a, b) => b.total - a.total)
+  }, [filas])
+
+  const libres = useMemo(() => {
+    const ocupados = new Set(porMecanico.map(x => x.code))
+    return mecanicos.filter(x => !ocupados.has((x.User_Code ?? '').trim()))
+  }, [mecanicos, porMecanico])
+
+  if (!puedePool) return null
+  if (cargando) {
+    return (
+      <SectionCard titulo="🧰 Trabajo en curso por mecánico">
+        <YStack height={100} alignItems="center" justifyContent="center">
+          <Spinner size="large" color={ACCENT} />
+        </YStack>
+      </SectionCard>
+    )
+  }
+  if (error) {
+    return (
+      <SectionCard titulo="🧰 Trabajo en curso por mecánico">
+        <Text fontSize={12} color="$textMuted">
+          {error}
+        </Text>
+      </SectionCard>
+    )
+  }
+
+  const enCurso = porMecanico.reduce((a, x) => a + x.total, 0)
+  const masViejo = porMecanico.reduce<number | null>(
+    (a, x) => (x.desde == null ? a : a == null ? x.desde : Math.min(a, x.desde)),
+    null,
+  )
+  const horas = (ms: number) => {
+    const min = Math.max(0, Math.round((Date.now() - ms) / 60000))
+    return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`
+  }
+
+  return (
+    <YStack gap="$3">
+      <XStack flexWrap="wrap" gap="$2">
+        <KpiCard
+          titulo="Mecánicos ocupados"
+          valor={mecanicos.length ? `${porMecanico.length} / ${mecanicos.length}` : String(porMecanico.length)}
+          hint="con trabajo en curso"
+          info="Mecánicos que tienen al menos un ticket en proceso o pausado en este momento, sobre el total de mecánicos activos. Lo que queda es a quién se le puede asignar el próximo paro."
+        />
+        <KpiCard
+          titulo="Tickets en curso"
+          valor={enCurso.toLocaleString()}
+          hint="en proceso o pausados"
+          info="Tickets que ya arrancaron y todavía no se cerraron, sin importar de qué período son."
+        />
+        <KpiCard
+          titulo="El más viejo"
+          valor={masViejo != null ? horas(masViejo) : '—'}
+          hint="desde que arrancó"
+          color={AMBAR}
+          info="Cuánto lleva abierto el ticket en curso que arrancó primero. Un número alto es un ticket olvidado o una reparación atascada esperando algo."
+        />
+      </XStack>
+
+      <SectionCard
+        titulo="🧰 Trabajo en curso por mecánico"
+        ejeX="Tickets abiertos ahora mismo · no depende del período"
+      >
+        <HBarList
+          datos={porMecanico.map(x => ({
+            label: `${x.nombre}${x.pausados ? ` (${x.enProceso} activo · ${x.pausados} en pausa)` : ''}${
+              x.desde != null ? ` · ${horas(x.desde)}` : ''
+            }`,
+            value: x.total,
+          }))}
+          escala={ESCALA_AZUL}
+          formato={v => `${v} ${v === 1 ? 'ticket' : 'tickets'}`}
+          vacioMsg="Ningún mecánico tiene trabajo en curso en este momento."
+        />
+        {libres.length > 0 && (
+          <Text fontSize={11} color="$textMuted" lineHeight={16} marginTop="$2">
+            Sin trabajo en curso ({libres.length}): {libres.map(x => x.Nombre || x.User_Code).join(', ')}
+          </Text>
+        )}
       </SectionCard>
     </YStack>
   )

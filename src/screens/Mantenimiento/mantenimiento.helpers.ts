@@ -255,6 +255,10 @@ export function aplicarFiltrosFinos(
 export interface Kpis {
   total: number
   sinAtender: number
+  // Maquinas DISTINTAS con al menos un ticket sin atender. No es lo mismo que
+  // `sinAtender`: 6 tickets sin atender pueden ser 6 maquinas paradas o 6 avisos
+  // de la misma. Lo que decide si la linea para son las maquinas, no los papeles.
+  maquinasSinAtender: number
   completados: number
   enProceso: number
   tRespProm: number | null
@@ -263,7 +267,12 @@ export interface Kpis {
 
 export function calcularKpis(rows: MantenimientoRegistro[]): Kpis {
   const total = rows.length
-  const sinAtender = rows.filter(r => !r.Atendido).length
+  const pendientes = rows.filter(r => !r.Atendido)
+  const sinAtender = pendientes.length
+  // Se cuentan codigos de activo distintos; los tickets de area no traen maquina.
+  const maquinasSinAtender = new Set(
+    pendientes.map(r => (r.NumeroMaquina ?? '').trim()).filter(Boolean),
+  ).size
   const completados = rows.filter(r => r.Estado === 'Completado').length
   const enProceso = rows.filter(r => r.Estado === 'En Proceso').length
   const resp = rows.map(r => r.TiempoRespuestaMin).filter((n): n is number => n != null)
@@ -273,6 +282,7 @@ export function calcularKpis(rows: MantenimientoRegistro[]): Kpis {
   return {
     total,
     sinAtender,
+    maquinasSinAtender,
     completados,
     enProceso,
     tRespProm: prom(resp),
