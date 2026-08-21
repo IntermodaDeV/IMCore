@@ -110,6 +110,7 @@ export default function NuevoGastoScreen() {
   const [computedTotal, setComputedTotal]             = useState(0)
   const skipProviderSearchRef                         = useRef(false)
   const [isSearchingProviders, setIsSearchingProviders] = useState(false)
+  const [isSubmitting, setIsSubmitting]               = useState(false)
 
 
   const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' });
@@ -280,6 +281,7 @@ export default function NuevoGastoScreen() {
 
   const onSubmit = async (data: FormData) => {
     try {
+      setIsSubmitting(true)
       loader.show()
       const graved = toNum(data.GravadoAmount)
       const gallons = toNum(data.gallons);
@@ -342,6 +344,7 @@ export default function NuevoGastoScreen() {
       );
     } finally {
       loader.hide()
+      setIsSubmitting(false)
     }
   }
 
@@ -771,6 +774,8 @@ export default function NuevoGastoScreen() {
               borderColor="$border"
               pressStyle={{ opacity: 0.7 }}
               onPress={() => navigation.goBack()}
+              disabled={isSubmitting}
+              opacity={isSubmitting ? 0.5 : 1}
             >
               <Text color="$text" fontWeight="600">Cancelar</Text>
             </Button>
@@ -781,8 +786,12 @@ export default function NuevoGastoScreen() {
               backgroundColor="$primary"
               pressStyle={{ opacity: 0.8 }}
               onPress={handleSubmit(onSubmit)}
+              disabled={isSubmitting}
+              opacity={isSubmitting ? 0.5 : 1}
             >
-              <Text color="white" fontWeight="700">Enviar gasto</Text>
+              <Text color="white" fontWeight="700">
+                {isSubmitting ? 'Enviando...' : 'Enviar gasto'}
+              </Text>
             </Button>
           </XStack>
         </ScrollView>
