@@ -6,6 +6,10 @@ import {
   IOvertimeHistoryRow,
   IOvertimeRequestDetail,
   IOvertimeReviewToAuth,
+  IOvertimeApprovalImpact,
+  IOvertimeBudgetDashboard,
+  IOvertimeBudgetEmployee,
+  IPayWebWeek,
   IUserEntity,
 } from './overtime.types'
 
@@ -33,6 +37,18 @@ export const overtimeService = {
       idAccess,
       canCompleteData,
     }),
+
+  /**
+   * detalles indicados.
+   *
+   * Pensado para la última etapa del flujo, que es la que compromete el dinero.
+   * Los montos solo vienen con el acceso 'CostoHE'.
+   */
+  getApprovalImpact: (companyCode: string, entityId: number, details: number[]) =>
+    httpClient.post<ExecutionResponse<IOvertimeApprovalImpact[]>, number[]>(
+      `${schema}/ApprovalImpact?companyCode=${encodeURIComponent(companyCode)}&entityId=${entityId}`,
+      details,
+    ),
 
   /** Aprueba o rechaza los detalles indicados. */
   authorizeRequest: (companyCode: string, info: IAuthorizeRequest) =>
@@ -80,5 +96,49 @@ export const overtimeService = {
     httpClient.get<ExecutionResponse<IOvertimeHistoryRow[]>>(`${schema}/History`, {
       startDate,
       finalDate,
+    }),
+
+  // ── Dashboard de presupuesto ──────────────────────────────────────────────
+
+  /**
+   * Gasto contra presupuesto de las áreas del usuario, en los tres niveles.
+   *
+   * Los tres vienen en una sola llamada a propósito: la pantalla los muestra en
+   * pestañas y pedirlos por separado dejaría cada una mirando un momento
+   * distinto del mismo período.
+   */
+  getBudgetDashboard: (companyCode: string, startDate?: string, finalDate?: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeBudgetDashboard>>(`${schema}/BudgetDashboard`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * Los empleados que consumen el presupuesto de un área.
+   *
+   * El área se valida contra el alcance del usuario en la base: mandar un
+   * código ajeno devuelve vacío, no los datos de otra gente.
+   */
+  getBudgetEmployees: (
+    companyCode: string,
+    code: string,
+    level: string,
+    startDate?: string,
+    finalDate?: string,
+  ) =>
+    httpClient.get<ExecutionResponse<IOvertimeBudgetEmployee[]>>(`${schema}/BudgetEmployees`, {
+      companyCode,
+      code,
+      level,
+      startDate,
+      finalDate,
+    }),
+
+  /** Semanas del calendario de planilla, para el filtro del dashboard. */
+  getCalendarWeeks: (companyCode: string, year?: number) =>
+    httpClient.get<ExecutionResponse<IPayWebWeek[]>>(`${schema}/CalendarWeeks`, {
+      companyCode,
+      year,
     }),
 }

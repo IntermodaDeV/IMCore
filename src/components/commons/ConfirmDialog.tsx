@@ -18,6 +18,14 @@ interface ConfirmDialogProps {
     secondaryLabel?: string
     secondaryColor?: string
     onSecondary?: () => void
+    /**
+     * Contenido libre entre el mensaje y los botones.
+     *
+     * Existe para lo que no cabe en una línea de texto: un desglose, un
+     * impacto, una advertencia con números. Sin esto habría que armar un modal
+     * aparte y duplicar el diálogo entero.
+     */
+    extra?: React.ReactNode
 }
 
 export default function ConfirmDialog({
@@ -33,6 +41,7 @@ export default function ConfirmDialog({
     secondaryLabel,
     secondaryColor,
     onSecondary,
+    extra,
 }: ConfirmDialogProps) {
     return (
         <AlertDialog 
@@ -79,8 +88,9 @@ export default function ConfirmDialog({
                             <TriangleAlert size={26} color={confirmColor} />
                         </YStack>
 
-                        {/* Texto */}
-                        <YStack gap="$1.5" alignItems="center">
+                        {/* Texto. Ocupa todo el ancho para que el bloque de
+                            `extra` no quede encogido al ancho del título. */}
+                        <YStack gap="$1.5" alignItems="center" width="100%">
                             <AlertDialog.Title>
                                 <Text
                                     fontSize={16}
@@ -102,6 +112,12 @@ export default function ConfirmDialog({
                                     {message}
                                 </Text>
                             </AlertDialog.Description>
+
+                            {!!extra && (
+                                <YStack width="100%" alignSelf="stretch" paddingTop="$2">
+                                    {extra}
+                                </YStack>
+                            )}
                         </YStack>
 
                         {/* Botones */}

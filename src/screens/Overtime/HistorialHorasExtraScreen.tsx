@@ -13,7 +13,7 @@ import EmptyState from '../AdmSys/EmptyState'
 import SkeletonList from '../../components/Skeletons/SkeletonList'
 import SearchInput from '../../components/commons/SearchInput'
 import AppSelect from '../../components/commons/AppSelect'
-import CountryFlag from '../../components/commons/CountryFlag'
+import { NotificationBell } from '../../components/notifications/NotificationBell'
 import { subscribeOpenHistorialHoraExtra } from '../../services/overtimeNavigation'
 import { overtimeService } from '../../api/modules/overtime/overtime.service'
 import { IOvertimeHistoryRow } from '../../api/modules/overtime/overtime.types'
@@ -60,7 +60,7 @@ export default function HistorialHorasExtraScreen() {
         Historial de Horas Extra
       </Text>
     ),
-    right: <CountryFlag countryCode={defaultCompany?.CodeIcon ?? 'HN'} width={28} height={20} />,
+    right: <NotificationBell size={18} />,
   })
 
   const loadData = useCallback(async (silent = false) => {
@@ -333,7 +333,10 @@ function HistorialCard({
           paddingHorizontal="$3"
           paddingVertical="$2"
           borderRadius={10}
-          backgroundColor="$backgroundSurface"
+          // Transparente cuando la fila está resaltada: si se queda gris, tapa
+          // el naranja justo en el centro de la tarjeta y el resaltado no se
+          // lee. Es lo mismo que hace el histórico de SC.
+          backgroundColor={resaltada ? 'transparent' : '$backgroundSurface'}
         >
           <Text fontSize={12} fontWeight="600" color="$textSecondary">
             {item.Is_Approved ? 'Horas aprobadas' : 'Horas a pagar'}

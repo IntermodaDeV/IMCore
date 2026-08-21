@@ -200,3 +200,152 @@ export interface IOvertimeHistoryRow {
    */
   Can_See_All: boolean
 }
+
+// ── Dashboard de presupuesto ─────────────────────────────────────────────────
+
+/**
+ * Un área con lo que tiene presupuestado y lo que lleva gastado en horas extra.
+ *
+ * El nivel lo decide la pestaña: unidad de negocios, departamento o centro de
+ * costos. Solo llegan las áreas que el usuario tiene configuradas en sus
+ * parámetros; no las ve todas por tener el acceso a la pantalla.
+ */
+export interface IOvertimeBudgetRow {
+  Nivel: string
+  Codigo: string
+  Nombre: string
+
+  Empleados: number
+  Solicitudes: number
+  Detalles: number
+
+  /** Horas PEDIDAS del período, sin importar en qué etapa del flujo van. */
+  Horas: number
+  /** Horas por el precio de la hora de cada empleado. */
+  Costo: number
+  /** Presupuesto del período consultado. */
+  Presupuesto: number
+  /** Presupuesto menos costo. Negativo = se pasó. */
+  Disponible: number
+  /** Cero cuando no hay presupuesto: se distingue mirando Presupuesto. */
+  Porcentaje_Consumido: number
+}
+
+export interface IOvertimeBudgetDashboard {
+  UnidadesNegocio: IOvertimeBudgetRow[]
+  Departamentos: IOvertimeBudgetRow[]
+  CentrosCosto: IOvertimeBudgetRow[]
+
+  Total_Horas: number
+  Total_Costo: number
+  Total_Presupuesto: number
+  Total_Disponible: number
+  Total_Porcentaje_Consumido: number
+
+  Total_Empleados: number
+  Total_Solicitudes: number
+
+  /** Las horas del período abiertas por banda de recargo. */
+  Conceptos: IOvertimeConceptTotal[]
+
+  /**
+   * El usuario no tiene áreas configuradas. Hay que distinguirlo de "sí tiene
+   * pero no hubo movimiento": los dos casos llegan con las listas vacías y el
+   * mensaje que corresponde mostrar es distinto.
+   */
+  Sin_Areas_Configuradas: boolean
+}
+
+/**
+ * Un empleado dentro del desglose de un área: qué lleva consumido del
+ * presupuesto. Es el "quién" detrás de cada barra del tablero.
+ */
+export interface IOvertimeBudgetEmployee {
+  Employee_Code: string
+  Employee_Name: string
+  Posicion: string
+  Departamento: string
+  Centro_Costos: string
+
+  Solicitudes: number
+  Detalles: number
+  /** Horas ya aprobadas por todas las entidades. */
+  Horas: number
+  /** Costo con el recargo de cada banda ya aplicado. */
+  Costo: number
+  /**
+   * JSON de IOvertimeConcept[] con el reparto del empleado en el período, ya
+   * sumado sobre todas sus solicitudes. Se lee con parseConceptos, el mismo
+   * parser de las otras pantallas.
+   */
+  ConceptsJson: string | null
+}
+
+/**
+ * Lo que pasaría con el presupuesto de una unidad de negocios si se aprueba el
+ * lote que se está por firmar.
+ *
+ * Solo tiene sentido mostrarlo cuando Es_Ultima_Entidad es true: hasta esa firma
+ * la solicitud no compromete dinero.
+ *
+ * Los montos llegan en null si el usuario no tiene el acceso 'CostoHE'; los
+ * porcentajes siempre vienen. Ese recorte lo hace la base, no la pantalla.
+ */
+export interface IOvertimeApprovalImpact {
+  Es_Ultima_Entidad: boolean
+  Ve_Costo: boolean
+
+  /** Centro de costos del empleado: donde vive el presupuesto. */
+  Area_Codigo: string
+  Area_Nombre: string
+
+  Semana_Inicio: string | null
+  Semana_Fin: string | null
+
+  Empleados: number
+  Horas_Nuevas: number
+
+  Presupuesto: number | null
+  Consumido: number | null
+  /** Lo que cuesta el lote que se está por firmar. */
+  Costo_Nuevo: number | null
+  Consumido_Despues: number | null
+
+  Porcentaje_Antes: number
+  Porcentaje_Despues: number
+
+  /** JSON con employee_Code, employee_Name, horas y costo. */
+  Empleados_Json: string | null
+}
+
+/**
+ * Una banda de recargo con lo que acumuló en el período.
+ *
+ * Son las MISMAS horas del total del tablero, abiertas por concepto: las horas
+ * de todas las bandas suman el total.
+ */
+export interface IOvertimeConceptTotal {
+  Concepto: string
+  Descripcion: string
+  /** Fracción, no entero: 0.25 es 25%. */
+  Porcentaje: number | null
+  Horas: number
+  Costo: number
+}
+
+/**
+ * Una semana del calendario de PLANILLA, que no coincide con la natural: es la
+ * que define el período de horas extra y la misma que usan las pantallas web.
+ */
+export interface IPayWebWeek {
+  Year: number
+  Month: number
+  MonthName: string
+  WeekNumber: number
+  SemesterNumber: number
+  InitialDate: string | null
+  FinalDate: string | null
+  IsCurrentWeek: boolean
+  IsPastWeek: boolean
+  IsFutureWeek: boolean
+}

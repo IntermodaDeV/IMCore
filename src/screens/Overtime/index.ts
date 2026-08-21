@@ -2,6 +2,7 @@ import { TScreens } from '../../navigation/screens.types'
 import SolicitudesHorasExtraScreen from './SolicitudesHorasExtraScreen'
 import RevisionHorasExtraScreen from './RevisionHorasExtraScreen'
 import HistorialHorasExtraScreen from './HistorialHorasExtraScreen'
+import DashboardHorasExtraScreen from './DashboardHorasExtraScreen'
 
 export const ScreensOvertime: TScreens = {
   // Primer flujo: aprobar las horas que se solicitaron
@@ -17,6 +18,11 @@ export const ScreensOvertime: TScreens = {
   // Bitácora local de IMCore con lo autorizado en los dos flujos
   HistoryHours: {
     Screen: HistorialHorasExtraScreen,
+    Childs: {},
+  },
+  // Presupuesto de horas extra contra lo gastado, por área
+  DashboardHE: {
+    Screen: DashboardHorasExtraScreen,
     Childs: {},
   },
 }
