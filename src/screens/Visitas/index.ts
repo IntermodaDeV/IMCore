@@ -1,6 +1,7 @@
 import { TScreens } from '../../navigation/screens.types'
 import VisitasGenerarScreen from './VisitasGenerarScreen'
 import VisitasHistorialScreen from './VisitasHistorialScreen'
+import VisitasHorariosScreen from './VisitasHorariosScreen'
 import VisitasMotivosScreen from './VisitasMotivosScreen'
 import VisitasValidarScreen from './VisitasValidarScreen'
 
@@ -16,6 +17,10 @@ export const ScreensVisitas: TScreens = {
   },
   visitasMotivos: {
     Screen: VisitasMotivosScreen,
+    Childs: {},
+  },
+  visitasHorarios: {
+    Screen: VisitasHorariosScreen,
     Childs: {},
   },
   visitasValidar: {
