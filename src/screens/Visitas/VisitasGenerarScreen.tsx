@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Platform, PermissionsAndroid } from 'react-native'
+import { Platform, PermissionsAndroid, KeyboardAvoidingView, Keyboard, ScrollView as RNScrollView, Dimensions } from 'react-native'
 import { YStack, XStack, Text, Button, View, ScrollView, Spinner } from 'tamagui'
-import { Plus, X, QrCode, Share2, RotateCcw, Users, TriangleAlert, Calendar, Download, Repeat, CalendarRange } from 'lucide-react-native'
+import { Plus, X, QrCode, Share2, RotateCcw, Users, TriangleAlert, Calendar, Download, Repeat, CalendarRange, Clock, Moon, IdCard } from 'lucide-react-native'
 import QRCode from 'react-native-qrcode-svg'
 import Share from 'react-native-share'
 import ViewShot, { captureRef } from 'react-native-view-shot'
@@ -15,9 +15,21 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
 import { visitasService } from '../../api/modules/visitas/visitas.service'
-import { IGenerarVisita, IMotivo } from '../../api/modules/visitas/visitas.types'
+import { IGenerarVisita, IHorario, IHorarioDetalle, IMotivo } from '../../api/modules/visitas/visitas.types'
 import { ExecutionResponse } from '../../api/modules/response.type'
 import { handleError } from '../../utils/errorHandler'
+import {
+  contarVentanas,
+  cruzaMedianoche,
+  diasHabilitadosPorHorario,
+  duracionVentana,
+  etiquetaDias,
+  fmtDuracion,
+  fmtHora,
+  horaADate,
+  horaAMinutos,
+  resumenHorario,
+} from './horarios'
 
 const LOGO = require('../../assets/logo.png')
 
@@ -29,6 +41,12 @@ type Generated = {
   entryDate: string
   isRecurrent: boolean
   dias: string[]
+  /** Nombre del horario aplicado; null = día completo, sin restricción de hora */
+  horario: string | null
+  /** Resumen legible de las ventanas ("Lun-Vie 08:00-17:00") */
+  horarioResumen: string | null
+  /** Se le pedirá el documento al entrar */
+  requiereId: boolean
 }
 
 const fmtDate = (d: Date) =>
@@ -69,10 +87,31 @@ export default function VisitasGenerarScreen() {
   const [pickerFor, setPickerFor] = useState<'single' | 'start' | 'end' | 'add' | null>(null)
   const [addTemp, setAddTemp] = useState<Date>(new Date()) // día en edición (modo "agregar día" en iOS)
   const [motivos, setMotivos] = useState<IMotivo[]>([])
+  // Horario de visita: define en qué ventana de hora se puede entrar/permanecer.
+  const [horarios, setHorarios] = useState<IHorario[]>([])
+  const [horarioId, setHorarioId] = useState<number | undefined>(undefined)
+  // Detalle del horario elegido: se usa para previsualizar qué días del rango
+  // quedan REALMENTE habilitados (un horario L-V sobre lunes-a-domingo son 5).
+  const [horarioDetalle, setHorarioDetalle] = useState<IHorarioDetalle[]>([])
+  // Ventana escrita a mano, para no obligar a crear un horario en el catálogo.
+  // Se usa solo cuando el selector está en 'personalizado'.
+  const [horaPersonalizada, setHoraPersonalizada] = useState(false)
+  const [horaDesde, setHoraDesde] = useState('09:00')
+  const [horaHasta, setHoraHasta] = useState('18:00')
+  const [pickerHora, setPickerHora] = useState<'desde' | 'hasta' | null>(null)
+  // ¿Se le pide el documento al entrar? Encendido por defecto: pedir ID es el
+  // criterio seguro, y quien genera el pase lo baja si no aplica.
+  const [requiereId, setRequiereId] = useState(true)
   const [loadingGen, setLoadingGen] = useState(false)
   const [result, setResult] = useState<Generated | null>(null)
   const [busyAction, setBusyAction] = useState<'share' | 'save' | null>(null)
   const viewShotRef = useRef<any>(null)
+  // Alto del teclado. En Android con New Arch + edge-to-edge el teclado se dibuja
+  // ENCIMA sin achicar la ventana, así que KeyboardAvoidingView no alcanza: se
+  // reserva ese alto como paddingBottom del ScrollView para poder scrollear por
+  // encima. En iOS basta el KAV con behavior="padding".
+  const [kbHeight, setKbHeight] = useState(0)
+  const scrollRef = useRef<RNScrollView>(null)
 
   usePageHeader({
     center: (
@@ -83,10 +122,46 @@ export default function VisitasGenerarScreen() {
   })
 
   useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) =>
+      setKbHeight(e.endCoordinates?.height ?? 0)
+    )
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0))
+    return () => {
+      showSub.remove()
+      hideSub.remove()
+    }
+  }, [])
+
+  // Sube el campo enfocado por encima del teclado. Mide el campo contra la
+  // ventana y desplaza SOLO el solape, para no dejar el hueco enorme que deja un
+  // scrollToEnd. El delay deja que el paddingBottom ya esté aplicado.
+  const scrollY = useRef(0)
+  const subirCampo = (e: any) => {
+    const node = e?.target
+    setTimeout(() => {
+      const alto = Dimensions.get('window').height
+      const kb = kbHeight || alto * 0.4 // en el primer foco el alto aún no llegó
+      const bordeTeclado = alto - kb
+      if (node?.measureInWindow) {
+        node.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+          const solape = y + h + 24 - bordeTeclado
+          if (solape > 0) {
+            scrollRef.current?.scrollTo({ y: scrollY.current + solape, animated: true })
+          }
+        })
+      }
+    }, 140)
+  }
+
+  useEffect(() => {
     ;(async () => {
       try {
-        const resp: ExecutionResponse<IMotivo[]> = await visitasService.getMotivos()
-        if (resp.Success) setMotivos(resp.Data ?? [])
+        const [respMot, respHor] = await Promise.all([
+          visitasService.getMotivos() as Promise<ExecutionResponse<IMotivo[]>>,
+          visitasService.getHorarios(true),
+        ])
+        if (respMot.Success) setMotivos(respMot.Data ?? [])
+        if (respHor.Success) setHorarios(respHor.Data ?? [])
       } catch (err) {
         const e = handleError(err)
         showToast('error', 'Error', e.message, 4000, 'bottom')
@@ -94,6 +169,28 @@ export default function VisitasGenerarScreen() {
     })()
   }, [])
 
+  // Trae las ventanas del horario elegido para poder previsualizar los días
+  // habilitados y avisar si el rango no casa con ningún día del horario.
+  useEffect(() => {
+    if (!horarioId) {
+      setHorarioDetalle([])
+      return
+    }
+    let vivo = true
+    ;(async () => {
+      try {
+        const resp = await visitasService.getHorarioDetalle(horarioId)
+        if (vivo && resp.Success) setHorarioDetalle(resp.Data ?? [])
+      } catch {
+        if (vivo) setHorarioDetalle([])
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [horarioId])
+
+  const selectedHorario = horarios.find((h) => h.Id === horarioId)
   const selectedMotivo = motivos.find((m) => m.Id === motivoId)
   const isOtros = (selectedMotivo?.Name ?? '').toLowerCase() === 'otros'
 
@@ -104,7 +201,7 @@ export default function VisitasGenerarScreen() {
   const removePersona = (i: number) =>
     setPersonas((prev) => prev.filter((_, idx) => idx !== i))
 
-  // Construye la lista de días permitidos según el modo
+  // Días crudos que el usuario pidió (antes de cruzarlos con el horario)
   const buildDias = (): string[] => {
     if (!isRecurrent) return [fmtDate(entryDate)]
     if (recurMode === 'rango') {
@@ -119,6 +216,12 @@ export default function VisitasGenerarScreen() {
     }
     return [...diasList].sort()
   }
+
+  // Días que el horario REALMENTE habilita. Antes el rango se expandía completo,
+  // fines de semana incluidos, así que un horario L-V daba acceso sábado y
+  // domingo. El backend descarta esos días; acá se muestra lo mismo para que el
+  // contador no mienta.
+  const diasEfectivos = (): string[] => diasHabilitadosPorHorario(buildDias(), horarioDetalle)
 
   // Agrega un día a la lista (modo días específicos), sin duplicar
   const addDia = (d: Date) => {
@@ -143,7 +246,21 @@ export default function VisitasGenerarScreen() {
     if (isRecurrent && recurMode === 'dias' && diasList.length === 0)
       return showToast('error', 'Validación', 'Selecciona al menos un día', 4000, 'bottom')
 
+    if (horaPersonalizada && horaAMinutos(horaDesde) === horaAMinutos(horaHasta))
+      return showToast('error', 'Validación', 'La hora de inicio y la de fin no pueden ser iguales', 4000, 'bottom')
+
     const dias = buildDias()
+    // Si el horario no cubre ningún día elegido, el pase no autorizaría nada.
+    // El backend lo rechaza igual, pero se avisa antes para no perder el viaje.
+    const efectivos = diasHabilitadosPorHorario(dias, horarioDetalle)
+    if (efectivos.length === 0)
+      return showToast(
+        'error',
+        'Validación',
+        `Las fechas elegidas no caen en ningún día de "${selectedHorario?.Name ?? 'el horario'}"`,
+        5000,
+        'bottom'
+      )
 
     setLoadingGen(true)
     try {
@@ -154,6 +271,10 @@ export default function VisitasGenerarScreen() {
         EntryDate: dias[0],
         IsRecurrent: isRecurrent,
         Dias: dias,
+        Horario_Id: horarioId ?? null,
+        HoraDesde: horaPersonalizada ? horaDesde : null,
+        HoraHasta: horaPersonalizada ? horaHasta : null,
+        RequiereId: requiereId,
         Create_By: user?.Code ?? '',
         Personas: cleanPersonas,
       }
@@ -164,9 +285,16 @@ export default function VisitasGenerarScreen() {
           personas: cleanPersonas,
           visitTo: visitTo.trim(),
           motivo: isOtros ? visitReasonOther.trim() : selectedMotivo?.Name ?? '',
-          entryDate: dias[0],
+          entryDate: efectivos[0],
           isRecurrent,
-          dias,
+          dias: efectivos,
+          horario: selectedHorario?.Name ?? (horaPersonalizada ? `Personalizado ${horaDesde}-${horaHasta}` : null),
+          horarioResumen: horarioId
+            ? resumenHorario(horarioDetalle)
+            : horaPersonalizada
+              ? `Todos los días ${horaDesde}-${horaHasta}`
+              : null,
+          requiereId,
         })
       } else {
         showToast('error', 'Error', resp.ErrorMessage || 'No se pudo generar el pase', 5000, 'bottom')
@@ -206,9 +334,13 @@ export default function VisitasGenerarScreen() {
       }
       const personasList = result.personas.join(', ')
       const vig = vigenciaTexto(result)
-      const message = result.isRecurrent
-        ? `🔐 Pase de acceso para: ${personasList}\n📅 Vigencia: ${vig} (${result.dias.length} días)`
-        : `🔐 Pase de acceso para: ${personasList}\n📅 Fecha: ${prettyDate(result.entryDate)}`
+      const fechaLinea = result.isRecurrent
+        ? `📅 Vigencia: ${vig} (${result.dias.length} días)`
+        : `📅 Fecha: ${prettyDate(result.entryDate)}`
+      // El horario se manda en el texto además de la imagen: es la parte que el
+      // visitante necesita leer antes de salir de su casa.
+      const horarioLinea = result.horarioResumen ? `\n🕐 Horario: ${result.horarioResumen}` : ''
+      const message = `🔐 Pase de acceso para: ${personasList}\n${fechaLinea}${horarioLinea}`
       await Share.open({ title: 'Pase de Acceso QR', message, url: uri, type: 'image/png', failOnCancel: false })
     } catch {
       // cancelar la hoja de compartir no es error
@@ -248,6 +380,13 @@ export default function VisitasGenerarScreen() {
     setVisitTo('')
     setMotivoId(undefined)
     setVisitReasonOther('')
+    setHorarioId(undefined)
+    setHorarioDetalle([])
+    setRequiereId(true)
+    setHoraPersonalizada(false)
+    setHoraDesde('09:00')
+    setHoraHasta('18:00')
+    setPickerHora(null)
     setEntryDate(new Date())
     setIsRecurrent(false)
     setRecurMode('rango')
@@ -321,6 +460,13 @@ export default function VisitasGenerarScreen() {
                   <Text color="#1A1A2E" fontWeight="700" fontSize={15}>
                     {result.isRecurrent ? 'Vigencia: ' : 'Ingreso: '}{vigenciaTexto(result)}
                   </Text>
+                  {/* El horario va DENTRO de la tarjeta que se comparte: si el
+                      visitante no lo ve, llega fuera de hora y lo rebotan. */}
+                  {!!result.horarioResumen && (
+                    <Text color="#1A1A2E" fontWeight="600" fontSize={12} textAlign="center">
+                      {result.horarioResumen}
+                    </Text>
+                  )}
                   {result.isRecurrent && (
                     <Text color="#FF551A" fontWeight="700" fontSize={11} letterSpacing={1}>
                       PASE RECURRENTE · {result.dias.length} DÍAS
@@ -353,9 +499,19 @@ export default function VisitasGenerarScreen() {
                 <InfoRow label="Motivo" value={result.motivo} />
                 <InfoRow label={result.isRecurrent ? 'Vigencia' : 'Fecha de ingreso'} value={vigenciaTexto(result)} />
                 {result.isRecurrent && <InfoRow label="Días habilitados" value={`${result.dias.length}`} />}
+                <InfoRow label="Horario" value={result.horario ?? 'Día completo'} />
+                <InfoRow label="Identificación" value={result.requiereId ? 'Se pedirá documento' : 'No se pide'} />
+                {!!result.horarioResumen && <InfoRow label="Ventanas" value={result.horarioResumen} />}
 
                 <XStack alignItems="center" gap="$2" marginTop="$2">
-                  {result.isRecurrent ? (
+                  {result.horario ? (
+                    <>
+                      <Clock size={15} color="#FF551A" />
+                      <Text fontSize={12} color="$primary" fontWeight="700" flexShrink={1}>
+                        Solo puede ingresar dentro del horario asignado
+                      </Text>
+                    </>
+                  ) : result.isRecurrent ? (
                     <>
                       <Repeat size={15} color="#2E9E5B" />
                       <Text fontSize={12} color="#2E9E5B" fontWeight="700">
@@ -424,7 +580,29 @@ export default function VisitasGenerarScreen() {
   // ════════════════════════ FORMULARIO ════════════════════════
   return (
     <Page>
-      <ScrollView flex={1} showsVerticalScrollIndicator={false} backgroundColor="$backgroundPage">
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        // iOS: 'padding' funciona bien. Android: undefined — bajo edge-to-edge el
+        // KAV no maneja el teclado; ahí lo resuelve el paddingBottom dinámico.
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+      <YStack flex={1} backgroundColor="$backgroundPage">
+      {/* ScrollView NATIVO de RN y no el de tamagui: el ref de tamagui no expone
+          el scroll de forma confiable, y acá se necesita para subir el campo
+          enfocado por encima del teclado. */}
+      <RNScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScroll={(e) => { scrollY.current = e.nativeEvent.contentOffset.y }}
+        scrollEventThrottle={16}
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingBottom: (Platform.OS === 'android' ? kbHeight : 0) + 24,
+        }}
+      >
         <YStack padding="$4" gap="$3">
           {/* Personas */}
           <YStack gap="$2">
@@ -439,6 +617,7 @@ export default function VisitasGenerarScreen() {
                 key={i}
                 label={`Persona ${i + 1}`}
                 value={p}
+                onFocus={subirCampo}
                 onChangeText={(t: string) => updatePersona(i, t)}
                 rightElement={
                   personas.length > 1 ? (
@@ -466,7 +645,12 @@ export default function VisitasGenerarScreen() {
             </Button>
           </YStack>
 
-          <AppInput label="A quién visita" value={visitTo} onChangeText={setVisitTo} />
+          <AppInput
+            label="A quién visita"
+            value={visitTo}
+            onChangeText={setVisitTo}
+            onFocus={subirCampo}
+          />
 
           <AppSelect
             label="Motivo de la visita"
@@ -480,8 +664,47 @@ export default function VisitasGenerarScreen() {
               label="Especifica el motivo"
               value={visitReasonOther}
               onChangeText={setVisitReasonOther}
+              onFocus={subirCampo}
             />
           )}
+
+          <Separador label="IDENTIFICACIÓN" Icon={IdCard} />
+
+          {/* ── ¿Pedir documento al entrar? ──
+              Cuando está encendido, al registrar la entrada el guardia debe
+              fotografiar el documento y el servidor lo lee para verificar que
+              el nombre corresponda a alguien del pase. */}
+          <XStack alignItems="center" justifyContent="space-between" marginTop="$1" gap="$2">
+            <XStack alignItems="center" gap="$2" flex={1}>
+              <IdCard size={16} color="#94A3B8" />
+              <YStack flex={1}>
+                <Text fontSize={14} fontWeight="700" color="$text">Requiere identificación</Text>
+                <Text fontSize={11} color="$textMuted">
+                  Al entrar se le toma foto al documento y se verifica el nombre
+                </Text>
+              </YStack>
+            </XStack>
+            <View
+              onPress={() => setRequiereId((v) => !v)}
+              pressStyle={{ opacity: 0.8 }}
+              width={48}
+              height={28}
+              borderRadius={14}
+              backgroundColor={requiereId ? '$primary' : '$border'}
+              padding={3}
+              justifyContent="center"
+            >
+              <View
+                width={22}
+                height={22}
+                borderRadius={11}
+                backgroundColor="white"
+                alignSelf={requiereId ? 'flex-end' : 'flex-start'}
+              />
+            </View>
+          </XStack>
+
+          <Separador label="FECHAS Y HORARIO" Icon={CalendarRange} />
 
           {/* Tipo de pase: único o recurrente */}
           <XStack alignItems="center" justifyContent="space-between" marginTop="$1" gap="$2">
@@ -611,9 +834,37 @@ export default function VisitasGenerarScreen() {
                 </YStack>
               )}
 
-              <Text fontSize={11} color="$textMuted">
-                {buildDias().length} día(s) habilitado(s)
-              </Text>
+              {(() => {
+                const pedidos = buildDias()
+                const efectivos = diasEfectivos()
+                const descartados = pedidos.length - efectivos.length
+                return (
+                  <YStack gap="$1">
+                    <Text fontSize={11} color="$textMuted">
+                      {efectivos.length} día(s) habilitado(s)
+                      {horarioId ? ` · ${contarVentanas(efectivos, horarioDetalle)} ventana(s)` : ''}
+                    </Text>
+                    {/* El rango se expande completo, pero el horario manda: los días
+                        que no están en el horario no se habilitan. */}
+                    {descartados > 0 && (
+                      <XStack alignItems="center" gap="$1.5">
+                        <TriangleAlert size={12} color="#E58E26" />
+                        <Text fontSize={11} color="#E58E26" flexShrink={1}>
+                          {descartados} día(s) quedan fuera: no están en el horario
+                          {horarioDetalle.length > 0
+                            ? ` (${etiquetaDias([...new Set(horarioDetalle.map((d) => d.DiaSemana))].sort((a, b) => a - b))})`
+                            : ''}
+                        </Text>
+                      </XStack>
+                    )}
+                    {efectivos.length === 0 && pedidos.length > 0 && (
+                      <Text fontSize={11} color="#E53935">
+                        Con este horario el pase no autorizaría ningún día.
+                      </Text>
+                    )}
+                  </YStack>
+                )
+              })()}
             </YStack>
           )}
 
@@ -665,6 +916,191 @@ export default function VisitasGenerarScreen() {
             </View>
           )}
 
+          {/* ── Horario de visita ──
+              Define la ventana de hora en la que se puede entrar y permanecer.
+              Sin horario el pase vale el día completo (comportamiento anterior). */}
+          {/* Elegir horario del catálogo, o escribir la hora a mano.
+              El modo va en un interruptor y NO como última opción del dropdown:
+              con 6 opciones la lista pasa de su alto máximo (220px / 44px por
+              fila) y la última queda debajo del corte, solo alcanzable con
+              scroll. Un cambio de modo no puede estar escondido ahí. */}
+          <XStack alignItems="center" justifyContent="space-between" marginTop="$1" gap="$2">
+            <XStack alignItems="center" gap="$2" flex={1}>
+              <Clock size={16} color="#94A3B8" />
+              <YStack flex={1}>
+                <Text fontSize={14} fontWeight="700" color="$text">Hora personalizada</Text>
+                <Text fontSize={11} color="$textMuted">
+                  Escribir la hora en vez de usar un horario del catálogo
+                </Text>
+              </YStack>
+            </XStack>
+            <View
+              onPress={() => {
+                setHoraPersonalizada((v) => !v)
+                setHorarioId(undefined)
+                setPickerHora(null)
+              }}
+              pressStyle={{ opacity: 0.8 }}
+              width={48}
+              height={28}
+              borderRadius={14}
+              backgroundColor={horaPersonalizada ? '$primary' : '$border'}
+              padding={3}
+              justifyContent="center"
+            >
+              <View
+                width={22}
+                height={22}
+                borderRadius={11}
+                backgroundColor="white"
+                alignSelf={horaPersonalizada ? 'flex-end' : 'flex-start'}
+              />
+            </View>
+          </XStack>
+
+          {/* Con la hora a mano el selector de catálogo se oculta: mostrar los
+              dos a la vez dejaría dos fuentes de verdad sobre la misma ventana. */}
+          {!horaPersonalizada && (
+            <AppSelect
+              label="Horario de visita"
+              value={horarioId !== undefined ? String(horarioId) : '0'}
+              onValueChange={(val) => setHorarioId(Number(val) === 0 ? undefined : Number(val))}
+              options={[
+                { label: 'Sin restricción de hora (día completo)', value: '0' },
+                ...horarios.map((h) => ({ label: h.Name, value: String(h.Id) })),
+              ]}
+            />
+          )}
+
+          {/* ── Ventana escrita a mano ── */}
+          {horaPersonalizada && (
+            <YStack
+              backgroundColor="$backgroundElevated"
+              borderRadius="$4"
+              padding="$3"
+              gap="$2.5"
+            >
+              <XStack alignItems="center" gap="$2">
+                <Clock size={14} color="#FF551A" />
+                <Text fontSize={12} fontWeight="700" color="$text">
+                  Hora del pase
+                </Text>
+              </XStack>
+
+              <XStack gap="$2">
+                {(['desde', 'hasta'] as const).map((campo) => (
+                  <View
+                    key={campo}
+                    flex={1}
+                    onPress={() => setPickerHora((p) => (p === campo ? null : campo))}
+                    pressStyle={{ opacity: 0.7 }}
+                    backgroundColor="$background"
+                    borderWidth={1}
+                    borderColor="$border"
+                    borderRadius={6}
+                    height={46}
+                    paddingHorizontal="$3"
+                    flexDirection="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                  >
+                    <YStack>
+                      <Text fontSize={11} color="$textMuted">
+                        {campo === 'desde' ? 'Desde' : 'Hasta'}
+                      </Text>
+                      <Text fontSize={15} color="$text" fontWeight="600">
+                        {campo === 'desde' ? horaDesde : horaHasta}
+                      </Text>
+                    </YStack>
+                    <Clock size={16} color="#94A3B8" />
+                  </View>
+                ))}
+              </XStack>
+
+              {pickerHora && (
+                <View backgroundColor="$backgroundSurface" borderRadius="$3" padding="$2">
+                  <DateTimePicker
+                    value={horaADate(pickerHora === 'desde' ? horaDesde : horaHasta)}
+                    mode="time"
+                    is24Hour
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    themeVariant={theme === 'dark' ? 'dark' : 'light'}
+                    onChange={(_, d) => {
+                      const isIOS = Platform.OS === 'ios'
+                      if (!isIOS) setPickerHora(null)
+                      if (!d) return
+                      if (pickerHora === 'desde') setHoraDesde(fmtHora(d))
+                      else setHoraHasta(fmtHora(d))
+                    }}
+                  />
+                  {Platform.OS === 'ios' && (
+                    <Button
+                      alignSelf="flex-end"
+                      height={32}
+                      backgroundColor="$primary"
+                      borderRadius="$3"
+                      pressStyle={{ opacity: 0.7 }}
+                      onPress={() => setPickerHora(null)}
+                    >
+                      <Text color="white" fontWeight="700" fontSize={12}>
+                        Listo
+                      </Text>
+                    </Button>
+                  )}
+                </View>
+              )}
+
+              {/* Cruce de medianoche: no es error, pero tiene que quedar claro */}
+              {cruzaMedianoche(horaDesde, horaHasta) ? (
+                <XStack alignItems="center" gap="$2">
+                  <Moon size={13} color="#2563EB" />
+                  <Text fontSize={11} color="#2563EB" flexShrink={1}>
+                    Cruza medianoche: cierra el día siguiente ·{' '}
+                    {fmtDuracion(duracionVentana(horaDesde, horaHasta))}
+                  </Text>
+                </XStack>
+              ) : (
+                <Text fontSize={11} color="$textMuted">
+                  Duración: {fmtDuracion(duracionVentana(horaDesde, horaHasta))}
+                </Text>
+              )}
+
+              {/* Diferencia con el catálogo, que sí filtra por día de semana */}
+              <Text fontSize={11} color="$textMuted">
+                Esta hora aplica a todos los días que elijas. Si necesitás que
+                cambie según el día de la semana, creá un horario en el catálogo.
+              </Text>
+            </YStack>
+          )}
+
+          {!!selectedHorario && (
+            <YStack
+              backgroundColor="$backgroundElevated"
+              borderRadius="$3"
+              padding="$3"
+              gap="$1.5"
+            >
+              <XStack alignItems="center" gap="$2">
+                <Clock size={14} color="#FF551A" />
+                <Text fontSize={12} fontWeight="700" color="$text" flexShrink={1}>
+                  {horarioDetalle.length > 0 ? resumenHorario(horarioDetalle) : selectedHorario.Resumen ?? '...'}
+                </Text>
+              </XStack>
+              {selectedHorario.TieneNocturna && (
+                <XStack alignItems="center" gap="$2">
+                  <Moon size={12} color="#2563EB" />
+                  <Text fontSize={11} color="#2563EB" flexShrink={1}>
+                    Ventana nocturna: cierra a la mañana del día siguiente
+                  </Text>
+                </XStack>
+              )}
+              <Text fontSize={11} color="$textMuted">
+                Fuera de este horario no se permite la entrada. La salida siempre se
+                registra, y si se pasa de la hora queda marcada como fuera de horario.
+              </Text>
+            </YStack>
+          )}
+
           <Button
             marginTop="$3"
             height={48}
@@ -681,8 +1117,24 @@ export default function VisitasGenerarScreen() {
             </Text>
           </Button>
         </YStack>
-      </ScrollView>
+      </RNScrollView>
+      </YStack>
+      </KeyboardAvoidingView>
     </Page>
+  )
+}
+
+// Separador de sección: etiqueta chica en mayúsculas + línea de 1px que llena
+// el resto. Agrupa visualmente sin agregar cajas ni peso.
+function Separador({ label, Icon }: { label: string; Icon?: any }) {
+  return (
+    <XStack alignItems="center" gap="$2" marginTop="$4" marginBottom="$1">
+      {!!Icon && <Icon size={13} color="#94A3B8" />}
+      <Text fontSize={11} fontWeight="800" color="$textMuted" letterSpacing={0.8}>
+        {label}
+      </Text>
+      <View flex={1} height={1} backgroundColor="$border" />
+    </XStack>
   )
 }
 
