@@ -50,6 +50,35 @@ export const visitasService = {
 
   // Identificación del visitante: la foto viaja al servidor, que la lee con
   // Claude y coteja el nombre. La llave de la API nunca está en la app.
+  // Variante multipart: la cámara embebida solo tiene un URI de archivo, no
+  // base64. FormData con el URI es lo que RN maneja nativo, sin conversiones
+  // frágiles, y viaja 33% más liviano que base64.
+  guardarIdentificacionFoto: (params: {
+    VisitaAcceso_Id: number
+    Intentos: number
+    OmitirPorGuardia: boolean
+    Create_By: string
+    fotoUri?: string | null
+    fotoMime?: string
+  }) => {
+    const fd = new FormData()
+    fd.append('visitaAcceso_Id', String(params.VisitaAcceso_Id))
+    fd.append('intentos', String(params.Intentos))
+    fd.append('omitirPorGuardia', String(params.OmitirPorGuardia))
+    fd.append('create_By', params.Create_By)
+    if (params.fotoUri) {
+      fd.append('imagen', {
+        uri: params.fotoUri,
+        type: params.fotoMime || 'image/jpeg',
+        name: 'documento.jpg',
+      } as any)
+    }
+    return httpClient.postForm<ExecutionResponse<IIdentificacionResult>>(
+      `${schema}/IdentificacionFoto`,
+      fd
+    )
+  },
+
   guardarIdentificacion: (data: IIdentificacionRequest) =>
     httpClient.post<ExecutionResponse<IIdentificacionResult>, IIdentificacionRequest>(
       `${schema}/Identificacion`,

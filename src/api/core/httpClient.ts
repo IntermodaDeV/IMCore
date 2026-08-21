@@ -208,6 +208,51 @@ class HttpClient {
     }
   }
 
+  /**
+   * POST multipart (FormData). Reusa el mismo manejo de token y de refresh que
+   * `request`, pero NO fija Content-Type: hay que dejar que fetch le ponga el
+   * boundary del multipart. Fijarlo a mano rompe el parseo del lado del servidor.
+   */
+  async postForm<TResponse = any>(
+    url: string,
+    form: FormData,
+    timeoutMs?: number
+  ): Promise<TResponse> {
+    const fullUrl = `${this.baseUrl}${url}`
+    const token = await AsyncStorage.getItem('accessToken')
+
+    const options: RequestInit = {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    }
+
+    try {
+      return await this.fetchRequest<TResponse>(fullUrl, options, timeoutMs)
+    } catch (error: any) {
+      if (error instanceof HttpError && error.status === 401) {
+        if (error.reason === 'forced') {
+          sessionManager.notifyForcedLogout()
+          throw error
+        }
+        const newToken = await refreshAccessToken()
+        if (!newToken) throw error
+
+        return await this.fetchRequest<TResponse>(
+          fullUrl,
+          {
+            ...options,
+            headers: { ...options.headers, Authorization: `Bearer ${newToken}` },
+          },
+          timeoutMs
+        )
+      }
+      throw error
+    }
+  }
+
   get<T>(
     url: string,
     params?: Record<string, any>,

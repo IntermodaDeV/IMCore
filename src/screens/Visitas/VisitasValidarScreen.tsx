@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Platform, PermissionsAndroid, StyleSheet, Modal } from 'react-native'
 import { YStack, XStack, Text, View, Button, Spinner, ScrollView } from 'tamagui'
-import { Camera } from 'react-native-camera-kit'
+import { Camera, CameraType } from 'react-native-camera-kit'
 import { XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, Users, X, LogIn, LogOut, Clock, AlarmClockOff, Timer, IdCard, Camera as CameraIcon, CheckCircle2, ShieldAlert } from 'lucide-react-native'
 import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native'
 import Page from '../../components/commons/Page'
@@ -63,6 +63,10 @@ export default function VisitasValidarScreen() {
   // Cuando el pase la exige y se registró una ENTRADA, se le pide al guardia la
   // foto del documento. La imagen va al servidor, que la lee y coteja el nombre.
   const [idPaso, setIdPaso] = useState<'pedir' | 'enviando' | 'listo' | null>(null)
+  // Cámara EMBEBIDA para el documento: se queda abierta entre intentos, así el
+  // guardia ve el veredicto sobre el visor y corrige el encuadre sin salir.
+  const [idCamaraAbierta, setIdCamaraAbierta] = useState(false)
+  const idCamRef = useRef<any>(null)
   const [idResultado, setIdResultado] = useState<IIdentificacionResult | null>(null)
   const [idIntentos, setIdIntentos] = useState(0)
 
@@ -141,6 +145,7 @@ export default function VisitasValidarScreen() {
     setIdPaso(null)
     setIdResultado(null)
     setIdIntentos(0)
+    setIdCamaraAbierta(false)
   }
 
   const escanearOtro = () => {
@@ -159,39 +164,25 @@ export default function VisitasValidarScreen() {
     else (navigation as any).navigate('inicio')
   }
 
-  // Toma la foto del documento y la manda al servidor.
-  // maxWidth/maxHeight en 1568: es el lado largo que admite el modelo de visión
-  // que usa el servidor. Mandar más grande no mejora la lectura y cuesta más.
+  // Captura con la cámara EMBEBIDA y manda la foto al servidor.
+  //
+  // Se usa multipart y no base64 porque camera-kit devuelve un URI de archivo;
+  // FormData con ese URI es lo que RN maneja nativo, sin conversiones frágiles.
+  // La cámara NO se cierra: el veredicto se muestra encima del visor para poder
+  // corregir el encuadre y volver a disparar en el mismo lugar.
   const capturarId = async (omitir = false) => {
     const accesoId = result?.AccesoId
     if (!accesoId) return
 
-    let base64: string | undefined
-    let mime = 'image/jpeg'
-
+    let uri: string | null = null
     if (!omitir) {
       try {
-        const foto = await launchCamera({
-          mediaType: 'photo',
-          maxWidth: 1568,
-          maxHeight: 1568,
-          quality: 0.8,
-          includeBase64: true,
-          saveToPhotos: false,
-          cameraType: 'back',
-        })
-        if (foto.didCancel) return
-        if (foto.errorCode) {
-          showToast('error', 'Cámara', foto.errorMessage || 'No se pudo abrir la cámara', 4000, 'bottom')
-          return
-        }
-        const asset = foto.assets?.[0]
-        if (!asset?.base64) {
+        const foto = await idCamRef.current?.capture?.()
+        if (!foto?.uri) {
           showToast('error', 'Cámara', 'No se obtuvo la imagen', 4000, 'bottom')
           return
         }
-        base64 = asset.base64
-        mime = asset.type || 'image/jpeg'
+        uri = foto.uri
       } catch (err) {
         showToast('error', 'Error', handleError(err).message, 4000, 'bottom')
         return
@@ -202,19 +193,19 @@ export default function VisitasValidarScreen() {
     setIdIntentos(intento)
     setIdPaso('enviando')
     try {
-      const resp = await visitasService.guardarIdentificacion({
+      const resp = await visitasService.guardarIdentificacionFoto({
         VisitaAcceso_Id: accesoId,
-        ImagenBase64: base64 ?? null,
-        MimeType: mime,
         Intentos: intento,
         OmitirPorGuardia: omitir,
         Create_By: user?.Code ?? '',
+        fotoUri: uri,
+        fotoMime: 'image/jpeg',
       })
       if (resp.Success && resp.Data) {
         setIdResultado(resp.Data)
-        // Se vuelve a 'pedir' solo si el servidor lo pide; si ya es legible,
-        // o el guardia omitió, o se agotaron los intentos, queda en 'listo'.
         setIdPaso(resp.Data.ReintentarFoto ? 'pedir' : 'listo')
+        // Solo se cierra el visor cuando ya no hay que volver a disparar.
+        if (!resp.Data.ReintentarFoto) setIdCamaraAbierta(false)
       } else {
         showToast('error', 'Error', resp.ErrorMessage || 'No se pudo guardar la identificación', 5000, 'bottom')
         setIdPaso('pedir')
@@ -366,7 +357,7 @@ export default function VisitasValidarScreen() {
                       backgroundColor="$primary"
                       borderRadius="$4"
                       pressStyle={{ opacity: 0.8 }}
-                      onPress={() => capturarId(false)}
+                      onPress={() => setIdCamaraAbierta(true)}
                       icon={<CameraIcon size={18} color="white" />}
                     >
                       <Text color="white" fontWeight="700">
@@ -572,6 +563,106 @@ export default function VisitasValidarScreen() {
           </>
         )}
       </YStack>
+
+      {/* ══════════ Visor del documento ══════════
+          La cámara se queda ABIERTA entre intentos: el veredicto aparece encima
+          del visor, así el guardia corrige el encuadre y vuelve a disparar en el
+          mismo lugar, sin salir y volver a entrar. */}
+      <Modal visible={idCamaraAbierta} animationType="slide" onRequestClose={() => setIdCamaraAbierta(false)}>
+        <YStack flex={1} backgroundColor="#000">
+          <Camera ref={idCamRef} style={StyleSheet.absoluteFill} cameraType={CameraType.Back} />
+
+          {/* Guía de encuadre con proporción de documento */}
+          <View position="absolute" top={0} left={0} right={0} bottom={0} justifyContent="center" alignItems="center" pointerEvents="none">
+            <View width="86%" aspectRatio={1.58} borderWidth={3} borderColor="rgba(255,255,255,0.9)" borderRadius={14} />
+          </View>
+
+          {/* Instrucción / motivo del rechazo anterior */}
+          <YStack position="absolute" top={20} left={16} right={16} gap="$2">
+            <XStack backgroundColor="rgba(0,0,0,0.65)" padding="$3" borderRadius="$4" gap="$2" alignItems="center">
+              <IdCard size={16} color="#fff" />
+              <Text color="#fff" fontSize={13} flexShrink={1}>
+                {idIntentos === 0
+                  ? 'Encuadrá el documento dentro del marco, con buena luz y sin reflejo.'
+                  : `Intento ${idIntentos} de 3. ${idResultado?.Mensaje ?? ''}`}
+              </Text>
+            </XStack>
+          </YStack>
+
+          {/* Veredicto sobre el visor, sin cerrar la cámara */}
+          {idPaso === 'listo' && idResultado?.Legible && (
+            <YStack
+              position="absolute"
+              bottom={130}
+              left={16}
+              right={16}
+              backgroundColor={idResultado.Coincide === false ? 'rgba(229,142,38,0.95)' : 'rgba(46,158,91,0.95)'}
+              borderRadius="$4"
+              padding="$3"
+              gap="$1"
+            >
+              <Text color="#fff" fontWeight="800" fontSize={14}>
+                {idResultado.Coincide === false ? 'El nombre NO coincide con el pase' : 'Documento verificado'}
+              </Text>
+              <Text color="#fff" fontSize={12}>{idResultado.NombreDetectado}</Text>
+              {!!idResultado.DocumentoDetectado && (
+                <Text color="#fff" fontSize={11}>{idResultado.DocumentoDetectado}</Text>
+              )}
+            </YStack>
+          )}
+
+          {/* Disparador */}
+          <YStack position="absolute" bottom={34} left={0} right={0} alignItems="center" gap="$3">
+            {idPaso === 'enviando' ? (
+              <XStack backgroundColor="rgba(0,0,0,0.7)" paddingHorizontal="$4" paddingVertical="$3" borderRadius="$10" alignItems="center" gap="$3">
+                <Spinner color="#fff" />
+                <Text color="#fff" fontSize={13}>Leyendo el documento...</Text>
+              </XStack>
+            ) : (
+              <View
+                onPress={() => capturarId(false)}
+                pressStyle={{ opacity: 0.7 }}
+                width={72}
+                height={72}
+                borderRadius={36}
+                backgroundColor="#fff"
+                borderWidth={4}
+                borderColor="rgba(255,255,255,0.5)"
+                justifyContent="center"
+                alignItems="center"
+              >
+                <CameraIcon size={30} color="#1A1A2E" />
+              </View>
+            )}
+
+            <XStack gap="$3">
+              <Button
+                height={40}
+                backgroundColor="rgba(0,0,0,0.6)"
+                borderRadius="$10"
+                pressStyle={{ opacity: 0.7 }}
+                onPress={() => setIdCamaraAbierta(false)}
+              >
+                <Text color="#fff" fontWeight="700" fontSize={13}>
+                  {idPaso === 'listo' ? 'Listo' : 'Cerrar'}
+                </Text>
+              </Button>
+              {/* Tras agotar los intentos: continuar sin ID, marcado */}
+              {idResultado?.PermitirOmitir && (
+                <Button
+                  height={40}
+                  backgroundColor="rgba(229,142,38,0.9)"
+                  borderRadius="$10"
+                  pressStyle={{ opacity: 0.8 }}
+                  onPress={() => capturarId(true)}
+                >
+                  <Text color="#fff" fontWeight="700" fontSize={13}>Continuar sin ID</Text>
+                </Button>
+              )}
+            </XStack>
+          </YStack>
+        </YStack>
+      </Modal>
 
       {/* Modal: ingreso manual del código */}
       <Modal visible={manualOpen} transparent animationType="fade" onRequestClose={() => setManualOpen(false)}>
