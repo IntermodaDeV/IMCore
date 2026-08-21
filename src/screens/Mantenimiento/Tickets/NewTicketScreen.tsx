@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions, Modal, StyleSheet } from 'react-native'
-import { ScrollView, Text, XStack, YStack, View, Spinner, Input, TextArea, useTheme } from 'tamagui'
+import { Text, XStack, YStack, View, Spinner, Input, TextArea, useTheme } from 'tamagui'
+import KeyboardAwareForm from '../../../components/commons/KeyboardAwareForm'
 import { Check, Wrench, MapPin, ScanLine, ArrowLeft, X, RotateCcw } from 'lucide-react-native'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { Camera } from 'react-native-camera-kit'
@@ -254,8 +255,13 @@ export default function NewTicketScreen() {
 
   return (
     <View flex={1} backgroundColor="$background">
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 60 }}
-        keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      {/* KeyboardAwareForm en vez del ScrollView de tamagui: Observaciones es el
+          ultimo campo y con el paddingBottom fijo de 60 quedaba detras del
+          teclado (que mide ~300px), obligando a cerrarlo para leer lo escrito. */}
+      <KeyboardAwareForm
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16 }}
+        extraBottom={60}
+      >
         <YStack width="100%" maxWidth={FORM_MAX} alignSelf="center">
 
           {/* Selector Máquina/Área: solo al CREAR. En edición la categoría queda fija
@@ -390,7 +396,7 @@ export default function NewTicketScreen() {
             <Text color="#fff" fontWeight="800" fontSize="$4">{enviando ? (esEdicion ? 'Guardando…' : 'Creando…') : (esEdicion ? 'Guardar cambios' : 'Crear ticket')}</Text>
           </View>
         </YStack>
-      </ScrollView>
+      </KeyboardAwareForm>
 
       {/* Escáner de código de barras/QR de la etiqueta AF de la máquina */}
       <Modal visible={scanOpen} animationType="slide" onRequestClose={() => setScanOpen(false)}>
