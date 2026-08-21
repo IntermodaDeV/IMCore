@@ -11,7 +11,6 @@ import {
   ITiempoMecanico,
   IActivoPeriodo,
   IMttr,
-  ITicket,
   IMecanico,
   ICumplimientoValidacion,
 } from '../../api/modules/mantenimiento/tickets.types'
@@ -38,6 +37,7 @@ import {
 } from './mantenimiento.helpers'
 import { HBarList, KpiCard, SectionCard, TabBar } from './components'
 import { DashboardAnalisis, EsperaAhora } from './DashboardAnalisis'
+import { MaquinasMalas, useTicketsAbiertos, type TicketsAbiertos } from './MaquinasMalas'
 
 // Prioridades del catálogo, en orden. Las dos primeras entran por defecto: un
 // ticket de prioridad Baja no cuenta como paro para producción. Mismo criterio y
@@ -428,6 +428,12 @@ function TabResumen({
   prioridades,
   recarga,
 }: any) {
+  const { user } = useAuth()
+  // El permiso de pool decide si los bloques "ahora" pueden mostrar la planta
+  // completa: sin él el backend solo devuelve los tickets del usuario.
+  const puedePool = useMemo(() => puedeVerPool(user?.Roles, user?.Access), [user])
+  // Una sola bajada de tickets abiertos, para las máquinas malas y la carga del taller.
+  const abiertos = useTicketsAbiertos(recarga, puedePool)
   const theme = useTheme()
   const txt = theme.text?.val ?? '#0F172A'
   const muted = theme.textMuted?.val ?? '#94A3B8'
@@ -548,21 +554,6 @@ function TabResumen({
         </YStack>
       </SectionCard>
 
-      {/* Lo que está detenido AHORA (no depende del período de arriba). */}
-      <EsperaAhora desde={desde} hasta={hasta} tipoDest={tipoDest} prioridades={prioridades} recarga={recarga} />
-
-      {/* La otra mitad de la misma pregunta: quién puede tomarlo. */}
-      <CargaAhora recarga={recarga} />
-
-      {/* El SLA que corre sin que nadie lo vea: lo completado esperando visto bueno. */}
-      <ColaValidacion
-        desde={desde}
-        hasta={hasta}
-        tipoDest={tipoDest}
-        prioridades={prioridades}
-        recarga={recarga}
-      />
-
       <SectionCard titulo="Tickets por Prioridad" ejeX="Cantidad">
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <BarChart
@@ -591,6 +582,25 @@ function TabResumen({
           />
         </ScrollView>
       </SectionCard>
+
+      {/* Lo que está detenido AHORA (no depende del período de arriba). */}
+      <EsperaAhora desde={desde} hasta={hasta} tipoDest={tipoDest} prioridades={prioridades} recarga={recarga} />
+
+      {/* Mismo orden que el dashboard del web: debajo de "esperando ahora", porque
+          contesta el MISMO momento pero contado en máquinas y agrupado por área. */}
+      {tipoDest !== 'AREA' && <MaquinasMalas abiertos={abiertos} />}
+
+      {/* La otra mitad de la misma pregunta: quién puede tomarlo. */}
+      <CargaAhora abiertos={abiertos} recarga={recarga} />
+
+      {/* El SLA que corre sin que nadie lo vea: lo completado esperando visto bueno. */}
+      <ColaValidacion
+        desde={desde}
+        hasta={hasta}
+        tipoDest={tipoDest}
+        prioridades={prioridades}
+        recarga={recarga}
+      />
     </YStack>
   )
 }
@@ -757,52 +767,37 @@ function ColaValidacion({
 // puede venir de días atrás, así que se pide SIN rango.
 const CODES_OCUPADO = ['EN_PROCESO', 'PAUSADO']
 
-function CargaAhora({ recarga = 0 }: { recarga?: number }) {
-  const { user } = useAuth()
-  // Sin alcance al pool, el backend devolvería solo los tickets del usuario y el
-  // bloque mostraría su carga personal disfrazada de carga del taller. Mejor no
-  // mostrarlo que mostrarlo mal.
-  const puedePool = useMemo(() => puedeVerPool(user?.Roles, user?.Access), [user])
-  const [filas, setFilas] = useState<ITicket[]>([])
+function CargaAhora({ abiertos, recarga = 0 }: { abiertos: TicketsAbiertos; recarga?: number }) {
   const [mecanicos, setMecanicos] = useState<IMecanico[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
+  // Los tickets abiertos llegan del Resumen (useTicketsAbiertos): este bloque y el
+  // de máquinas malas miran lo mismo, así que se piden una sola vez. Acá solo falta
+  // el padrón de mecánicos, para saber a quién NO se le asignó nada.
   useEffect(() => {
-    if (!puedePool) {
-      setCargando(false)
-      return
-    }
+    if (!abiertos.habilitado) return
     let vivo = true
     ;(async () => {
-      setCargando(true)
-      setError(null)
       try {
-        const [respEstados, respMec] = await Promise.all([
-          ticketsService.getEstados(),
-          ticketsService.getMecanicos(),
-        ])
-        // Los Id salen del catálogo, no hardcodeados: el orden de la tabla puede
-        // cambiar entre bases (Dev y Pro no siempre coinciden).
-        const ids = (respEstados.Data ?? [])
-          .filter(e => CODES_OCUPADO.includes(e.Code))
-          .map(e => e.Id)
-        const resps = await Promise.all(
-          ids.map(id => ticketsService.getTickets({ estado_Id: id, scope: 'todos' })),
-        )
-        if (!vivo) return
-        setFilas(resps.flatMap(r => r.Data ?? []))
-        setMecanicos(respMec.Data ?? [])
-      } catch (e: any) {
-        if (vivo) setError(e?.message ?? 'No se pudo cargar el trabajo en curso.')
-      } finally {
-        if (vivo) setCargando(false)
+        const resp = await ticketsService.getMecanicos()
+        if (vivo) setMecanicos(resp.Data ?? [])
+      } catch {
+        // Sin el padrón el bloque igual sirve: muestra los ocupados sin el total.
       }
     })()
     return () => {
       vivo = false
     }
-  }, [puedePool, recarga])
+  }, [abiertos.habilitado, recarga])
+
+  // De todo lo abierto, lo que es trabajo EN CURSO. Un pendiente asignado todavía
+  // es cola, no trabajo: eso lo muestra "Esperando ahora".
+  const filas = useMemo(
+    () =>
+      abiertos.filas.filter(t =>
+        CODES_OCUPADO.includes((t.EstadoCode ?? '').trim().toUpperCase()),
+      ),
+    [abiertos.filas],
+  )
 
   const porMecanico = useMemo(() => {
     const m = new Map<
@@ -830,8 +825,8 @@ function CargaAhora({ recarga = 0 }: { recarga?: number }) {
     return mecanicos.filter(x => !ocupados.has((x.User_Code ?? '').trim()))
   }, [mecanicos, porMecanico])
 
-  if (!puedePool) return null
-  if (cargando) {
+  if (!abiertos.habilitado) return null
+  if (abiertos.cargando) {
     return (
       <SectionCard titulo="🧰 Trabajo en curso por mecánico">
         <YStack height={100} alignItems="center" justifyContent="center">
@@ -840,11 +835,11 @@ function CargaAhora({ recarga = 0 }: { recarga?: number }) {
       </SectionCard>
     )
   }
-  if (error) {
+  if (abiertos.error) {
     return (
       <SectionCard titulo="🧰 Trabajo en curso por mecánico">
         <Text fontSize={12} color="$textMuted">
-          {error}
+          {abiertos.error}
         </Text>
       </SectionCard>
     )

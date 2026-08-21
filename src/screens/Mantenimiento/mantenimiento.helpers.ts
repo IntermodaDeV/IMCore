@@ -182,6 +182,22 @@ export function fmtHM(min: number): string {
   return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
+// Lo que algo lleva DETENIDO se mide en días, no en horas: 12 646 min es 8d 19h, y
+// "210h 46m" no lo lee nadie. (Vive acá porque lo usan Análisis y el panel de
+// máquinas malas; es el mismo fmtDetenido del web.)
+export function fmtDetenido(min: number): string {
+  const m = Math.max(0, Math.round(min))
+  if (m < 1440) return fmtHM(m)
+  let d = Math.floor(m / 1440)
+  let h = Math.round((m % 1440) / 60)
+  // 4 316 min redondea a 24 h y salía "2d 24h": las 24 horas son un día más.
+  if (h === 24) {
+    d += 1
+    h = 0
+  }
+  return h > 0 ? `${d}d ${h}h` : `${d}d`
+}
+
 // Minutos → "746 h": para totales grandes, donde los minutos sueltos no dicen nada.
 export const fmtHoras = (min: number) => `${Math.round(min / 60).toLocaleString('es-HN')} h`
 

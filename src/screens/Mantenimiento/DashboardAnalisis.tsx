@@ -19,6 +19,7 @@ import {
   ESCALA_NARANJA,
   ESCALA_ROJA,
   colorPrioridad,
+  fmtDetenido,
   fmtEntero,
   fmtHM,
   fmtHoras,
@@ -34,16 +35,6 @@ import { BarraApilada, HBarList, KpiCard, SectionCard } from './components'
 // filtrar en el cliente: viaja al servidor como tipoDestino.
 
 const pctDe = (parte: number, total: number) => (total ? Math.round((parte / total) * 100) : 0)
-
-// Lo detenido "ahora" se mide en días, no en horas: 12 646 min es 8d 19h, y
-// "210h 46m" no lo lee nadie.
-const fmtDetenido = (min: number) => {
-  const m = Math.max(0, Math.round(min))
-  if (m < 1440) return fmtHM(m)
-  const d = Math.floor(m / 1440)
-  const h = Math.round((m % 1440) / 60)
-  return h > 0 ? `${d}d ${h}h` : `${d}d`
-}
 
 // ── Carga de un indicador ────────────────────────────────────────────────────
 interface EstadoKpi<T> {
