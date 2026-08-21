@@ -32,6 +32,9 @@ export interface TicketsAbiertos {
   recortado: boolean
   // Sin permiso de pool no se puede mostrar: ver el comentario del hook.
   habilitado: boolean
+  // El contador de "pull to refresh" que recibió el hook. Se expone para que otros
+  // bloques que piden datos propios (el padrón de mecánicos) se recarguen con él.
+  recarga: number
 }
 
 // Los tickets ABIERTOS de toda la planta. Lo piden dos bloques del Resumen — las
@@ -85,7 +88,7 @@ export function useTicketsAbiertos(recarga: number, habilitado: boolean): Ticket
     }
   }, [habilitado, recarga])
 
-  return { filas, cargando, error, recortado, habilitado }
+  return { filas, cargando, error, recortado, habilitado, recarga }
 }
 
 const TITULO = '🔧 Máquinas malas ahora'

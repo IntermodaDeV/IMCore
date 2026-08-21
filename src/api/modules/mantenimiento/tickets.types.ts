@@ -135,7 +135,11 @@ export interface IMotivoPausa { Id: number; Name: string; Status_Id: number }
 export interface IModelo { Modelo: string }
 export interface ITipoFalla { TipoFalla: string }
 export interface ICausa { Causa: string }
-export interface IMecanico { User_Code: string; Nombre?: string | null; Email?: string | null }
+// El padrón (SP_GetMecanicos) devuelve Mecánico, Técnico Y Supervisor de
+// Mantenimiento: los tres pueden tomar un ticket. `Rol` (script 74) permite
+// contarlos aparte, porque sumar supervisores como mecánicos libres infla el número.
+// Viene undefined contra una API anterior al script 74.
+export interface IMecanico { User_Code: string; Nombre?: string | null; Email?: string | null; Rol?: string | null }
 
 // Resumen de tickets por período (SP_GetTicketsResumen).
 // EsGlobal=true => totales del período; EsGlobal=false => fila por mecánico/técnico.

@@ -11,7 +11,6 @@ import {
   ITiempoMecanico,
   IActivoPeriodo,
   IMttr,
-  IMecanico,
   ICumplimientoValidacion,
 } from '../../api/modules/mantenimiento/tickets.types'
 import { MantenimientoPeriodo, MantenimientoRegistro } from '../../api/modules/sharepoint/mantenimiento.types'
@@ -38,6 +37,7 @@ import {
 import { HBarList, KpiCard, SectionCard, TabBar } from './components'
 import { DashboardAnalisis, EsperaAhora } from './DashboardAnalisis'
 import { MaquinasMalas, useTicketsAbiertos, type TicketsAbiertos } from './MaquinasMalas'
+import { MecanicosAhora } from './MecanicosAhora'
 
 // Prioridades del catálogo, en orden. Las dos primeras entran por defecto: un
 // ticket de prioridad Baja no cuenta como paro para producción. Mismo criterio y
@@ -590,8 +590,8 @@ function TabResumen({
           contesta el MISMO momento pero contado en máquinas y agrupado por área. */}
       {tipoDest !== 'AREA' && <MaquinasMalas abiertos={abiertos} />}
 
-      {/* La otra mitad de la misma pregunta: quién puede tomarlo. */}
-      <CargaAhora abiertos={abiertos} recarga={recarga} />
+      {/* La otra mitad de la misma pregunta: quién lo puede atender. */}
+      <MecanicosAhora abiertos={abiertos} />
 
       {/* El SLA que corre sin que nadie lo vea: lo completado esperando visto bueno. */}
       <ColaValidacion
@@ -752,151 +752,6 @@ function ColaValidacion({
             {pctSistema}% de lo completado se cerró sin que nadie lo revisara. A este nivel el visto
             bueno dejó de ser un control: o el plazo de {plazo} h es muy corto para el turno, o el
             aviso no le está llegando a quien reportó la falla.
-          </Text>
-        )}
-      </SectionCard>
-    </YStack>
-  )
-}
-
-// ════════ Carga de los mecánicos AHORA (no del período) ════════
-// La pregunta del que asigna cuando entra un paro nuevo: quién lo puede tomar.
-// "Ocupado" = tiene tickets EN PROCESO o PAUSADOS en este momento. Un pendiente
-// asignado todavía no es trabajo en curso, es cola — eso ya lo muestra
-// "Esperando ahora" arriba. No depende del período del filtro: un ticket abierto
-// puede venir de días atrás, así que se pide SIN rango.
-const CODES_OCUPADO = ['EN_PROCESO', 'PAUSADO']
-
-function CargaAhora({ abiertos, recarga = 0 }: { abiertos: TicketsAbiertos; recarga?: number }) {
-  const [mecanicos, setMecanicos] = useState<IMecanico[]>([])
-
-  // Los tickets abiertos llegan del Resumen (useTicketsAbiertos): este bloque y el
-  // de máquinas malas miran lo mismo, así que se piden una sola vez. Acá solo falta
-  // el padrón de mecánicos, para saber a quién NO se le asignó nada.
-  useEffect(() => {
-    if (!abiertos.habilitado) return
-    let vivo = true
-    ;(async () => {
-      try {
-        const resp = await ticketsService.getMecanicos()
-        if (vivo) setMecanicos(resp.Data ?? [])
-      } catch {
-        // Sin el padrón el bloque igual sirve: muestra los ocupados sin el total.
-      }
-    })()
-    return () => {
-      vivo = false
-    }
-  }, [abiertos.habilitado, recarga])
-
-  // De todo lo abierto, lo que es trabajo EN CURSO. Un pendiente asignado todavía
-  // es cola, no trabajo: eso lo muestra "Esperando ahora".
-  const filas = useMemo(
-    () =>
-      abiertos.filas.filter(t =>
-        CODES_OCUPADO.includes((t.EstadoCode ?? '').trim().toUpperCase()),
-      ),
-    [abiertos.filas],
-  )
-
-  const porMecanico = useMemo(() => {
-    const m = new Map<
-      string,
-      { nombre: string; enProceso: number; pausados: number; desde: number | null }
-    >()
-    for (const t of filas) {
-      const code = (t.Mecanico_UserCode ?? '').trim()
-      if (!code) continue
-      const cur = m.get(code) ?? { nombre: t.Mecanico || code, enProceso: 0, pausados: 0, desde: null }
-      if (t.EstadoCode === 'PAUSADO') cur.pausados += 1
-      else cur.enProceso += 1
-      // "Desde cuándo" = el arranque más viejo que sigue abierto.
-      const ini = t.HoraInicio ? new Date(t.HoraInicio).getTime() : null
-      if (ini != null && !Number.isNaN(ini) && (cur.desde == null || ini < cur.desde)) cur.desde = ini
-      m.set(code, cur)
-    }
-    return [...m.entries()]
-      .map(([code, v]) => ({ code, ...v, total: v.enProceso + v.pausados }))
-      .sort((a, b) => b.total - a.total)
-  }, [filas])
-
-  const libres = useMemo(() => {
-    const ocupados = new Set(porMecanico.map(x => x.code))
-    return mecanicos.filter(x => !ocupados.has((x.User_Code ?? '').trim()))
-  }, [mecanicos, porMecanico])
-
-  if (!abiertos.habilitado) return null
-  if (abiertos.cargando) {
-    return (
-      <SectionCard titulo="🧰 Trabajo en curso por mecánico">
-        <YStack height={100} alignItems="center" justifyContent="center">
-          <Spinner size="large" color={ACCENT} />
-        </YStack>
-      </SectionCard>
-    )
-  }
-  if (abiertos.error) {
-    return (
-      <SectionCard titulo="🧰 Trabajo en curso por mecánico">
-        <Text fontSize={12} color="$textMuted">
-          {abiertos.error}
-        </Text>
-      </SectionCard>
-    )
-  }
-
-  const enCurso = porMecanico.reduce((a, x) => a + x.total, 0)
-  const masViejo = porMecanico.reduce<number | null>(
-    (a, x) => (x.desde == null ? a : a == null ? x.desde : Math.min(a, x.desde)),
-    null,
-  )
-  const horas = (ms: number) => {
-    const min = Math.max(0, Math.round((Date.now() - ms) / 60000))
-    return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`
-  }
-
-  return (
-    <YStack gap="$3">
-      <XStack flexWrap="wrap" gap="$2">
-        <KpiCard
-          titulo="Mecánicos ocupados"
-          valor={mecanicos.length ? `${porMecanico.length} / ${mecanicos.length}` : String(porMecanico.length)}
-          hint="con trabajo en curso"
-          info="Mecánicos que tienen al menos un ticket en proceso o pausado en este momento, sobre el total de mecánicos activos. Lo que queda es a quién se le puede asignar el próximo paro."
-        />
-        <KpiCard
-          titulo="Tickets en curso"
-          valor={enCurso.toLocaleString()}
-          hint="en proceso o pausados"
-          info="Tickets que ya arrancaron y todavía no se cerraron, sin importar de qué período son."
-        />
-        <KpiCard
-          titulo="El más viejo"
-          valor={masViejo != null ? horas(masViejo) : '—'}
-          hint="desde que arrancó"
-          color={AMBAR}
-          info="Cuánto lleva abierto el ticket en curso que arrancó primero. Un número alto es un ticket olvidado o una reparación atascada esperando algo."
-        />
-      </XStack>
-
-      <SectionCard
-        titulo="🧰 Trabajo en curso por mecánico"
-        ejeX="Tickets abiertos ahora mismo · no depende del período"
-      >
-        <HBarList
-          datos={porMecanico.map(x => ({
-            label: `${x.nombre}${x.pausados ? ` (${x.enProceso} activo · ${x.pausados} en pausa)` : ''}${
-              x.desde != null ? ` · ${horas(x.desde)}` : ''
-            }`,
-            value: x.total,
-          }))}
-          escala={ESCALA_AZUL}
-          formato={v => `${v} ${v === 1 ? 'ticket' : 'tickets'}`}
-          vacioMsg="Ningún mecánico tiene trabajo en curso en este momento."
-        />
-        {libres.length > 0 && (
-          <Text fontSize={11} color="$textMuted" lineHeight={16} marginTop="$2">
-            Sin trabajo en curso ({libres.length}): {libres.map(x => x.Nombre || x.User_Code).join(', ')}
           </Text>
         )}
       </SectionCard>
