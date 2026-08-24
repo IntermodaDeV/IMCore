@@ -45,11 +45,13 @@ let cache: Mapa | null = null
 // llamadas (Generar e Historial se abren una detrás de la otra).
 let enVuelo: Promise<Mapa> | null = null
 
-async function traer(): Promise<Mapa> {
+async function traer(): Promise<{ mapa: Mapa; ok: boolean }> {
   const mapa: Mapa = {}
+  let ok = false
   try {
     const resp = await securityService.getEmpresas(true, true)
     if (resp.Success) {
+      ok = true
       for (const e of resp.Data ?? []) {
         if (e.Logo && e.Code) {
           mapa[e.Code] = { uri: `data:${e.LogoMime || 'image/png'};base64,${e.Logo}` }
@@ -62,17 +64,24 @@ async function traer(): Promise<Mapa> {
   }
   // Si el catálogo no trajo el de Intermoda, se usa el empaquetado.
   if (!mapa[CODIGO_INTERMODA]) mapa[CODIGO_INTERMODA] = RESPALDO_INTERMODA
-  return mapa
+  return { mapa, ok }
 }
 
-/** Carga (una sola vez) los logos de todas las empresas, indexados por código. */
+/**
+ * Carga los logos de todas las empresas, indexados por código.
+ *
+ * Solo se CACHEA si la llamada salió bien. Si falla (portería sin señal) se
+ * devuelve el respaldo pero sin guardarlo, así el próximo pase que se abra
+ * vuelve a intentar. Cachear el fallo dejaría a los pases de las otras empresas
+ * sin logo por el resto de la vida del proceso, aunque la red ya hubiera vuelto.
+ */
 export function cargarLogosEmpresa(): Promise<Mapa> {
   if (cache) return Promise.resolve(cache)
   if (!enVuelo) {
-    enVuelo = traer().then((m) => {
-      cache = m
+    enVuelo = traer().then(({ mapa, ok }) => {
+      if (ok) cache = mapa
       enVuelo = null
-      return m
+      return mapa
     })
   }
   return enVuelo

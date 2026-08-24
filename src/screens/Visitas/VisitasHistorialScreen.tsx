@@ -227,7 +227,11 @@ export default function VisitasHistorialScreen() {
       }
       const uri = await capturarQr()
       if (!uri) throw new Error('No se pudo generar la imagen')
-      await CameraRoll.save(uri, { type: 'photo', album: 'INTERMODA' })
+      // El álbum sigue a la empresa del pase (ver Generar).
+      await CameraRoll.save(uri, {
+        type: 'photo',
+        album: (selected?.Empresa ?? 'INTERMODA').toUpperCase(),
+      })
       showToast('success', 'Guardado', 'Pase guardado en tu galería', 4000, 'bottom')
     } catch (e: any) {
       showToast('error', 'Error', 'No se pudo guardar: ' + (e?.message ?? ''), 5000, 'bottom')

@@ -313,8 +313,12 @@ export default function VisitasGenerarScreen() {
               : null,
           requiereId,
           idCadaEntrada: requiereId && idCadaEntrada,
-          empresa: user?.Empresa ?? null,
-          empresaCode: user?.EmpresaCode ?? null,
+          // Del SERVIDOR, no del usuario local: es la empresa que quedó escrita
+          // en el pase. Si se adivinara desde un InfoUser viejo, la tarjeta podría
+          // salir con el nombre y el logo de la otra empresa — y esa tarjeta ya
+          // se fue por WhatsApp.
+          empresa: resp.Data.Empresa ?? null,
+          empresaCode: resp.Data.EmpresaCode ?? null,
         })
       } else {
         showToast('error', 'Error', resp.ErrorMessage || 'No se pudo generar el pase', 5000, 'bottom')
@@ -385,7 +389,12 @@ export default function VisitasGenerarScreen() {
       }
       const uri = await capturarQr()
       if (!uri) throw new Error('No se pudo generar la imagen')
-      await CameraRoll.save(uri, { type: 'photo', album: 'INTERMODA' })
+      // El álbum sigue a la empresa del pase: guardar el de Chamer en un álbum
+      // llamado INTERMODA es confuso para quien después busca su pase.
+      await CameraRoll.save(uri, {
+        type: 'photo',
+        album: (result.empresa ?? 'INTERMODA').toUpperCase(),
+      })
       showToast('success', 'Guardado', 'Pase guardado en tu galería', 4000, 'bottom')
     } catch (e: any) {
       showToast('error', 'Error', 'No se pudo guardar: ' + (e?.message ?? ''), 5000, 'bottom')

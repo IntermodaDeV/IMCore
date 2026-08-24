@@ -132,6 +132,10 @@ export interface IVisitaResult {
   ErrorMessage?: string
   Id: number
   Token: string
+  /** Empresa que quedó REGISTRADA en el pase. Viene del servidor a propósito:
+   *  la tarjeta que se comparte no puede adivinarla desde el usuario local. */
+  Empresa?: string | null
+  EmpresaCode?: string | null
 }
 
 export interface IValidarResult {
