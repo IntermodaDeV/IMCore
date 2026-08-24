@@ -11,6 +11,7 @@ import ProfileScreen from './Security/Users/ProfileScreen'
 import { ScreensGastosViaje } from './GastosViaje'
 import { ScreensRepuestos } from './Repuestos'
 import { ScreensOvertime } from './Overtime'
+import { ScreensCooperativa } from './Cooperativa'
 
 export const SCREENS: Record<string, TScreenEntry> = {
   inicio: HomeScreen,
@@ -24,6 +25,7 @@ export const SCREENS: Record<string, TScreenEntry> = {
   ...ScreensVisitas,
   ...ScreensRecursosHumanos,
   ...ScreensOvertime,
+  ...ScreensCooperativa,
 
   not_found: NotFoundScreen,
 };

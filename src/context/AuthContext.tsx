@@ -25,6 +25,11 @@ type AuthContextType = {
   setSessionExpired: (value: boolean) => void
   sessionClosedByAdmin: boolean
   setSessionClosedByAdmin: (value: boolean) => void
+  // Primer ingreso de un usuario Cooperativa: mientras este en true, App.tsx
+  // muestra la pantalla de cambio de contrasena en lugar del menu.
+  mustChangePassword: boolean
+  startInitialPasswordChange: () => Promise<void>
+  finishInitialPasswordChange: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>(
@@ -45,6 +50,7 @@ export const AuthProvider = ({
   const [transitionMessage, setTransitionMessage] = useState<string | null>(null)
   const [sessionExpired, setSessionExpired] = useState(false)
   const [sessionClosedByAdmin, setSessionClosedByAdmin] = useState(false)
+  const [mustChangePassword, setMustChangePassword] = useState(false)
 
   useEffect(() => {
     const loadSession = async () => {
@@ -65,6 +71,11 @@ export const AuthProvider = ({
           setLoading(false)
           return
         }
+
+        // Se persiste para que matar la app en la pantalla de cambio no sirva
+        // para saltarsela: al volver a abrir sigue pendiente.
+        const pendingPwd = await AsyncStorage.getItem('mustChangePassword')
+        if (pendingPwd === '1') setMustChangePassword(true)
 
         const savedUser = await AsyncStorage.getItem('user')
         const savedTheme = await AsyncStorage.getItem('theme')
@@ -256,8 +267,10 @@ export const AuthProvider = ({
       setUser(null)
       setDefaultCompany(null)
       setCompanyIdState(null)
+      setMustChangePassword(false)
 
       await Promise.all([
+        AsyncStorage.removeItem('mustChangePassword'),
         AsyncStorage.removeItem('user'),
         AsyncStorage.removeItem('theme'),
         AsyncStorage.removeItem('menu'),
@@ -269,6 +282,26 @@ export const AuthProvider = ({
       console.log('Error logout', e)
       setUser(null)
       setCompanyIdState(null)
+    }
+  }
+
+  // Marca el cambio pendiente (lo llama el login cuando la API lo pide).
+  const startInitialPasswordChange = async () => {
+    setMustChangePassword(true)
+    try {
+      await AsyncStorage.setItem('mustChangePassword', '1')
+    } catch (e) {
+      console.log('Error guardando mustChangePassword', e)
+    }
+  }
+
+  // Lo llama la pantalla cuando la contrasena YA se actualizo en el servidor.
+  const finishInitialPasswordChange = async () => {
+    setMustChangePassword(false)
+    try {
+      await AsyncStorage.removeItem('mustChangePassword')
+    } catch (e) {
+      console.log('Error limpiando mustChangePassword', e)
     }
   }
 
@@ -294,6 +327,9 @@ export const AuthProvider = ({
         setSessionExpired,
         sessionClosedByAdmin,
         setSessionClosedByAdmin,
+        mustChangePassword,
+        startInitialPasswordChange,
+        finishInitialPasswordChange,
       }}
     >
       {children}

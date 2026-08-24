@@ -14,6 +14,9 @@ export type LoginResponse = {
   AccessToken?: string
   RefreshToken?: string
   ExpireAt?: string
+  // Primer ingreso de un usuario Cooperativa: hay que forzar el cambio de
+  // contrasena antes de dejarlo entrar. Lo resuelve la API en el login.
+  RequiresPasswordChange?: boolean
 }
 
 interface RoleDTO {
@@ -47,6 +50,9 @@ export interface UsersDTO {
   DefaultCompany_Id?: number | null
   Creation_Date?: string | Date
   ValidateAD?: boolean | null
+  // Tipo de usuario (AdmSys.Types, Category 'TiposUsuario').
+  TypeId?: number | null
+  TypeName?: string
   Payweb:string,
   Modified_By?: string
   Modification_Date?: string | Date | null

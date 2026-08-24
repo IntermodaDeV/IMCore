@@ -2,12 +2,24 @@ import { navigateWhenReady } from '../navigation/navigationRef'
 import { requestOpenPass } from './passNavigation'
 import { requestOpenPaseAprobacion } from './paseNavigation'
 import { requestOpenHistorialHoraExtra, requestOpenSolicitudHoraExtra } from './overtimeNavigation'
+import { requestMenuRefresh } from './menuRefresh'
 
 // Enruta una notificación (push o bandeja) a su pantalla de detalle según la
 // categoría. `data` es el payload de la notificación (FCM data o el Data del inbox).
 export function routeNotification(data: any): boolean {
   if (!data) return false
   const category = data.category ?? data.type ?? data.Category
+
+  if (category === 'coointer_solicitud_socio') {
+    navigateWhenReady('RequestSocio')
+    return true
+  }
+
+  if (category === 'coointer_solicitud_resultado') {
+    if ((data.statusCode ?? data.Status_Code) === 'APR') requestMenuRefresh()
+    navigateWhenReady('self')
+    return true
+  }
 
   if (category === 'mantenimiento_ticket') {
     const id = Number(data.ticketId ?? data.TicketId)

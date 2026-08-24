@@ -15,6 +15,9 @@ export const securityService = {
   saveUsers: (data: UsersDTO[]) => httpClient.post<ExecutionResponse<UsersDTO[]>>(`${schema}/Users`, data),
   saveUsersSettings: (data: UsersSettingsDTO[]) => httpClient.post<ExecutionResponse<UsersSettingsDTO[]>>(`${schema}/UserSettings`, data),
   changePassword: (data: any[]) => httpClient.post<ExecutionResponse<any[]>>(`${schema}/UsersPassword`, data),
+  // Primer ingreso: fija la contrasena sin pedir la actual. No lleva Code, el
+  // servidor lo toma del token.
+  setInitialPassword: (data: { NewPassword: string }) => httpClient.post<ExecutionResponse<any>>(`${schema}/SetInitialPassword`, data),
   deleteAccount: (data: { Id?: number; Code?: string; Password: string; Modified_By?: string }) =>
     httpClient.post<ExecutionResponse<any>>(`${schema}/DeleteAccount`, data),
   getUserById: (Id: number) => httpClient.get<ExecutionResponse<UsersDTO[]>>(`${schema}/UserById?Id=${Id}`),

@@ -45,7 +45,7 @@ export default function LoginScreen() {
   const [lift, setLift] = useState(0)
   const liftRef = React.useRef(0)
   const btnRef = React.useRef<any>(null)
-  const { login } = useAuth()
+  const { login, startInitialPasswordChange } = useAuth()
 
   // Reactivar cuenta
   const [openReactivate, setOpenReactivate] = useState(false)
@@ -114,6 +114,14 @@ export default function LoginScreen() {
       const user = JSON.parse(response.InfoUser)
       await AsyncStorage.setItem('userCode', user.Code)
       await refreshMenu(user.Code)
+
+      // Primer ingreso de un usuario Cooperativa: se levanta la bandera ANTES
+      // de login(), asi el primer render ya muestra la pantalla de cambio de
+      // contrasena y no se alcanza a ver el menu.
+      if (response.RequiresPasswordChange) {
+        await startInitialPasswordChange()
+      }
+
       // navigation.navigate('Loading' as never)
       login(user)
 

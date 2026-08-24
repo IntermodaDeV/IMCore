@@ -3,6 +3,7 @@ import messaging from '@react-native-firebase/messaging'
 import notifee, { AndroidImportance, EventType } from '@notifee/react-native'
 import { notificationsService } from '../api/modules/notifications/notifications.service'
 import { routeNotification } from './notificationRouter'
+import { requestMenuRefresh } from './menuRefresh'
 
 /**
  * Notificaciones push (Firebase Cloud Messaging).
@@ -102,6 +103,18 @@ async function displayForeground(remoteMessage: any) {
   } finally {
     // Avisa a la bandeja para que actualice el conteo / la lista.
     try { onPushReceived?.(remoteMessage) } catch {}
+
+    // Aprobacion de socio: el servidor acaba de darle el menu del modulo, y el
+    // menu vive cacheado. Se refresca al LLEGAR y no solo al tocar la
+    // notificacion, para que la pantalla nueva aparezca aunque no la abra.
+    try {
+      const d: any = remoteMessage?.data ?? {}
+      const categoria = d.category ?? d.type ?? d.Category
+      if (categoria === 'coointer_solicitud_resultado'
+          && (d.statusCode ?? d.Status_Code) === 'APR') {
+        requestMenuRefresh()
+      }
+    } catch {}
   }
 }
 

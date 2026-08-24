@@ -4,7 +4,7 @@ import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox,style
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
-import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, IUserCompanies, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
+import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, ITypes, IUserCompanies, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
 import { securityService } from '../../../api/modules/security/security.service'
 import { computeMenuCascade, buildMenuControlPayloads } from '../menuCascade'
 import { ExecutionResponse } from '../../../api/modules/response.type'
@@ -45,6 +45,7 @@ export default function UsersForm() {
     const [activeTab, setActiveTab] = useState<TabType>('general')
     const [roles, setRoles] = useState<RolesDTO[]>([])
     const [companies, setCompanies] = useState<CompaniesDTO[]>([])
+    const [userTypes, setUserTypes] = useState<ITypes[]>([])
     const [user_Code, setUser_Code] = useState<string>([])
     const [access, setAccess] = useState<AccessDTO[]>([])
     const [permisos, setPermisos] = useState<MenuDTO[]>([])
@@ -69,6 +70,7 @@ export default function UsersForm() {
         Code: '',
         Theme: 'light',
         LastName: '',
+        TypeId: null,
         Status_Id: 1,
         Create_By: '',
         Roles: '',
@@ -89,12 +91,22 @@ export default function UsersForm() {
                 setRoles(responseRoles.Data.filter((i: RolesDTO) => i?.Status_Id === 1))
                 const responseCompanies: ExecutionResponse<CompaniesDTO[]> = await securityService.getCompanies()
                 setCompanies(responseCompanies.Data?.filter((i: CompaniesDTO) => i?.Status_Id === 1) ?? [])
+
+                // Catalogo de tipos de usuario. El Id de General se resuelve por
+                // nombre en vez de hardcodearse, igual que en el SP.
+                const responseTypes: ExecutionResponse<ITypes[]> = await securityService.getTypesByCategory('TiposUsuario')
+                const tipos = responseTypes.Data ?? []
+                setUserTypes(tipos)
+                const generalId = tipos.find((t: ITypes) => t.Name === 'General')?.Id ?? null
+
                 if (Id) {
                     const response: ExecutionResponse<UsersDTO[]> = await securityService.getUserById(Id)
                     if (response.Success) {
                         const userData = response.Data[0]
                         reset(userData)
                         setUser_Code(userData?.Code)
+                        // Usuario viejo que quedo sin tipo -> General.
+                        if (!userData?.TypeId && generalId) setValue('TypeId', generalId)
 
                         // Cargar los países asignados al usuario y marcar el predeterminado
                         const respCompanies: ExecutionResponse<IUserCompanies[]> = await securityService.getCompaniesByUser(userData?.Code)
@@ -108,6 +120,9 @@ export default function UsersForm() {
                         showToast('error', 'Error', response?.ErrorMessage || 'Error al obtener la información', 5000, 'bottom')
                         setLoading(false)
                     }
+                } else if (generalId) {
+                    // Alta nueva: arranca en General.
+                    setValue('TypeId', generalId)
                 }
             } else if(activeTab === 'accesos'){
                 const response: ExecutionResponse<AccessDTO[]> = await securityService.getAccess()
@@ -162,6 +177,7 @@ export default function UsersForm() {
                 Name: data?.Name,
                 LastName: data?.LastName,
                 Theme: data?.Theme,
+                TypeId: data?.TypeId ?? null,
                 Status_Id: 1,
                 ValidateAD: data?.ValidateAD,
                 PasswordHash: data?.ValidateAD ? '' : data?.PasswordHash,
@@ -598,6 +614,26 @@ export default function UsersForm() {
                                                         value: 'dark',
                                                     }
                                                 ]}
+                                            />
+                                        )}
+                                    />
+
+                                    <Controller
+                                        control={control}
+                                        name="TypeId"
+                                        rules={{ required: 'El tipo de usuario es requerido' }}
+                                        render={({ field: { onChange, value } }) => (
+                                            <AppSelect
+                                                label="Tipo de usuario"
+                                                value={value ?? undefined}
+                                                // AppSelect entrega el value del option (string);
+                                                // el SP y el DTO esperan int.
+                                                onValueChange={(v) => onChange(Number(v))}
+                                                options={userTypes.map((t) => ({
+                                                    label: t.Name,
+                                                    value: String(t.Id),
+                                                }))}
+                                                error={errors.TypeId?.message as string | undefined}
                                             />
                                         )}
                                     />
