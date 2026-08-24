@@ -3,14 +3,14 @@ import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, useWindowDimensions } from 'react-native'
 import { YStack, XStack, Text, View, Button, useTheme } from 'tamagui'
 import { BarChart } from 'react-native-gifted-charts'
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react-native'
+import { Building2, ChevronDown, ChevronLeft, ChevronRight, Factory, Layers } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { handleError, AppError } from '../../utils/errorHandler'
 import ErrorState from '../AdmSys/ErrorState'
 import EmptyState from '../AdmSys/EmptyState'
-import SkeletonList from '../../components/Skeletons/SkeletonList'
+import { SkeletonBox } from '../../components/Skeletons/SkeletonList'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
 import { overtimeService } from '../../api/modules/overtime/overtime.service'
 import {
@@ -20,7 +20,7 @@ import {
   IOvertimeConceptTotal,
   IPayWebWeek,
 } from '../../api/modules/overtime/overtime.types'
-import { BarraApilada, SectionCard, TabBar } from '../Mantenimiento/components'
+import { BarraApilada } from '../Mantenimiento/components'
 import { shadows } from '../../theme/shadows'
 import { ACCENT } from '../Mantenimiento/mantenimiento.helpers'
 import {
@@ -56,15 +56,11 @@ import {
 // Los tres niveles vienen en una sola llamada: son pestañas del mismo período y
 // pedirlos por separado dejaría cada una mirando un momento distinto.
 //
-// OJO CON LOS NÚMEROS: hoy el precio de la hora por empleado y el presupuesto
-// por área son INVENTADOS. Salen de dos vistas de la base hechas para ser
-// reemplazadas (Overtime.VW_EmployeeHourRate y Overtime.VW_AreaBudget); cuando
-// existan los datos reales se cambian esas vistas y esta pantalla no se toca.
 
 const TABS = [
-  { key: 'unidad', label: '🏢 Unidades' },
-  { key: 'departamento', label: '🏬 Departamentos' },
-  { key: 'centro', label: '🏭 Centros de costo' },
+  { key: 'unidad', label: 'Unidades de negocio', Icono: Building2 },
+  { key: 'departamento', label: 'Departamentos', Icono: Layers },
+  { key: 'centro', label: 'Centros de costo', Icono: Factory },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -91,19 +87,14 @@ const NIVEL_LABEL: Record<TabKey, string> = {
 }
 
 /**
- * Etiqueta de una barra.
+ * Etiqueta de una barra: el CÓDIGO.
  *
- * Se prefiere el NOMBRE al código: 'COSTURA DENIM' dice algo y 'PR02' hay que
- * ir a buscarlo. Pero debajo de una barra caben pocos caracteres, así que se
- * recorta y se marca el corte; el nombre completo está en el detalle de abajo
- * y en el desglose.
+ * Se probó con el nombre y quedó peor: debajo de una barra de 38px caben unos
+ * pocos caracteres, así que 'COSTURA DENIM' y 'COSTURA DRILL' se recortaban al
+ * mismo 'COSTURA D…' y dejaban de distinguirse. El código es corto y único, y
+ * el nombre completo está en el detalle de abajo y en el desglose.
  */
-const etiquetaArea = (fila: IOvertimeBudgetRow): string => {
-  const nombre = String(fila.Nombre ?? '').trim()
-  if (!nombre) return fila.Codigo || '—'
-
-  return nombre.length > 11 ? `${nombre.slice(0, 10)}…` : nombre
-}
+const etiquetaArea = (fila: IOvertimeBudgetRow): string => fila.Codigo || '—'
 
 /** Semáforo del consumo. Por encima del 100% ya no es "atención", es rojo. */
 const colorConsumo = (pct: number): string => {
@@ -116,13 +107,6 @@ const colorConsumo = (pct: number): string => {
 const fmtDinero = (valor: number | null | undefined): string => {
   const n = Number(valor ?? 0)
   return `L ${Math.round(n).toLocaleString('es-HN')}`
-}
-
-/** Miles abreviados, para que quepa dentro de una barra. */
-const fmtCorto = (valor: number | null | undefined): string => {
-  const n = Math.round(Number(valor ?? 0))
-  if (Math.abs(n) >= 1000) return `${Math.round(n / 1000)}k`
-  return String(n)
 }
 
 const fmtPct = (pct: number | null | undefined) => `${Math.round(Number(pct ?? 0))}%`
@@ -149,6 +133,16 @@ const BAR_INITIAL = 20
  * siendo el real.
  */
 const ESCALA_TOPE = 200
+
+/** Alto del lienzo del gráfico. */
+const CHART_H = 180
+
+/**
+ * NOTA: se intentó meter el porcentaje DENTRO de la barra con un marginBottom
+ * negativo, para que quedara pegado. No funcionó —la librería posiciona la
+ * etiqueta por su cuenta y el margen no la mueve— y el número terminaba peor
+ * que antes. Va encima, simple, que es como se veía bien.
+ */
 
 /**
  * Gris del riel: lo que FALTA por gastar.
@@ -360,46 +354,46 @@ export default function DashboardHorasExtraScreen() {
   // Hasta 12 barras: más de eso no se lee en un teléfono.
   const filasGraficadas = useMemo(() => filasOrdenadas.slice(0, 12), [filasOrdenadas])
 
+  /**
+   * Techo del eje. Se calcula ANTES que las barras porque cada barra necesita
+   * saberlo para medirse en píxeles y decidir dónde va su número.
+   *
+   * Llega al menos a 100 para que el presupuesto sea la referencia visual, y
+   * sube cuando alguien se pasó.
+   *
+   * El aire de arriba es para las etiquetas que NO caben adentro: sin él, una
+   * barra chica que pone su número encima lo empujaría fuera del lienzo.
+   */
+  const maxEje = useMemo(() => {
+    const mayor = Math.max(100, ...filasGraficadas.map(f =>
+      Math.min(Math.round(f.Porcentaje_Consumido), ESCALA_TOPE)))
+    return Math.ceil((mayor * 1.08) / 10) * 10
+  }, [filasGraficadas])
+
   const barras = useMemo(
     () =>
-      filasGraficadas
-        .map(f => {
-          const pct = Math.round(f.Porcentaje_Consumido)
-          return {
-            value: Math.min(pct, ESCALA_TOPE),
-            label: etiquetaArea(f),
-            frontColor: colorConsumo(f.Porcentaje_Consumido),
-            // El valor de la barra va recortado en ESCALA_TOPE, pero el
-            // número es SIEMPRE el real: recortar la barra es una decisión de
-            // escala, mentir sobre el porcentaje sería otra cosa.
-            topLabelComponent: () => (
-              <Text fontSize={9} fontWeight="700" color="$textMuted" numberOfLines={1}>
-                {`${pct}%`}
-              </Text>
-            ),
-          }
-        }),
+      filasGraficadas.map(f => {
+        const pct = Math.round(f.Porcentaje_Consumido)
+
+        return {
+          value: Math.min(pct, ESCALA_TOPE),
+          label: etiquetaArea(f),
+          frontColor: colorConsumo(f.Porcentaje_Consumido),
+
+          // El valor de la barra va recortado en ESCALA_TOPE, pero el número
+          // es SIEMPRE el real: recortar la barra es una decisión de escala,
+          // mentir sobre el porcentaje sería otra cosa.
+          topLabelComponent: () => (
+            <Text fontSize={9} color="$textMuted" marginBottom={2}>
+              {`${pct}%`}
+            </Text>
+          ),
+        }
+      }),
     [filasGraficadas],
   )
 
   const graphWidth = barras.length * (BAR_W + BAR_SPACING) + BAR_INITIAL
-
-  /**
-   * Techo del eje. Llega al menos a 100 para que el presupuesto sea la
-   * referencia visual, y sube cuando alguien se pasó.
-   *
-   * Antes estaba fijo en 150 y consumos reales del 3% quedaban en barras de
-   * dos píxeles: se veía igual que un gráfico vacío.
-   *
-   * El 15% de aire por encima de la barra más alta NO es estética: el número
-   * va sobre la barra, así que una barra que toca el techo del lienzo se come
-   * su propia etiqueta. Pasaba justo con las desbordadas —las recortadas en
-   * 200%— que son las que más importa poder leer.
-   */
-  const maxEje = useMemo(() => {
-    const mayor = Math.max(100, ...barras.map(b => b.value))
-    return Math.ceil((mayor * 1.15) / 10) * 10
-  }, [barras])
 
   // Con presupuesto y sin gasto todas las barras miden cero, que en pantalla es
   // indistinguible de un gráfico roto. Se dice con palabras.
@@ -470,14 +464,17 @@ export default function DashboardHorasExtraScreen() {
   const sinAreas = !!data?.Sin_Areas_Configuradas
 
   // ── Render ────────────────────────────────────────────────────────────────
-  if (cargando && !data) {
-    return (
-      <YStack flex={1} padding="$3" gap="$3" backgroundColor="$background">
-        <SkeletonList />
-      </YStack>
-    )
-  }
-
+  /**
+   * Esqueleto mientras se carga, tenga o no datos viejos en pantalla.
+   *
+   * Antes solo salía la primera vez y un cambio de semana no movía nada, así
+   * que parecía que el toque no había hecho efecto. Una línea de texto que
+   * dijera "Actualizando…" avisaba, pero dejaba a la vista los números de la
+   * semana ANTERIOR como si fueran los nuevos.
+   *
+   * `refrescando` queda fuera a propósito: ahí el gesto de deslizar ya tiene su
+   * propio indicador y tapar la pantalla con un esqueleto sería de más.
+   */
   if (error) {
     return <ErrorState title={error.title} message={error.message} onRetry={onRefresh} />
   }
@@ -497,16 +494,13 @@ export default function DashboardHorasExtraScreen() {
         />
       )}
 
-      {/* El esqueleto solo sale cuando todavía no hay nada. Al recargar con
-          datos en pantalla no se ve nada moverse, y un cambio de semana parece
-          que no hizo efecto: esta línea es el acuse de recibo. */}
-      {cargando && !!data && (
-        <Text fontSize={11} color="$textMuted" alignSelf="center">
-          Actualizando…
-        </Text>
-      )}
-
-      {semanas.length === 0 ? (
+      {/* El selector de semana NO se reemplaza por el esqueleto: es el control
+          con el que se está pidiendo la carga, y esconderlo mientras responde
+          deja al usuario sin saber qué semana quedó elegida. El esqueleto va
+          debajo, que es lo que efectivamente cambia. */}
+      {cargando && !refrescando ? (
+        <EsqueletoTablero />
+      ) : semanas.length === 0 ? (
         // Sin calendario no hay período que consultar. Antes esto quedaba como
         // un esqueleto eterno; ahora se dice y se puede reintentar deslizando.
         <EmptyState
@@ -553,38 +547,50 @@ export default function DashboardHorasExtraScreen() {
               y el detalle por banda se despliega. */}
           <RepartoConceptos conceptos={data?.Conceptos ?? []} totalHoras={data?.Total_Horas ?? 0} />
 
-          {/* ── Cortes por nivel ──────────────────────────────────────────── */}
-          <TabBar tabs={TABS.map(t => t.label)} activo={tab} onChange={setTab} />
+          {/* ── Cortes por nivel ──────────────────────────────────────────
+              Pestañas, gráfico y detalle van dentro de UNA sola tarjeta con
+              divisiones internas. Los tres responden a la misma pestaña, así
+              que separarlos en tres tarjetas flotando sugería que eran bloques
+              independientes; agrupados se lee que cambiar de pestaña cambia
+              todo lo que está debajo. */}
+          <YStack
+            backgroundColor="$backgroundElevated"
+            borderRadius="$4"
+            overflow="hidden"
+            {...shadows.sm}
+          >
+            <SelectorNivel activo={tab} onCambiar={setTab} />
 
-          {filas.length === 0 ? (
-            <EmptyState
-              title="Sin movimiento"
-              message="No hay horas extra aprobadas en tus áreas para esta semana."
-            />
-          ) : (
-            <>
-              <SectionCard
-                titulo="Consumo por área"
-                subtitulo={
-                  sinGasto
+            <Divisor />
+
+            {filas.length === 0 ? (
+              <YStack padding="$3">
+                <Text fontSize={12} color="$textMuted" lineHeight={17}>
+                  No hay horas extra aprobadas en tus áreas para esta semana.
+                </Text>
+              </YStack>
+            ) : (
+              <>
+                <YStack padding="$3" gap="$2.5">
+                  <Text fontSize={11} color="$textMuted" lineHeight={15}>
+                  {sinGasto
                     ? 'Todavía no hay gasto aprobado en el período.'
-                    : 'Porcentaje del presupuesto ya comprometido. Tocá una barra para ver quiénes.'
-                }
-                ejeX={sinGasto ? undefined : NIVEL_LABEL[tabKey]}
-              >
-                {sinGasto ? (
-                  <Text fontSize={12} color="$textMuted" lineHeight={17}>
-                    Tus áreas tienen presupuesto asignado pero todavía no hay horas extra
-                    aprobadas esta semana, así que todas las barras irían en cero. Puede haber
-                    solicitudes pendientes de firma: acá solo cuentan las que ya pasaron por
-                    todas las entidades.
+                    : 'Porcentaje del presupuesto ya comprometido. Tocá una barra para ver los empleados.'}
                   </Text>
-                ) : (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+
+                  {sinGasto ? (
+                    <Text fontSize={12} color="$textMuted" lineHeight={17}>
+                      Tus áreas tienen presupuesto asignado pero todavía no hay horas extra
+                      aprobadas esta semana, así que todas las barras irían en cero. Puede haber
+                      solicitudes pendientes de firma: acá solo cuentan las que ya pasaron por
+                      todas las entidades.
+                    </Text>
+                  ) : (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <BarChart
                       data={barras}
                       width={Math.max(chartWidth, graphWidth)}
-                      height={180}
+                      height={CHART_H}
                       barWidth={BAR_W}
                       spacing={BAR_SPACING}
                       initialSpacing={BAR_INITIAL}
@@ -592,9 +598,6 @@ export default function DashboardHorasExtraScreen() {
                       maxValue={maxEje}
                       yAxisTextStyle={{ fontSize: 10, color: muted }}
                       xAxisLabelTextStyle={{ fontSize: 9, color: muted }}
-                      // Sin ancho propio la etiqueta se corta al ancho de la
-                      // barra y un nombre no entra en 38px.
-                      labelWidth={BAR_W + BAR_SPACING}
                       yAxisThickness={0}
                       xAxisThickness={1}
                       xAxisColor={grid}
@@ -602,7 +605,6 @@ export default function DashboardHorasExtraScreen() {
                       rulesType="dashed"
                       // Alto propio para el número de encima: sin esto lo
                       // encajona la barra y se ve cortado.
-                      topLabelContainerStyle={{ height: 14, justifyContent: 'flex-end' }}
                       // El índice apunta a filasGraficadas: las barras se
                       // construyen desde ahí y en el mismo orden.
                       onPress={(_item: any, index: number) => {
@@ -610,22 +612,31 @@ export default function DashboardHorasExtraScreen() {
                         if (fila) abrirArea(fila)
                       }}
                     />
-                  </ScrollView>
-                )}
-              </SectionCard>
+                    </ScrollView>
+                  )}
 
-              <SectionCard
-                titulo="Detalle"
-                subtitulo="Tocá un área para ver qué empleados están consumiendo su presupuesto."
-              >
-                <YStack gap="$3">
+                  {!sinGasto && (
+                    <Text fontSize={10} color="$textMuted" alignSelf="center">
+                      {NIVEL_LABEL[tabKey]}
+                    </Text>
+                  )}
+                </YStack>
+
+                <Divisor />
+
+                <YStack padding="$3" gap="$3">
+                  <Text fontSize={11} color="$textMuted" lineHeight={15}>
+                    Presupuesto y gasto de cada área. Tocá una para ver qué empleados lo están
+                    consumiendo.
+                  </Text>
+
                   {filasOrdenadas.map(f => (
                     <FilaArea key={`${f.Codigo}-${f.Nombre}`} fila={f} onPress={() => abrirArea(f)} />
                   ))}
                 </YStack>
-              </SectionCard>
-            </>
-          )}
+              </>
+            )}
+          </YStack>
         </>
       )}
 
@@ -815,7 +826,23 @@ function DesgloseArea({
 
           {/* Cuerpo */}
           {cargando ? (
-            <SkeletonList />
+            // Filas con la forma de las de abajo, no el esqueleto genérico:
+            // dentro de un diálogo chico, unas barras que no se parecen a la
+            // lista se ven como un error de carga.
+            <YStack gap="$3" paddingVertical="$2">
+              {[0, 1, 2].map(i => (
+                <XStack key={i} alignItems="center" gap="$2">
+                  <YStack flex={1} gap={4}>
+                    <SkeletonBox width="70%" height={12} />
+                    <SkeletonBox width="45%" height={9} />
+                  </YStack>
+                  <YStack alignItems="flex-end" gap={4}>
+                    <SkeletonBox width={60} height={12} />
+                    <SkeletonBox width={40} height={9} />
+                  </YStack>
+                </XStack>
+              ))}
+            </YStack>
           ) : error ? (
             <Text fontSize={12} color="#DC2626" lineHeight={17}>
               {error}
@@ -871,6 +898,173 @@ function DesgloseArea({
         </YStack>
       </View>
     </Modal>
+  )
+}
+
+// ── Esqueleto con la forma de esta pantalla ─────────────────────────────────
+//
+// No es el esqueleto genérico de listas: al cambiar de semana la pantalla
+// entera se reemplazaba por unas barras que no se parecían a nada de lo que
+// venía después, y el salto se sentía como si hubiera navegado a otro lado.
+//
+// Repitiendo la silueta —selector, dos tarjetas, barra, conceptos y el bloque
+// de pestañas— lo que cambia es solo el contenido, y la espera se lee como
+// "esto se está llenando" en vez de "esto se fue".
+function EsqueletoTablero() {
+  const Tarjeta = ({ children }: { children: React.ReactNode }) => (
+    <YStack
+      backgroundColor="$backgroundElevated"
+      borderRadius="$4"
+      padding="$3"
+      gap="$2"
+      {...shadows.sm}
+    >
+      {children}
+    </YStack>
+  )
+
+  // Sin padding ni fondo propios: se dibuja DENTRO del ScrollView de la
+  // pantalla, debajo del selector de semana que sigue en su lugar.
+  return (
+    <YStack gap="$3">
+      {/* Las dos tarjetas del resumen */}
+      <XStack gap="$2">
+        {[0, 1].map(i => (
+          <YStack
+            key={i}
+            flex={1}
+            backgroundColor="$backgroundElevated"
+            borderRadius="$4"
+            padding="$3"
+            gap="$2"
+            {...shadows.sm}
+          >
+            <SkeletonBox width={70} height={9} />
+            <SkeletonBox width={100} height={20} />
+            <SkeletonBox width="90%" height={9} />
+          </YStack>
+        ))}
+      </XStack>
+
+      {/* Barra de consumo */}
+      <Tarjeta>
+        <XStack justifyContent="space-between" alignItems="center">
+          <SkeletonBox width={150} height={9} />
+          <SkeletonBox width={40} height={13} />
+        </XStack>
+        <SkeletonBox width="100%" height={12} radius={999} />
+      </Tarjeta>
+
+      {/* Horas por concepto */}
+      <Tarjeta>
+        <XStack justifyContent="space-between" alignItems="center">
+          <SkeletonBox width={130} height={9} />
+          <SkeletonBox width={50} height={11} />
+        </XStack>
+        <SkeletonBox width="100%" height={20} radius={6} />
+      </Tarjeta>
+
+      {/* El bloque de pestañas, gráfico y detalle */}
+      <YStack
+        backgroundColor="$backgroundElevated"
+        borderRadius="$4"
+        overflow="hidden"
+        {...shadows.sm}
+      >
+        <XStack padding={4} gap={4}>
+          {[0, 1, 2].map(i => (
+            <YStack key={i} flex={1} paddingVertical="$2" alignItems="center">
+              <SkeletonBox width="80%" height={14} radius={8} />
+            </YStack>
+          ))}
+        </XStack>
+
+        <View height={1} backgroundColor="$border" opacity={0.6} />
+
+        {/* Las barras, con alturas distintas para que se lea como un gráfico */}
+        <YStack padding="$3" gap="$2.5">
+          <SkeletonBox width="85%" height={9} />
+          <XStack height={140} alignItems="flex-end" gap={14} paddingTop="$2">
+            {[0.5, 0.8, 0.35, 1, 0.6, 0.45].map((alto, i) => (
+              <SkeletonBox key={i} width={30} height={Math.round(140 * alto)} radius={4} />
+            ))}
+          </XStack>
+        </YStack>
+
+        <View height={1} backgroundColor="$border" opacity={0.6} />
+
+        <YStack padding="$3" gap="$3">
+          <SkeletonBox width="90%" height={9} />
+          {[0, 1, 2].map(i => (
+            <YStack key={i} gap="$1.5">
+              <XStack justifyContent="space-between" alignItems="center">
+                <SkeletonBox width="55%" height={12} />
+                <SkeletonBox width={40} height={14} />
+              </XStack>
+              <SkeletonBox width="100%" height={9} radius={999} />
+              <SkeletonBox width="45%" height={10} />
+            </YStack>
+          ))}
+        </YStack>
+      </YStack>
+    </YStack>
+  )
+}
+
+// ── División interna de la tarjeta ──────────────────────────────────────────
+//
+// Una línea a todo lo ancho, sin márgenes: separa las secciones sin romper la
+// tarjeta en pedazos, que es la diferencia entre "un bloque con partes" y
+// "varios bloques sueltos".
+function Divisor() {
+  return <View height={1} backgroundColor="$border" opacity={0.6} />
+}
+
+// ── Selector de nivel ───────────────────────────────────────────────────────
+//
+// Tres botones segmentados con ícono en lugar de la barra de pestañas con
+// emojis: los emojis se ven distintos en cada teléfono y no siempre se
+// entienden, y subrayado fino era un blanco chico para el dedo.
+function SelectorNivel({
+  activo,
+  onCambiar,
+}: {
+  activo: number
+  onCambiar: (i: number) => void
+}) {
+  // Sin fondo ni sombra propios: vive DENTRO de la tarjeta del bloque.
+  return (
+    <XStack padding={4} gap={4}>
+      {TABS.map((t, i) => {
+        const sel = i === activo
+        const Icono = t.Icono
+
+        return (
+          <XStack
+            key={t.key}
+            flex={1}
+            alignItems="center"
+            justifyContent="center"
+            gap="$1.5"
+            paddingVertical="$2"
+            borderRadius="$3"
+            backgroundColor={sel ? ACCENT : 'transparent'}
+            pressStyle={{ opacity: 0.7 }}
+            onPress={() => onCambiar(i)}
+          >
+            <Icono size={14} color={sel ? '#FFFFFF' : '#94A3B8'} />
+            <Text
+              fontSize={11}
+              fontWeight={sel ? '800' : '600'}
+              color={sel ? '#FFFFFF' : '$textMuted'}
+              numberOfLines={1}
+            >
+              {t.label}
+            </Text>
+          </XStack>
+        )
+      })}
+    </XStack>
   )
 }
 
@@ -1098,16 +1292,9 @@ function FilaArea({ fila, onPress }: { fila: IOvertimeBudgetRow; onPress?: () =>
           </Text>
         </YStack>
 
-        <YStack alignItems="flex-end">
-          <Text fontSize={13} fontWeight="800" color={sinPresupuesto ? '$textMuted' : color}>
-            {sinPresupuesto ? fmtDinero(fila.Costo) : fmtPct(fila.Porcentaje_Consumido)}
-          </Text>
-          <Text fontSize={10} color="$textMuted">
-            {sinPresupuesto
-              ? 'sin presupuesto'
-              : `${fmtCorto(fila.Costo)} / ${fmtCorto(fila.Presupuesto)}`}
-          </Text>
-        </YStack>
+        <Text fontSize={15} fontWeight="800" color={sinPresupuesto ? '$textMuted' : color}>
+          {sinPresupuesto ? fmtDinero(fila.Costo) : fmtPct(fila.Porcentaje_Consumido)}
+        </Text>
       </XStack>
 
       <View height={9} borderRadius={999} backgroundColor={PISTA} overflow="hidden">
@@ -1131,8 +1318,34 @@ function FilaArea({ fila, onPress }: { fila: IOvertimeBudgetRow; onPress?: () =>
         )}
       </View>
 
+      {/* El dinero, completo y en su propia línea.
+          Antes iba abreviado —'1k / 8k'— y en 10px debajo del porcentaje: era
+          el dato que se venía a buscar y estaba escrito como una nota al pie.
+          Sin abreviar, además, se distingue L 1,200 de L 12,000. */}
+      <XStack justifyContent="space-between" alignItems="baseline" gap="$2">
+        {sinPresupuesto ? (
+          <Text fontSize={11} color="$textMuted" fontStyle="italic">
+            Sin presupuesto asignado
+          </Text>
+        ) : (
+          <Text fontSize={12} color="$textSecondary" numberOfLines={1} flex={1}>
+            <Text fontSize={12} fontWeight="800" color="$text">
+              {fmtDinero(fila.Costo)}
+            </Text>
+            {' de '}
+            {fmtDinero(fila.Presupuesto)}
+          </Text>
+        )}
+
+        {!sinPresupuesto && !excedido && (
+          <Text fontSize={11} color="$textMuted" numberOfLines={1}>
+            quedan {fmtDinero(fila.Disponible)}
+          </Text>
+        )}
+      </XStack>
+
       {excedido && (
-        <Text fontSize={10} fontWeight="700" color="#DC2626">
+        <Text fontSize={11} fontWeight="700" color="#DC2626">
           Excedido en {fmtDinero(Math.abs(fila.Disponible))}
         </Text>
       )}
