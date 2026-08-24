@@ -60,12 +60,17 @@ export const visitasService = {
     Create_By: string
     fotoUri?: string | null
     fotoMime?: string
+    /** Región del marco guía; el servidor recorta a esto antes de leer y guardar */
+    recorteAncho?: number
+    recorteAspecto?: number
   }) => {
     const fd = new FormData()
     fd.append('visitaAcceso_Id', String(params.VisitaAcceso_Id))
     fd.append('intentos', String(params.Intentos))
     fd.append('omitirPorGuardia', String(params.OmitirPorGuardia))
     fd.append('create_By', params.Create_By)
+    if (params.recorteAncho != null) fd.append('recorteAncho', String(params.recorteAncho))
+    if (params.recorteAspecto != null) fd.append('recorteAspecto', String(params.recorteAspecto))
     if (params.fotoUri) {
       fd.append('imagen', {
         uri: params.fotoUri,

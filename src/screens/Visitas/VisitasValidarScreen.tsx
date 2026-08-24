@@ -15,6 +15,14 @@ import { handleError } from '../../utils/errorHandler'
 import { fmtDuracion } from './horarios'
 import { launchCamera } from 'react-native-image-picker'
 
+// ── Geometría del marco guía del documento ──
+// El recorte lo hace el SERVIDOR (no hay recortador programático en el proyecto y
+// agregar uno implicaba dependencia nativa). Estas fracciones viajan con la foto
+// para que el servidor recorte EXACTAMENTE la región que el guardia vio encuadrada.
+// Si se cambia el marco en pantalla, esto viaja solo — no hay que tocar el server.
+const RECORTE_ANCHO = 0.86   // fracción del lado menor visible
+const RECORTE_ASPECTO = 1.58 // una identidad es 85.6 x 54 mm = 1.585
+
 const prettyDate = (iso?: string | null) => {
   if (!iso) return ''
   const [y, m, d] = iso.split('-')
@@ -200,6 +208,13 @@ export default function VisitasValidarScreen() {
         Create_By: user?.Code ?? '',
         fotoUri: uri,
         fotoMime: 'image/jpeg',
+        // RECORTE DESACTIVADO a propósito. El servidor sabe recortar, pero medido
+        // con una foto real NO ayuda: con resizeMode="contain" el marco ya cubre
+        // ~86% del cuadro, así que el recorte quita poco y arriesga cortar el
+        // documento si el encuadre no fue exacto. Peor: el recorte leyó MAL
+        // (0037 en vez de 1406199800037) donde el original leía bien.
+        // Reactivar solo si se mide una mejora con una foto bien encuadrada:
+        //   recorteAncho: RECORTE_ANCHO, recorteAspecto: RECORTE_ASPECTO,
       })
       if (resp.Success && resp.Data) {
         setIdResultado(resp.Data)
@@ -570,11 +585,49 @@ export default function VisitasValidarScreen() {
           mismo lugar, sin salir y volver a entrar. */}
       <Modal visible={idCamaraAbierta} animationType="slide" onRequestClose={() => setIdCamaraAbierta(false)}>
         <YStack flex={1} backgroundColor="#000">
-          <Camera ref={idCamRef} style={StyleSheet.absoluteFill} cameraType={CameraType.Back} />
+          {/* resizeMode CONTAIN y no el default 'cover': con cover el visor recorta
+              el cuadro capturado para llenar la pantalla, así que lo que el guardia
+              ve NO es lo que se guarda y el marco guía miente. Medido en el A26:
+              con cover solo se veía ~26% del ancho capturado, y el documento
+              quedaba ocupando ~22% del archivo aunque en pantalla llenara el marco.
+              Con contain hay barras negras, pero el encuadre es real — y recién así
+              el recorte al marco es determinístico. */}
+          <Camera
+            ref={idCamRef}
+            style={StyleSheet.absoluteFill}
+            cameraType={CameraType.Back}
+            resizeMode="contain"
+          />
 
-          {/* Guía de encuadre con proporción de documento */}
-          <View position="absolute" top={0} left={0} right={0} bottom={0} justifyContent="center" alignItems="center" pointerEvents="none">
-            <View width="86%" aspectRatio={1.58} borderWidth={3} borderColor="rgba(255,255,255,0.9)" borderRadius={14} />
+          {/* Marco guía + velo alrededor.
+              El velo es lo que hace que el marco no se pueda ignorar: un borde de
+              3px solo era demasiado sutil. Las proporciones de ESTE marco son las
+              que se usan para recortar (ver RECORTE_* en identificacion.ts), así
+              que cambiar una hay que cambiar la otra. */}
+          <View
+            position="absolute"
+            top={0}
+            left={0}
+            right={0}
+            bottom={0}
+            justifyContent="center"
+            alignItems="center"
+            pointerEvents="none"
+          >
+            <View
+              width={`${RECORTE_ANCHO * 100}%`}
+              aspectRatio={RECORTE_ASPECTO}
+              borderWidth={2}
+              borderColor="rgba(255,255,255,0.95)"
+              borderRadius={10}
+              // El velo se logra con una sombra enorme: oscurece TODO lo de afuera
+              // sin tener que dibujar cuatro paneles y calcular sus medidas.
+              shadowColor="#000"
+              shadowOpacity={0.62}
+              shadowRadius={0}
+              shadowOffset={{ width: 0, height: 0 }}
+              style={{ boxShadow: '0 0 0 9999px rgba(0,0,0,0.62)' }}
+            />
           </View>
 
           {/* Instrucción / motivo del rechazo anterior */}
@@ -583,7 +636,7 @@ export default function VisitasValidarScreen() {
               <IdCard size={16} color="#fff" />
               <Text color="#fff" fontSize={13} flexShrink={1}>
                 {idIntentos === 0
-                  ? 'Encuadrá el documento dentro del marco, con buena luz y sin reflejo.'
+                  ? 'Acomodá el documento ACOSTADO y acercate hasta que LLENE el marco. Sin reflejo.'
                   : `Intento ${idIntentos} de 3. ${idResultado?.Mensaje ?? ''}`}
               </Text>
             </XStack>
