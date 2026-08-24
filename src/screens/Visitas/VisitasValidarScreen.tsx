@@ -366,7 +366,7 @@ export default function VisitasValidarScreen() {
                     </Text>
                     {idIntentos > 0 && (
                       <Text fontSize={11} color="#E58E26">
-                        Intento {idIntentos} de 3. Buscá buena luz, sin reflejo y que el
+                        Intento {idIntentos}. Buscá buena luz, sin reflejo y que el
                         documento llene el cuadro.
                       </Text>
                     )}
@@ -443,21 +443,28 @@ export default function VisitasValidarScreen() {
                         <Text fontSize={12} color="$textMuted">
                           {idResultado?.Mensaje ?? 'No se pudo leer el documento.'}
                         </Text>
-                        {/* Tras agotar los intentos se ofrece continuar, para que
-                            una cámara sucia no tranque la portería. */}
-                        {idResultado?.PermitirOmitir && (
-                          <Button
-                            height={44}
-                            backgroundColor="$buttonSecondary"
-                            borderRadius="$4"
-                            pressStyle={{ opacity: 0.7 }}
-                            onPress={() => capturarId(true)}
-                          >
-                            <Text color="$text" fontWeight="700" fontSize={13}>
-                              Continuar sin ID legible
-                            </Text>
-                          </Button>
-                        )}
+                        {/* La entrada YA quedó registrada y el flujo no está
+                            trabado: el guardia puede cerrar y seguir atendiendo la
+                            fila. Este botón es opcional, por si tiene un segundo
+                            para reintentar. Antes acá había un "continuar sin ID"
+                            que solo aparecía tras agotar los intentos; ahora
+                            continuar es el comportamiento por omisión, así que lo
+                            que hace falta es lo contrario: poder reintentar. */}
+                        <Button
+                          height={44}
+                          backgroundColor="$buttonSecondary"
+                          borderRadius="$4"
+                          pressStyle={{ opacity: 0.7 }}
+                          onPress={() => {
+                            setIdPaso('pedir')
+                            setIdCamaraAbierta(true)
+                          }}
+                          icon={<CameraIcon size={16} color="#94A3B8" />}
+                        >
+                          <Text color="$text" fontWeight="700" fontSize={13}>
+                            Tomar otra foto
+                          </Text>
+                        </Button>
                       </>
                     )}
                   </YStack>
@@ -703,18 +710,6 @@ export default function VisitasValidarScreen() {
                   {idPaso === 'listo' ? 'Listo' : 'Cerrar'}
                 </Text>
               </Button>
-              {/* Tras agotar los intentos: continuar sin ID, marcado */}
-              {idResultado?.PermitirOmitir && (
-                <Button
-                  height={40}
-                  backgroundColor="rgba(229,142,38,0.9)"
-                  borderRadius="$10"
-                  pressStyle={{ opacity: 0.8 }}
-                  onPress={() => capturarId(true)}
-                >
-                  <Text color="#fff" fontWeight="700" fontSize={13}>Continuar sin ID</Text>
-                </Button>
-              )}
             </XStack>
           </YStack>
         </YStack>
