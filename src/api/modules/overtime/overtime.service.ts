@@ -135,10 +135,16 @@ export const overtimeService = {
       finalDate,
     }),
 
-  /** Semanas del calendario de planilla, para el filtro del dashboard. */
-  getCalendarWeeks: (companyCode: string, year?: number) =>
+  /**
+   * Semanas del calendario de planilla, para el filtro del dashboard.
+   *
+   * Por omisión SIN semanas futuras, igual que PayWeb: un tablero de gasto
+   * ejecutado sobre una semana que todavía no ocurre siempre daría cero.
+   */
+  getCalendarWeeks: (companyCode: string, year?: number, includeFutureWeeks = false) =>
     httpClient.get<ExecutionResponse<IPayWebWeek[]>>(`${schema}/CalendarWeeks`, {
       companyCode,
       year,
+      includeFutureWeeks,
     }),
 }

@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, useWindowDimensions } from 'react-native'
 import { YStack, XStack, Text, View, Button, useTheme } from 'tamagui'
 import { BarChart } from 'react-native-gifted-charts'
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -10,7 +11,6 @@ import { handleError, AppError } from '../../utils/errorHandler'
 import ErrorState from '../AdmSys/ErrorState'
 import EmptyState from '../AdmSys/EmptyState'
 import SkeletonList from '../../components/Skeletons/SkeletonList'
-import AppSelect from '../../components/commons/AppSelect'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
 import { overtimeService } from '../../api/modules/overtime/overtime.service'
 import {
@@ -20,7 +20,8 @@ import {
   IOvertimeConceptTotal,
   IPayWebWeek,
 } from '../../api/modules/overtime/overtime.types'
-import { BarraApilada, KpiCard, SectionCard, TabBar } from '../Mantenimiento/components'
+import { BarraApilada, SectionCard, TabBar } from '../Mantenimiento/components'
+import { shadows } from '../../theme/shadows'
 import { ACCENT } from '../Mantenimiento/mantenimiento.helpers'
 import {
   DistribucionHoras,
@@ -205,25 +206,44 @@ export default function DashboardHorasExtraScreen() {
     right: <NotificationBell size={18} />,
   })
 
-  // ── Semanas ───────────────────────────────────────────────────────────────
-  // El calendario de PLANILLA, no el natural: la semana de horas extra la
-  // define ese calendario y es la misma que filtra las pantallas web.
-  const loadSemanas = useCallback(async () => {
-    if (!companyCode) return
-    try {
-      const res = await overtimeService.getCalendarWeeks(companyCode)
-      const lista = res.Success ? res.Data ?? [] : []
-      setSemanas(lista)
+  // Última semana con la que se pidieron datos. Evita que el efecto del
+  // selector vuelva a pedir lo que la recarga completa acaba de traer.
+  const semanaCargadaRef = useRef<string>('')
 
-      setSemana(prev => {
-        if (prev && lista.some(w => claveSemana(w) === prev)) return prev
-        // Se abre en la semana en curso, que es "lo que llevo gastado" hoy.
-        const actual = lista.find(w => w.IsCurrentWeek) ?? lista[lista.length - 1]
-        return actual ? claveSemana(actual) : ''
-      })
-    } catch (err) {
-      setError(handleError(err))
+  // ── Semanas ───────────────────────────────────────────────────────────────
+  /**
+   * El calendario de PLANILLA, no el natural: la semana de horas extra la
+   * define ese calendario y es la misma que filtra las pantallas web.
+   *
+   * LANZA si falla, y eso es el punto. Antes se tragaba el error —una respuesta
+   * con Success en false dejaba la lista vacía sin avisar—, la semana nunca se
+   * elegía, el efecto de datos se cortaba en seco y la pantalla quedaba en el
+   * esqueleto para siempre. Sin error visible no había ni botón de reintentar
+   * ni forma de deslizar, porque el esqueleto reemplaza a la lista.
+   *
+   * Devuelve la lista y la semana elegida para que quien llama siga de largo
+   * sin esperar a que el estado se propague.
+   */
+  const loadSemanas = useCallback(async () => {
+    if (!companyCode) return { lista: [] as IPayWebWeek[], elegida: null as IPayWebWeek | null }
+
+    const res = await overtimeService.getCalendarWeeks(companyCode)
+
+    if (!res?.Success) {
+      throw new Error(res?.ErrorMessage || 'No se pudo cargar el calendario de semanas.')
     }
+
+    const lista = res.Data ?? []
+    setSemanas(lista)
+
+    // Se conserva la semana elegida si sigue existiendo; si no, la que está en
+    // curso, que es "lo que llevo gastado" hoy.
+    const previa = lista.find(w => claveSemana(w) === semanaCargadaRef.current)
+    const elegida = previa ?? lista.find(w => w.IsCurrentWeek) ?? lista[lista.length - 1] ?? null
+
+    setSemana(elegida ? claveSemana(elegida) : '')
+
+    return { lista, elegida }
   }, [companyCode])
 
   const semanaSel = useMemo(
@@ -231,79 +251,95 @@ export default function DashboardHorasExtraScreen() {
     [semanas, semana],
   )
 
-  const opcionesSemana = useMemo(
-    () => semanas.map(w => ({ label: etiquetaSemana(w), value: claveSemana(w) })),
-    [semanas],
+  // ── Datos ─────────────────────────────────────────────────────────────────
+  /**
+   * La semana viaja como argumento y no se lee del estado: así esta función no
+   * depende de `semanaSel` y su identidad no cambia con cada selección, que es
+   * lo que hacía que el efecto de foco se disparara de más.
+   */
+  const loadData = useCallback(
+    async (sem: IPayWebWeek | null) => {
+      if (!companyCode) return
+
+      const res = await overtimeService.getBudgetDashboard(
+        companyCode,
+        sem?.InitialDate?.substring(0, 10),
+        sem?.FinalDate?.substring(0, 10),
+      )
+
+      if (!res?.Success || !res.Data) {
+        throw new Error(res?.ErrorMessage || 'No se pudo cargar el presupuesto.')
+      }
+
+      setData(res.Data)
+      semanaCargadaRef.current = sem ? claveSemana(sem) : ''
+    },
+    [companyCode],
   )
 
-  // ── Datos ─────────────────────────────────────────────────────────────────
-  const loadData = useCallback(async () => {
+  /**
+   * Recarga COMPLETA: calendario y tablero, encadenados y con un solo manejador
+   * de error.
+   *
+   * Encadenados y no en paralelo porque el segundo necesita el rango que
+   * devuelve el primero. Y con un solo catch para que cualquiera de los dos que
+   * falle deje la pantalla en estado de error —con su botón de reintentar— en
+   * lugar de a medio cargar.
+   */
+  const recargarTodo = useCallback(async () => {
     if (!companyCode) return
     setError(null)
-    try {
-      const desde = semanaSel?.InitialDate?.substring(0, 10)
-      const hasta = semanaSel?.FinalDate?.substring(0, 10)
 
-      const res = await overtimeService.getBudgetDashboard(companyCode, desde, hasta)
-      if (!res.Success || !res.Data) {
-        throw new Error(res.ErrorMessage || 'No se pudo cargar el presupuesto.')
-      }
-      setData(res.Data)
+    try {
+      const { elegida } = await loadSemanas()
+      await loadData(elegida)
     } catch (err) {
       setError(handleError(err))
     } finally {
-      // El spinner del deslizar lo apaga onRefresh, que es quien sabe si
-      // todavía falta otra consulta por volver.
       setCargando(false)
+      setRefrescando(false)
     }
-  }, [companyCode, semanaSel])
-
-  useEffect(() => {
-    loadSemanas()
-  }, [loadSemanas])
+  }, [companyCode, loadSemanas, loadData])
 
   /**
-   * Los datos se piden CADA VEZ que se entra a la pantalla, no solo al montarla.
+   * Se recarga TODO cada vez que se entra a la pantalla, no solo al montarla.
    *
-   * La navegación deja la pantalla montada, así que con un useEffect normal el
-   * tablero se quedaba con los números de la primera visita. Entre una entrada y
-   * otra alguien pudo haber aprobado horas, y un presupuesto que muestra el
-   * estado de hace media hora induce justo al error que este tablero existe para
-   * evitar.
+   * La navegación deja la pantalla montada, así que sin esto el tablero se
+   * quedaba con los números de la primera visita. Entre una entrada y otra
+   * alguien pudo haber aprobado horas, y un presupuesto que muestra el estado de
+   * hace media hora induce justo al error que este tablero existe para evitar.
    *
-   * El mismo efecto cubre el cambio de semana: cuando cambia, `loadData` cambia
-   * de identidad y useFocusEffect lo vuelve a correr.
-   *
-   * Se espera a tener semana: pedir sin rango traería el acumulado del año y el
-   * usuario vería un número que no pidió.
+   * Como `recargarTodo` solo depende de companyCode, esto corre al enfocar y no
+   * en cada cambio de estado interno.
    */
   useFocusEffect(
     useCallback(() => {
-      if (!semana) return
       setCargando(true)
-      loadData()
-    }, [semana, loadData]),
+      recargarTodo()
+    }, [recargarTodo]),
   )
 
-  /**
-   * Deslizar hacia abajo rehace la consulta COMPLETA: el calendario de semanas
-   * y todo el tablero —los tres niveles y el reparto por concepto vienen en la
-   * misma llamada—.
-   *
-   * Las dos van encadenadas y no en paralelo: si el calendario cambió, los
-   * datos tienen que pedirse contra el rango nuevo. Y el spinner se apaga
-   * cuando terminan LAS DOS; antes lo apagaba la primera en volver y la barra
-   * desaparecía con la consulta todavía en curso.
-   */
-  const onRefresh = useCallback(async () => {
+  // Cambiar de semana pide solo el tablero: el calendario no cambió. El ref
+  // evita repetir la consulta que recargarTodo acaba de hacer.
+  useEffect(() => {
+    if (!semana || semana === semanaCargadaRef.current) return
+
+    let vigente = true
+    setCargando(true)
+    setError(null)
+
+    loadData(semanaSel)
+      .catch(err => { if (vigente) setError(handleError(err)) })
+      .finally(() => { if (vigente) setCargando(false) })
+
+    return () => { vigente = false }
+  }, [semana, semanaSel, loadData])
+
+  /** Deslizar hacia abajo rehace exactamente lo mismo que entrar a la pantalla. */
+  const onRefresh = useCallback(() => {
     setRefrescando(true)
-    try {
-      await loadSemanas()
-      await loadData()
-    } finally {
-      setRefrescando(false)
-    }
-  }, [loadSemanas, loadData])
+    recargarTodo()
+  }, [recargarTodo])
 
   // ── Filas del nivel activo ────────────────────────────────────────────────
   const filas: IOvertimeBudgetRow[] = useMemo(() => {
@@ -453,12 +489,11 @@ export default function DashboardHorasExtraScreen() {
       refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} />}
     >
       {/* Filtro de semana */}
-      {opcionesSemana.length > 0 && (
-        <AppSelect
-          label="Semana"
-          value={semana}
-          options={opcionesSemana}
-          onValueChange={v => setSemana(String(v))}
+      {semanas.length > 0 && (
+        <SelectorSemana
+          semanas={semanas}
+          actual={semanaSel}
+          onCambiar={w => setSemana(claveSemana(w))}
         />
       )}
 
@@ -471,67 +506,52 @@ export default function DashboardHorasExtraScreen() {
         </Text>
       )}
 
-      {sinAreas ? (
+      {semanas.length === 0 ? (
+        // Sin calendario no hay período que consultar. Antes esto quedaba como
+        // un esqueleto eterno; ahora se dice y se puede reintentar deslizando.
+        <EmptyState
+          title="Sin calendario de semanas"
+          message="No se pudo cargar el calendario de planilla, así que no hay semana que consultar. Deslizá hacia abajo para reintentar."
+        />
+      ) : sinAreas ? (
         <EmptyState
           title="Sin áreas asignadas"
           message="Todavía no tienes centros de costo configurados en tus parámetros de usuario, así que no hay presupuesto que mostrar. Pídeselo a quien administra los parámetros."
         />
       ) : (
         <>
-          {/* ── Totales del período ───────────────────────────────────────── */}
-          <XStack gap="$2" flexWrap="wrap">
-            <KpiCard
-              titulo="Presupuesto"
-              valor={fmtDinero(data?.Total_Presupuesto)}
-              hint={semanaSel ? `Semana ${semanaSel.WeekNumber}` : undefined}
-              info="Lo asignado a tus áreas para la semana. Es la suma de los centros de costo que tienes configurados, no la de toda la unidad de negocios."
-            />
-            <KpiCard
-              titulo="Gastado"
+          {/* ── Resumen del período ───────────────────────────────────────
+              Cuatro tarjetas ocupaban media pantalla antes de llegar a lo que
+              se viene a ver, que son las áreas. Los mismos números caben en dos
+              tarjetas y una barra: cada tarjeta lleva su cifra grande y su
+              contexto en chico. */}
+          <XStack gap="$2">
+            <ResumenCard
+              titulo="GASTADO"
               valor={fmtDinero(data?.Total_Costo)}
               color={colorConsumo(data?.Total_Porcentaje_Consumido ?? 0)}
-              badge={{
-                text: fmtPct(data?.Total_Porcentaje_Consumido),
-                color: colorConsumo(data?.Total_Porcentaje_Consumido ?? 0),
-              }}
-              hint={`${fmtHoras(data?.Total_Horas)} aprobadas`}
-              info="Solo cuenta lo APROBADO por todas las entidades: lo pedido sin firmar todavía no compromete presupuesto. Cada hora se cobra a la base del empleado más el recargo de su banda (25%, 50%, 75%)."
-
+              badge={fmtPct(data?.Total_Porcentaje_Consumido)}
+              pie={`de ${fmtDinero(data?.Total_Presupuesto)} · ${fmtHoras(data?.Total_Horas)}`}
             />
-            <KpiCard
-              titulo="Disponible"
-              valor={fmtDinero(data?.Total_Disponible)}
+            <ResumenCard
+              titulo={(data?.Total_Disponible ?? 0) < 0 ? 'EXCEDIDO' : 'DISPONIBLE'}
+              valor={fmtDinero(Math.abs(data?.Total_Disponible ?? 0))}
               color={(data?.Total_Disponible ?? 0) < 0 ? '#DC2626' : undefined}
-              hint={(data?.Total_Disponible ?? 0) < 0 ? 'Presupuesto excedido' : 'Queda por gastar'}
-            />
-            <KpiCard
-              titulo="Empleados"
-              valor={String(data?.Total_Empleados ?? 0)}
-              hint={`${data?.Total_Solicitudes ?? 0} solicitudes`}
+              pie={`${data?.Total_Empleados ?? 0} empleado(s) · ${data?.Total_Solicitudes ?? 0} solicitud(es)`}
             />
           </XStack>
 
-          {/* ── Barra global ──────────────────────────────────────────────── */}
-          <SectionCard
-            titulo="Consumo del período"
-            subtitulo="Qué parte del presupuesto de tus áreas ya está comprometida."
-          >
-            <BarraConsumo
-              pct={data?.Total_Porcentaje_Consumido ?? 0}
-              izquierda={fmtDinero(data?.Total_Costo)}
-              derecha={fmtDinero(data?.Total_Presupuesto)}
-            />
-          </SectionCard>
+          {/* La barra ya no necesita tarjeta propia con título y subtítulo: va
+              suelta debajo de las cifras que explica. */}
+          <BarraConsumo
+            pct={data?.Total_Porcentaje_Consumido ?? 0}
+            disponible={data?.Total_Disponible ?? 0}
+          />
 
-          {/* ── Reparto por concepto ──────────────────────────────────────── */}
-          <SectionCard
-            titulo="Horas por concepto"
-            subtitulo="De las horas aprobadas del período, cuántas cayeron en cada recargo."
-          >
-            <RepartoConceptos conceptos={data?.Conceptos ?? []} totalHoras={data?.Total_Horas ?? 0} />
-          </SectionCard>
-
-
+          {/* ── Reparto por concepto ──────────────────────────────────────
+              La barra apilada se ve siempre —es una línea y dice lo esencial—
+              y el detalle por banda se despliega. */}
+          <RepartoConceptos conceptos={data?.Conceptos ?? []} totalHoras={data?.Total_Horas ?? 0} />
 
           {/* ── Cortes por nivel ──────────────────────────────────────────── */}
           <TabBar tabs={TABS.map(t => t.label)} activo={tab} onChange={setTab} />
@@ -634,15 +654,20 @@ function RepartoConceptos({
   conceptos: IOvertimeConceptTotal[]
   totalHoras: number
 }) {
+  // El detalle arranca cerrado: la barra apilada ya dice si el período carga
+  // sobre las bandas caras, que es la lectura de un vistazo. Los números
+  // exactos son para cuando alguien va a hacer algo con ellos.
+  const [abierto, setAbierto] = useState(false)
+
   if (conceptos.length === 0) {
     return (
-      <Text fontSize={12} color="$textMuted" lineHeight={17}>
-        No hay horas aprobadas en el período, así que no hay reparto por concepto.
+      <Text fontSize={11} color="$textMuted">
+        Sin horas aprobadas en el período.
       </Text>
     )
   }
 
-  // Se reparte sobre la suma de las bandas y no sobre Total_Horas: si por algún
+  // Se reparte sobre la suma de las bandas y no sobre totalHoras: si por algún
   // detalle sin desglose no cuadraran, los porcentajes tienen que sumar 100 de
   // todos modos.
   const suma = conceptos.reduce((acc, c) => acc + Number(c.Horas ?? 0), 0) || 1
@@ -654,43 +679,63 @@ function RepartoConceptos({
   }))
 
   return (
-    <YStack gap="$3">
-      <BarraApilada tramos={tramos} altura={26} />
+    <YStack
+      backgroundColor="$backgroundElevated"
+      borderRadius="$4"
+      paddingVertical="$2.5"
+      paddingHorizontal="$3"
+      gap="$2"
+      {...shadows.sm}
+    >
+      <XStack
+        alignItems="center"
+        gap="$2"
+        pressStyle={{ opacity: 0.6 }}
+        onPress={() => setAbierto(v => !v)}
+      >
+        <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4} flex={1}>
+          HORAS POR CONCEPTO
+        </Text>
+        <Text fontSize={11} fontWeight="700" color="$text">
+          {fmtHoras(totalHoras)}
+        </Text>
+        {/* Una flecha que gira, no dos caracteres distintos: el giro se lee
+            como "esto se abre" y los glifos ⌃/⌄ quedaban desalineados con el
+            texto y de distinto peso. */}
+        <View rotate={abierto ? '180deg' : '0deg'}>
+          <ChevronDown size={16} color="#94A3B8" />
+        </View>
+      </XStack>
 
-      <YStack gap="$2">
-        {conceptos.map((c, i) => {
-          const color = colorConcepto(c.Porcentaje)
-          const parte = (Number(c.Horas ?? 0) / suma) * 100
+      <BarraApilada tramos={tramos} altura={20} />
 
-          return (
-            <XStack key={`${c.Concepto}-${i}`} alignItems="center" gap="$2">
-              <View width={10} height={10} borderRadius={999} backgroundColor={color} />
+      {abierto && (
+        <YStack gap="$1.5" paddingTop={2}>
+          {conceptos.map((c, i) => {
+            const parte = (Number(c.Horas ?? 0) / suma) * 100
 
-              <YStack flex={1} minWidth={0}>
-                <Text fontSize={12} fontWeight="700" color="$text" numberOfLines={1}>
-                  {c.Descripcion || c.Concepto || 'Sin concepto'}
+            return (
+              <XStack key={`${c.Concepto}-${i}`} alignItems="center" gap="$2">
+                <View width={8} height={8} borderRadius={999} backgroundColor={colorConcepto(c.Porcentaje)} />
+
+                <Text fontSize={11} color="$text" numberOfLines={1} flex={1}>
+                  {fmtPorcentaje(c.Porcentaje)} · {c.Descripcion || c.Concepto || 'Sin concepto'}
                 </Text>
-                <Text fontSize={10} color="$textMuted">
-                  {Math.round(parte)}% de las horas
-                </Text>
-              </YStack>
 
-              <YStack alignItems="flex-end">
-                <Text fontSize={13} fontWeight="800" color="$text">
+                <Text fontSize={11} fontWeight="700" color="$text">
                   {fmtHoras(c.Horas)}
                 </Text>
-                <Text fontSize={10} color="$textMuted">
+                <Text fontSize={10} color="$textMuted" width={54} textAlign="right">
                   {fmtDinero(c.Costo)}
                 </Text>
-              </YStack>
-            </XStack>
-          )
-        })}
-      </YStack>
-
-      <Text fontSize={10} color="$textMuted">
-        Total: {fmtHoras(totalHoras)}
-      </Text>
+                <Text fontSize={9} color="$textMuted" width={26} textAlign="right">
+                  {Math.round(parte)}%
+                </Text>
+              </XStack>
+            )
+          })}
+        </YStack>
+      )}
     </YStack>
   )
 }
@@ -829,37 +874,174 @@ function DesgloseArea({
   )
 }
 
+// ── Selector de semana ──────────────────────────────────────────────────────
+//
+// Flechas en vez de desplegable: moverse de semana es lo que más se hace en
+// esta pantalla, y con una lista había que abrirla, buscar y elegir para llegar
+// a la de al lado. Acá es un toque.
+//
+// La lista viene SIN semanas futuras, así que la flecha derecha se apaga en la
+// semana en curso — no hay para dónde avanzar y un botón que no hace nada
+// confunde más que uno apagado.
+function SelectorSemana({
+  semanas,
+  actual,
+  onCambiar,
+}: {
+  semanas: IPayWebWeek[]
+  actual: IPayWebWeek | null
+  onCambiar: (w: IPayWebWeek) => void
+}) {
+  const i = actual ? semanas.findIndex(w => claveSemana(w) === claveSemana(actual)) : -1
+
+  const anterior = i > 0 ? semanas[i - 1] : null
+  const siguiente = i >= 0 && i < semanas.length - 1 ? semanas[i + 1] : null
+
+  const corta = (iso: string | null) =>
+    iso ? iso.substring(0, 10).split('-').reverse().slice(0, 2).join('/') : ''
+
+  return (
+    <XStack
+      alignItems="center"
+      backgroundColor="$backgroundElevated"
+      borderRadius="$4"
+      paddingVertical="$1.5"
+      paddingHorizontal="$1.5"
+      {...shadows.sm}
+    >
+      <View
+        padding="$2"
+        borderRadius={999}
+        opacity={anterior ? 1 : 0.25}
+        pressStyle={anterior ? { opacity: 0.5 } : undefined}
+        onPress={() => anterior && onCambiar(anterior)}
+      >
+        <ChevronLeft size={20} color="#94A3B8" />
+      </View>
+
+      <YStack flex={1} alignItems="center" gap={1}>
+        <XStack alignItems="center" gap="$1.5">
+          <Text fontSize={14} fontWeight="800" color="$text">
+            Semana {actual?.WeekNumber ?? '—'}
+          </Text>
+          {!!actual?.IsCurrentWeek && (
+            <XStack backgroundColor={`${ACCENT}22`} paddingHorizontal={6} paddingVertical={1} borderRadius={6}>
+              <Text fontSize={9} fontWeight="800" color={ACCENT}>
+                ACTUAL
+              </Text>
+            </XStack>
+          )}
+        </XStack>
+        <Text fontSize={10} color="$textMuted">
+          {corta(actual?.InitialDate ?? null)} — {corta(actual?.FinalDate ?? null)}
+        </Text>
+      </YStack>
+
+      <View
+        padding="$2"
+        borderRadius={999}
+        opacity={siguiente ? 1 : 0.25}
+        pressStyle={siguiente ? { opacity: 0.5 } : undefined}
+        onPress={() => siguiente && onCambiar(siguiente)}
+      >
+        <ChevronRight size={20} color="#94A3B8" />
+      </View>
+    </XStack>
+  )
+}
+
+// ── Tarjeta compacta del resumen ────────────────────────────────────────────
+//
+// Reemplaza a KpiCard en este encabezado: aquella trae ícono de ayuda, línea de
+// delta y su propio espaciado, y con cuatro de ellas el tablero empezaba abajo
+// del pliegue. Acá cada tarjeta es rótulo, cifra y una línea de contexto.
+function ResumenCard({
+  titulo,
+  valor,
+  pie,
+  color,
+  badge,
+}: {
+  titulo: string
+  valor: string
+  pie?: string
+  color?: string
+  badge?: string
+}) {
+  return (
+    <YStack
+      flex={1}
+      backgroundColor="$backgroundElevated"
+      borderRadius="$4"
+      paddingVertical="$2.5"
+      paddingHorizontal="$3"
+      gap={2}
+      {...shadows.sm}
+    >
+      <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+        {titulo}
+      </Text>
+
+      <XStack alignItems="center" gap="$1.5" flexWrap="wrap">
+        <Text fontSize={19} fontWeight="800" color={color ?? '$text'}>
+          {valor}
+        </Text>
+        {!!badge && (
+          <XStack
+            backgroundColor={`${color ?? '#64748B'}22`}
+            paddingHorizontal={6}
+            paddingVertical={1}
+            borderRadius={6}
+          >
+            <Text fontSize={10} fontWeight="800" color={color ?? '$textMuted'}>
+              {badge}
+            </Text>
+          </XStack>
+        )}
+      </XStack>
+
+      {!!pie && (
+        <Text fontSize={10} color="$textMuted" numberOfLines={1}>
+          {pie}
+        </Text>
+      )}
+    </YStack>
+  )
+}
+
 // ── Barra de consumo con marca del 100% ──────────────────────────────────────
 //
 // La marca importa: sin ella una barra llena al 100% y una al 140% se ven
 // igual de llenas y la segunda es un problema.
-function BarraConsumo({
-  pct,
-  izquierda,
-  derecha,
-}: {
-  pct: number
-  izquierda: string
-  derecha: string
-}) {
+function BarraConsumo({ pct, disponible }: { pct: number; disponible: number }) {
   const color = colorConsumo(pct)
+  const excedido = disponible < 0
 
   return (
-    <YStack gap="$2">
-      <XStack justifyContent="space-between" alignItems="flex-end">
-        <Text fontSize={20} fontWeight="800" color={color}>
-          {fmtPct(pct)}
+    <YStack
+      backgroundColor="$backgroundElevated"
+      borderRadius="$4"
+      paddingVertical="$2.5"
+      paddingHorizontal="$3"
+      gap="$1.5"
+      {...shadows.sm}
+    >
+      {/* Sin este rótulo la barra quedaba suelta: una franja de color que no
+          decía de qué era ni qué significaba llegar al final. */}
+      <XStack alignItems="center" gap="$2">
+        <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4} flex={1}>
+          CONSUMO DEL PRESUPUESTO
         </Text>
-        <Text fontSize={11} color="$textMuted">
-          {izquierda} de {derecha}
+        <Text fontSize={13} fontWeight="800" color={color}>
+          {fmtPct(pct)}
         </Text>
       </XStack>
 
       {/* Riel gris (lo que falta) + relleno de color (lo gastado). La marca del
           100% va DENTRO del riel: colgada debajo en su propio XStack quedaba
           fuera de la caja y no se dibujaba. */}
-      <View height={16} borderRadius={999} backgroundColor={PISTA} overflow="hidden">
-        <View height={16} borderRadius={999} backgroundColor={color} width={anchoBarra(pct)} />
+      <View height={12} borderRadius={999} backgroundColor={PISTA} overflow="hidden">
+        <View height={12} borderRadius={999} backgroundColor={color} width={anchoBarra(pct)} />
         <View
           position="absolute"
           left={MARCA_100}
@@ -871,9 +1053,22 @@ function BarraConsumo({
         />
       </View>
 
-      <XStack height={12}>
+      {/* Debajo: la referencia del 100% alineada con su marca, y a la derecha
+          qué significa el número en dinero, que es la pregunta que sigue. */}
+      <XStack height={13}>
         <Text position="absolute" left={MARCA_100} marginLeft={-14} fontSize={9} color="$textMuted">
           100%
+        </Text>
+        <Text
+          position="absolute"
+          right={0}
+          fontSize={10}
+          fontWeight={excedido ? '700' : '400'}
+          color={excedido ? '#DC2626' : '$textMuted'}
+        >
+          {excedido
+            ? `Excedido en ${fmtDinero(Math.abs(disponible))}`
+            : `Quedan ${fmtDinero(disponible)}`}
         </Text>
       </XStack>
     </YStack>

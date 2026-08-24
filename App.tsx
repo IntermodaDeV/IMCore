@@ -28,10 +28,11 @@ import { SCREENS } from './src/screens/screens'
 import { rootSecurity } from './src/screens/Security/rootSecurity'
 import SessionExpiredScreen from './src/navigation/SessionExpiredScreen'
 import SessionClosedByAdminScreen from './src/navigation/SessionClosedByAdminScreen'
+import FirstPasswordChangeScreen from './src/screens/Auth/FirstPasswordChangeScreen'
 import RegisterScreen from './src/screens/Auth/RegistroScreen'
 
 function Root() {
-  const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired, sessionClosedByAdmin } = useAuth()
+  const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired, sessionClosedByAdmin, mustChangePassword } = useAuth()
   const Stack = createNativeStackNavigator()
   const { position: toastPosition } = useToastPosition()
   const insets = useSafeAreaInsets()
@@ -116,6 +117,24 @@ function Root() {
       <TamaguiProvider config={config} defaultTheme={theme}>
         <Theme name={theme}>
           <SessionExpiredScreen />
+        </Theme>
+      </TamaguiProvider>
+    )
+  }
+
+  // Primer ingreso de un usuario Cooperativa: se muestra el cambio de contrasena
+  // en lugar del navegador. Va DESPUES de las dos pantallas de sesion (si la
+  // sesion ya no sirve, eso manda) y exige user para que el token exista, porque
+  // el endpoint que fija la contrasena es [Authorize].
+  if (user && mustChangePassword) {
+    return (
+      <TamaguiProvider config={config} defaultTheme={theme}>
+        <Theme name={theme}>
+          <ToastProvider swipeDirection="horizontal">
+            <FirstPasswordChangeScreen />
+            <CustomToast />
+            <ToastViewport top={50} right={20} />
+          </ToastProvider>
         </Theme>
       </TamaguiProvider>
     )
