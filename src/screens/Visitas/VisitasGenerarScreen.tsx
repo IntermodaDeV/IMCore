@@ -30,8 +30,10 @@ import {
   horaAMinutos,
   resumenHorario,
 } from './horarios'
+import { NIVEL_QR, cargarLogosEmpresa, logoDe, tamanoLogo } from './logoEmpresa'
 
-const LOGO = require('../../assets/logo.png')
+// El logo del QR ya NO es fijo: sale del catálogo, según la empresa del pase
+// (ver logoEmpresa.ts). El parque tiene más de una empresa.
 
 type Generated = {
   token: string
@@ -47,6 +49,11 @@ type Generated = {
   horarioResumen: string | null
   /** Se le pedirá el documento al entrar */
   requiereId: boolean
+  /** El documento se pide en CADA entrada (si no, una lectura respalda el pase) */
+  idCadaEntrada: boolean
+  /** Empresa del parque dueña del pase: define el nombre y el logo de la tarjeta */
+  empresa: string | null
+  empresaCode: string | null
 }
 
 const fmtDate = (d: Date) =>
@@ -102,6 +109,10 @@ export default function VisitasGenerarScreen() {
   // ¿Se le pide el documento al entrar? Encendido por defecto: pedir ID es el
   // criterio seguro, y quien genera el pase lo baja si no aplica.
   const [requiereId, setRequiereId] = useState(true)
+  // Apagado por omisión: una lectura legible respalda todo el pase. Pedir el
+  // documento en cada entrada es el respaldo extra y se elige a propósito.
+  const [idCadaEntrada, setIdCadaEntrada] = useState(false)
+  const [logos, setLogos] = useState<Record<string, any> | null>(null)
   const [loadingGen, setLoadingGen] = useState(false)
   const [result, setResult] = useState<Generated | null>(null)
   const [busyAction, setBusyAction] = useState<'share' | 'save' | null>(null)
@@ -167,6 +178,10 @@ export default function VisitasGenerarScreen() {
         showToast('error', 'Error', e.message, 4000, 'bottom')
       }
     })()
+  }, [])
+
+  useEffect(() => {
+    cargarLogosEmpresa().then(setLogos)
   }, [])
 
   // Trae las ventanas del horario elegido para poder previsualizar los días
@@ -275,6 +290,8 @@ export default function VisitasGenerarScreen() {
         HoraDesde: horaPersonalizada ? horaDesde : null,
         HoraHasta: horaPersonalizada ? horaHasta : null,
         RequiereId: requiereId,
+        // Solo tiene sentido si se pide documento; si no, el SP lo ignora igual.
+        IdCadaEntrada: requiereId && idCadaEntrada,
         Create_By: user?.Code ?? '',
         Personas: cleanPersonas,
       }
@@ -295,6 +312,9 @@ export default function VisitasGenerarScreen() {
               ? `Todos los días ${horaDesde}-${horaHasta}`
               : null,
           requiereId,
+          idCadaEntrada: requiereId && idCadaEntrada,
+          empresa: user?.Empresa ?? null,
+          empresaCode: user?.EmpresaCode ?? null,
         })
       } else {
         showToast('error', 'Error', resp.ErrorMessage || 'No se pudo generar el pase', 5000, 'bottom')
@@ -383,6 +403,7 @@ export default function VisitasGenerarScreen() {
     setHorarioId(undefined)
     setHorarioDetalle([])
     setRequiereId(true)
+    setIdCadaEntrada(false)
     setHoraPersonalizada(false)
     setHoraDesde('09:00')
     setHoraHasta('18:00')
@@ -445,17 +466,27 @@ export default function VisitasGenerarScreen() {
                   gap={10}
                   collapsable={false}
                 >
-                  <Text color="#1A1A2E" fontWeight="800" fontSize={20} letterSpacing={3}>
-                    INTERMODA
+                  {/* La empresa del PASE, no una fija: un pase de Chamer no
+                      puede salir con el nombre de Intermoda encima. Se achica la
+                      letra en los nombres largos para que no desborde. */}
+                  <Text
+                    color="#1A1A2E"
+                    fontWeight="800"
+                    fontSize={(result.empresa ?? 'INTERMODA').length > 12 ? 15 : 20}
+                    letterSpacing={(result.empresa ?? 'INTERMODA').length > 12 ? 1.5 : 3}
+                    textAlign="center"
+                  >
+                    {(result.empresa ?? 'Intermoda').toUpperCase()}
                   </Text>
                   <QRCode
                     value={result.token}
                     size={220}
-                    logo={LOGO}
-                    logoSize={46}
+                    logo={logoDe(logos, result.empresaCode)}
+                    logoSize={tamanoLogo(220)}
                     logoBackgroundColor="white"
                     logoBorderRadius={8}
                     quietZone={6}
+                    ecl={NIVEL_QR}
                   />
                   <Text color="#1A1A2E" fontWeight="700" fontSize={15}>
                     {result.isRecurrent ? 'Vigencia: ' : 'Ingreso: '}{vigenciaTexto(result)}
@@ -500,7 +531,16 @@ export default function VisitasGenerarScreen() {
                 <InfoRow label={result.isRecurrent ? 'Vigencia' : 'Fecha de ingreso'} value={vigenciaTexto(result)} />
                 {result.isRecurrent && <InfoRow label="Días habilitados" value={`${result.dias.length}`} />}
                 <InfoRow label="Horario" value={result.horario ?? 'Día completo'} />
-                <InfoRow label="Identificación" value={result.requiereId ? 'Se pedirá documento' : 'No se pide'} />
+                <InfoRow
+                  label="Identificación"
+                  value={
+                    !result.requiereId
+                      ? 'No se pide'
+                      : result.idCadaEntrada
+                        ? 'Documento en cada entrada'
+                        : 'Documento una vez'
+                  }
+                />
                 {!!result.horarioResumen && <InfoRow label="Ventanas" value={result.horarioResumen} />}
 
                 <XStack alignItems="center" gap="$2" marginTop="$2">
@@ -703,6 +743,45 @@ export default function VisitasGenerarScreen() {
               />
             </View>
           </XStack>
+
+          {/* ── ¿En cada entrada, o una vez por pase? ──
+              Solo aparece si se pide documento. Apagado significa que UNA lectura
+              legible respalda todo el pase: un proveedor que viene cinco días
+              entrega el documento una vez y no cada mañana, que en portería se
+              paga en tiempo. Encendido es el respaldo entrada por entrada. */}
+          {requiereId && (
+            <XStack alignItems="center" justifyContent="space-between" marginTop="$2" gap="$2" paddingLeft="$5">
+              <XStack alignItems="center" gap="$2" flex={1}>
+                <Repeat size={14} color="#94A3B8" />
+                <YStack flex={1}>
+                  <Text fontSize={13} fontWeight="700" color="$text">Pedirlo en cada entrada</Text>
+                  <Text fontSize={11} color="$textMuted">
+                    {idCadaEntrada
+                      ? 'Cada vez que entre se le pedirá el documento'
+                      : 'Con una lectura legible queda respaldado todo el pase'}
+                  </Text>
+                </YStack>
+              </XStack>
+              <View
+                onPress={() => setIdCadaEntrada((v) => !v)}
+                pressStyle={{ opacity: 0.8 }}
+                width={48}
+                height={28}
+                borderRadius={14}
+                backgroundColor={idCadaEntrada ? '$primary' : '$border'}
+                padding={3}
+                justifyContent="center"
+              >
+                <View
+                  width={22}
+                  height={22}
+                  borderRadius={11}
+                  backgroundColor="white"
+                  alignSelf={idCadaEntrada ? 'flex-end' : 'flex-start'}
+                />
+              </View>
+            </XStack>
+          )}
 
           <Separador label="FECHAS Y HORARIO" Icon={CalendarRange} />
 

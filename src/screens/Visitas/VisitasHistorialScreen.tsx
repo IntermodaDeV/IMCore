@@ -18,8 +18,11 @@ import { visitasService } from '../../api/modules/visitas/visitas.service'
 import { IHistorial, IVentanaPase, IVisitaAcceso } from '../../api/modules/visitas/visitas.types'
 import { handleError } from '../../utils/errorHandler'
 import { fmtDuracion } from './horarios'
+import { NIVEL_QR, cargarLogosEmpresa, logoDe, tamanoLogo } from './logoEmpresa'
 
-const LOGO = require('../../assets/logo.png')
+// El logo del QR ya NO es fijo: sale del catálogo, según la empresa del pase
+// (ver logoEmpresa.ts). El parque tiene más de una empresa.
+
 
 const prettyDate = (iso?: string | null) => {
   const [y, m, d] = (iso ?? '').split('-')
@@ -89,7 +92,13 @@ export default function VisitasHistorialScreen() {
   const [ventanas, setVentanas] = useState<IVentanaPase[]>([])
   const [loadingAccesos, setLoadingAccesos] = useState(false)
   const [busyAction, setBusyAction] = useState<'share' | 'save' | null>(null)
+  // Logos por empresa, para el QR. Se cargan una vez y se cachean en el módulo.
+  const [logos, setLogos] = useState<Record<string, any> | null>(null)
   const viewShotRef = useRef<any>(null)
+
+  useEffect(() => {
+    cargarLogosEmpresa().then(setLogos)
+  }, [])
 
   usePageHeader({
     center: (
@@ -322,6 +331,15 @@ export default function VisitasHistorialScreen() {
                         </XStack>
                       </XStack>
 
+                      {/* Solo cuando el pase es de OTRA empresa: para quien ve
+                          únicamente la suya, la fila sería ruido en cada tarjeta.
+                          Si todavía no se sabe la empresa del usuario (sesión
+                          vieja, antes de que refreshUser traiga el InfoUser
+                          nuevo), no se muestra nada: mejor omitirla que ponerla
+                          en todas las tarjetas. */}
+                      {!!h.Empresa && !!user?.Empresa && h.Empresa !== user.Empresa && (
+                        <Row label="Empresa" value={h.Empresa} />
+                      )}
                       <Row label="Visita a" value={h.VisitTo} />
                       <Row label="Motivo" value={motivo} />
                       <Row
@@ -373,10 +391,29 @@ export default function VisitasHistorialScreen() {
                 <YStack alignItems="center" gap="$3" paddingBottom="$4">
                   <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }}>
                     <YStack backgroundColor="white" paddingVertical={18} paddingHorizontal={16} borderRadius="$4" alignItems="center" gap={10} collapsable={false}>
-                      <Text color="#1A1A2E" fontWeight="800" fontSize={20} letterSpacing={3}>
-                        INTERMODA
+                      {/* La empresa del PASE, no una fija: un pase de Chamer no
+                          puede salir con el nombre de Intermoda encima. Se achica
+                          la letra en los nombres largos para que no desborde la
+                          tarjeta que se comparte. */}
+                      <Text
+                        color="#1A1A2E"
+                        fontWeight="800"
+                        fontSize={(selected.Empresa ?? 'INTERMODA').length > 12 ? 15 : 20}
+                        letterSpacing={(selected.Empresa ?? 'INTERMODA').length > 12 ? 1.5 : 3}
+                        textAlign="center"
+                      >
+                        {(selected.Empresa ?? 'Intermoda').toUpperCase()}
                       </Text>
-                      <QRCode value={selected.Token} size={210} logo={LOGO} logoSize={44} logoBackgroundColor="white" logoBorderRadius={8} quietZone={6} />
+                      <QRCode
+                        value={selected.Token}
+                        size={210}
+                        logo={logoDe(logos, selected.EmpresaCode)}
+                        logoSize={tamanoLogo(210)}
+                        logoBackgroundColor="white"
+                        logoBorderRadius={8}
+                        quietZone={6}
+                        ecl={NIVEL_QR}
+                      />
                       <Text color="#1A1A2E" fontWeight="700" fontSize={15}>
                         {selected.IsRecurrent ? 'Vigencia: ' : 'Ingreso: '}{vigenciaTexto(selected)}
                       </Text>

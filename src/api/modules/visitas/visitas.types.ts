@@ -118,6 +118,10 @@ export interface IGenerarVisita {
   HoraHasta?: string | null
   /** ¿Se le pide el documento al entrar? Encendido por defecto. */
   RequiereId?: boolean
+  /** ¿En CADA entrada, o basta una vez por pase? Apagado por defecto: una
+   *  lectura legible respalda el pase entero (un proveedor recurrente entrega el
+   *  documento una vez). Pedirlo siempre es el respaldo extra y es opt-in. */
+  IdCadaEntrada?: boolean
   Create_By: string
   Personas: string[]
 }
@@ -156,6 +160,11 @@ export interface IValidarResult {
   RequiereId?: boolean
   /** Movimiento contra el que se cuelga la foto del documento */
   AccesoId?: number | null
+  // ── Empresa del parque dueña del pase ──
+  // El guardia atiende a las dos empresas del parque, así que tiene que ver de
+  // cuál es el pase que acaba de escanear.
+  Empresa?: string | null
+  EmpresaCode?: string | null
 }
 
 export interface IHistorial {
@@ -189,11 +198,19 @@ export interface IHistorial {
   MovimientosConExceso?: number
   // ── Identificación ──
   RequiereId?: boolean
+  /** true = documento en cada entrada; false = una lectura respalda el pase.
+   *  Cambia el significado de EntradasSinIdLegible. */
+  IdCadaEntrada?: boolean
   IdentificacionesCount?: number
   IdLegiblesCount?: number
   IdNoCoincideCount?: number
   /** Entradas que exigían ID y quedaron sin uno legible: el hueco a vigilar */
   EntradasSinIdLegible?: number
+  // ── Empresa del parque dueña del pase (snapshot al generarlo) ──
+  Empresa_Id?: number
+  Empresa?: string | null
+  /** Con esto se elige el logo del QR sin depender del Id. */
+  EmpresaCode?: string | null
 }
 
 export interface IVisitaAcceso {

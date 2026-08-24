@@ -300,6 +300,9 @@ export default function VisitasValidarScreen() {
                     {result.Personas || '—'}
                   </Text>
                 </XStack>
+                {/* El guardia atiende a las dos empresas del parque: tiene que
+                    ver de cuál es el pase que acaba de escanear. */}
+                {!!result.Empresa && <Row label="Empresa" value={result.Empresa} />}
                 <Row label="Visita a" value={result.VisitTo} />
                 <Row label="Motivo" value={result.Motivo === 'Otros' && result.VisitReasonOther ? result.VisitReasonOther : result.Motivo} />
                 {!!result.Horario && <Row label="Horario" value={result.Horario} />}

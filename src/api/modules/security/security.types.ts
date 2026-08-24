@@ -39,6 +39,12 @@ export interface UsersDTO {
   Status_Id: number
   Theme: string
   Access?: string
+  /** Empresa del parque a la que pertenece. Viene en el InfoUser del login,
+   *  igual que los accesos. No confundir con Companies/DefaultCompany, que son
+   *  las compañías de AX por país. */
+  Empresa_Id?: number
+  Empresa?: string | null
+  EmpresaCode?: string | null
 
   Create_By?: string
   Roles?: RoleDTO[]
@@ -52,6 +58,23 @@ export interface UsersDTO {
   Modification_Date?: string | Date | null
   DynamicColumns?: Record<string, string>
   [key: string]: any
+}
+
+// Empresa del parque industrial (Intermoda, Industrias Chamer).
+//
+// ⚠ NO es IDefaultCompany / AdmSys.Companies: esas son las compañías de AX POR
+// PAÍS (IMHN, IMGT, IMCR, IMSL), en relación N:M con el usuario, y deciden
+// contra qué compañía CONTABLE se reporta. Esta responde otra pregunta —para
+// quién trabaja la persona— y es 1:1.
+export interface IEmpresa {
+  Id: number
+  Name: string
+  Code: string
+  /** base64 SIN el prefijo "data:". Solo viene con incluirLogo=true. */
+  Logo?: string | null
+  LogoMime?: string | null
+  TieneLogo: boolean
+  Status_Id: number
 }
 
 export interface IRegister {
