@@ -1,12 +1,13 @@
 import React, { useCallback, useState } from 'react'
 import { KeyboardAvoidingView, Platform, ScrollView as RNScrollView, Keyboard } from 'react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
-import { YStack, XStack, Text, Button, View, Spinner } from 'tamagui'
-import { Info } from 'lucide-react-native'
+import { YStack, XStack, Text, Button, View, Spinner, styled } from 'tamagui'
+import { Info, ArrowLeft } from 'lucide-react-native'
 import AppInput from '../../components/commons/AppInput'
+import EstadoCuentaCard from '../../components/commons/EstadoCuentaCard'
 import AppSelect from '../../components/commons/AppSelect'
 import { cooperativaService } from '../../api/modules/cooperativa/cooperativa.service'
-import { ICatalogosSolicitud } from '../../api/modules/cooperativa/cooperativa.types'
+import { ICatalogosSolicitud, IEstadoCuenta } from '../../api/modules/cooperativa/cooperativa.types'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useKeyboardHeight } from '../../hooks/useKeyboardInset'
 import { handleError } from '../../utils/errorHandler'
@@ -22,6 +23,38 @@ import SkeletonForm from '../../components/Skeletons/SkeletonForm'
  *
  * La solicitud nace en Estado 3 (Pendiente); el estado lo fija el servidor.
  */
+
+// El header cae al boton del drawer cuando no se le pasa `left`. Acá es una
+// pantalla hija a la que se llega desde el listado, así que corresponde volver.
+const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' })
+
+/**
+ * Tipos de solicitud, tal como están en Cooperativa.dbo.TipoSolicitud.
+ *
+ * Van por Id y no por descripción porque la descripción es texto que alguien
+ * puede corregir ("prestamo" -> "Préstamo") sin saber que hay una pantalla
+ * leyéndola. El Id es la llave y no cambia.
+ */
+const TIPO_ADELANTO_13 = 1
+const TIPO_ANTICIPO_14 = 2
+const TIPO_PRESTAMO_13_14 = 4
+
+/**
+ * Qué deducciones aplican según el tipo.
+ *
+ *   1 Adelanto 13vo          -> solo la del 13.º
+ *   2 Anticipo 14vo          -> solo la del 14.º
+ *   3 prestamo               -> ninguna
+ *   4 prestamo + 13vo 14vo   -> las dos
+ *
+ * Un tipo que no esté en la lista no muestra ninguna deducción: si mañana
+ * agregan uno nuevo al catálogo, el formulario sigue funcionando y a lo sumo
+ * falta un campo, en vez de mandar un descuento que nadie definió.
+ */
+const deduccionesDelTipo = (tipoSolicitudId: number | null | undefined) => ({
+  trece: tipoSolicitudId === TIPO_ADELANTO_13 || tipoSolicitudId === TIPO_PRESTAMO_13_14,
+  catorce: tipoSolicitudId === TIPO_ANTICIPO_14 || tipoSolicitudId === TIPO_PRESTAMO_13_14,
+})
 
 /** Solo dígitos y un punto decimal, para que el monto no llegue con basura. */
 const soloDecimal = (v: string): string => {
@@ -46,6 +79,8 @@ export default function NuevaSolicitudScreen() {
   const [ded14, setDed14] = useState('')
   const [errores, setErrores] = useState<Record<string, string>>({})
 
+  const [estadoCuenta, setEstadoCuenta] = useState<IEstadoCuenta | null>(null)
+
   // En Android con edge-to-edge, adjustResize no achica la ventana, así que el
   // KeyboardAvoidingView por sí solo no alcanza: se reserva el alto del teclado
   // como padding para poder scrollear el contenido por encima de él.
@@ -58,6 +93,11 @@ export default function NuevaSolicitudScreen() {
         Nueva solicitud
       </Text>
     ),
+    left: (
+      <View onPress={() => navigation.goBack()} pressStyle={{ opacity: 0.6 }} hitSlop={10}>
+        <ArrowLeftStyled />
+      </View>
+    ),
   })
 
   const cargarCatalogos = useCallback(async () => {
@@ -69,6 +109,12 @@ export default function NuevaSolicitudScreen() {
         setCatalogos(response.Data)
       } else {
         showToast('error', 'Error', response?.ErrorMessage || 'No se pudieron cargar los catálogos', 5000, 'top')
+      }
+      try {
+        const cuenta = await cooperativaService.getEstadoCuenta()
+        if (cuenta?.Success && cuenta.Data) setEstadoCuenta(cuenta.Data)
+      } catch {
+        setEstadoCuenta(null)
       }
     } catch (err) {
       showToast('error', 'Error', handleError(err).message, 5000, 'top')
@@ -109,8 +155,8 @@ export default function NuevaSolicitudScreen() {
         PlazoId: plazoId!,
         Monto: Number(monto),
         Descripcion: descripcion.trim() || undefined,
-        Deduccion13vo: ded13.trim() ? Number(ded13) : undefined,
-        Deduccion14vo: ded14.trim() ? Number(ded14) : undefined,
+        Deduccion13vo: aplicaTrece && ded13.trim() ? Number(ded13) : undefined,
+        Deduccion14vo: aplicaCatorce && ded14.trim() ? Number(ded14) : undefined,
       })
 
       if (!response?.Success) {
@@ -127,6 +173,10 @@ export default function NuevaSolicitudScreen() {
       setEnviando(false)
     }
   }
+
+  // Deducciones que aplican al tipo elegido. Se recalcula en cada render, así
+  // no hay un estado más que mantener sincronizado.
+  const { trece: aplicaTrece, catorce: aplicaCatorce } = deduccionesDelTipo(tipoId)
 
   const opcionesTipo = (catalogos?.Tipos ?? []).map(t => ({
     label: t.Descripcion ?? `Tipo ${t.TipoSolicitudId}`,
@@ -159,10 +209,25 @@ export default function NuevaSolicitudScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <YStack gap="$4">
+
+            {/* Antes del formulario: es lo que se mira para decidir cuánto
+                pedir. Arranca cerrado, acá es contexto y no el objetivo. */}
+            {!!estadoCuenta && <EstadoCuentaCard datos={estadoCuenta} />}
+
             <AppSelect
               label="Tipo de solicitud"
               value={tipoId ?? undefined}
-              onValueChange={v => { setTipoId(Number(v)); setErrores(p => ({ ...p, tipo: '' })) }}
+              onValueChange={v => {
+                const nuevo = Number(v)
+                setTipoId(nuevo)
+                setErrores(p => ({ ...p, tipo: '' }))
+
+                // El campo se oculta, pero el valor escrito seguiría en el
+                // estado y se mandaría igual. Se limpia lo que deja de aplicar.
+                const aplica = deduccionesDelTipo(nuevo)
+                if (!aplica.trece) setDed13('')
+                if (!aplica.catorce) setDed14('')
+              }}
               options={opcionesTipo}
               error={errores.tipo}
             />
@@ -194,26 +259,35 @@ export default function NuevaSolicitudScreen() {
               style={{ height: 100 }}
             />
 
-            <XStack gap="$3">
-              <View flex={1}>
-                <AppInput
-                  label="Deducción 13.º"
-                  value={ded13}
-                  onChangeText={(v: string) => setDed13(soloDecimal(v))}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                />
-              </View>
-              <View flex={1}>
-                <AppInput
-                  label="Deducción 14.º"
-                  value={ded14}
-                  onChangeText={(v: string) => setDed14(soloDecimal(v))}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                />
-              </View>
-            </XStack>
+            {/* Las deducciones dependen del tipo: un adelanto del 13.º no
+                tiene nada que descontar del 14.º. Con "Prestamo" a secas no
+                sale ninguna y el bloque entero desaparece. */}
+            {(aplicaTrece || aplicaCatorce) && (
+              <XStack gap="$3">
+                {aplicaTrece && (
+                  <View flex={1}>
+                    <AppInput
+                      label="Deducción 13.º"
+                      value={ded13}
+                      onChangeText={(v: string) => setDed13(soloDecimal(v))}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                    />
+                  </View>
+                )}
+                {aplicaCatorce && (
+                  <View flex={1}>
+                    <AppInput
+                      label="Deducción 14.º"
+                      value={ded14}
+                      onChangeText={(v: string) => setDed14(soloDecimal(v))}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                    />
+                  </View>
+                )}
+              </XStack>
+            )}
 
             <XStack
               gap="$2"

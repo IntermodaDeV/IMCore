@@ -2,6 +2,7 @@ import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
   ICatalogosSolicitud,
+  IEstadoCuenta,
   ICrearSolicitud,
   IEmpleadoSinAfiliacion,
   IEstadoAfiliacion,
@@ -68,6 +69,13 @@ export const cooperativaService = {
    */
   getSolicitudesCliente: () =>
     httpClient.get<ExecutionResponse<ISolicitudCliente[]>>(`${schema}/SolicitudesCliente`),
+
+  /**
+   * Estado de cuenta del socio. Sin parametros: el codigo de personal lo
+   * resuelve el servidor desde el token.
+   */
+  getEstadoCuenta: () =>
+    httpClient.get<ExecutionResponse<IEstadoCuenta>>(`${schema}/EstadoCuenta`),
 
   /** Catalogos (tipos y plazos) del formulario de solicitud. */
   getCatalogosSolicitud: () =>

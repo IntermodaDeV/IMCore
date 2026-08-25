@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable } from 'react-native'
 import { YStack, XStack, Text, Button, ScrollView, Spinner, View } from 'tamagui'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Eye, EyeOff, Check, X, ShieldCheck, KeyRound } from 'lucide-react-native'
+import { Eye, EyeOff, Check, X, ShieldCheck, KeyRound, Info } from 'lucide-react-native'
 import AppInput from '../../components/commons/AppInput'
 import { securityService } from '../../api/modules/security/security.service'
 import { useAuth } from '../../context/AuthContext'
@@ -29,6 +29,15 @@ const REGLAS: Regla[] = [
   { label: 'Al menos 8 caracteres', cumple: v => v.length >= 8 },
   { label: 'Al menos una letra', cumple: v => /[a-zA-Z]/.test(v) },
   { label: 'Al menos un número', cumple: v => /[0-9]/.test(v) },
+  // \s cubre las tres posiciones de una sola vez: al inicio, en medio y al
+  // final. Los espacios de los extremos son invisibles al escribir y se pierden
+  // al copiar o autocompletar, así que quien los ponga quedaría sin poder
+  // entrar con la contraseña que cree que puso.
+  //
+  // Se muestra como regla en vez de recortarla en silencio: si la recortáramos,
+  // lo guardado no sería lo que escribió, y en el próximo ingreso no le
+  // funcionaría lo que tiene anotado. Marcarla en rojo lo deja corregirlo a él.
+  { label: 'Sin espacios', cumple: v => v.length > 0 && !/\s/.test(v) },
 ]
 
 export default function FirstPasswordChangeScreen() {
@@ -192,6 +201,26 @@ export default function FirstPasswordChangeScreen() {
               </XStack>
             ))}
           </YStack>
+
+          {/* Lo que pasa después. Va junto al botón y no arriba porque es lo
+              último que se lee antes de guardar. */}
+          <XStack
+            gap="$2.5"
+            padding="$3.5"
+            borderRadius="$4"
+            backgroundColor="$backgroundSurface"
+            borderWidth={1}
+            borderColor="$border"
+            alignItems="flex-start"
+          >
+            <View marginTop={1}>
+              <Info size={16} color="#F59E0B" />
+            </View>
+            <Text fontSize={13} color="$textMuted" flex={1} lineHeight={19}>
+              Guardá bien esta contraseña: es la que te va a pedir la próxima vez
+              que inicies sesión. Nadie más la conoce.
+            </Text>
+          </XStack>
 
           {/* Acciones */}
           <YStack gap="$3">

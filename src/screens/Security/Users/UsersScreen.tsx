@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { FlatList } from 'react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
-import { Plus, RotateCw, Pencil, KeyRound, Eye, EyeOff, ChevronDown, ChevronUp, Trash2, LogOut  } from 'lucide-react-native'
+import { Plus, RotateCw, Pencil, KeyRound, Eye, EyeOff, ChevronDown, ChevronUp, Trash2, LogOut, UserPlus  } from 'lucide-react-native'
 import { YStack, Text, Card, XStack, View, useTheme, Button, Dialog, Spinner, styled } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { IUserExternalCodes, UsersDTO } from '../../../api/modules/security/security.types'
@@ -31,7 +31,18 @@ type ChangePasswordForm = {
 export type RootStackParamList = {
   home: undefined;
   usuario_form: { Id?: number };
+  usuario_coop_form: undefined;
 };
+
+/**
+ * Acceso que habilita crear usuarios de cooperativa desde un empleado de
+ * planilla. Esconder el boton es comodidad: la API exige el mismo acceso.
+ */
+const ACCESO_USUARIO_COOPERATIVA = 'userCooperativa'
+
+/** ¿El usuario tiene ese acceso? El campo Access viene como lista separada por comas. */
+const tieneAcceso = (access: string | null | undefined, key: string) =>
+  (access ?? '').split(',').map(s => s.trim()).includes(key)
 type NavProps = NativeStackNavigationProp<RootStackParamList>;
 
 export default function UsersScreen() {
@@ -40,6 +51,7 @@ export default function UsersScreen() {
 
   const RotateCwStyled = styled(RotateCw, { color: '$text' });
   const PlusStyled = styled(Plus, { color: '$text' });
+  const UserPlusStyled = styled(UserPlus, { color: '$text' });
 
   const [loading, setLoading] = useState(false)
   const [loadingSave, setLoadingSave] = useState(false)
@@ -61,6 +73,8 @@ export default function UsersScreen() {
   const [error, setError] = useState<AppError | null>(null)
   const [deletingCode, setDeletingCode] = useState<{ userId: number; keyVar: string } | null>(null) 
   const { user, companyId } = useAuth()
+
+  const puedeCrearCooperativa = tieneAcceso(user?.Access, ACCESO_USUARIO_COOPERATIVA)
   const { showToast } = useShowToast()
 
   const canForceLogout = (user?.Access ?? '').split(',').map(s => s.trim()).includes('logoutUser')
@@ -163,6 +177,16 @@ export default function UsersScreen() {
           <View onPress={() => getInfo()}>
             <RotateCwStyled size={18}  />
           </View>
+
+          {puedeCrearCooperativa && (
+            <View
+              onPress={() => navigation.navigate('usuario_coop_form')}
+              pressStyle={{ opacity: 0.6 }}
+              hitSlop={8}
+            >
+              <UserPlusStyled size={18} />
+            </View>
+          )}
 
           <View onPress={() => openForm()}  >
             <PlusStyled size={18}  />

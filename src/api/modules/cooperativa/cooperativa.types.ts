@@ -105,6 +105,23 @@ export const ESTADO_SOLICITUD_COO = {
   PENDIENTE: 3,
 } as const
 
+/**
+ * Estado de cuenta del socio: lo que tiene ahorrado contra lo que debe.
+ */
+export type IEstadoCuenta = {
+  ClienteId: number
+  Codigo: string | null
+  NombreCompleto: string | null
+  /** Cuantas cuentas de ahorro activas tiene. */
+  TotalCuentas: number
+  SaldoCuentas: number
+  /** Cuantos prestamos vigentes tiene. */
+  TotalPrestamos: number
+  SaldoPrestamos: number
+  /** Ahorros menos deuda. Negativo = debe mas de lo que tiene. */
+  SaldoNeto: number
+}
+
 /** Catalogo Cooperativa.dbo.TipoSolicitud. */
 export type ITipoSolicitud = {
   TipoSolicitudId: number
@@ -157,4 +174,12 @@ export type IEstadoAfiliacion = {
   Solicitud: ISolicitudSocio | null
   Motivo: string | null
   PuedeSolicitar: boolean
+
+  /**
+   * El servidor le acaba de dar el menú del socio en esta misma consulta.
+   *
+   * Solo pasa con quienes se afiliaron antes de este módulo, y solo la primera
+   * vez. Sirve para refrescar el menú sin obligar a cerrar sesión.
+   */
+  MenuAsignado?: boolean
 }

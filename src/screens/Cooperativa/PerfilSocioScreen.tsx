@@ -12,6 +12,7 @@ import {
   IEstadoAfiliacion,
   IEmpleadoSinAfiliacion,
   ISolicitudSocio,
+  IEstadoCuenta,
   ESTADO_SOLICITUD,
 } from '../../api/modules/cooperativa/cooperativa.types'
 import { ExecutionResponse } from '../../api/modules/response.type'
@@ -19,6 +20,8 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { handleError } from '../../utils/errorHandler'
 import { useShowToast } from '../../utils/useShowToast'
 import SkeletonForm from '../../components/Skeletons/SkeletonForm'
+import EstadoCuentaCard from '../../components/commons/EstadoCuentaCard'
+import { requestMenuRefresh } from '../../services/menuRefresh'
 import { shadows } from '../../theme/shadows'
 
 /**
@@ -139,6 +142,7 @@ export default function PerfilSocioScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [estado, setEstado] = useState<IEstadoAfiliacion | null>(null)
+  const [estadoCuenta, setEstadoCuenta] = useState<IEstadoCuenta | null>(null)
   const { showToast } = useShowToast()
   const navigation = useNavigation()
 
@@ -157,6 +161,25 @@ export default function PerfilSocioScreen() {
 
       if (response?.Success && response.Data) {
         setEstado(response.Data)
+
+        // El servidor le acaba de dar el menu del socio. Sin este aviso el
+        // drawer sigue con la lista vieja y la persona tendria que cerrar
+        // sesion para ver su pantalla de solicitudes.
+        if (response.Data.MenuAsignado) requestMenuRefresh()
+
+        // Solo si ya es socio: quien no lo es no tiene cuenta que consultar.
+        // Es informacion complementaria, asi que un fallo no se muestra ni
+        // corta la pantalla; a lo sumo no se pinta la tarjeta.
+        if (response.Data.Solicitud?.Status_Code === ESTADO_SOLICITUD.APROBADO) {
+          try {
+            const cuenta = await cooperativaService.getEstadoCuenta()
+            setEstadoCuenta(cuenta?.Success && cuenta.Data ? cuenta.Data : null)
+          } catch {
+            setEstadoCuenta(null)
+          }
+        } else {
+          setEstadoCuenta(null)
+        }
       } else {
         setEstado({
           Empleado: null,
@@ -259,11 +282,18 @@ export default function PerfilSocioScreen() {
             >
               <BadgeCheck size={13} color="#22C55E" />
               <Text fontSize={12} fontWeight="600" color="$success">
-                Socio desde {formatFecha(solicitud.Resolution_Date)}
+                {/* Sin fecha = socio de antes de este modulo: se afilio fuera
+                    del sistema y nadie registro cuando. Decir "Socio desde -"
+                    seria peor que no decir la fecha. */}
+                {solicitud.Resolution_Date
+                  ? `Socio desde ${formatFecha(solicitud.Resolution_Date)}`
+                  : 'Socio activo'}
               </Text>
             </XStack>
           }
         />
+        
+        {!!estadoCuenta && <EstadoCuentaCard datos={estadoCuenta} />}
 
         <Button
           backgroundColor="$primary"
