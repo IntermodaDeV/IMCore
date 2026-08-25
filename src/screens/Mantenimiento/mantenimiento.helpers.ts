@@ -74,13 +74,17 @@ export const puedeConfigRecordatorio = (roles?: RoleLike[] | null, access?: stri
   hasRole(roles, ROLES_CONFIG_RECORDATORIO) || hasAccess(access, 'ConfigRecordatorioTicket')
 
 // Ver el "pool" de TODOS los tickets: rol Mecánico/Técnico/Sup. Mtto/Admin, o
-// acceso 'AsignarTickets' (para descubrir y autoasignarse), o acceso
-// 'DespacharRepuestos' (el despachador ve todos los tickets en SOLO LECTURA: no
-// crea, edita ni opera; esas acciones se gatean aparte). Habilita el toggle
-// "Todos" en el listado. (El backend ya revalida el mismo alcance en SP_GetTickets.)
+// acceso 'AsignarTickets' (para descubrir y autoasignarse), 'DespacharRepuestos'
+// (el despachador ve todos los tickets en SOLO LECTURA: no crea, edita ni opera;
+// esas acciones se gatean aparte) o 'VerTodosTickets' (consulta pura: listado y
+// detalle con su QR, sin ninguna acción). Habilita el toggle "Todos" en el
+// listado. (El backend ya revalida el mismo alcance en SP_GetTickets.)
 const ROLES_POOL = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico']
 export const puedeVerPool = (roles?: RoleLike[] | null, access?: string | null) =>
-  hasRole(roles, ROLES_POOL) || hasAccess(access, 'AsignarTickets') || hasAccess(access, 'DespacharRepuestos')
+  hasRole(roles, ROLES_POOL) ||
+  hasAccess(access, 'AsignarTickets') ||
+  hasAccess(access, 'DespacharRepuestos') ||
+  hasAccess(access, 'VerTodosTickets')
 
 // Alcance inicial del listado de tickets. El despachador de repuestos no crea ni
 // tiene tickets propios, así que su pestaña "Míos" saldría vacía → arranca en
@@ -89,7 +93,9 @@ export const puedeVerPool = (roles?: RoleLike[] | null, access?: string | null) 
 const ROLES_PERSONALES = ['Administrador', 'Supervisor de Mantenimiento', 'Mecánico', 'Técnico', 'Supervisor de Producción']
 export const scopeInicialTickets = (roles?: RoleLike[] | null, access?: string | null): 'mias' | 'todos' => {
   const tienePersonales = hasRole(roles, ROLES_PERSONALES) || hasAccess(access, 'CrearTickets')
-  return (!tienePersonales && hasAccess(access, 'DespacharRepuestos')) ? 'todos' : 'mias'
+  // Igual que el despachador, quien solo consulta no tiene tickets propios.
+  const soloMira = hasAccess(access, 'DespacharRepuestos') || hasAccess(access, 'VerTodosTickets')
+  return !tienePersonales && soloMira ? 'todos' : 'mias'
 }
 
 // Despachar: asignar un ticket a CUALQUIER mecánico/técnico. Sup. Mtto/Admin o
@@ -176,6 +182,22 @@ export function fmtHM(min: number): string {
   return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
+// Lo que algo lleva DETENIDO se mide en días, no en horas: 12 646 min es 8d 19h, y
+// "210h 46m" no lo lee nadie. (Vive acá porque lo usan Análisis y el panel de
+// máquinas malas; es el mismo fmtDetenido del web.)
+export function fmtDetenido(min: number): string {
+  const m = Math.max(0, Math.round(min))
+  if (m < 1440) return fmtHM(m)
+  let d = Math.floor(m / 1440)
+  let h = Math.round((m % 1440) / 60)
+  // 4 316 min redondea a 24 h y salía "2d 24h": las 24 horas son un día más.
+  if (h === 24) {
+    d += 1
+    h = 0
+  }
+  return h > 0 ? `${d}d ${h}h` : `${d}d`
+}
+
 // Minutos → "746 h": para totales grandes, donde los minutos sueltos no dicen nada.
 export const fmtHoras = (min: number) => `${Math.round(min / 60).toLocaleString('es-HN')} h`
 
@@ -219,6 +241,9 @@ export function variacion(actual: number, anterior: number): number | null {
 export const COLOR_ESPERA = '#f59e0b'
 export const COLOR_TRABAJO = '#3b82f6'
 export const COLOR_PAUSA = '#a855f7'
+// Reproceso: rosa oscuro, la familia del estado "Rechazado" (de ahí nace el tramo)
+// en un tono que no se confunde con el morado de la pausa. El MISMO hex que el web.
+export const COLOR_REPROCESO = '#be123c'
 
 // ── Filtros finos (Área / Prioridad / Tipo de Paro) ──────────────────────────
 export interface FiltrosFinos {
@@ -249,6 +274,10 @@ export function aplicarFiltrosFinos(
 export interface Kpis {
   total: number
   sinAtender: number
+  // Maquinas DISTINTAS con al menos un ticket sin atender. No es lo mismo que
+  // `sinAtender`: 6 tickets sin atender pueden ser 6 maquinas paradas o 6 avisos
+  // de la misma. Lo que decide si la linea para son las maquinas, no los papeles.
+  maquinasSinAtender: number
   completados: number
   enProceso: number
   tRespProm: number | null
@@ -257,7 +286,12 @@ export interface Kpis {
 
 export function calcularKpis(rows: MantenimientoRegistro[]): Kpis {
   const total = rows.length
-  const sinAtender = rows.filter(r => !r.Atendido).length
+  const pendientes = rows.filter(r => !r.Atendido)
+  const sinAtender = pendientes.length
+  // Se cuentan codigos de activo distintos; los tickets de area no traen maquina.
+  const maquinasSinAtender = new Set(
+    pendientes.map(r => (r.NumeroMaquina ?? '').trim()).filter(Boolean),
+  ).size
   const completados = rows.filter(r => r.Estado === 'Completado').length
   const enProceso = rows.filter(r => r.Estado === 'En Proceso').length
   const resp = rows.map(r => r.TiempoRespuestaMin).filter((n): n is number => n != null)
@@ -267,6 +301,7 @@ export function calcularKpis(rows: MantenimientoRegistro[]): Kpis {
   return {
     total,
     sinAtender,
+    maquinasSinAtender,
     completados,
     enProceso,
     tRespProm: prom(resp),

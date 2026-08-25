@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Modal, RefreshControl, Platform, PermissionsAndroid } from 'react-native'
 import { YStack, XStack, Text, View, ScrollView, Spinner, Button } from 'tamagui'
-import { Users, ClipboardList, Clock, CheckCircle2, CalendarDays, Eye, X, Share2, Download, LogIn, LogOut, DoorOpen, Repeat } from 'lucide-react-native'
+import { Users, ClipboardList, Clock, CheckCircle2, CalendarDays, Eye, X, Share2, Download, LogIn, LogOut, DoorOpen, Repeat, Timer, AlarmClockOff, Moon, Bot } from 'lucide-react-native'
 import QRCode from 'react-native-qrcode-svg'
 import Share from 'react-native-share'
 import ViewShot, { captureRef } from 'react-native-view-shot'
@@ -15,10 +15,14 @@ import { useShowToast } from '../../utils/useShowToast'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
 import { subscribeOpenPass } from '../../services/passNavigation'
 import { visitasService } from '../../api/modules/visitas/visitas.service'
-import { IHistorial, IVisitaAcceso } from '../../api/modules/visitas/visitas.types'
+import { IHistorial, IVentanaPase, IVisitaAcceso } from '../../api/modules/visitas/visitas.types'
 import { handleError } from '../../utils/errorHandler'
+import { fmtDuracion } from './horarios'
+import { NIVEL_QR, cargarLogosEmpresa, logoDe, tamanoLogo } from './logoEmpresa'
 
-const LOGO = require('../../assets/logo.png')
+// El logo del QR ya NO es fijo: sale del catálogo, según la empresa del pase
+// (ver logoEmpresa.ts). El parque tiene más de una empresa.
+
 
 const prettyDate = (iso?: string | null) => {
   const [y, m, d] = (iso ?? '').split('-')
@@ -54,6 +58,19 @@ const fmtDateTime = (iso?: string | null) => {
   })
 }
 
+// Ventana legible. Si cruza medianoche se agrega la fecha del cierre, para que
+// no parezca que cierra el mismo día.
+const fmtVentanaCorta = (ini?: string | null, fin?: string | null) => {
+  if (!ini || !fin) return ''
+  const a = new Date(ini)
+  const b = new Date(fin)
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return ''
+  const mismoDia = a.toDateString() === b.toDateString()
+  return mismoDia
+    ? `${fmtTime(ini)} – ${fmtTime(fin)}`
+    : `${fmtTime(ini)} – ${fmtTime(fin)} +1d`
+}
+
 const fmtTime = (iso?: string | null) => {
   if (!iso) return ''
   const d = new Date(iso)
@@ -71,9 +88,17 @@ export default function VisitasHistorialScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [selected, setSelected] = useState<IHistorial | null>(null)
   const [accesos, setAccesos] = useState<IVisitaAcceso[]>([])
+  // Ventanas del pase: el snapshot del horario con el que se generó.
+  const [ventanas, setVentanas] = useState<IVentanaPase[]>([])
   const [loadingAccesos, setLoadingAccesos] = useState(false)
   const [busyAction, setBusyAction] = useState<'share' | 'save' | null>(null)
+  // Logos por empresa, para el QR. Se cargan una vez y se cachean en el módulo.
+  const [logos, setLogos] = useState<Record<string, any> | null>(null)
   const viewShotRef = useRef<any>(null)
+
+  useEffect(() => {
+    cargarLogosEmpresa().then(setLogos)
+  }, [])
 
   usePageHeader({
     center: (
@@ -132,15 +157,21 @@ export default function VisitasHistorialScreen() {
   useEffect(() => {
     if (!selected) {
       setAccesos([])
+      setVentanas([])
       return
     }
     ;(async () => {
       setLoadingAccesos(true)
       try {
-        const resp = await visitasService.getAccesos(selected.Id)
-        if (resp.Success) setAccesos(resp.Data ?? [])
+        const [respAcc, respVen] = await Promise.all([
+          visitasService.getAccesos(selected.Id),
+          visitasService.getVentanasDePase(selected.Id),
+        ])
+        if (respAcc.Success) setAccesos(respAcc.Data ?? [])
+        if (respVen.Success) setVentanas(respVen.Data ?? [])
       } catch {
         setAccesos([])
+        setVentanas([])
       }
       setLoadingAccesos(false)
     })()
@@ -168,7 +199,13 @@ export default function VisitasHistorialScreen() {
         showToast('error', 'Error', 'No se pudo generar la imagen del QR', 4000, 'bottom')
         return
       }
-      const message = `🔐 Pase de acceso para: ${selected.Personas ?? ''}\n📅 Fecha: ${prettyDate(selected.EntryDate)}\n⚠️ Código de uso único`
+      // El "uso único" no aplica a los recurrentes, y el horario es lo que el
+      // visitante más necesita saber.
+      const fechaLinea = selected.IsRecurrent
+        ? `📅 Vigencia: ${vigenciaTexto(selected)}`
+        : `📅 Fecha: ${prettyDate(selected.EntryDate)}`
+      const horarioLinea = selected.Horario ? `\n🕐 Horario: ${selected.Horario}` : ''
+      const message = `🔐 Pase de acceso para: ${selected.Personas ?? ''}\n${fechaLinea}${horarioLinea}`
       await Share.open({ title: 'Pase de Acceso QR', message, url: uri, type: 'image/png', failOnCancel: false })
     } catch {
       // cancelar la hoja de compartir no es error
@@ -190,7 +227,11 @@ export default function VisitasHistorialScreen() {
       }
       const uri = await capturarQr()
       if (!uri) throw new Error('No se pudo generar la imagen')
-      await CameraRoll.save(uri, { type: 'photo', album: 'INTERMODA' })
+      // El álbum sigue a la empresa del pase (ver Generar).
+      await CameraRoll.save(uri, {
+        type: 'photo',
+        album: (selected?.Empresa ?? 'INTERMODA').toUpperCase(),
+      })
       showToast('success', 'Guardado', 'Pase guardado en tu galería', 4000, 'bottom')
     } catch (e: any) {
       showToast('error', 'Error', 'No se pudo guardar: ' + (e?.message ?? ''), 5000, 'bottom')
@@ -294,14 +335,38 @@ export default function VisitasHistorialScreen() {
                         </XStack>
                       </XStack>
 
+                      {/* Solo cuando el pase es de OTRA empresa: para quien ve
+                          únicamente la suya, la fila sería ruido en cada tarjeta.
+                          Si todavía no se sabe la empresa del usuario (sesión
+                          vieja, antes de que refreshUser traiga el InfoUser
+                          nuevo), no se muestra nada: mejor omitirla que ponerla
+                          en todas las tarjetas. */}
+                      {!!h.Empresa && !!user?.Empresa && h.Empresa !== user.Empresa && (
+                        <Row label="Empresa" value={h.Empresa} />
+                      )}
                       <Row label="Visita a" value={h.VisitTo} />
                       <Row label="Motivo" value={motivo} />
                       <Row
                         label={h.IsRecurrent ? 'Vigencia' : 'Fecha'}
                         value={vigenciaTexto(h) + (h.IsRecurrent && (h.DiasCount ?? 0) > 1 ? ` · ${h.DiasCount} días` : '')}
                       />
+                      <Row label="Horario" value={h.Horario ?? 'Día completo'} />
                       {(h.AccesosCount ?? 0) > 0 && (
                         <Row label="Movimientos" value={`${h.AccesosCount}`} />
+                      )}
+                      {/* Tiempo adentro: el indicador que motiva toda la función */}
+                      {h.MinutosDentroTotal != null && (
+                        <Row label="Tiempo adentro" value={fmtDuracion(h.MinutosDentroTotal)} />
+                      )}
+                      {/* Incumplimiento de horario, visible desde la lista */}
+                      {(h.MovimientosConExceso ?? 0) > 0 && (
+                        <XStack alignItems="center" gap="$1.5" marginTop="$1">
+                          <AlarmClockOff size={13} color="#E58E26" />
+                          <Text fontSize={11} color="#E58E26" fontWeight="700" flexShrink={1}>
+                            Se pasó del horario {h.MovimientosConExceso} vez(ces) ·{' '}
+                            {fmtDuracion(h.MinutosExcesoTotal)} en total
+                          </Text>
+                        </XStack>
                       )}
                     </YStack>
                   )
@@ -330,13 +395,39 @@ export default function VisitasHistorialScreen() {
                 <YStack alignItems="center" gap="$3" paddingBottom="$4">
                   <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }}>
                     <YStack backgroundColor="white" paddingVertical={18} paddingHorizontal={16} borderRadius="$4" alignItems="center" gap={10} collapsable={false}>
-                      <Text color="#1A1A2E" fontWeight="800" fontSize={20} letterSpacing={3}>
-                        INTERMODA
+                      {/* La empresa del PASE, no una fija: un pase de Chamer no
+                          puede salir con el nombre de Intermoda encima. Se achica
+                          la letra en los nombres largos para que no desborde la
+                          tarjeta que se comparte. */}
+                      <Text
+                        color="#1A1A2E"
+                        fontWeight="800"
+                        fontSize={(selected.Empresa ?? 'INTERMODA').length > 12 ? 15 : 20}
+                        letterSpacing={(selected.Empresa ?? 'INTERMODA').length > 12 ? 1.5 : 3}
+                        textAlign="center"
+                      >
+                        {(selected.Empresa ?? 'Intermoda').toUpperCase()}
                       </Text>
-                      <QRCode value={selected.Token} size={210} logo={LOGO} logoSize={44} logoBackgroundColor="white" logoBorderRadius={8} quietZone={6} />
+                      <QRCode
+                        value={selected.Token}
+                        size={210}
+                        logo={logoDe(logos, selected.EmpresaCode)}
+                        logoSize={tamanoLogo(210)}
+                        logoBackgroundColor="white"
+                        logoBorderRadius={8}
+                        quietZone={6}
+                        ecl={NIVEL_QR}
+                      />
                       <Text color="#1A1A2E" fontWeight="700" fontSize={15}>
                         {selected.IsRecurrent ? 'Vigencia: ' : 'Ingreso: '}{vigenciaTexto(selected)}
                       </Text>
+                      {/* El horario va en la tarjeta que se comparte: el visitante
+                          necesita leerlo antes de venir. */}
+                      {!!selected.Horario && (
+                        <Text color="#1A1A2E" fontWeight="600" fontSize={12} textAlign="center">
+                          {selected.Horario}
+                        </Text>
+                      )}
                       {selected.IsRecurrent && (
                         <Text color="#FF551A" fontWeight="700" fontSize={11} letterSpacing={1}>
                           PASE RECURRENTE
@@ -373,7 +464,49 @@ export default function VisitasHistorialScreen() {
                     {selected.IsRecurrent && (
                       <Row label="Días habilitados" value={`${selected.DiasCount ?? 0}`} />
                     )}
+                    <Row label="Horario" value={selected.Horario ?? 'Día completo'} />
+                    {(selected.VentanasCount ?? 0) > 0 && (
+                      <Row label="Ventanas" value={`${selected.VentanasCount}`} />
+                    )}
+                    {selected.MinutosDentroTotal != null && (
+                      <Row label="Tiempo adentro (total)" value={fmtDuracion(selected.MinutosDentroTotal)} />
+                    )}
+                    {(selected.MinutosExcesoTotal ?? 0) > 0 && (
+                      <Row label="Fuera de horario" value={fmtDuracion(selected.MinutosExcesoTotal)} highlight />
+                    )}
                   </YStack>
+
+                  {/* ── Ventanas del pase (snapshot del horario al generarlo) ── */}
+                  {ventanas.length > 0 && (
+                    <YStack width="100%" gap="$2" marginTop="$1">
+                      <XStack alignItems="center" gap="$2">
+                        <Clock size={15} color="#94A3B8" />
+                        <Text fontSize={13} fontWeight="800" color="$text">Horario autorizado</Text>
+                      </XStack>
+                      {ventanas.map((v) => (
+                        <XStack
+                          key={v.Id}
+                          backgroundColor="$backgroundElevated"
+                          borderRadius="$3"
+                          padding="$2.5"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          gap="$2"
+                        >
+                          <Text fontSize={12} fontWeight="700" color="$text">{prettyDate(v.Dia)}</Text>
+                          <XStack alignItems="center" gap="$2">
+                            {v.CruzaMedianoche && <Moon size={12} color="#2563EB" />}
+                            <Text fontSize={11} color="$textMuted">
+                              {fmtVentanaCorta(v.VentanaInicio, v.VentanaFin)}
+                            </Text>
+                            <Text fontSize={11} color="$textMuted">
+                              · {fmtDuracion(v.DuracionMinutos)}
+                            </Text>
+                          </XStack>
+                        </XStack>
+                      ))}
+                    </YStack>
+                  )}
 
                   {/* Movimientos (entradas/salidas por día) */}
                   <YStack width="100%" gap="$2" marginTop="$1">
@@ -386,31 +519,83 @@ export default function VisitasHistorialScreen() {
                     ) : accesos.length === 0 ? (
                       <Text fontSize={12} color="$textMuted">Aún sin registros de acceso.</Text>
                     ) : (
-                      accesos.map((a) => (
-                        <XStack
-                          key={a.Id}
-                          backgroundColor="$backgroundElevated"
-                          borderRadius="$3"
-                          padding="$2.5"
-                          justifyContent="space-between"
-                          alignItems="center"
-                          gap="$2"
-                        >
-                          <Text fontSize={12} fontWeight="700" color="$text">{prettyDate(a.AccessDate)}</Text>
-                          <XStack gap="$3" alignItems="center">
-                            <XStack alignItems="center" gap="$1">
-                              <LogIn size={13} color="#2E9E5B" />
-                              <Text fontSize={11} color="#2E9E5B">{fmtTime(a.EntradaAt)}</Text>
+                      accesos.map((a) => {
+                        const exceso = a.MinutosExceso ?? 0
+                        return (
+                          <YStack
+                            key={a.Id}
+                            backgroundColor="$backgroundElevated"
+                            borderRadius="$3"
+                            padding="$2.5"
+                            gap="$1.5"
+                          >
+                            <XStack justifyContent="space-between" alignItems="center" gap="$2">
+                              <Text fontSize={12} fontWeight="700" color="$text">{prettyDate(a.AccessDate)}</Text>
+                              <XStack gap="$3" alignItems="center">
+                                <XStack alignItems="center" gap="$1">
+                                  <LogIn size={13} color="#2E9E5B" />
+                                  <Text fontSize={11} color="#2E9E5B">{fmtTime(a.EntradaAt)}</Text>
+                                </XStack>
+                                <XStack alignItems="center" gap="$1">
+                                  <LogOut size={13} color={a.SalidaAt ? '#2563EB' : '#94A3B8'} />
+                                  <Text fontSize={11} color={a.SalidaAt ? '#2563EB' : '#94A3B8'}>
+                                    {a.SalidaAt ? fmtTime(a.SalidaAt) : 'dentro'}
+                                  </Text>
+                                </XStack>
+                              </XStack>
                             </XStack>
-                            <XStack alignItems="center" gap="$1">
-                              <LogOut size={13} color={a.SalidaAt ? '#2563EB' : '#94A3B8'} />
-                              <Text fontSize={11} color={a.SalidaAt ? '#2563EB' : '#94A3B8'}>
-                                {a.SalidaAt ? fmtTime(a.SalidaAt) : 'dentro'}
-                              </Text>
+
+                            <XStack alignItems="center" gap="$2" flexWrap="wrap">
+                              {/* Tiempo adentro del movimiento */}
+                              {a.MinutosDentro != null && (
+                                <XStack alignItems="center" gap="$1">
+                                  <Timer size={11} color="#94A3B8" />
+                                  <Text fontSize={10} color="$textMuted">{fmtDuracion(a.MinutosDentro)}</Text>
+                                </XStack>
+                              )}
+                              {/* Ventana que autorizó la entrada */}
+                              {!!a.VentanaInicio && (
+                                <Text fontSize={10} color="$textMuted">
+                                  ventana {fmtVentanaCorta(a.VentanaInicio, a.VentanaFin)}
+                                </Text>
+                              )}
+                              {/* Exceso: se pasó del horario */}
+                              {exceso > 0 && (
+                                <XStack
+                                  backgroundColor="rgba(229,142,38,0.14)"
+                                  paddingHorizontal="$2"
+                                  paddingVertical="$0.5"
+                                  borderRadius="$10"
+                                  alignItems="center"
+                                  gap="$1"
+                                >
+                                  <AlarmClockOff size={10} color="#E58E26" />
+                                  <Text fontSize={10} fontWeight="700" color="#E58E26">
+                                    +{fmtDuracion(exceso)} fuera de horario
+                                  </Text>
+                                </XStack>
+                              )}
+                              {/* Salida inferida por el sistema, no escaneada: hay que
+                                  poder distinguirla del dato real. */}
+                              {a.CierreAuto && (
+                                <XStack
+                                  backgroundColor="rgba(100,116,139,0.16)"
+                                  paddingHorizontal="$2"
+                                  paddingVertical="$0.5"
+                                  borderRadius="$10"
+                                  alignItems="center"
+                                  gap="$1"
+                                >
+                                  <Bot size={10} color="#64748B" />
+                                  <Text fontSize={10} fontWeight="700" color="#64748B">
+                                    cierre automático
+                                  </Text>
+                                </XStack>
+                              )}
                             </XStack>
-                          </XStack>
-                        </XStack>
-                      ))
+                          </YStack>
+                        )
+                      })
                     )}
                   </YStack>
 

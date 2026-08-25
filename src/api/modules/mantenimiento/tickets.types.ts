@@ -135,7 +135,11 @@ export interface IMotivoPausa { Id: number; Name: string; Status_Id: number }
 export interface IModelo { Modelo: string }
 export interface ITipoFalla { TipoFalla: string }
 export interface ICausa { Causa: string }
-export interface IMecanico { User_Code: string; Nombre?: string | null; Email?: string | null }
+// El padrón (SP_GetMecanicos) devuelve Mecánico, Técnico Y Supervisor de
+// Mantenimiento: los tres pueden tomar un ticket. `Rol` (script 74) permite
+// contarlos aparte, porque sumar supervisores como mecánicos libres infla el número.
+// Viene undefined contra una API anterior al script 74.
+export interface IMecanico { User_Code: string; Nombre?: string | null; Email?: string | null; Rol?: string | null }
 
 // Resumen de tickets por período (SP_GetTicketsResumen).
 // EsGlobal=true => totales del período; EsGlobal=false => fila por mecánico/técnico.
@@ -163,6 +167,48 @@ export interface ITiempoMecanico {
   MetaSemanal: number
   SemanasPeriodo: number
   MetaPeriodo: number
+}
+
+// MTTR de las reparaciones cerradas en el período (SP_GetMttr). Los MISMOS campos
+// para los dos cortes: Clave/Nombre son el mecánico que CERRÓ la reparación o el
+// modelo de máquina, según `agrupar`.
+//
+// MttrMin = inicio → cierre SIN la espera del reproceso: el rato que el ticket pasa
+// completado hasta que producción lo rechaza no es tiempo de reparación (en agosto,
+// un caso de 8 días le multiplicaba por 5 el promedio a un mecánico). Lo descontado
+// viene en ReprocesoPromMin, a la vista.
+export interface IMttr {
+  Clave: string | null
+  Nombre: string | null
+  Reparaciones: number
+  MttrMin: number
+  MttrMedianaMin: number | null   // la reparación TÍPICA
+  MejorMin: number
+  PeorMin: number
+  NetoPromMin: number             // trabajo activo, sin pausas
+  PausaPromMin: number
+  ParoPromMin: number             // reporte → cierre (suma el tiempo que nadie lo tomó)
+  ReprocesoPromMin: number        // espera de producción excluida del MTTR
+  ConReproceso: number
+  RepMas24h: number               // >24 h = ticket que quedó abierto, no una reparación
+  MaquinasDistintas: number
+  ModelosDistintos: number
+  MecanicosDistintos: number
+  MttrGlobalMin: number           // promedio del período completo (para comparar)
+  ReparacionesTotal: number
+  SinAtribuir: number
+}
+
+// Metas de minutos de PARO ya escaladas al período (SP_GetMetaParo). Son DOS
+// porque un área suma el paro de todas sus máquinas: la cifra de una máquina no le
+// sirve. null = la configuración está vacía o no es numérica; ahí no se muestra la
+// meta, en vez de comparar contra un default que nadie puso.
+export interface IMetaParo {
+  SemanasPeriodo: number
+  MetaActivoSemanal: number | null
+  MetaActivoPeriodo: number | null
+  MetaAreaSemanal: number | null
+  MetaAreaPeriodo: number | null
 }
 
 // Ranking de activos/máquinas por período (SP_GetActivosPeriodo). Sin meta.
@@ -202,6 +248,15 @@ export interface IEsperaAnatomia {
   EsperaMin: number
   TrabajoMin: number
   PausaMin: number
+  // El cuarto tramo del paro (script 86): lo que el mecánico volvió a TRABAJAR
+  // después de un rechazo, cuando el ticket pasó otra vez a En proceso. Con él,
+  // Espera+Trabajo+Pausa+Reproceso = ParoMin exacto. En las filas ESPERA_* viene 0.
+  ReprocesoMin: number
+  // Lo que producción tardó en validar o rechazar, y lo que quedó rechazado sin que
+  // nadie lo retomara. NO son paro (la máquina ya estaba entregada o el ticket sin
+  // dueño), pero se devuelven para poder decir cuántas horas quedaron fuera.
+  ProduccionMin: number
+  SinRetomarMin: number
   ParoMin: number
 }
 
@@ -244,4 +299,20 @@ export interface ITicketEvento {
   User_Code: string | null
   Usuario: string | null
   Comentario: string | null
+}
+
+// Cumplimiento del SLA de validación por supervisor (SP_GetCumplimientoValidacion).
+// El supervisor es quien REPORTÓ el ticket, que es a quien le llega el aviso
+// "Ticket por validar". CerradosPorSistema = los que no validó dentro del plazo y
+// cerró el autovalidado. PlazoHoras null = el autovalidado está desactivado.
+export interface ICumplimientoValidacion {
+  Supervisor_UserCode: string | null
+  Supervisor: string | null
+  Completados: number
+  ValidadosPorPersona: number
+  CerradosPorSistema: number
+  PendientesDeValidar: number
+  PctCumplimiento: number | null
+  PromMinValidacion: number | null
+  PlazoHoras: number | null
 }

@@ -6,6 +6,7 @@ import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
 import { ExecutionResponse } from '../../api/modules/response.type'
 import {
   IEsperaAnatomia,
+  IMetaParo,
   IPausaDetalle,
   IPausaMotivo,
 } from '../../api/modules/mantenimiento/tickets.types'
@@ -13,11 +14,13 @@ import {
   ACCENT,
   COLOR_ESPERA,
   COLOR_PAUSA,
+  COLOR_REPROCESO,
   COLOR_TRABAJO,
   ESCALA_AZUL,
   ESCALA_NARANJA,
   ESCALA_ROJA,
   colorPrioridad,
+  fmtDetenido,
   fmtEntero,
   fmtHM,
   fmtHoras,
@@ -33,16 +36,6 @@ import { BarraApilada, HBarList, KpiCard, SectionCard } from './components'
 // filtrar en el cliente: viaja al servidor como tipoDestino.
 
 const pctDe = (parte: number, total: number) => (total ? Math.round((parte / total) * 100) : 0)
-
-// Lo detenido "ahora" se mide en días, no en horas: 12 646 min es 8d 19h, y
-// "210h 46m" no lo lee nadie.
-const fmtDetenido = (min: number) => {
-  const m = Math.max(0, Math.round(min))
-  if (m < 1440) return fmtHM(m)
-  const d = Math.floor(m / 1440)
-  const h = Math.round((m % 1440) / 60)
-  return h > 0 ? `${d}d ${h}h` : `${d}d`
-}
 
 // ── Carga de un indicador ────────────────────────────────────────────────────
 interface EstadoKpi<T> {
@@ -127,33 +120,38 @@ export interface AnalisisProps {
   desdePrev: string
   hastaPrev: string
   tipoDest: 'Todos' | 'MAQUINA' | 'AREA'
+  // CSV de prioridades ('Alta,Media') o undefined = todas. Va tal cual a los SP.
+  prioridades?: string
 }
 
-export function DashboardAnalisis({ desde, hasta, desdePrev, hastaPrev, tipoDest }: AnalisisProps) {
+export function DashboardAnalisis({ desde, hasta, desdePrev, hastaPrev, tipoDest, prioridades }: AnalisisProps) {
   // 'Todos' viaja como undefined: el SP interpreta NULL como "sin filtro".
   const tipoParam = tipoDest === 'Todos' ? undefined : tipoDest
 
   // Una sola llamada a EsperaAnatomia alimenta el titular del paro (Dim=TOTAL),
   // la prioridad (Dim=PRIORIDAD) y las áreas (Dim=AREA).
   const anatomia = useKpi<IEsperaAnatomia>(
-    () => ticketsService.getEsperaAnatomia(desde, hasta, tipoParam),
-    [desde, hasta, tipoParam],
+    () => ticketsService.getEsperaAnatomia(desde, hasta, tipoParam, prioridades),
+    [desde, hasta, tipoParam, prioridades],
   )
   const anatomiaPrev = useKpi<IEsperaAnatomia>(
-    () => ticketsService.getEsperaAnatomia(desdePrev, hastaPrev, tipoParam),
-    [desdePrev, hastaPrev, tipoParam],
+    () => ticketsService.getEsperaAnatomia(desdePrev, hastaPrev, tipoParam, prioridades),
+    [desdePrev, hastaPrev, tipoParam, prioridades],
   )
 
   const pausas = useKpi<IPausaMotivo>(
-    () => ticketsService.getPausasPorMotivo(desde, hasta, tipoParam),
-    [desde, hasta, tipoParam],
+    () => ticketsService.getPausasPorMotivo(desde, hasta, tipoParam, prioridades),
+    [desde, hasta, tipoParam, prioridades],
   )
 
   // PausasPorMotivo dice POR QUÉ se pausa; ésta, QUIÉN y EN QUÉ.
   const pausasDet = useKpi<IPausaDetalle>(
-    () => ticketsService.getPausasDetalle(desde, hasta, tipoParam),
-    [desde, hasta, tipoParam],
+    () => ticketsService.getPausasDetalle(desde, hasta, tipoParam, prioridades),
+    [desde, hasta, tipoParam, prioridades],
   )
+
+  // Metas de paro (configuración global). No lleva prioridades: no lee tickets.
+  const metaParo = useKpi<IMetaParo>(() => ticketsService.getMetaParo(desde, hasta), [desde, hasta])
 
   return (
     <YStack gap="$3">
@@ -161,6 +159,7 @@ export function DashboardAnalisis({ desde, hasta, desdePrev, hastaPrev, tipoDest
       <Prioridad actual={anatomia} />
       <EsperaPorArea actual={anatomia} />
       <EsperaPorMaquina actual={anatomia} />
+      <ParoPorArea actual={anatomia} meta={metaParo} />
       <PausasPorMotivo actual={pausas} />
       <PausasDetalle actual={pausasDet} />
     </YStack>
@@ -181,20 +180,22 @@ export function EsperaAhora({
   desde,
   hasta,
   tipoDest,
+  prioridades,
   // Se incrementa al hacer "pull to refresh": obliga a re-pedir el dato vivo.
   recarga = 0,
 }: {
   desde: string
   hasta: string
   tipoDest: 'Todos' | 'MAQUINA' | 'AREA'
+  prioridades?: string
   recarga?: number
 }) {
   const tipoParam = tipoDest === 'Todos' ? undefined : tipoDest
   // Mismo endpoint que ya usa Análisis; el rango va porque el SP lo pide, pero
   // estas filas no lo usan.
   const { datos, cargando, error } = useKpi<IEsperaAnatomia>(
-    () => ticketsService.getEsperaAnatomia(desde, hasta, tipoParam),
-    [desde, hasta, tipoParam, recarga],
+    () => ticketsService.getEsperaAnatomia(desde, hasta, tipoParam, prioridades),
+    [desde, hasta, tipoParam, prioridades, recarga],
   )
 
   if (cargando) return <Cargando alto={120} />
@@ -281,7 +282,10 @@ function TitularParo({
   const total = actual.datos.find(r => r.Dim === 'TOTAL')
   const prev = previo.datos.find(r => r.Dim === 'TOTAL')
 
-  if (!total || !total.ParoMin) {
+  // Se avisa "sin datos" solo si no hay NADA. Antes bastaba con ParoMin = 0, y eso
+  // tapaba un período donde todos los tickets siguen abiertos: no hay cierres (paro 0)
+  // pero sí trabajo y pausa acumulados.
+  if (!total || (!total.ParoMin && !total.EsperaMin && !total.TrabajoMin && !total.PausaMin)) {
     return (
       <SectionCard titulo="Anatomía del paro del período">
         <Text fontSize={12} color="$textMuted">
@@ -291,20 +295,33 @@ function TitularParo({
     )
   }
 
-  const pctEspera = pctDe(total.EsperaMin, total.ParoMin)
-  const pctTrabajo = pctDe(total.TrabajoMin, total.ParoMin)
-  // El resto, para que los tres tramos siempre sumen 100 aunque se redondee.
-  const pctPausa = Math.max(0, 100 - pctEspera - pctTrabajo)
+  /* CUATRO tramos desde el estándar de paro (script 86), no tres: faltaba el
+     REPROCESO, que es lo que el mecánico volvió a trabajar después de un rechazo.
+     Con los cuatro la suma da EXACTO ParoMin y este bloque cuadra con el reporte de
+     paro por área y con el web; con tres se quedaba corto y los dos números del mismo
+     bloque parecían un error de cálculo.
+     Cada porcentaje se saca sobre la suma de los tramos —que es lo que mide la barra—
+     y no sobre ParoMin: así los cuatro cierran en 100. Mismo criterio que el web. */
+  const totalTramos = total.EsperaMin + total.TrabajoMin + total.PausaMin + total.ReprocesoMin
+  const pctEspera = pctDe(total.EsperaMin, totalTramos)
+  const pctTrabajo = pctDe(total.TrabajoMin, totalTramos)
+  const pctPausa = pctDe(total.PausaMin, totalTramos)
+  const pctReproceso = pctDe(total.ReprocesoMin, totalTramos)
 
   // Variación contra el período anterior (null si no hay con qué comparar).
   const dParo = prev?.ParoMin ? variacion(total.ParoMin, prev.ParoMin) : null
-  const pctEsperaPrev = prev?.ParoMin ? pctDe(prev.EsperaMin, prev.ParoMin) : null
+  // El % del período anterior con el MISMO criterio: comparar contra otra base daría
+  // un delta inventado.
+  const tramosPrev = prev
+    ? prev.EsperaMin + prev.TrabajoMin + prev.PausaMin + prev.ReprocesoMin
+    : 0
+  const pctEsperaPrev = tramosPrev ? pctDe(prev!.EsperaMin, tramosPrev) : null
   const dPctEspera = pctEsperaPrev ? variacion(pctEspera, pctEsperaPrev) : null
 
   return (
     <SectionCard
       titulo="Anatomía del paro del período"
-      subtitulo="Todo el tiempo que las máquinas estuvieron paradas, partido en lo que se esperó y lo que se reparó"
+      subtitulo="Solo el tiempo de un mecánico: lo que esperó, lo que reparó, lo que pausó y lo que retrabajó"
     >
       <XStack flexWrap="wrap" gap="$2">
         <KpiCard
@@ -337,6 +354,17 @@ function TitularParo({
           color={COLOR_PAUSA}
           info="Parte del paro en que el trabajo ya había empezado pero se detuvo por algo: falta de repuesto, almuerzo, otra máquina más urgente."
         />
+        {/* Solo si hubo: en la mayoría de períodos es 0 y una tarjeta en cero es ruido. */}
+        {total.ReprocesoMin > 0 && (
+          <KpiCard
+            titulo="REPROCESO"
+            valor={`${pctReproceso}%`}
+            hint={fmtHoras(total.ReprocesoMin)}
+            color={COLOR_REPROCESO}
+            info="Parte del paro que el mecánico volvió a trabajar después de un rechazo de producción: el ticket pasó otra vez a En proceso. Lo que producción tardó en validar o rechazar NO cuenta acá."
+            invertido
+          />
+        )}
       </XStack>
 
       <BarraApilada
@@ -344,6 +372,9 @@ function TitularParo({
           { label: `Espera ${pctEspera}%`, pct: pctEspera, color: COLOR_ESPERA },
           { label: `Trabajo ${pctTrabajo}%`, pct: pctTrabajo, color: COLOR_TRABAJO },
           { label: `Pausa ${pctPausa}%`, pct: pctPausa, color: COLOR_PAUSA },
+          ...(pctReproceso > 0
+            ? [{ label: `Reproceso ${pctReproceso}%`, pct: pctReproceso, color: COLOR_REPROCESO }]
+            : []),
         ]}
       />
     </SectionCard>
@@ -509,6 +540,134 @@ function EsperaPorMaquina({ actual }: { actual: EstadoKpi<IEsperaAnatomia> }) {
 // ── 5. Minutos de paro por motivo de pausa ───────────────────────────────────
 // Le pone precio a cada motivo. El motivo es obligatorio al pausar, así que
 // "Sin motivo" solo aparece en pausas anteriores a esa regla.
+// ════════ Minutos de paro por área (con la meta configurada) ════════
+// El MISMO bloque que el web (Análisis › Espera › "Minutos de paro por área"), para
+// que los dos tableros digan lo mismo. Complementa a "Espera por área": ahí se ve
+// cuánto TARDA en arrancar un área, acá cuánto tiempo TOTAL estuvo parada — un área
+// puede arrancar rapidísimo y acumular el mayor paro solo porque tiene más máquinas.
+//
+// El total de cada fila es la suma de los CUATRO tramos del estándar de paro
+// (script 86): espera + trabajo + pausa + reproceso. Con esos cuatro da exacto el
+// ParoMin del SP, así que esta pantalla, el reporte semanal por área y el web dicen
+// el mismo número. Se usa la suma porque es lo que mide la barra y así los
+// porcentajes cierran en 100.
+const PARO_AREAS_TOP = 10
+
+function ParoPorArea({
+  actual,
+  meta,
+}: {
+  actual: EstadoKpi<IEsperaAnatomia>
+  meta: EstadoKpi<IMetaParo>
+}) {
+  const titulo = 'Minutos de paro por área'
+  const subtitulo = 'Solo el tiempo de un mecánico: espera + trabajo + pausa + reproceso'
+
+  if (actual.cargando) {
+    return (
+      <SectionCard titulo={titulo} subtitulo={subtitulo}>
+        <Cargando />
+      </SectionCard>
+    )
+  }
+  // El error del endpoint ya se avisa en el titular.
+  if (actual.error) return null
+
+  const tramos = (r: IEsperaAnatomia) => r.EsperaMin + r.TrabajoMin + r.PausaMin + r.ReprocesoMin
+  const areas = actual.datos
+    .filter(r => r.Dim === 'AREA' && tramos(r) > 0)
+    .sort((a, b) => tramos(b) - tramos(a))
+    .slice(0, PARO_AREAS_TOP)
+
+  // La meta viene en una sola fila. null = no configurada: no se compara contra nada,
+  // en vez de inventar un número.
+  const m = meta.datos[0]
+  const metaPeriodo = m?.MetaAreaPeriodo ?? null
+  const sobreMeta = metaPeriodo != null ? areas.filter(a => tramos(a) > metaPeriodo).length : 0
+
+  if (!areas.length) {
+    return (
+      <SectionCard titulo={titulo} subtitulo={subtitulo}>
+        <Text fontSize={12} color="$textMuted">Sin tickets con paro medible en el período.</Text>
+      </SectionCard>
+    )
+  }
+
+  return (
+    <SectionCard titulo={titulo} subtitulo={subtitulo}>
+      {metaPeriodo != null && (
+        <XStack flexWrap="wrap" gap="$2" marginBottom="$3">
+          <KpiCard
+            titulo="META POR ÁREA"
+            valor={fmtHoras(metaPeriodo)}
+            hint={`${fmtEntero(m!.MetaAreaSemanal!)} min/sem × ${m!.SemanasPeriodo}`}
+          />
+          <KpiCard
+            titulo="ÁREAS SOBRE LA META"
+            valor={`${sobreMeta} / ${areas.length}`}
+            color={sobreMeta > 0 ? COLOR_ESPERA : undefined}
+          />
+        </XStack>
+      )}
+
+      <YStack gap="$3">
+        {areas.map(a => {
+          const total = tramos(a)
+          const pct = (v: number) => Math.round((v / total) * 100)
+          const excede = metaPeriodo != null && total > metaPeriodo
+          return (
+            <YStack key={a.Bucket ?? String(total)} gap="$1">
+              <XStack justifyContent="space-between" alignItems="center" gap="$2">
+                <Text fontSize={13} fontWeight="700" color="$text" flex={1} numberOfLines={1}>
+                  {a.Bucket ?? '—'}
+                </Text>
+                <Text fontSize={13} fontWeight="800" color="$text">
+                  {fmtEntero(total)} min
+                </Text>
+              </XStack>
+              {/* Mismos colores y mismo orden que el web: espera, trabajo, pausa,
+                  reproceso. El cuarto solo si hubo: casi siempre es 0. */}
+              <BarraApilada
+                tramos={[
+                  { label: `${pct(a.EsperaMin)}%`, pct: pct(a.EsperaMin), color: COLOR_ESPERA },
+                  { label: `${pct(a.TrabajoMin)}%`, pct: pct(a.TrabajoMin), color: COLOR_TRABAJO },
+                  { label: `${pct(a.PausaMin)}%`, pct: pct(a.PausaMin), color: COLOR_PAUSA },
+                  ...(a.ReprocesoMin > 0
+                    ? [{
+                        label: `${pct(a.ReprocesoMin)}%`,
+                        pct: pct(a.ReprocesoMin),
+                        color: COLOR_REPROCESO,
+                      }]
+                    : []),
+                ]}
+                altura={22}
+              />
+              <XStack justifyContent="space-between">
+                <Text fontSize={10} color="$textMuted">
+                  {a.Tickets} {a.Tickets === 1 ? 'ticket' : 'tickets'} · {pct(a.EsperaMin)}% esperando
+                </Text>
+                {excede && (
+                  <Text fontSize={10} fontWeight="700" color={COLOR_ESPERA}>
+                    pasa la meta
+                  </Text>
+                )}
+              </XStack>
+            </YStack>
+          )
+        })}
+      </YStack>
+
+      {/* Mismo aviso que el web: nombrar las horas que NO están en la barra, porque
+          si no la pregunta "y dónde quedaron" no tiene respuesta en pantalla. */}
+      <Text fontSize={10} color="$textMuted" marginTop="$2">
+        Los cuatro tramos suman exacto el paro, así que este total es el mismo del reporte semanal por área. Fuera
+        quedó lo que producción tardó en validar o rechazar: ahí la máquina ya estaba entregada y ningún mecánico
+        estaba trabajando.
+      </Text>
+    </SectionCard>
+  )
+}
+
 function PausasPorMotivo({ actual }: { actual: EstadoKpi<IPausaMotivo> }) {
   const titulo = 'Minutos de paro por motivo de pausa'
   const subtitulo = 'Cuánto cuesta en minutos cada motivo (el motivo es obligatorio al pausar)'

@@ -126,7 +126,7 @@ export default function DetalleGastoScreen({ route }: any) {
         showToast('success', 'Aprobado', 'El gasto fue aprobado correctamente', 3000, 'top')
         navigation.goBack()
       } else {
-        showToast('error', 'Error', 'No se pudo aprobar el gasto', 4000, 'top')
+        showToast('error', 'Error', 'No se pudo aprobar el gasto' + res.ErrorMessage, 4000, 'top')
       }
     } catch (error:any) {
       let responseData;
@@ -295,7 +295,10 @@ export default function DetalleGastoScreen({ route }: any) {
             <Card backgroundColor="$backgroundElevated" borderRadius={12} padding="$4" borderWidth={1} borderColor="$border">
               <Text fontSize={14} fontWeight="700" color="$text" marginBottom="$3">Datos de la factura</Text>
               <InfoRow label="Número de factura"   value={gasto.InvoiceId} />
-              <InfoRow label="Número de serie"     value={gasto.JournalNum} />
+              {(gasto.SeriesNum) && (
+                <InfoRow label="Número de serie" value={gasto.SeriesNum} />
+              )}
+              <InfoRow label="Número de diario"     value={gasto.JournalNum} />
               <InfoRow label="Descripción"         value={gasto.Description} />
               <InfoRow label="Importe gravado"     value={gasto.Currency + ' ' + formatCurrency(gasto.GravadoAmount)} />
               <InfoRow label={isCombustible ? "Galones" : "Importe exento"}      value={( isCombustible ? '' : gasto.Currency + ' ' )  + formatCurrency(gasto.ExemptAmount)} />

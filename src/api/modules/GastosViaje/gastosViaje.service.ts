@@ -174,7 +174,7 @@ export const gastosViajeService = {
       Success: res.Succeeded,
       Data: true,
       SuccessMessage: res.Message ?? "",
-      ErrorMessage: res.Errors ?? ""
+      ErrorMessage: res.Errors ?? res.Message ?? ""
     };
   },
 

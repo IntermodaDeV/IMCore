@@ -15,8 +15,34 @@ const ACCENT = '#FF551A'
 //  - 'number': campo numérico con botón guardar (Valor = entero como texto). unidad opcional.
 // Si la clave no está aquí, se asume 'bool' y se muestra la clave tal cual.
 type ConfigKind = 'bool' | 'options' | 'number'
-const CONFIG_META: Record<string, { label: string; kind: ConfigKind; options?: number[]; unidad?: string }> = {
+const CONFIG_META: Record<
+  string,
+  {
+    label: string
+    kind: ConfigKind
+    options?: number[]
+    unidad?: string
+    // Solo para 'options': unidad de los chips ('min' si no se indica), etiqueta del
+    // chip 0, y si se ofrece un chip de apagado (guarda el texto 'Off', que el SQL lee
+    // como apagado porque TRY_CAST lo deja en NULL).
+    unidadOpcion?: string
+    etiquetaCero?: string
+    permiteOff?: boolean
+  }
+> = {
   'Mtto.UnTicketPorMaquina': { label: 'Un ticket por máquina', kind: 'bool' },
+  'Mtto.ValidacionBloqueaCreacion': {
+    label: 'Exigir validación antes de otro ticket de la máquina',
+    kind: 'bool',
+  },
+  'Mtto.AutovalidarCompletadoHoras': {
+    label: 'Plazo del supervisor para validar (luego valida el sistema)',
+    kind: 'options',
+    options: [0, 1, 2, 3, 4],
+    unidadOpcion: 'h',
+    etiquetaCero: 'Al completarse',
+    permiteOff: true,
+  },
   'Mtto.RecordatorioTicketMinDefault': {
     label: 'Recordatorio por defecto',
     kind: 'options',
@@ -24,6 +50,20 @@ const CONFIG_META: Record<string, { label: string; kind: ConfigKind; options?: n
   },
   'Mtto.MetaMinutosSemanalMecanico': {
     label: 'Meta de minutos por mecánico (semanal)',
+    kind: 'number',
+    unidad: 'min/sem',
+  },
+  // Líneas de referencia de los gráficos de paro del dashboard web. Van acá también
+  // para que no caigan en el fallback 'bool', que las dejaría en 1 o 0 minutos.
+  // Son DOS porque un área suma el paro de todas sus máquinas: la cifra de una
+  // máquina no le sirve (con 240 min, 12 de 15 áreas la pasaban).
+  'Mtto.MetaMinutosParoActivoSemanal': {
+    label: 'Meta de minutos de paro por MÁQUINA (semanal)',
+    kind: 'number',
+    unidad: 'min/sem',
+  },
+  'Mtto.MetaMinutosParoAreaSemanal': {
+    label: 'Meta de minutos de paro por ÁREA (semanal)',
     kind: 'number',
     unidad: 'min/sem',
   },
@@ -91,8 +131,16 @@ export default function ConfiguracionesGlobalesScreen() {
     guardarValor(c, nuevo, nuevo === '1' ? 'Activada' : 'Desactivada')
   }, [guardarValor])
 
-  const elegirMinutos = useCallback((c: IConfiguracion, min: number) => {
-    guardarValor(c, String(min), min === 0 ? 'Sin aviso' : `Cada ${min} min`)
+  // Chip de un 'options'. La unidad y la etiqueta del 0 salen de la meta de la clave:
+  // hay claves en minutos (recordatorio) y en horas (plazo de validación).
+  const elegirOpcion = useCallback((c: IConfiguracion, v: number) => {
+    const meta = CONFIG_META[c.Clave]
+    const unidad = meta?.unidadOpcion ?? 'min'
+    guardarValor(c, String(v), v === 0 ? (meta?.etiquetaCero ?? 'Sin aviso') : `${v} ${unidad}`)
+  }, [guardarValor])
+
+  const elegirOff = useCallback((c: IConfiguracion) => {
+    guardarValor(c, 'Off', 'Desactivado')
   }, [guardarValor])
 
   if (cargando) {
@@ -143,13 +191,26 @@ export default function ConfiguracionesGlobalesScreen() {
                         {!!c.Descripcion && <Text fontSize="$2" color="$textMuted">{c.Descripcion}</Text>}
                       </YStack>
                       <XStack gap="$2" flexWrap="wrap">
+                        {meta.permiteOff ? (() => {
+                          // 'Off' = valor no numérico, que es como el SQL lee "apagado".
+                          const off = !Number.isFinite(Number(c.Valor))
+                          return (
+                            <View onPress={saving ? undefined : () => elegirOff(c)} pressStyle={{ opacity: 0.8 }}
+                              backgroundColor={off ? ACCENT : '$backgroundHover'} borderRadius="$10"
+                              paddingHorizontal="$3.5" paddingVertical="$2" borderWidth={1} borderColor={off ? ACCENT : '$border'}>
+                              <Text fontSize="$2" fontWeight="700" color={off ? '#fff' : '$text'}>Desactivado</Text>
+                            </View>
+                          )
+                        })() : null}
                         {(meta.options ?? []).map(m => {
                           const on = Number(c.Valor ?? 0) === m
                           return (
-                            <View key={m} onPress={saving ? undefined : () => elegirMinutos(c, m)} pressStyle={{ opacity: 0.8 }}
+                            <View key={m} onPress={saving ? undefined : () => elegirOpcion(c, m)} pressStyle={{ opacity: 0.8 }}
                               backgroundColor={on ? ACCENT : '$backgroundHover'} borderRadius="$10"
                               paddingHorizontal="$3.5" paddingVertical="$2" borderWidth={1} borderColor={on ? ACCENT : '$border'}>
-                              <Text fontSize="$2" fontWeight="700" color={on ? '#fff' : '$text'}>{m === 0 ? 'Sin aviso' : `${m} min`}</Text>
+                              <Text fontSize="$2" fontWeight="700" color={on ? '#fff' : '$text'}>
+                                {m === 0 ? (meta.etiquetaCero ?? 'Sin aviso') : `${m} ${meta.unidadOpcion ?? 'min'}`}
+                              </Text>
                             </View>
                           )
                         })}

@@ -4,7 +4,7 @@ import { YStack, Button, Text, XStack, View, ScrollView, Spinner, Checkbox,style
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { Controller, useForm } from 'react-hook-form'
 import AppInput from '../../../components/commons/AppInput'
-import { AccessDTO, CompaniesDTO, IAccessControl, IMenuControl, ITypes, IUserCompanies, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
+import { AccessDTO, CompaniesDTO, IAccessControl, IEmpresa, IMenuControl, ITypes, IUserCompanies, MenuDTO, RolesDTO, UsersDTO } from '../../../api/modules/security/security.types'
 import { securityService } from '../../../api/modules/security/security.service'
 import { computeMenuCascade, buildMenuControlPayloads } from '../menuCascade'
 import { ExecutionResponse } from '../../../api/modules/response.type'
@@ -46,6 +46,9 @@ export default function UsersForm() {
     const [roles, setRoles] = useState<RolesDTO[]>([])
     const [companies, setCompanies] = useState<CompaniesDTO[]>([])
     const [userTypes, setUserTypes] = useState<ITypes[]>([])
+    // Empresas del PARQUE (Intermoda, Industrias Chamer). OJO: no confundir con
+    // `companies`, que son las compañías de AX por país.
+    const [empresas, setEmpresas] = useState<IEmpresa[]>([])
     const [user_Code, setUser_Code] = useState<string>([])
     const [access, setAccess] = useState<AccessDTO[]>([])
     const [permisos, setPermisos] = useState<MenuDTO[]>([])
@@ -78,6 +81,8 @@ export default function UsersForm() {
         DefaultCompany_Id: null,
         PasswordHash: '',
         ValidateAD: false,
+        // Intermoda por omisión, igual que el default de la columna en la BD.
+        Empresa_Id: 1,
     }
 
     const { control, handleSubmit, formState: { errors }, reset, getValues, watch, setValue, clearErrors  } = useForm<UsersDTO>({ defaultValues, mode: 'onTouched' })
@@ -98,6 +103,12 @@ export default function UsersForm() {
                 const tipos = responseTypes.Data ?? []
                 setUserTypes(tipos)
                 const generalId = tipos.find((t: ITypes) => t.Name === 'General')?.Id ?? null
+
+                // Empresas del PARQUE. Catalogo aparte del de tipos: el merge
+                // los enfrento porque las dos ramas sumaron aca, pero no se
+                // pisan entre si.
+                const respEmpresas = await securityService.getEmpresas(true)
+                setEmpresas(respEmpresas.Data ?? [])
 
                 if (Id) {
                     const response: ExecutionResponse<UsersDTO[]> = await securityService.getUserById(Id)
@@ -184,6 +195,9 @@ export default function UsersForm() {
                 Roles: data?.Roles,
                 Companies: JSON.stringify(companiesPayload),
                 DefaultCompany_Id: data?.DefaultCompany_Id ?? null,
+                // A qué empresa del parque pertenece. Define de qué empresa son los
+                // pases de visita que genere y cuáles puede ver.
+                Empresa_Id: Number(data?.Empresa_Id) || 1,
                 Create_By: user?.Code,
             }
 
@@ -634,6 +648,22 @@ export default function UsersForm() {
                                                     value: String(t.Id),
                                                 }))}
                                                 error={errors.TypeId?.message as string | undefined}
+                                            />
+                                        )}
+                                    />
+
+                                    <Controller
+                                        control={control}
+                                        name="Empresa_Id"
+                                        render={({ field: { onChange, value } }) => (
+                                            <AppSelect
+                                                label="Empresa del parque"
+                                                value={value != null ? String(value) : ''}
+                                                onValueChange={(v) => onChange(Number(v) || 1)}
+                                                options={empresas.map((e) => ({
+                                                    label: e.Name,
+                                                    value: String(e.Id),
+                                                }))}
                                             />
                                         )}
                                     />

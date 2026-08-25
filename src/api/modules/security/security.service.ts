@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO, UsersSettingsDTO, IAccessControl, ITypes, IMenuControl, IUserExternalCodes, IUserCompanies, IQuickActions, IRegister, CompaniesDTO } from './security.types'
+import { UsersDTO, LoginResponse, LoginRequest, MenuDTO, AccessDTO, RolesDTO, UsersSettingsDTO, IAccessControl, ITypes, IMenuControl, IUserExternalCodes, IUserCompanies, IQuickActions, IRegister, CompaniesDTO, IEmpresa } from './security.types'
 
 const schema = 'Security'
 export const securityService = {
@@ -8,6 +8,13 @@ export const securityService = {
   // Sesión del usuario autenticado (InfoUser fresco) para refrescar Access/Roles sin re-loguear.
   getSessionInfo: () => httpClient.get<ExecutionResponse<string>>(`${schema}/SessionInfo`),
   logout: (User_Code : string) => httpClient.post(`${schema}/logout?User_Code=${User_Code}`),
+
+  // Empresas del parque (Intermoda, Industrias Chamer). Con incluirLogo=true
+  // trae el logo en base64 para el QR del pase; sin eso solo Id/Nombre.
+  getEmpresas: (onlyActive = true, incluirLogo = false) =>
+    httpClient.get<ExecutionResponse<IEmpresa[]>>(
+      `${schema}/Empresas?onlyActive=${onlyActive}&incluirLogo=${incluirLogo}`
+    ),
   // Cierre de sesión forzado de otro usuario (requiere acceso 'logoutUser').
   forceLogout: (data: { TargetUserCode: string; Reason?: string }) =>
     httpClient.post<ExecutionResponse<boolean>>(`${schema}/ForceLogout`, data),
