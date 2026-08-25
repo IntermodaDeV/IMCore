@@ -14,6 +14,7 @@ import {
   ACCENT,
   COLOR_ESPERA,
   COLOR_PAUSA,
+  COLOR_REPROCESO,
   COLOR_TRABAJO,
   ESCALA_AZUL,
   ESCALA_NARANJA,
@@ -294,31 +295,33 @@ function TitularParo({
     )
   }
 
-  /* Los tres porcentajes se sacan sobre la SUMA DE LOS TRAMOS y no sobre ParoMin.
-     ParoMin suma reporte→cierre de los tickets CERRADOS, mientras que trabajo y pausa
-     cuentan también lo que ya llevan los ABIERTOS, así que los tramos exceden al paro
-     (16% en la semana del 17-ago). Con ParoMin de denominador la espera daba 57% y el
-     trabajo 46% —103% entre los dos— y la pausa, que se sacaba como el RESTO, quedaba
-     negativa y se mostraba 0% aunque hubiera 9 h de pausa reales.
-     Ahora cada tramo se divide por el total de los tramos: los tres salen de sus
-     propios minutos y cierran en 100. Mismo criterio que el web. */
-  const totalTramos = total.EsperaMin + total.TrabajoMin + total.PausaMin
+  /* CUATRO tramos desde el estándar de paro (script 86), no tres: faltaba el
+     REPROCESO, que es lo que el mecánico volvió a trabajar después de un rechazo.
+     Con los cuatro la suma da EXACTO ParoMin y este bloque cuadra con el reporte de
+     paro por área y con el web; con tres se quedaba corto y los dos números del mismo
+     bloque parecían un error de cálculo.
+     Cada porcentaje se saca sobre la suma de los tramos —que es lo que mide la barra—
+     y no sobre ParoMin: así los cuatro cierran en 100. Mismo criterio que el web. */
+  const totalTramos = total.EsperaMin + total.TrabajoMin + total.PausaMin + total.ReprocesoMin
   const pctEspera = pctDe(total.EsperaMin, totalTramos)
   const pctTrabajo = pctDe(total.TrabajoMin, totalTramos)
   const pctPausa = pctDe(total.PausaMin, totalTramos)
+  const pctReproceso = pctDe(total.ReprocesoMin, totalTramos)
 
   // Variación contra el período anterior (null si no hay con qué comparar).
   const dParo = prev?.ParoMin ? variacion(total.ParoMin, prev.ParoMin) : null
   // El % del período anterior con el MISMO criterio: comparar contra otra base daría
   // un delta inventado.
-  const tramosPrev = prev ? prev.EsperaMin + prev.TrabajoMin + prev.PausaMin : 0
+  const tramosPrev = prev
+    ? prev.EsperaMin + prev.TrabajoMin + prev.PausaMin + prev.ReprocesoMin
+    : 0
   const pctEsperaPrev = tramosPrev ? pctDe(prev!.EsperaMin, tramosPrev) : null
   const dPctEspera = pctEsperaPrev ? variacion(pctEspera, pctEsperaPrev) : null
 
   return (
     <SectionCard
       titulo="Anatomía del paro del período"
-      subtitulo="Todo el tiempo que las máquinas estuvieron paradas, partido en lo que se esperó y lo que se reparó"
+      subtitulo="Solo el tiempo de un mecánico: lo que esperó, lo que reparó, lo que pausó y lo que retrabajó"
     >
       <XStack flexWrap="wrap" gap="$2">
         <KpiCard
@@ -351,6 +354,17 @@ function TitularParo({
           color={COLOR_PAUSA}
           info="Parte del paro en que el trabajo ya había empezado pero se detuvo por algo: falta de repuesto, almuerzo, otra máquina más urgente."
         />
+        {/* Solo si hubo: en la mayoría de períodos es 0 y una tarjeta en cero es ruido. */}
+        {total.ReprocesoMin > 0 && (
+          <KpiCard
+            titulo="REPROCESO"
+            valor={`${pctReproceso}%`}
+            hint={fmtHoras(total.ReprocesoMin)}
+            color={COLOR_REPROCESO}
+            info="Parte del paro que el mecánico volvió a trabajar después de un rechazo de producción: el ticket pasó otra vez a En proceso. Lo que producción tardó en validar o rechazar NO cuenta acá."
+            invertido
+          />
+        )}
       </XStack>
 
       <BarraApilada
@@ -358,6 +372,9 @@ function TitularParo({
           { label: `Espera ${pctEspera}%`, pct: pctEspera, color: COLOR_ESPERA },
           { label: `Trabajo ${pctTrabajo}%`, pct: pctTrabajo, color: COLOR_TRABAJO },
           { label: `Pausa ${pctPausa}%`, pct: pctPausa, color: COLOR_PAUSA },
+          ...(pctReproceso > 0
+            ? [{ label: `Reproceso ${pctReproceso}%`, pct: pctReproceso, color: COLOR_REPROCESO }]
+            : []),
         ]}
       />
     </SectionCard>
@@ -529,10 +546,11 @@ function EsperaPorMaquina({ actual }: { actual: EstadoKpi<IEsperaAnatomia> }) {
 // cuánto TARDA en arrancar un área, acá cuánto tiempo TOTAL estuvo parada — un área
 // puede arrancar rapidísimo y acumular el mayor paro solo porque tiene más máquinas.
 //
-// El total de cada fila es la SUMA DE LOS TRES TRAMOS y no el ParoMin del SP: ese
-// suma reporte→cierre de los tickets CERRADOS, mientras trabajo y pausa cuentan
-// también lo que ya llevan los ABIERTOS (en agosto eso las separa entre -38% y +36%).
-// Se usa la suma porque es lo que mide la barra, y así los porcentajes cierran en 100.
+// El total de cada fila es la suma de los CUATRO tramos del estándar de paro
+// (script 86): espera + trabajo + pausa + reproceso. Con esos cuatro da exacto el
+// ParoMin del SP, así que esta pantalla, el reporte semanal por área y el web dicen
+// el mismo número. Se usa la suma porque es lo que mide la barra y así los
+// porcentajes cierran en 100.
 const PARO_AREAS_TOP = 10
 
 function ParoPorArea({
@@ -543,7 +561,7 @@ function ParoPorArea({
   meta: EstadoKpi<IMetaParo>
 }) {
   const titulo = 'Minutos de paro por área'
-  const subtitulo = 'Tiempo total detenido en el período: espera + trabajo + pausa'
+  const subtitulo = 'Solo el tiempo de un mecánico: espera + trabajo + pausa + reproceso'
 
   if (actual.cargando) {
     return (
@@ -555,7 +573,7 @@ function ParoPorArea({
   // El error del endpoint ya se avisa en el titular.
   if (actual.error) return null
 
-  const tramos = (r: IEsperaAnatomia) => r.EsperaMin + r.TrabajoMin + r.PausaMin
+  const tramos = (r: IEsperaAnatomia) => r.EsperaMin + r.TrabajoMin + r.PausaMin + r.ReprocesoMin
   const areas = actual.datos
     .filter(r => r.Dim === 'AREA' && tramos(r) > 0)
     .sort((a, b) => tramos(b) - tramos(a))
@@ -607,12 +625,20 @@ function ParoPorArea({
                   {fmtEntero(total)} min
                 </Text>
               </XStack>
-              {/* Mismos colores y mismo orden que el web: espera, trabajo, pausa. */}
+              {/* Mismos colores y mismo orden que el web: espera, trabajo, pausa,
+                  reproceso. El cuarto solo si hubo: casi siempre es 0. */}
               <BarraApilada
                 tramos={[
                   { label: `${pct(a.EsperaMin)}%`, pct: pct(a.EsperaMin), color: COLOR_ESPERA },
                   { label: `${pct(a.TrabajoMin)}%`, pct: pct(a.TrabajoMin), color: COLOR_TRABAJO },
                   { label: `${pct(a.PausaMin)}%`, pct: pct(a.PausaMin), color: COLOR_PAUSA },
+                  ...(a.ReprocesoMin > 0
+                    ? [{
+                        label: `${pct(a.ReprocesoMin)}%`,
+                        pct: pct(a.ReprocesoMin),
+                        color: COLOR_REPROCESO,
+                      }]
+                    : []),
                 ]}
                 altura={22}
               />
@@ -631,11 +657,12 @@ function ParoPorArea({
         })}
       </YStack>
 
-      {/* Mismo aviso que el web: sin esto el total no cuadra con el paro de los
-          cerrados y parece un error de cálculo. */}
+      {/* Mismo aviso que el web: nombrar las horas que NO están en la barra, porque
+          si no la pregunta "y dónde quedaron" no tiene respuesta en pantalla. */}
       <Text fontSize={10} color="$textMuted" marginTop="$2">
-        La barra suma espera + trabajo + pausa, así que incluye lo que ya se lleva en los tickets abiertos, no solo el
-        paro de los ya cerrados.
+        Los cuatro tramos suman exacto el paro, así que este total es el mismo del reporte semanal por área. Fuera
+        quedó lo que producción tardó en validar o rechazar: ahí la máquina ya estaba entregada y ningún mecánico
+        estaba trabajando.
       </Text>
     </SectionCard>
   )

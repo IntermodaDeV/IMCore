@@ -248,6 +248,15 @@ export interface IEsperaAnatomia {
   EsperaMin: number
   TrabajoMin: number
   PausaMin: number
+  // El cuarto tramo del paro (script 86): lo que el mecánico volvió a TRABAJAR
+  // después de un rechazo, cuando el ticket pasó otra vez a En proceso. Con él,
+  // Espera+Trabajo+Pausa+Reproceso = ParoMin exacto. En las filas ESPERA_* viene 0.
+  ReprocesoMin: number
+  // Lo que producción tardó en validar o rechazar, y lo que quedó rechazado sin que
+  // nadie lo retomara. NO son paro (la máquina ya estaba entregada o el ticket sin
+  // dueño), pero se devuelven para poder decir cuántas horas quedaron fuera.
+  ProduccionMin: number
+  SinRetomarMin: number
   ParoMin: number
 }
 

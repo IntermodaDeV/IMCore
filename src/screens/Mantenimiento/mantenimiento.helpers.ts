@@ -241,6 +241,9 @@ export function variacion(actual: number, anterior: number): number | null {
 export const COLOR_ESPERA = '#f59e0b'
 export const COLOR_TRABAJO = '#3b82f6'
 export const COLOR_PAUSA = '#a855f7'
+// Reproceso: rosa oscuro, la familia del estado "Rechazado" (de ahí nace el tramo)
+// en un tono que no se confunde con el morado de la pausa. El MISMO hex que el web.
+export const COLOR_REPROCESO = '#be123c'
 
 // ── Filtros finos (Área / Prioridad / Tipo de Paro) ──────────────────────────
 export interface FiltrosFinos {
