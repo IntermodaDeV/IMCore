@@ -27,7 +27,6 @@ import {
   DistribucionHoras,
   colorConcepto,
   fmtHoras,
-  fmtPorcentaje,
   nombreConCodigo,
   parseConceptos,
 } from './Overtime.utils'
@@ -658,6 +657,20 @@ export default function DashboardHorasExtraScreen() {
 // ve si el período es casi todo al 25% o si carga sobre las bandas caras, que
 // es lo que mueve el costo. Las filas dan el número exacto, porque una banda de
 // 15 minutos queda como un hilo ilegible en la barra.
+/**
+ * Participación de un concepto sobre el total, en texto.
+ *
+ * No se redondea a entero como antes: con varias bandas, las chicas caían a
+ * "0%" y parecían no existir. Debajo de 10 se muestra un decimal, y lo que no
+ * llega ni a la décima sale como "<0.1%" en vez de cero.
+ */
+const fmtParte = (parte: number): string => {
+  if (!Number.isFinite(parte) || parte <= 0) return '—'
+  if (parte < 0.1) return '<0.1%'
+  if (parte < 10) return `${parte.toFixed(1)}%`
+  return `${Math.round(parte)}%`
+}
+
 function RepartoConceptos({
   conceptos,
   totalHoras,
@@ -683,11 +696,19 @@ function RepartoConceptos({
   // todos modos.
   const suma = conceptos.reduce((acc, c) => acc + Number(c.Horas ?? 0), 0) || 1
 
-  const tramos = conceptos.map(c => ({
-    label: fmtPorcentaje(c.Porcentaje),
-    pct: (Number(c.Horas ?? 0) / suma) * 100,
-    color: colorConcepto(c.Porcentaje),
-  }))
+  // La etiqueta del tramo es su PARTICIPACION, no la banda de recargo.
+  // Antes decia la banda, y eso se contradecia con el dibujo: el tramo rotulado
+  // "25%" ocupaba el 58% del ancho, asi que el numero parecia estar mintiendo
+  // sobre la proporcion. La banda se sigue leyendo en el color y en la lista.
+  const tramos = conceptos.map(c => {
+    const parte = (Number(c.Horas ?? 0) / suma) * 100
+
+    return {
+      label: fmtParte(parte),
+      pct: parte,
+      color: colorConcepto(c.Porcentaje),
+    }
+  })
 
   return (
     <YStack
@@ -729,18 +750,24 @@ function RepartoConceptos({
               <XStack key={`${c.Concepto}-${i}`} alignItems="center" gap="$2">
                 <View width={8} height={8} borderRadius={999} backgroundColor={colorConcepto(c.Porcentaje)} />
 
-                <Text fontSize={11} color="$text" numberOfLines={1} flex={1}>
-                  {fmtPorcentaje(c.Porcentaje)} · {c.Descripcion || c.Concepto || 'Sin concepto'}
+                {/* La participación sobre el total, adelante y en negrita: es el
+                    número que se viene a buscar acá.
+                    La banda de recargo NO se repite como prefijo: ya venía dos
+                    veces en la misma línea ("25% · Horas Extras 25%"), y además
+                    la dice el color del punto y el tramo de la barra. */}
+                <Text fontSize={11} fontWeight="700" color="$text" width={44}>
+                  {fmtParte(parte)}
                 </Text>
 
-                <Text fontSize={11} fontWeight="700" color="$text">
+                <Text fontSize={11} color="$text" numberOfLines={1} flex={1}>
+                  {c.Descripcion || c.Concepto || 'Sin concepto'}
+                </Text>
+
+                <Text fontSize={11} fontWeight="700" color="$text" width={52} textAlign="right">
                   {fmtHoras(c.Horas)}
                 </Text>
                 <Text fontSize={10} color="$textMuted" width={54} textAlign="right">
                   {fmtDinero(c.Costo)}
-                </Text>
-                <Text fontSize={9} color="$textMuted" width={26} textAlign="right">
-                  {Math.round(parte)}%
                 </Text>
               </XStack>
             )

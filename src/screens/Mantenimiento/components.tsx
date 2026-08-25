@@ -132,9 +132,12 @@ export function BarraApilada({ tramos, altura = 32 }: { tramos: Tramo[]; altura?
   if (!visibles.length) return null
   return (
     <XStack height={altura} borderRadius="$3" overflow="hidden">
-      {visibles.map(t => (
+      {visibles.map((t, i) => (
         <XStack
-          key={t.label}
+          // El indice y no solo el label: dos tramos pueden mostrar el mismo
+          // texto (p. ej. dos conceptos con igual participacion) y las llaves
+          // chocarian.
+          key={`${t.label}-${i}`}
           flex={Math.max(t.pct, 0.01)}
           backgroundColor={t.color}
           alignItems="center"
