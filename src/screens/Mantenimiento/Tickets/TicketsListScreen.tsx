@@ -188,6 +188,18 @@ export default function TicketsListScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Cambiar de período con el chip prendido lo apaga: si no, uno mueve la semana y
+  // la lista no se entera, que se siente como que la pantalla se colgó. El ref salta
+  // el primer render, para no apagarlo al abrir.
+  const primerPeriodo = useRef(true)
+  useEffect(() => {
+    if (primerPeriodo.current) {
+      primerPeriodo.current = false
+      return
+    }
+    setSoloTurno(false)
+  }, [periodo.desde, periodo.hasta])
+
   // El conteo de colgados se refresca al montar y cuando cambia el alcance.
   useEffect(() => {
     cargarColgados()
@@ -299,8 +311,15 @@ export default function TicketsListScreen() {
       {/* Filtros */}
       <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
         {/* Filtro de período (mismo selector del Resumen). Acota la carga: el servidor
-            solo trae los tickets del rango seleccionado. */}
-        <PeriodoFiltro {...periodo} />
+            solo trae los tickets del rango seleccionado.
+
+            Con el chip del turno anterior prendido el período NO aplica, y eso se
+            dice ATENUANDOLO en vez de con un texto al lado: el texto crecía la fila
+            y la hacía envolver justo al activar el chip. Sigue tocable a propósito
+            —elegir un período apaga el chip, que es lo que uno espera. */}
+        <View opacity={soloTurno ? 0.4 : 1}>
+          <PeriodoFiltro {...periodo} />
+        </View>
 
         {/* Alcance Mías / Todos (solo para quien puede ver el pool) y, en la MISMA
             fila, el chip de lo que quedó del turno anterior: cada uno en su renglón
@@ -318,7 +337,7 @@ export default function TicketsListScreen() {
           )}
           {colgados.length > 0 && (
             <EstadoChip
-              label={soloTurno ? `Turno anterior (${colgados.length}) · sin período` : `Turno anterior (${colgados.length})`}
+              label={`Turno anterior (${colgados.length})`}
               active={soloTurno}
               color="#f59e0b"
               onPress={() => setSoloTurno(v => !v)}
