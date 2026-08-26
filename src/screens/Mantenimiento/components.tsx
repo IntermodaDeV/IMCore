@@ -58,9 +58,9 @@ export function KpiCard({
       {...shadows.sm}
       backgroundColor="$backgroundElevated"
       borderRadius="$4"
-      paddingVertical="$2.5"
+      paddingVertical="$2"
       paddingHorizontal="$3"
-      gap="$1"
+      gap={2}
     >
       <XStack alignItems="center" gap="$1.5">
         <Text fontSize={11} fontWeight="600" color="$textMuted" numberOfLines={1} flexShrink={1}>
@@ -106,8 +106,12 @@ export function KpiCard({
               </Text>
             </>
           )}
+          {/* "vs. anterior" y no "vs. período anterior": en media tarjeta de telefono
+              el texto largo no cabia en el renglon del porcentaje y envolvia, asi que
+              CADA tarjeta gastaba una linea de mas. Al lado de un % no hace falta mas
+              para entenderlo. */}
           <Text fontSize={11} color="$textMuted" flexShrink={1}>
-            {delta != null ? 'vs. período anterior' : hint}
+            {delta != null ? 'vs. anterior' : hint}
           </Text>
         </XStack>
       )}

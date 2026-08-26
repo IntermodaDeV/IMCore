@@ -90,6 +90,12 @@ export default function TicketsListScreen() {
   const [areaId, setAreaId] = useState<number | undefined>(undefined)
   const [prioridadId, setPrioridadId] = useState<number | undefined>(undefined)
   const [search, setSearch] = useState('')
+  // "Del turno anterior": lo que se reportó antes de que arrancara la jornada en
+  // curso y nadie arrancó. Se pide APARTE porque ignora el período —un lunes a las
+  // 7 am el que quedó del viernes cae fuera de "esta semana"— y para poder mostrar
+  // el conteo sin que el mecánico tenga que ir a buscarlo.
+  const [soloTurno, setSoloTurno] = useState(false)
+  const [colgados, setColgados] = useState<ITicket[]>([])
   // Alcance: 'mias' (por rol) | 'todos' (pool). Default 'mias', salvo el
   // despachador de repuestos (sin tickets propios) que arranca en 'todos'.
   const [scope, setScope] = useState<'mias' | 'todos'>(() => scopeInicialTickets(user?.Roles, user?.Access))
@@ -123,20 +129,41 @@ export default function TicketsListScreen() {
     }
   }, [])
 
+  // El conteo de colgados va aparte del listado: tiene que estar aunque el chip
+  // este apagado, porque es justo lo que invita a prenderlo.
+  // Alcance del chip: el MAS AMPLIO que el permiso permita, no el que este puesto
+  // en el control. Con "Mios" el conteo da 0 para quien no reporta tickets —un
+  // supervisor— justo para el que tiene que actuar sobre ellos. No abre ninguna
+  // puerta: verPool ya gobierna quien ve el pool y el SP lo revalida.
+  const scopeColgados: 'mias' | 'todos' = verPool ? 'todos' : 'mias'
+
+  const cargarColgados = useCallback(async () => {
+    try {
+      const res = await ticketsService.getTickets({ scope: scopeColgados, soloTurnoAnterior: true, take: 200 })
+      setColgados(res.Success ? (res.Data ?? []) : [])
+    } catch {
+      setColgados([])
+    }
+  }, [scopeColgados])
+
   const cargarTickets = useCallback(async () => {
     setError(null)
     setRecargando(true)
     try {
-      const res = await ticketsService.getTickets({
-        estado_Id: estadoId,
-        prioridad_Id: prioridadId,
-        area_Id: areaId,
-        search: search.trim() || undefined,
-        scope,
-        desde: fmtLocal(periodo.desde),
-        hasta: fmtLocal(periodo.hasta),
-        take: 100,
-      })
+      const res = await ticketsService.getTickets(
+        soloTurno
+          ? { scope: scopeColgados, soloTurnoAnterior: true, take: 200 }
+          : {
+              estado_Id: estadoId,
+              prioridad_Id: prioridadId,
+              area_Id: areaId,
+              search: search.trim() || undefined,
+              scope,
+              desde: fmtLocal(periodo.desde),
+              hasta: fmtLocal(periodo.hasta),
+              take: 100,
+            },
+      )
       if (!res.Success) {
         setError(res.ErrorMessage || 'No se pudieron cargar los tickets')
         setTickets([])
@@ -149,7 +176,7 @@ export default function TicketsListScreen() {
     } finally {
       setRecargando(false)
     }
-  }, [estadoId, prioridadId, areaId, search, scope, periodo.desde, periodo.hasta])
+  }, [estadoId, prioridadId, areaId, search, scope, scopeColgados, periodo.desde, periodo.hasta, soloTurno])
 
   useEffect(() => {
     ;(async () => {
@@ -160,6 +187,23 @@ export default function TicketsListScreen() {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Cambiar de período con el chip prendido lo apaga: si no, uno mueve la semana y
+  // la lista no se entera, que se siente como que la pantalla se colgó. El ref salta
+  // el primer render, para no apagarlo al abrir.
+  const primerPeriodo = useRef(true)
+  useEffect(() => {
+    if (primerPeriodo.current) {
+      primerPeriodo.current = false
+      return
+    }
+    setSoloTurno(false)
+  }, [periodo.desde, periodo.hasta])
+
+  // El conteo de colgados se refresca al montar y cuando cambia el alcance.
+  useEffect(() => {
+    cargarColgados()
+  }, [cargarColgados])
 
   // Búsqueda: recarga con debounce (evita pegarle a la API en cada tecla).
   const primerBusqueda = useRef(true)
@@ -267,22 +311,41 @@ export default function TicketsListScreen() {
       {/* Filtros */}
       <YStack paddingHorizontal="$3" paddingTop="$3" gap="$2" width="100%" maxWidth={CONTENT_MAX} alignSelf="center">
         {/* Filtro de período (mismo selector del Resumen). Acota la carga: el servidor
-            solo trae los tickets del rango seleccionado. */}
-        <PeriodoFiltro {...periodo} />
+            solo trae los tickets del rango seleccionado.
 
-        {/* Alcance Mías / Todos (solo para quien puede ver el pool). "Todos" muestra
-            el universo para descubrir y autoasignarse; combina con el filtro de Área. */}
-        {verPool ? (
-          <XStack alignItems="center" gap="$2">
-            <Text fontSize="$2" color="$textMuted" fontWeight="700">Ver:</Text>
-            <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
-            <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
-            <View flex={1} />
-            {countNode}
-          </XStack>
-        ) : (
-          <XStack justifyContent="flex-end">{countNode}</XStack>
-        )}
+            Con el chip del turno anterior prendido el período NO aplica, y eso se
+            dice ATENUANDOLO en vez de con un texto al lado: el texto crecía la fila
+            y la hacía envolver justo al activar el chip. Sigue tocable a propósito
+            —elegir un período apaga el chip, que es lo que uno espera. */}
+        <View opacity={soloTurno ? 0.4 : 1}>
+          <PeriodoFiltro {...periodo} />
+        </View>
+
+        {/* Alcance Mías / Todos (solo para quien puede ver el pool) y, en la MISMA
+            fila, el chip de lo que quedó del turno anterior: cada uno en su renglón
+            se comía dos filas de una pantalla de teléfono, que es justo el espacio
+            que necesita la lista. Solo aparece si hay algo; uno en cero es ruido.
+            Al prenderlo el período deja de aplicar —el que quedó del viernes no sale
+            un lunes con "esta semana"— y por eso se dice al lado. */}
+        <XStack alignItems="center" gap="$2" flexWrap="wrap">
+          {verPool && (
+            <>
+              <Text fontSize="$2" color="$textMuted" fontWeight="700">Ver:</Text>
+              <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
+              <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
+            </>
+          )}
+          {colgados.length > 0 && (
+            <EstadoChip
+              label={`Turno anterior (${colgados.length})`}
+              active={soloTurno}
+              color="#f59e0b"
+              onPress={() => setSoloTurno(v => !v)}
+            />
+          )}
+          <View flex={1} />
+          {countNode}
+        </XStack>
 
         {/* Buscador */}
         <XStack
@@ -490,7 +553,16 @@ function TicketCard({ t, onPress, theme }: { t: ITicket; onPress: () => void; th
       {...(esAlta ? { shadowColor: '#EF4444', shadowOpacity: 0.19 } : {})}
     >
       <XStack alignItems="center" justifyContent="space-between">
-        <Text fontSize="$4" fontWeight="800" color="$text">{t.CodigoTicket}</Text>
+        <XStack alignItems="center" gap="$2" flex={1}>
+          <Text fontSize="$4" fontWeight="800" color="$text">{t.CodigoTicket}</Text>
+          {/* Viene colgado del turno anterior: pegado al folio, para que se lea en
+              la tarjeta sin tener que abrirla. */}
+          {t.DelTurnoAnterior && (
+            <View backgroundColor="#f59e0b" borderRadius="$10" paddingHorizontal="$2" paddingVertical="$0.5">
+              <Text fontSize="$1" fontWeight="700" color="#fff">turno ant.</Text>
+            </View>
+          )}
+        </XStack>
         <View backgroundColor={estadoC} borderRadius="$10" paddingHorizontal="$2.5" paddingVertical="$1">
           <Text fontSize="$1" fontWeight="700" color="#fff">{estadoVis.label}</Text>
         </View>
