@@ -155,6 +155,15 @@ export function DashboardAnalisis({ desde, hasta, desdePrev, hastaPrev, tipoDest
 
   return (
     <YStack gap="$3">
+      {/* La base del paro, dicha UNA vez arriba: los numeros de esta pestaña llegan
+          recortados a las jornadas configuradas (el servidor lo aplica por default
+          desde el reloj de jornada), y un paro sin decir con que base se midio es un
+          numero que cada quien interpreta distinto. El web tiene un switch para
+          cambiarla; la app no, y por eso conviene que lo diga. */}
+      <Text fontSize="$1" color="$textMuted" paddingHorizontal="$2">
+        Los tiempos de paro se miden EN JORNADA: se descuenta el tiempo en que no había
+        nadie que pudiera atender, según los horarios de Configuraciones globales.
+      </Text>
       <TitularParo actual={anatomia} previo={anatomiaPrev} />
       <Prioridad actual={anatomia} />
       <EsperaPorArea actual={anatomia} />
@@ -321,7 +330,7 @@ function TitularParo({
   return (
     <SectionCard
       titulo="Anatomía del paro del período"
-      subtitulo="Solo el tiempo de un mecánico: lo que esperó, lo que reparó, lo que pausó y lo que retrabajó"
+      subtitulo="Solo el tiempo de un mecánico —lo que esperó, reparó, pausó y retrabajó— y solo EN JORNADA: no cuenta el tiempo en que no había nadie que pudiera atender"
     >
       <XStack flexWrap="wrap" gap="$2">
         <KpiCard
