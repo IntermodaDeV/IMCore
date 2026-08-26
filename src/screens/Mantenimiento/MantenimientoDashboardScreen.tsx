@@ -524,13 +524,25 @@ function TabResumen({
 
       <SectionCard titulo="Estado de Tickets">
         <YStack alignItems="center" gap="$3">
+          {/* Etiqueta SOLO en las tajadas que la pueden contener. Con 288 tickets y
+              90% completados, las tajadas de 1-4% quedan casi en el mismo angulo y
+              sus porcentajes se montaban unos sobre otros: se leia "1%4%3%2%" pegado
+              y ninguno servia. El corte es 8% (~29 grados), que es lo que necesita un
+              "4%" para no chocar con el vecino.
+
+              No se pierde nada: la leyenda de abajo trae el nombre, el porcentaje con
+              un decimal y el conteo de TODOS los estados, incluidos los chicos. La
+              etiqueta en la tajada es un atajo para el que domina, no la fuente. */}
           <PieChart
             donut
-            data={estado.map((d: any) => ({
-              value: d.value,
-              color: colorEstado(d.label),
-              text: `${Math.round((d.value / totalEstado) * 100)}%`,
-            }))}
+            data={estado.map((d: any) => {
+              const pct = totalEstado ? (d.value / totalEstado) * 100 : 0
+              return {
+                value: d.value,
+                color: colorEstado(d.label),
+                text: pct >= 8 ? `${Math.round(pct)}%` : '',
+              }
+            })}
             radius={chartWidth / 3.4}
             innerRadius={chartWidth / 7}
             innerCircleColor={theme.backgroundElevated?.val}
