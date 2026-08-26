@@ -58,7 +58,6 @@ const TABS = [
   { key: 'activos', label: '🏭 Activos' },
   { key: 'distribucion', label: '📈 Distribución' },
   { key: 'rankings', label: '🏆 Rankings' },
-  { key: 'detalle', label: '📋 Detalle' },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -383,7 +382,6 @@ export default function MantenimientoDashboardScreen() {
               />
             )}
             {tabKey === 'rankings' && <TabRankings topMecanicos={topMecanicos} topFallas={topFallas} />}
-            {tabKey === 'detalle' && <TabDetalle registros={registros} />}
           </>
         )}
       </YStack>
@@ -1204,84 +1202,6 @@ function TabActivos({ desde, hasta, prioridades }: { desde: string; hasta: strin
       {/* Mismo indicador que en Tiempos, cortado por modelo: aquí la pregunta no es
           quién tarda más, sino qué modelo de máquina cuesta más reparar. */}
       <BloqueMttr desde={desde} hasta={hasta} agrupar="MODELO" prioridades={prioridades} />
-    </YStack>
-  )
-}
-
-// ════════ TAB: Detalle ════════
-const DETALLE_PAGINA = 30
-
-function TabDetalle({ registros }: any) {
-  const [visibles, setVisibles] = useState(DETALLE_PAGINA)
-
-  // Reiniciar la paginación cuando cambian los registros (filtros, período).
-  useEffect(() => {
-    setVisibles(DETALLE_PAGINA)
-  }, [registros])
-
-  const mostrados = registros.slice(0, visibles)
-  const hayMas = visibles < registros.length
-
-  return (
-    <YStack gap="$2">
-      <Text fontSize={15} fontWeight="700" color="$text">
-        📋 Detalle de Tickets ({registros.length})
-      </Text>
-      {mostrados.map((r: any, i: number) => (
-        <YStack
-          key={r.IDMantenimiento || i}
-          backgroundColor="$card2"
-          borderWidth={1}
-          borderColor="$border"
-          borderRadius="$3"
-          padding="$3"
-          gap="$1"
-        >
-          <XStack justifyContent="space-between" alignItems="center">
-            <Text fontSize={13} fontWeight="700" color="$text">
-              {r.CodigoTicket || '—'}
-            </Text>
-            <View
-              paddingHorizontal="$2"
-              paddingVertical={2}
-              borderRadius={6}
-              backgroundColor={colorEstado(r.Estado) + '22'}
-            >
-              <Text fontSize={10} fontWeight="700" color={colorEstado(r.Estado)}>
-                {r.Estado || 'Sin estado'}
-              </Text>
-            </View>
-          </XStack>
-          <Text fontSize={11} color="$text">
-            {(r.Fecha ?? '').slice(0, 10)} · {r.Area} · {r.TipoFalla}
-          </Text>
-          <XStack gap="$3" flexWrap="wrap">
-            <Text fontSize={11} color="$textMuted">
-              Máquina: {r.NumeroMaquina || '—'}
-            </Text>
-            <Text fontSize={11} color="$textMuted">
-              Prioridad: {r.Prioridad || '—'}
-            </Text>
-            <Text fontSize={11} color="$textMuted">
-              Mecánico: {r.Mecanico || '—'}
-            </Text>
-          </XStack>
-        </YStack>
-      ))}
-
-      {hayMas && (
-        <Button
-          marginTop="$2"
-          backgroundColor="$card2"
-          borderWidth={1}
-          borderColor="$border"
-          onPress={() => setVisibles(v => v + DETALLE_PAGINA)}
-        >
-          <Text fontSize={13} fontWeight="700" color={ACCENT}>
-            Ver más ({registros.length - visibles} restantes)
-          </Text>
-        </Button>
-      )}
     </YStack>
   )
 }
