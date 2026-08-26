@@ -131,14 +131,20 @@ export default function TicketsListScreen() {
 
   // El conteo de colgados va aparte del listado: tiene que estar aunque el chip
   // este apagado, porque es justo lo que invita a prenderlo.
+  // Alcance del chip: el MAS AMPLIO que el permiso permita, no el que este puesto
+  // en el control. Con "Mios" el conteo da 0 para quien no reporta tickets —un
+  // supervisor— justo para el que tiene que actuar sobre ellos. No abre ninguna
+  // puerta: verPool ya gobierna quien ve el pool y el SP lo revalida.
+  const scopeColgados: 'mias' | 'todos' = verPool ? 'todos' : 'mias'
+
   const cargarColgados = useCallback(async () => {
     try {
-      const res = await ticketsService.getTickets({ scope, soloTurnoAnterior: true, take: 200 })
+      const res = await ticketsService.getTickets({ scope: scopeColgados, soloTurnoAnterior: true, take: 200 })
       setColgados(res.Success ? (res.Data ?? []) : [])
     } catch {
       setColgados([])
     }
-  }, [scope])
+  }, [scopeColgados])
 
   const cargarTickets = useCallback(async () => {
     setError(null)
@@ -146,7 +152,7 @@ export default function TicketsListScreen() {
     try {
       const res = await ticketsService.getTickets(
         soloTurno
-          ? { scope, soloTurnoAnterior: true, take: 200 }
+          ? { scope: scopeColgados, soloTurnoAnterior: true, take: 200 }
           : {
               estado_Id: estadoId,
               prioridad_Id: prioridadId,
@@ -170,7 +176,7 @@ export default function TicketsListScreen() {
     } finally {
       setRecargando(false)
     }
-  }, [estadoId, prioridadId, areaId, search, scope, periodo.desde, periodo.hasta, soloTurno])
+  }, [estadoId, prioridadId, areaId, search, scope, scopeColgados, periodo.desde, periodo.hasta, soloTurno])
 
   useEffect(() => {
     ;(async () => {
