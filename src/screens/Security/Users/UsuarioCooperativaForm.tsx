@@ -29,9 +29,8 @@ const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' })
 /** Prefijo de la contraseña inicial. Igual que el del servidor. */
 const PREFIJO_PASSWORD = 'ITM'
 
-/** Contraseña sugerida para un empleado: ITM + su código. */
-const passwordSugerida = (employeeCode: string | null | undefined) =>
-  PREFIJO_PASSWORD + (employeeCode ?? '').trim()
+const passwordSugerida = (empleado: IEmpleadoUsuario) =>
+  PREFIJO_PASSWORD + (empleado.Cod_Alterno?.trim() || empleado.Employees_Code?.trim() || '')
 
 /** Capitaliza "LAURA KARINA" -> "Laura Karina". Planilla lo guarda en mayúsculas. */
 const capitalizar = (texto: string | null | undefined): string =>
@@ -134,7 +133,7 @@ export default function UsuarioCooperativaForm() {
     setNombre(capitalizar(empleado.PrimerNombre))
     setApellido(capitalizar(empleado.ApePaterno))
     setEmail(empleado.Email?.trim() ?? '')
-    setPassword(passwordSugerida(empleado.Employees_Code))
+    setPassword(passwordSugerida(empleado))
     setErrores({})
 
     // Segunda comprobación contra la base. La marca de la lista puede tener
