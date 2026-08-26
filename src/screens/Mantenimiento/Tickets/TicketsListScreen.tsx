@@ -302,38 +302,31 @@ export default function TicketsListScreen() {
             solo trae los tickets del rango seleccionado. */}
         <PeriodoFiltro {...periodo} />
 
-        {/* Lo que quedó colgado del turno anterior, a un toque. Solo aparece si hay
-            algo: un chip en cero es ruido. Al prenderlo el período deja de aplicar,
-            porque el que quedó del viernes no sale un lunes con "esta semana". */}
-        {colgados.length > 0 && (
-          <XStack alignItems="center" gap="$2">
+        {/* Alcance Mías / Todos (solo para quien puede ver el pool) y, en la MISMA
+            fila, el chip de lo que quedó del turno anterior: cada uno en su renglón
+            se comía dos filas de una pantalla de teléfono, que es justo el espacio
+            que necesita la lista. Solo aparece si hay algo; uno en cero es ruido.
+            Al prenderlo el período deja de aplicar —el que quedó del viernes no sale
+            un lunes con "esta semana"— y por eso se dice al lado. */}
+        <XStack alignItems="center" gap="$2" flexWrap="wrap">
+          {verPool && (
+            <>
+              <Text fontSize="$2" color="$textMuted" fontWeight="700">Ver:</Text>
+              <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
+              <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
+            </>
+          )}
+          {colgados.length > 0 && (
             <EstadoChip
-              label={`Del turno anterior (${colgados.length})`}
+              label={soloTurno ? `Turno anterior (${colgados.length}) · sin período` : `Turno anterior (${colgados.length})`}
               active={soloTurno}
               color="#f59e0b"
               onPress={() => setSoloTurno(v => !v)}
             />
-            {soloTurno && (
-              <Text fontSize="$1" color="$textMuted" flex={1}>
-                Sin filtro de período: es lo que nadie ha arrancado.
-              </Text>
-            )}
-          </XStack>
-        )}
-
-        {/* Alcance Mías / Todos (solo para quien puede ver el pool). "Todos" muestra
-            el universo para descubrir y autoasignarse; combina con el filtro de Área. */}
-        {verPool ? (
-          <XStack alignItems="center" gap="$2">
-            <Text fontSize="$2" color="$textMuted" fontWeight="700">Ver:</Text>
-            <EstadoChip label="Míos" active={scope === 'mias'} color={ACCENT} onPress={() => setScope('mias')} />
-            <EstadoChip label="Todos" active={scope === 'todos'} color={ACCENT} onPress={() => setScope('todos')} />
-            <View flex={1} />
-            {countNode}
-          </XStack>
-        ) : (
-          <XStack justifyContent="flex-end">{countNode}</XStack>
-        )}
+          )}
+          <View flex={1} />
+          {countNode}
+        </XStack>
 
         {/* Buscador */}
         <XStack
