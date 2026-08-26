@@ -244,23 +244,26 @@ export default function MantenimientoDashboardScreen() {
         <RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />
       }
     >
-      <YStack padding="$4" gap="$3" opacity={refetching ? 0.45 : 1}>
-        {/* ── Encabezado ── */}
+      <YStack padding="$4" paddingTop="$3" gap="$2" opacity={refetching ? 0.45 : 1}>
+        {/* ── Encabezado ──
+            SIN titulo propio: la barra de arriba ya dice "Mantenimiento" y repetirlo
+            costaba un renglon completo de una pantalla de telefono. Tampoco repite el
+            periodo —esta en el navegador de abajo— ni las prioridades, que estan en
+            sus chips. Queda lo unico que no se ve en otra parte: cuantos registros.
+            El aviso del periodo en curso se dice en UN renglon: la version larga
+            ocupaba dos y decia lo mismo. */}
         <YStack>
-          <Text fontSize={18} fontWeight="800" color="$text">
-            🔧 Dashboard de Mantenimiento
-          </Text>
-          <Text fontSize={12} color="$text">
-            📅 {periodo.etiqueta} · <Text fontWeight="700">{registros.length}</Text> registros
+          <Text fontSize={13} color="$text">
+            <Text fontWeight="800">{registros.length}</Text> registros
             {prioridades.length > 0 && prioridades.length < PRIORIDADES.length
               ? ` · ${prioridades.join(' + ')}`
               : ' · todas las prioridades'}
           </Text>
           {enCurso && (
-            <Text fontSize={11} color={AMBAR} marginTop={2} lineHeight={15}>
-              Período en curso
-              {enCurso.totales > 1 ? `: ${enCurso.corridos} de ${enCurso.totales} días` : ''} — los %
-              comparan contra el período anterior completo, así que todavía no son comparables.
+            <Text fontSize={11} color={AMBAR} marginTop={1} lineHeight={14}>
+              {enCurso.totales > 1
+                ? `En curso: ${enCurso.corridos} de ${enCurso.totales} días, los % aún no comparan.`
+                : 'Período en curso: los % aún no comparan.'}
             </Text>
           )}
         </YStack>
@@ -307,7 +310,7 @@ export default function MantenimientoDashboardScreen() {
         <XStack backgroundColor="$backgroundHover" borderRadius="$4" padding={3} gap={3}>
           {(['Todos', 'MAQUINA', 'AREA'] as const).map(t => {
             const on = tipoDest === t
-            const label = t === 'Todos' ? 'Todos' : t === 'MAQUINA' ? '🛠 Máquina' : '📍 Área'
+            const label = t === 'Todos' ? 'Todos' : t === 'MAQUINA' ? 'Máquina' : 'Área'
             return (
               <View
                 key={t}
@@ -316,7 +319,7 @@ export default function MantenimientoDashboardScreen() {
                 pressStyle={{ opacity: 0.85 }}
                 backgroundColor={on ? ACCENT : 'transparent'}
                 borderRadius="$3"
-                height={34}
+                height={30}
                 alignItems="center"
                 justifyContent="center"
               >
