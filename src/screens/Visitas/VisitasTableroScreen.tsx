@@ -12,10 +12,10 @@ import { visitasService } from '../../api/modules/visitas/visitas.service'
 import { IAgenda, IVisitaAcceso } from '../../api/modules/visitas/visitas.types'
 import { handleError } from '../../utils/errorHandler'
 import {
-  adentroPorEmpresa, agruparPorDia, claveDia, cuandoAbre, diaDeFila, estadoInfo,
-  estanAdentro, esHoy, etiquetaDia, etiquetaDiaLarga, fmtDuracionMin, fmtHora,
-  fmtVentana, horarioDelCatalogo, inicialDia, listaPersonas, lunesDe, nombreO,
-  numeroDia, proximas, quienVisita, rangoSemana, resumenEstado, semanaDe,
+  agruparPorDia, claveDia, cuandoAbre, deEmpresa, diaDeFila, empresasParaFiltrar,
+  estadoInfo, estanAdentro, esHoy, etiquetaDia, etiquetaDiaLarga, fmtDuracionMin,
+  fmtHora, fmtVentana, horarioDelCatalogo, inicialDia, listaPersonas, lunesDe,
+  nombreO, numeroDia, proximas, quienVisita, rangoSemana, resumenEstado, semanaDe,
 } from './agenda'
 
 // Tablero de Visitas en la app.
@@ -53,6 +53,10 @@ export default function VisitasTableroScreen() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [verTodasAdentro, setVerTodasAdentro] = useState(false)
+  // Filtro por empresa. Se aplica a TODO el tablero —«ahora mismo», «por llegar»
+  // y la semana— y no solo a la lista de adentro: tocar «Chamer» y que el
+  // calendario siguiera mostrando las de Intermoda sería peor que no filtrar.
+  const [empresaSel, setEmpresaSel] = useState<string | null>(null)
 
   // Detalle: la fila que se tocó y los movimientos de su pase.
   const [sel, setSel] = useState<IAgenda | null>(null)
@@ -145,11 +149,21 @@ export default function VisitasTableroScreen() {
     return accesos.filter(a => (a.AccessDate ?? '').slice(0, 10) === diaDeFila(sel))
   }, [accesos, sel])
 
-  const adentro = useMemo(() => estanAdentro(filasAhora), [filasAhora])
-  const porEmpresa = useMemo(() => adentroPorEmpresa(filasAhora), [filasAhora])
+  // Los chips salen de los datos SIN filtrar: si se calcularan sobre lo ya
+  // filtrado, al elegir una empresa desaparecería la otra y no habría cómo
+  // volver ni cómo cambiar.
+  const empresas = useMemo(
+    () => empresasParaFiltrar(filasAhora, filasSemana),
+    [filasAhora, filasSemana]
+  )
+
+  const ahora = useMemo(() => deEmpresa(filasAhora, empresaSel), [filasAhora, empresaSel])
+  const semana = useMemo(() => deEmpresa(filasSemana, empresaSel), [filasSemana, empresaSel])
+
+  const adentro = useMemo(() => estanAdentro(ahora), [ahora])
   const porLlegar = useMemo(
-    () => proximas(filasAhora.filter(f => (f.Dia ?? '').slice(0, 10) === hoy)),
-    [filasAhora, hoy]
+    () => proximas(ahora.filter(f => (f.Dia ?? '').slice(0, 10) === hoy)),
+    [ahora, hoy]
   )
   // Las tres cifras cuentan PERSONAS, no pases: la pregunta del guardia es
   // «cuánta gente hay», y un pase puede traer cinco. Las listas de abajo sí van
@@ -159,7 +173,7 @@ export default function VisitasTableroScreen() {
   const personasVencidas = personas(adentro.filter(f => f.Estado === 'Vencida'))
   const personasPorLlegar = personas(porLlegar)
 
-  const porDia = useMemo(() => agruparPorDia(filasSemana), [filasSemana])
+  const porDia = useMemo(() => agruparPorDia(semana), [semana])
   const delDia = porDia[diaSel] ?? []
 
   const moverSemana = (delta: number) => {
@@ -222,42 +236,84 @@ export default function VisitasTableroScreen() {
                   <Cifra n={personasPorLlegar} etiqueta="por llegar" color={estadoInfo('Programada', isDark).color} />
                 </XStack>
 
-                {/* Por empresa: la pregunta es «cuánta gente de quién hay
-                    adentro», así que se cuentan PERSONAS y no pases. */}
-                {porEmpresa.length > 0 && (
+                {/* Por empresa: el número cuenta PERSONAS adentro, que es la
+                    pregunta («cuánta gente de quién hay adentro»).
+                    Tocar una filtra TODO el tablero; tocar la misma otra vez
+                    quita el filtro. Con una sola empresa no se puede tocar: un
+                    filtro que no cambia nada solo confunde. */}
+                {empresas.length > 0 && (
                   <XStack flexWrap="wrap" gap="$2" marginTop="$1">
-                    {porEmpresa.map(e => (
+                    {empresas.map(e => {
+                      const sel = empresaSel === e.code
+                      const filtrable = empresas.length > 1
+                      return (
+                        <XStack
+                          key={e.code}
+                          alignItems="center"
+                          gap="$1.5"
+                          paddingVertical="$1.5"
+                          paddingHorizontal="$2.5"
+                          borderRadius={999}
+                          backgroundColor={sel ? '$primary' : '$backgroundSurface'}
+                          {...(filtrable
+                            ? {
+                                onPress: () => setEmpresaSel(sel ? null : e.code),
+                                pressStyle: { opacity: 0.6 },
+                              }
+                            : {})}
+                        >
+                          <Building2 size={12} color={sel ? 'white' : '#94A3B8'} />
+                          <Text fontSize={12} color={sel ? 'white' : '$text'} fontWeight="600">
+                            {e.nombre}
+                          </Text>
+                          <Text fontSize={12} color={sel ? 'white' : '$textMuted'}>
+                            {e.personas}
+                          </Text>
+                          {e.vencidas > 0 && (
+                            <View
+                              width={6}
+                              height={6}
+                              borderRadius={3}
+                              backgroundColor={sel ? 'white' : estadoInfo('Vencida', isDark).color}
+                            />
+                          )}
+                        </XStack>
+                      )
+                    })}
+
+                    {/* Salida explícita del filtro. La pastilla marcada ya se
+                        puede volver a tocar, pero eso hay que adivinarlo. */}
+                    {empresaSel !== null && (
                       <XStack
-                        key={e.code}
                         alignItems="center"
                         gap="$1.5"
                         paddingVertical="$1.5"
                         paddingHorizontal="$2.5"
                         borderRadius={999}
-                        backgroundColor="$backgroundSurface"
+                        borderWidth={1}
+                        borderColor="$primary"
+                        onPress={() => setEmpresaSel(null)}
+                        pressStyle={{ opacity: 0.6 }}
                       >
-                        <Building2 size={12} color="#94A3B8" />
-                        <Text fontSize={12} color="$text" fontWeight="600">
-                          {e.nombre}
+                        <X size={12} color="#94A3B8" />
+                        <Text fontSize={12} color="$primary" fontWeight="700">
+                          Ver todas
                         </Text>
-                        <Text fontSize={12} color="$textMuted">
-                          {e.personas}
-                        </Text>
-                        {e.vencidas > 0 && (
-                          <View
-                            width={6}
-                            height={6}
-                            borderRadius={3}
-                            backgroundColor={estadoInfo('Vencida', isDark).color}
-                          />
-                        )}
                       </XStack>
-                    ))}
+                    )}
                   </XStack>
                 )}
 
                 {adentro.length === 0 ? (
-                  <Vacio texto="Nadie adentro en este momento" />
+                  // Con filtro puesto, «Nadie adentro» a secas se lee como que
+                  // la planta está vacía, y puede haber gente de la otra empresa.
+                  <Vacio
+                    texto={
+                      empresaSel
+                        ? `Nadie de ${empresas.find(e => e.code === empresaSel)?.nombre ?? 'esa empresa'} adentro en este momento`
+                        : 'Nadie adentro en este momento'
+                    }
+                  />
                 ) : (
                   <YStack gap="$2" marginTop="$1">
                     {(verTodasAdentro ? adentro : adentro.slice(0, TOPE_ADENTRO)).map(f => (

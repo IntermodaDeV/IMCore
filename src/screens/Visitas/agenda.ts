@@ -73,10 +73,14 @@ export type ResumenEmpresa = {
   vencidas: number
 }
 
+/** Clave de empresa. Se agrupa por CÓDIGO y no por nombre: dos empresas podrían
+ *  llamarse parecido y el código es la llave. */
+export const codigoEmpresa = (f: IAgenda) => f.EmpresaCode ?? '—'
+
 export const adentroPorEmpresa = (filas: IAgenda[]): ResumenEmpresa[] => {
   const mapa = new Map<string, ResumenEmpresa>()
   for (const f of estanAdentro(filas)) {
-    const code = f.EmpresaCode ?? '—'
+    const code = codigoEmpresa(f)
     const acc = mapa.get(code) ?? {
       code,
       nombre: f.Empresa ?? 'Sin empresa',
@@ -91,6 +95,42 @@ export const adentroPorEmpresa = (filas: IAgenda[]): ResumenEmpresa[] => {
   }
   return [...mapa.values()].sort((a, b) => b.personas - a.personas)
 }
+
+/** Las empresas que se pueden tocar para filtrar.
+ *
+ *  El número sigue siendo «cuánta gente hay adentro», que es el dato que
+ *  interesa de un vistazo, pero la LISTA sale de todo lo que hay en pantalla
+ *  (ahora + la semana), no solo de quien está adentro. Si saliera solo de los
+ *  que están adentro, una empresa sin nadie en planta no tendría chip y no
+ *  habría forma de filtrar por ella para ver lo que tiene programado — que es
+ *  justo cuando uno querría mirarla. Esas salen con 0. */
+export const empresasParaFiltrar = (
+  filasAhora: IAgenda[],
+  filasSemana: IAgenda[]
+): ResumenEmpresa[] => {
+  const dentro = new Map(adentroPorEmpresa(filasAhora).map(e => [e.code, e]))
+  const mapa = new Map<string, ResumenEmpresa>()
+
+  for (const f of [...filasAhora, ...filasSemana]) {
+    const code = codigoEmpresa(f)
+    if (mapa.has(code)) continue
+    mapa.set(code, dentro.get(code) ?? {
+      code,
+      nombre: f.Empresa ?? 'Sin empresa',
+      pases: 0,
+      personas: 0,
+      vencidas: 0,
+    })
+  }
+
+  return [...mapa.values()].sort(
+    (a, b) => b.personas - a.personas || a.nombre.localeCompare(b.nombre)
+  )
+}
+
+/** Deja solo las filas de una empresa. Con `code` nulo no filtra nada. */
+export const deEmpresa = (filas: IAgenda[], code: string | null) =>
+  code == null ? filas : filas.filter(f => codigoEmpresa(f) === code)
 
 // ── Días ───────────────────────────────────────────────────────────────────
 
