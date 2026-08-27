@@ -88,6 +88,12 @@ export default function VisitasTableroScreen() {
         ])
         if (rSemana.Success) setFilasSemana(rSemana.Data ?? [])
         if (rAhora.Success) setFilasAhora(rAhora.Data ?? [])
+        // Un fallo del servidor sin este aviso se ve igual que un día sin
+        // visitas, y el tablero pasa de «no hay nadie» a mentir.
+        if (!rSemana.Success || !rAhora.Success) {
+          const msg = rSemana.ErrorMessage || rAhora.ErrorMessage || 'No se pudo cargar el tablero'
+          showToast('error', 'Error', msg, 5000, 'bottom')
+        }
       } catch (err) {
         showToast('error', 'Error', handleError(err).message, 4000, 'bottom')
       }

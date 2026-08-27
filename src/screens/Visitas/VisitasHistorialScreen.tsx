@@ -114,6 +114,10 @@ export default function VisitasHistorialScreen() {
     try {
       const resp = await visitasService.getHistorial(user?.Code ?? '')
       if (resp.Success) setData(resp.Data ?? [])
+      // Sin este else, un fallo del servidor dejaba la lista vacía y se leía
+      // «Aún no hay pases generados»: idéntico a no tener nada. Así estuvo roto
+      // el Historial sin que nadie pudiera saber por qué.
+      else showToast('error', 'Error', resp.ErrorMessage || 'No se pudo cargar el historial', 5000, 'bottom')
     } catch (err) {
       showToast('error', 'Error', handleError(err).message, 4000, 'bottom')
     }
