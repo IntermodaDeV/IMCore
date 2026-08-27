@@ -221,10 +221,18 @@ export interface IVisitaAcceso {
   Id: number
   Visita_Id: number
   AccessDate: string // YYYY-MM-DD
+  /** A qué ventana pertenece. Un día puede tener varias (horario de mañana y
+   *  tarde) y por fecha no se pueden separar. */
+  VisitaDia_Id?: number | null
   EntradaAt: string
   SalidaAt?: string | null
   EntradaBy?: string | null
   SalidaBy?: string | null
+  /** Los mismos, ya traducidos a nombre por el servidor ('SISTEMA' → «Sistema»;
+   *  un usuario borrado cae de vuelta al Code). Opcionales: una API vieja no
+   *  los manda, y la pantalla tiene que seguir mostrando algo. */
+  EntradaByNombre?: string | null
+  SalidaByNombre?: string | null
   // Ventana que autorizó la entrada
   VentanaInicio?: string | null
   VentanaFin?: string | null
@@ -294,5 +302,7 @@ export interface IAgenda {
   IdRespaldado: boolean
 
   Create_By?: string
+  /** Nombre de quien generó el pase; cae al Code si no se resuelve. */
+  CreadoPor?: string | null
   Creation_Date?: string
 }

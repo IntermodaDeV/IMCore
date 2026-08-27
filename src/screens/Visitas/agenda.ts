@@ -277,3 +277,26 @@ export const listaPersonas = (f: IAgenda): string[] =>
     .split(',')
     .map(s => s.trim())
     .filter(Boolean)
+
+/** El nombre del HORARIO del catálogo con el que se generó el pase, o null si
+ *  no se usó ninguno.
+ *
+ *  Ventana y Horario NO son lo mismo y confundirlos deja la pantalla diciendo
+ *  disparates: la **ventana** son las horas concretas de ESTE día —el snapshot
+ *  que portería hace cumplir— y el **horario** es la plantilla reutilizable del
+ *  catálogo de la que salieron. Un pase puede no tener horario y aun así tener
+ *  ventana: las horas se fijaron al generarlo.
+ *
+ *  El bug que esto arregla: se pintaba `Horario ?? 'Día completo'`, así que un
+ *  pase sin horario de catálogo salía como «Día completo» aunque su ventana
+ *  fuera de 06:55 a 10:55. Cuando no hay horario no se muestra la fila: la
+ *  ventana ya lo dice todo. */
+export const horarioDelCatalogo = (f: IAgenda): string | null => {
+  const n = (f.Horario ?? '').trim()
+  return n === '' ? null : n
+}
+
+/** Nombre de una persona a partir de lo que manda el servidor, cayendo al Code.
+ *  El Code nunca es lo que se quiere mostrar, pero es mejor que un vacío. */
+export const nombreO = (nombre?: string | null, code?: string | null): string =>
+  (nombre ?? '').trim() || (code ?? '').trim() || '—'

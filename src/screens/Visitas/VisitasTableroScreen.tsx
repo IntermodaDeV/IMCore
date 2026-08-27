@@ -14,8 +14,8 @@ import { handleError } from '../../utils/errorHandler'
 import {
   adentroPorEmpresa, agruparPorDia, claveDia, cuandoAbre, diaDeFila, estadoInfo,
   estanAdentro, esHoy, etiquetaDia, etiquetaDiaLarga, fmtDuracionMin, fmtHora,
-  fmtVentana, inicialDia, listaPersonas, lunesDe, numeroDia, proximas, quienVisita,
-  rangoSemana, resumenEstado, semanaDe,
+  fmtVentana, horarioDelCatalogo, inicialDia, listaPersonas, lunesDe, nombreO,
+  numeroDia, proximas, quienVisita, rangoSemana, resumenEstado, semanaDe,
 } from './agenda'
 
 // Tablero de Visitas en la app.
@@ -123,13 +123,21 @@ export default function VisitasTableroScreen() {
     setCargandoAccesos(false)
   }
 
-  // El endpoint devuelve los movimientos de TODO el pase; el detalle es de un
-  // día. En un recurrente de lunes a viernes, no filtrar mostraría las entradas
-  // de los otros cuatro días debajo de la ventana de este.
-  const accesosDelDia = useMemo(
-    () => (sel ? accesos.filter(a => (a.AccessDate ?? '').slice(0, 10) === diaDeFila(sel)) : []),
-    [accesos, sel]
-  )
+  // El endpoint devuelve los movimientos de TODO el pase; el detalle es de UNA
+  // ventana. En un recurrente de lunes a viernes, no filtrar mostraría las
+  // entradas de los otros cuatro días debajo de la ventana de este.
+  //
+  // Se filtra por VisitaDia_Id y no por fecha porque un día puede tener VARIAS
+  // ventanas (el horario de mañana y tarde): por fecha, la ventana de la mañana
+  // mostraría también la entrada de la tarde y no cuadraría con el tiempo
+  // adentro de arriba, que es el de ESTA ventana. La fecha queda de respaldo
+  // para los movimientos viejos, anteriores a los horarios, que no la tienen.
+  const accesosDeLaVentana = useMemo(() => {
+    if (!sel) return []
+    const porVentana = accesos.filter(a => a.VisitaDia_Id === sel.VisitaDia_Id)
+    if (porVentana.length > 0) return porVentana
+    return accesos.filter(a => (a.AccessDate ?? '').slice(0, 10) === diaDeFila(sel))
+  }, [accesos, sel])
 
   const adentro = useMemo(() => estanAdentro(filasAhora), [filasAhora])
   const porEmpresa = useMemo(() => adentroPorEmpresa(filasAhora), [filasAhora])
@@ -476,8 +484,16 @@ export default function VisitasTableroScreen() {
                         }
                       />
                       <Dato etiqueta="Día" valor={etiquetaDiaLarga(diaDeFila(sel))} />
-                      <Dato etiqueta="Ventana" valor={fmtVentana(sel.VentanaInicio, sel.VentanaFin)} />
-                      <Dato etiqueta="Horario" valor={sel.Horario ?? 'Día completo'} />
+                      {/* La VENTANA son las horas concretas de este día, que es
+                          lo que portería hace cumplir. El HORARIO es la
+                          plantilla del catálogo de la que salieron, y solo se
+                          muestra si de verdad se usó una: antes se pintaba
+                          «Día completo» cuando no había ninguna, y contradecía
+                          a la ventana de arriba. */}
+                      <Dato etiqueta="Puede entrar" valor={fmtVentana(sel.VentanaInicio, sel.VentanaFin)} />
+                      {!!horarioDelCatalogo(sel) && (
+                        <Dato etiqueta="Horario" valor={horarioDelCatalogo(sel) as string} />
+                      )}
                     </YStack>
 
                     {/* Documento: lo que le toca vigilar a portería. Si el pase
@@ -512,21 +528,21 @@ export default function VisitasTableroScreen() {
                       </XStack>
                     )}
 
-                    {/* Movimientos del DÍA (ver el filtro en accesosDelDia) */}
+                    {/* Movimientos del DÍA (ver el filtro en accesosDeLaVentana) */}
                     <YStack gap="$2">
                       <XStack alignItems="center" gap="$2">
                         <CalendarDays size={15} color="#94A3B8" />
                         <Text fontSize={13} fontWeight="800" color="$text">
-                          Entradas y salidas de este día
+                          Entradas y salidas
                         </Text>
                       </XStack>
 
                       {cargandoAccesos ? (
                         <Spinner color="$primary" />
-                      ) : accesosDelDia.length === 0 ? (
+                      ) : accesosDeLaVentana.length === 0 ? (
                         <Text fontSize={12} color="$textMuted">Todavía sin movimientos.</Text>
                       ) : (
-                        accesosDelDia.map(a => {
+                        accesosDeLaVentana.map(a => {
                           const exceso = a.MinutosExceso ?? 0
                           return (
                             <YStack
@@ -589,10 +605,17 @@ export default function VisitasTableroScreen() {
                                       </Text>
                                     </XStack>
                                   )}
+                                  {/* Nombre de persona, no el código de usuario:
+                                      un guardia no tiene por qué traducir
+                                      'rmartinez'. El servidor lo resuelve; si
+                                      la API todavía es la vieja y no manda el
+                                      nombre, cae al código. */}
                                   {!!a.EntradaBy && (
-                                    <Text fontSize={10} color="$textMuted">
-                                      registró {a.EntradaBy}
-                                      {a.SalidaBy && a.SalidaBy !== a.EntradaBy ? ` / ${a.SalidaBy}` : ''}
+                                    <Text fontSize={10} color="$textMuted" flexShrink={1}>
+                                      registró {nombreO(a.EntradaByNombre, a.EntradaBy)}
+                                      {a.SalidaBy && a.SalidaBy !== a.EntradaBy
+                                        ? ` / salida ${nombreO(a.SalidaByNombre, a.SalidaBy)}`
+                                        : ''}
                                     </Text>
                                   )}
                                 </XStack>
@@ -605,7 +628,7 @@ export default function VisitasTableroScreen() {
 
                     {!!sel.Create_By && (
                       <Text fontSize={11} color="$textMuted">
-                        Pase generado por {sel.Create_By}
+                        Pase generado por {nombreO(sel.CreadoPor, sel.Create_By)}
                         {sel.Creation_Date ? ` · ${(sel.Creation_Date ?? '').slice(8, 10)}/${(sel.Creation_Date ?? '').slice(5, 7)}/${(sel.Creation_Date ?? '').slice(0, 4)}` : ''}
                       </Text>
                     )}
