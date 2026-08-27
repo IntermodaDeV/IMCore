@@ -1,20 +1,21 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { RefreshControl } from 'react-native'
+import { Modal, RefreshControl } from 'react-native'
 import { YStack, XStack, Text, View, ScrollView, Spinner, useThemeName } from 'tamagui'
 import { useFocusEffect } from '@react-navigation/native'
-import { ChevronLeft, ChevronRight, DoorOpen, CalendarDays, Building2, AlarmClockOff } from 'lucide-react-native'
+import { ChevronLeft, ChevronRight, DoorOpen, CalendarDays, Building2, AlarmClockOff, X, LogIn, LogOut, Timer, Bot, Users, IdCard, Repeat } from 'lucide-react-native'
 import Page from '../../components/commons/Page'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
 import { visitasService } from '../../api/modules/visitas/visitas.service'
-import { IAgenda } from '../../api/modules/visitas/visitas.types'
+import { IAgenda, IVisitaAcceso } from '../../api/modules/visitas/visitas.types'
 import { handleError } from '../../utils/errorHandler'
 import {
-  adentroPorEmpresa, agruparPorDia, claveDia, cuandoAbre, estadoInfo, estanAdentro,
-  esHoy, etiquetaDia, fmtDuracionMin, fmtHora, fmtVentana, inicialDia, lunesDe,
-  numeroDia, proximas, quienVisita, rangoSemana, semanaDe,
+  adentroPorEmpresa, agruparPorDia, claveDia, cuandoAbre, diaDeFila, estadoInfo,
+  estanAdentro, esHoy, etiquetaDia, etiquetaDiaLarga, fmtDuracionMin, fmtHora,
+  fmtVentana, inicialDia, listaPersonas, lunesDe, numeroDia, proximas, quienVisita,
+  rangoSemana, resumenEstado, semanaDe,
 } from './agenda'
 
 // Tablero de Visitas en la app.
@@ -52,6 +53,11 @@ export default function VisitasTableroScreen() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [verTodasAdentro, setVerTodasAdentro] = useState(false)
+
+  // Detalle: la fila que se tocó y los movimientos de su pase.
+  const [sel, setSel] = useState<IAgenda | null>(null)
+  const [accesos, setAccesos] = useState<IVisitaAcceso[]>([])
+  const [cargandoAccesos, setCargandoAccesos] = useState(false)
 
   const dias = useMemo(() => semanaDe(lunes), [lunes])
 
@@ -102,6 +108,27 @@ export default function VisitasTableroScreen() {
       primera.current = false
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [load])
+  )
+
+  const abrir = async (f: IAgenda) => {
+    setSel(f)
+    setAccesos([])
+    setCargandoAccesos(true)
+    try {
+      const r = await visitasService.getAccesos(f.Visita_Id)
+      if (r.Success) setAccesos(r.Data ?? [])
+    } catch (err) {
+      showToast('error', 'Error', handleError(err).message, 4000, 'bottom')
+    }
+    setCargandoAccesos(false)
+  }
+
+  // El endpoint devuelve los movimientos de TODO el pase; el detalle es de un
+  // día. En un recurrente de lunes a viernes, no filtrar mostraría las entradas
+  // de los otros cuatro días debajo de la ventana de este.
+  const accesosDelDia = useMemo(
+    () => (sel ? accesos.filter(a => (a.AccessDate ?? '').slice(0, 10) === diaDeFila(sel)) : []),
+    [accesos, sel]
   )
 
   const adentro = useMemo(() => estanAdentro(filasAhora), [filasAhora])
@@ -220,7 +247,7 @@ export default function VisitasTableroScreen() {
                 ) : (
                   <YStack gap="$2" marginTop="$1">
                     {(verTodasAdentro ? adentro : adentro.slice(0, TOPE_ADENTRO)).map(f => (
-                      <FilaAdentro key={f.VisitaDia_Id} f={f} isDark={isDark} />
+                      <FilaAdentro key={f.VisitaDia_Id} f={f} isDark={isDark} onPress={() => abrir(f)} />
                     ))}
                     {adentro.length > TOPE_ADENTRO && (
                       <Text
@@ -254,7 +281,7 @@ export default function VisitasTableroScreen() {
                   </XStack>
                   <YStack gap="$2" marginTop="$1">
                     {porLlegar.slice(0, TOPE_PROXIMAS).map(f => (
-                      <FilaProxima key={f.VisitaDia_Id} f={f} isDark={isDark} />
+                      <FilaProxima key={f.VisitaDia_Id} f={f} isDark={isDark} onPress={() => abrir(f)} />
                     ))}
                     {porLlegar.length > TOPE_PROXIMAS && (
                       <Text fontSize={11} color="$textMuted">
@@ -356,7 +383,7 @@ export default function VisitasTableroScreen() {
                 ) : (
                   <YStack gap="$2">
                     {delDia.map(f => (
-                      <FilaDia key={f.VisitaDia_Id} f={f} isDark={isDark} />
+                      <FilaDia key={f.VisitaDia_Id} f={f} isDark={isDark} onPress={() => abrir(f)} />
                     ))}
                   </YStack>
                 )}
@@ -365,7 +392,244 @@ export default function VisitasTableroScreen() {
           </ScrollView>
         )}
       </YStack>
+
+      {/* ─────────────── DETALLE ───────────────
+          Se abre desde cualquiera de las tres listas. Lo que trae de nuevo
+          respecto a la fila: los acompañantes completos (en la fila se cortan),
+          el estado explicado en una frase con sus números, y los movimientos
+          reales del día. */}
+      <Modal visible={!!sel} transparent animationType="slide" onRequestClose={() => setSel(null)}>
+        <View flex={1} backgroundColor="rgba(0,0,0,0.5)" justifyContent="flex-end">
+          <YStack
+            backgroundColor="$backgroundPage"
+            borderTopLeftRadius="$6"
+            borderTopRightRadius="$6"
+            padding="$4"
+            gap="$3"
+            maxHeight="92%"
+          >
+            {sel && (
+              <>
+                <XStack alignItems="center" gap="$2">
+                  <View
+                    paddingHorizontal="$2.5"
+                    paddingVertical="$1"
+                    borderRadius={999}
+                    backgroundColor={estadoInfo(sel.Estado, isDark).color}
+                  >
+                    <Text fontSize={11} fontWeight="800" color="white">
+                      {estadoInfo(sel.Estado, isDark).label.toUpperCase()}
+                    </Text>
+                  </View>
+                  <View flex={1} />
+                  <View onPress={() => setSel(null)} pressStyle={{ opacity: 0.6 }} padding="$1">
+                    <X size={22} color="#94A3B8" />
+                  </View>
+                </XStack>
+
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <YStack gap="$3" paddingBottom="$4">
+
+                    {/* La frase que explica el estado con sus números. Es lo
+                        que se viene a leer: el badge dice «Vencida», esto dice
+                        desde cuándo y cuánto lleva de más. */}
+                    <View
+                      borderRadius="$3"
+                      padding="$3"
+                      borderLeftWidth={3}
+                      borderLeftColor={estadoInfo(sel.Estado, isDark).color}
+                      backgroundColor="$backgroundElevated"
+                    >
+                      <Text fontSize={13} color="$text" lineHeight={19}>
+                        {resumenEstado(sel)}
+                      </Text>
+                    </View>
+
+                    {/* Quiénes vienen. En la fila se cortan; acá van completos. */}
+                    <YStack gap="$2">
+                      <XStack alignItems="center" gap="$2">
+                        <Users size={15} color="#94A3B8" />
+                        <Text fontSize={13} fontWeight="800" color="$text">
+                          {sel.PersonasCount === 1 ? 'Visitante' : `Visitantes (${sel.PersonasCount})`}
+                        </Text>
+                      </XStack>
+                      {listaPersonas(sel).length === 0 ? (
+                        <Text fontSize={12} color="$textMuted">Sin nombres registrados</Text>
+                      ) : (
+                        listaPersonas(sel).map((n, i) => (
+                          <Text key={`${n}-${i}`} fontSize={13} color="$text">
+                            {n}
+                          </Text>
+                        ))
+                      )}
+                    </YStack>
+
+                    <YStack gap="$1.5">
+                      <Dato etiqueta="Empresa" valor={sel.Empresa ?? '—'} />
+                      <Dato etiqueta="Visita a" valor={sel.VisitTo} />
+                      <Dato
+                        etiqueta="Motivo"
+                        valor={
+                          sel.Motivo === 'Otros' && sel.VisitReasonOther
+                            ? sel.VisitReasonOther
+                            : sel.Motivo
+                        }
+                      />
+                      <Dato etiqueta="Día" valor={etiquetaDiaLarga(diaDeFila(sel))} />
+                      <Dato etiqueta="Ventana" valor={fmtVentana(sel.VentanaInicio, sel.VentanaFin)} />
+                      <Dato etiqueta="Horario" valor={sel.Horario ?? 'Día completo'} />
+                    </YStack>
+
+                    {/* Documento: lo que le toca vigilar a portería. Si el pase
+                        lo exige y no hay respaldo, se dice en rojo — es el dato
+                        que después nadie puede reconstruir. */}
+                    {sel.RequiereId && (
+                      <XStack alignItems="center" gap="$2">
+                        <IdCard
+                          size={14}
+                          color={sel.IdRespaldado ? '#94A3B8' : estadoInfo('Vencida', isDark).color}
+                        />
+                        <Text
+                          fontSize={12}
+                          fontWeight={sel.IdRespaldado ? '400' : '800'}
+                          color={sel.IdRespaldado ? '$textMuted' : estadoInfo('Vencida', isDark).color}
+                          flexShrink={1}
+                        >
+                          {sel.IdRespaldado
+                            ? 'Documento respaldado'
+                            : 'Pide documento y no hay ninguno respaldado'}
+                          {sel.IdCadaEntrada ? ' · se pide en cada entrada' : ''}
+                        </Text>
+                      </XStack>
+                    )}
+
+                    {sel.IsRecurrent && (
+                      <XStack alignItems="center" gap="$2">
+                        <Repeat size={14} color="#94A3B8" />
+                        <Text fontSize={12} color="$textMuted" flexShrink={1}>
+                          Pase recurrente · este es uno de sus días
+                        </Text>
+                      </XStack>
+                    )}
+
+                    {/* Movimientos del DÍA (ver el filtro en accesosDelDia) */}
+                    <YStack gap="$2">
+                      <XStack alignItems="center" gap="$2">
+                        <CalendarDays size={15} color="#94A3B8" />
+                        <Text fontSize={13} fontWeight="800" color="$text">
+                          Entradas y salidas de este día
+                        </Text>
+                      </XStack>
+
+                      {cargandoAccesos ? (
+                        <Spinner color="$primary" />
+                      ) : accesosDelDia.length === 0 ? (
+                        <Text fontSize={12} color="$textMuted">Todavía sin movimientos.</Text>
+                      ) : (
+                        accesosDelDia.map(a => {
+                          const exceso = a.MinutosExceso ?? 0
+                          return (
+                            <YStack
+                              key={a.Id}
+                              backgroundColor="$backgroundElevated"
+                              borderRadius="$3"
+                              padding="$2.5"
+                              gap="$1.5"
+                            >
+                              <XStack alignItems="center" gap="$3">
+                                <XStack alignItems="center" gap="$1">
+                                  <LogIn size={13} color="#2E9E5B" />
+                                  <Text fontSize={12} color="#2E9E5B" fontWeight="700">
+                                    {fmtHora(a.EntradaAt)}
+                                  </Text>
+                                </XStack>
+                                <XStack alignItems="center" gap="$1">
+                                  <LogOut size={13} color={a.SalidaAt ? '#2563EB' : '#94A3B8'} />
+                                  <Text
+                                    fontSize={12}
+                                    fontWeight="700"
+                                    color={a.SalidaAt ? '#2563EB' : '#94A3B8'}
+                                  >
+                                    {a.SalidaAt ? fmtHora(a.SalidaAt) : 'sigue adentro'}
+                                  </Text>
+                                </XStack>
+                                <View flex={1} />
+                                {a.MinutosDentro != null && (
+                                  <XStack alignItems="center" gap="$1">
+                                    <Timer size={11} color="#94A3B8" />
+                                    <Text fontSize={11} color="$textMuted">
+                                      {fmtDuracionMin(a.MinutosDentro)}
+                                    </Text>
+                                  </XStack>
+                                )}
+                              </XStack>
+
+                              {(exceso > 0 || a.CierreAuto || !!a.EntradaBy) && (
+                                <XStack alignItems="center" gap="$2" flexWrap="wrap">
+                                  {exceso > 0 && (
+                                    <XStack alignItems="center" gap="$1">
+                                      <AlarmClockOff size={10} color={estadoInfo('ConExceso', isDark).color} />
+                                      <Text
+                                        fontSize={10}
+                                        fontWeight="700"
+                                        color={estadoInfo('ConExceso', isDark).color}
+                                      >
+                                        +{fmtDuracionMin(exceso)} fuera de horario
+                                      </Text>
+                                    </XStack>
+                                  )}
+                                  {/* Una salida que nadie escaneó no es el mismo
+                                      dato que una escaneada: hay que poder
+                                      distinguirlas. */}
+                                  {a.CierreAuto && (
+                                    <XStack alignItems="center" gap="$1">
+                                      <Bot size={10} color="#64748B" />
+                                      <Text fontSize={10} fontWeight="700" color="#64748B">
+                                        cierre automático
+                                      </Text>
+                                    </XStack>
+                                  )}
+                                  {!!a.EntradaBy && (
+                                    <Text fontSize={10} color="$textMuted">
+                                      registró {a.EntradaBy}
+                                      {a.SalidaBy && a.SalidaBy !== a.EntradaBy ? ` / ${a.SalidaBy}` : ''}
+                                    </Text>
+                                  )}
+                                </XStack>
+                              )}
+                            </YStack>
+                          )
+                        })
+                      )}
+                    </YStack>
+
+                    {!!sel.Create_By && (
+                      <Text fontSize={11} color="$textMuted">
+                        Pase generado por {sel.Create_By}
+                        {sel.Creation_Date ? ` · ${(sel.Creation_Date ?? '').slice(8, 10)}/${(sel.Creation_Date ?? '').slice(5, 7)}/${(sel.Creation_Date ?? '').slice(0, 4)}` : ''}
+                      </Text>
+                    )}
+                  </YStack>
+                </ScrollView>
+              </>
+            )}
+          </YStack>
+        </View>
+      </Modal>
     </Page>
+  )
+}
+
+function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  return (
+    <XStack gap="$2" alignItems="flex-start">
+      <Text fontSize={12} color="$textMuted" width={78}>
+        {etiqueta}
+      </Text>
+      <Text fontSize={12} color="$text" flex={1} fontWeight="600">
+        {valor}
+      </Text>
+    </XStack>
   )
 }
 
@@ -427,11 +691,11 @@ function Vacio({ texto }: { texto: string }) {
 }
 
 /** Quien está adentro: lo que se necesita saber es desde cuándo y si ya se pasó. */
-function FilaAdentro({ f, isDark }: { f: IAgenda; isDark: boolean }) {
+function FilaAdentro({ f, isDark, onPress }: { f: IAgenda; isDark: boolean; onPress: () => void }) {
   const info = estadoInfo(f.Estado, isDark)
   const excedido = f.Estado === 'Vencida'
   return (
-    <XStack alignItems="center" gap="$2.5">
+    <XStack alignItems="center" gap="$2.5" onPress={onPress} pressStyle={{ opacity: 0.55 }}>
       <View width={3} height={30} borderRadius={2} backgroundColor={info.color} />
       <YStack flex={1} minWidth={0} gap={1}>
         <Text fontSize={13} fontWeight="700" color="$text" numberOfLines={1}>
@@ -459,11 +723,11 @@ function FilaAdentro({ f, isDark }: { f: IAgenda; isDark: boolean }) {
 }
 
 /** Por llegar: la distancia importa más que la hora exacta. */
-function FilaProxima({ f, isDark }: { f: IAgenda; isDark: boolean }) {
+function FilaProxima({ f, isDark, onPress }: { f: IAgenda; isDark: boolean; onPress: () => void }) {
   const enVentana = f.MinutosParaIniciar <= 0
   const color = enVentana ? estadoInfo('Vencida', isDark).color : '$textMuted'
   return (
-    <XStack alignItems="center" gap="$2.5">
+    <XStack alignItems="center" gap="$2.5" onPress={onPress} pressStyle={{ opacity: 0.55 }}>
       <View width={3} height={30} borderRadius={2} backgroundColor={estadoInfo('Programada', isDark).color} />
       <YStack flex={1} minWidth={0} gap={1}>
         <Text fontSize={13} fontWeight="700" color="$text" numberOfLines={1}>
@@ -483,10 +747,10 @@ function FilaProxima({ f, isDark }: { f: IAgenda; isDark: boolean }) {
 
 /** Fila del día elegido en la semana: el estado en palabras, que acá sí hace
  *  falta (una lista de días mezcla programadas, finalizadas y no presentadas). */
-function FilaDia({ f, isDark }: { f: IAgenda; isDark: boolean }) {
+function FilaDia({ f, isDark, onPress }: { f: IAgenda; isDark: boolean; onPress: () => void }) {
   const info = estadoInfo(f.Estado, isDark)
   return (
-    <XStack alignItems="center" gap="$2.5">
+    <XStack alignItems="center" gap="$2.5" onPress={onPress} pressStyle={{ opacity: 0.55 }}>
       <View width={3} height={30} borderRadius={2} backgroundColor={info.color} />
       <YStack flex={1} minWidth={0} gap={1}>
         <Text fontSize={13} fontWeight="700" color="$text" numberOfLines={1}>

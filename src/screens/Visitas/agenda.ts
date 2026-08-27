@@ -215,3 +215,65 @@ export const resumenProximas = (filas: IAgenda[]): string => {
 
 /** Nombre a mostrar de una fila: el visitante si se sabe, si no a quién visita. */
 export const quienVisita = (f: IAgenda) => (f.Personas || '').trim() || `Visita a ${f.VisitTo}`
+
+/** Fecha larga: 'jueves 27 de agosto'. Solo para el detalle, donde hay espacio
+ *  y el día de la semana ayuda a ubicarse. */
+const DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+const MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                      'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+export const etiquetaDiaLarga = (clave: string): string => {
+  const [y, m, d] = clave.split('-').map(Number)
+  if (!y || !m || !d) return clave
+  return `${DIAS_LARGOS[new Date(y, m - 1, d).getDay()]} ${d} de ${MESES_LARGOS[m - 1]}`
+}
+
+/** El estado en UNA frase, con los números que ya trae la fila.
+ *
+ *  Es lo que de verdad se viene a leer al abrir el detalle: el badge dice
+ *  «Vencida» y esto dice desde cuándo y cuánto lleva de más. Todos los números
+ *  salen del servidor —ninguno se recalcula acá— por lo mismo de siempre: la
+ *  tolerancia y el reloj tienen que ser los de la validación en portería. */
+export const resumenEstado = (f: IAgenda): string => {
+  const desde = fmtHora(f.PrimeraEntrada)
+  const hasta = fmtHora(f.UltimaSalida)
+
+  switch (f.Estado) {
+    case 'EnPlanta':
+      return `Adentro desde las ${desde} · ${fmtDuracionMin(f.MinutosDentroTotal)}`
+
+    case 'Vencida':
+      return `Entró a las ${desde} y no ha salido. Debió salir a las ${fmtHora(f.VentanaFin)}`
+        + `, lleva ${fmtDuracionMin(f.MinutosExcesoEnCurso)} de más.`
+
+    case 'Programada':
+      // La que ya abrió y nadie llegó no es «lo que viene»: es lo que hay que
+      // mirar. Por eso se dice distinto y no solo con otro número.
+      if (f.MinutosParaIniciar > 0) return `Su ventana abre ${cuandoAbre(f.MinutosParaIniciar)}.`
+      return f.MinutosParaIniciar < -1
+        ? `Su ventana abrió hace ${fmtDuracionMin(-f.MinutosParaIniciar)} y todavía nadie ha llegado.`
+        : 'Su ventana acaba de abrir y todavía nadie ha llegado.'
+
+    case 'ConExceso':
+      return `Entró a las ${desde} y salió a las ${hasta}`
+        + `, ${fmtDuracionMin(f.MinutosExcesoTotal)} pasado de su horario.`
+
+    case 'Finalizada':
+      return `Entró a las ${desde} y salió a las ${hasta} · ${fmtDuracionMin(f.MinutosDentroTotal)} adentro.`
+
+    case 'NoSePresento':
+      return 'Su ventana cerró y nunca registró entrada.'
+
+    default:
+      return ''
+  }
+}
+
+/** Las personas del pase como lista. El campo viene concatenado con comas desde
+ *  el SP, y en el detalle sí hay espacio para verlas una por una — que es medio
+ *  motivo para abrirlo, porque en la fila se cortan. */
+export const listaPersonas = (f: IAgenda): string[] =>
+  (f.Personas ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
