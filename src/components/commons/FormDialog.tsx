@@ -19,6 +19,13 @@ interface FormDialogProps {
     confirmDisabled?: boolean
     loading?: boolean
     width?: number | string
+    /**
+     * Tope de alto en puntos. Opcional: sin él, el diálogo crece hasta lo que
+     * deje la pantalla (que es lo que quiere un formulario). Un diálogo con
+     * lista larga adentro sí lo necesita, o se estira de borde a borde y deja
+     * de parecer un diálogo. Igual nunca pasa del alto disponible.
+     */
+    maxHeight?: number
 }
 
 /**
@@ -46,12 +53,14 @@ export default function FormDialog({
     confirmDisabled = false,
     loading = false,
     width = '90%',
+    maxHeight,
 }: FormDialogProps) {
     const { inset: keyboardInset, onLayout } = useKeyboardInset()
     const { height: windowHeight } = useWindowDimensions()
 
     // El Portal ya descuenta el teclado, así que el contenido no debe pasar de lo que queda.
-    const maxContentHeight = Math.max(240, windowHeight - keyboardInset - 48)
+    const disponible = Math.max(240, windowHeight - keyboardInset - 48)
+    const maxContentHeight = maxHeight ? Math.min(maxHeight, disponible) : disponible
 
     const handleCancel = () => {
         if (loading) return
@@ -99,12 +108,12 @@ export default function FormDialog({
                     )}
 
                     <YStack padding="$4" flexShrink={1}>
-                        <Dialog.Title fontSize={18} fontWeight="700">
+                        <Dialog.Title fontSize={18} fontWeight="700" color="$text">
                             {title}
                         </Dialog.Title>
 
                         {description ? (
-                            <Dialog.Description fontSize={14} marginBottom="$2">
+                            <Dialog.Description fontSize={14} marginBottom="$2" color="$textMuted">
                                 {description}
                             </Dialog.Description>
                         ) : null}
