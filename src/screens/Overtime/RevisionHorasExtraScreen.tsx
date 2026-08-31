@@ -762,9 +762,17 @@ export default function RevisionHorasExtraScreen() {
           !aprobando
             ? ''
             : aprobando.length === 1
-              ? `Se le reconocerán ${fmtHoras(aprobando[0].Worked_Overtime_Hours)} del marcaje a ` +
-                `${nombreConCodigo(aprobando[0].Employee_Name, aprobando[0].Employee_Code)}, ` +
-                `en lugar de las ${fmtHoras(aprobando[0].Requested_Overtime_Hours)} solicitadas.`
+              // Sin marcaje, aprobar significa reconocer CERO. Decir 'se le
+              // reconocerán — del marcaje' dejaba la consecuencia a la
+              // imaginación, y es la que importa: se le quitan las horas.
+              ? aprobando[0].Worked_Overtime_Hours === null ||
+                aprobando[0].Worked_Overtime_Hours === undefined
+                ? `${nombreConCodigo(aprobando[0].Employee_Name, aprobando[0].Employee_Code)} no marcó, ` +
+                  `así que no se le reconocerá ninguna hora extra: pierde las ` +
+                  `${fmtHoras(aprobando[0].Requested_Overtime_Hours)} solicitadas.`
+                : `Se le reconocerán ${fmtHoras(aprobando[0].Worked_Overtime_Hours)} del marcaje a ` +
+                  `${nombreConCodigo(aprobando[0].Employee_Name, aprobando[0].Employee_Code)}, ` +
+                  `en lugar de las ${fmtHoras(aprobando[0].Requested_Overtime_Hours)} solicitadas.`
               : `A ${aprobando.length} empleados se les reconocerán las horas del MARCAJE: ` +
                 `${fmtHoras(horasDelLote(aprobando, true))} en lugar de las ` +
                 `${fmtHoras(horasDelLote(aprobando, false))} solicitadas.`
