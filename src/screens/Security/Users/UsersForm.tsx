@@ -19,8 +19,20 @@ import { handleError } from '../../../utils/errorHandler'
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useUpdatePageHeader } from '../../../hooks/useUpdatePageHeader'
 import { shadows } from '../../../theme/shadows'
+import EmpleadoPlanillaSection, { AccionEmpleado } from './EmpleadoPlanillaSection'
+import { empleadoPlanillaService } from '../../../api/modules/empleadoPlanilla/empleadoPlanilla.service'
 
 type TabType = 'general' | 'accesos' | 'permisos'
+
+/** Capitaliza "LAURA KARINA" -> "Laura Karina". Planilla lo guarda en mayúsculas. */
+const capitalizarNombre = (texto: string): string =>
+    texto
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(p => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(' ')
 
 export default function UsersForm() {
     const { updateHeader } = useUpdatePageHeader()
@@ -59,6 +71,11 @@ export default function UsersForm() {
     const [loadingToggle, setLoadingToggle] = useState<string | number |  null>(null)
     const [expandedParents, setExpandedParents] = useState<Record<number, boolean>>({})
     const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({})
+    // Vínculo con el empleado de planilla. Es una acción PENDIENTE, no un
+    // cambio inmediato: se aplica al guardar, después de guardar al usuario,
+    // porque el Code puede cambiar en ese mismo guardado y porque cancelar el
+    // formulario tiene que cancelar también esto.
+    const [accionEmpleado, setAccionEmpleado] = useState<AccionEmpleado>(null)
     const [showPassword, setShowPassword] = useState(false)
     const [showConfirmPassword, setShowConfirmPassword] = useState(false)
     const { user } = useAuth()
@@ -168,6 +185,37 @@ export default function UsersForm() {
         setLoading(false)
     }
 
+    /**
+     * Aplica lo que quedó pendiente en la sección de empleado de planilla.
+     *
+     * Devuelve NULL si todo salió bien (incluyendo el caso de que no hubiera
+     * nada que hacer) o el mensaje del problema. No lanza: el usuario ya está
+     * guardado en este punto y una excepción acá se leería como que el guardado
+     * completo falló.
+     */
+    const aplicarVinculoEmpleado = async (codigoUsuario: string): Promise<string | null> => {
+        if (!accionEmpleado || !codigoUsuario) return null
+
+        try {
+            const respuesta = accionEmpleado.tipo === 'vincular'
+                ? await empleadoPlanillaService.vincular({
+                    User_Code: codigoUsuario,
+                    EmployeeCode: accionEmpleado.empleado.Employees_Code ?? '',
+                    CodAlterno: accionEmpleado.empleado.Cod_Alterno,
+                })
+                : await empleadoPlanillaService.desvincular(codigoUsuario)
+
+            if (respuesta?.Success) {
+                setAccionEmpleado(null)
+                return null
+            }
+
+            return respuesta?.ErrorMessage || 'No se pudo guardar el vínculo con el empleado.'
+        } catch (err) {
+            return handleError(err).message
+        }
+    }
+
     const save = handleSubmit(async (data: UsersDTO) => {
         setLoadingSave(true)
 
@@ -203,6 +251,23 @@ export default function UsersForm() {
 
             const response: ExecutionResponse<UsersDTO[]> = await securityService.saveUsers([Info])
                 if (response.Success) {
+                // El vínculo con el empleado va DESPUÉS y con el Code que quedó
+                // guardado: si el administrador le cambió el Code al usuario, el
+                // SP ya arrastró sus códigos externos al nuevo, y vincular con
+                // el viejo crearía filas huérfanas.
+                const errorVinculo = await aplicarVinculoEmpleado(Info.Code as string)
+
+                if (errorVinculo) {
+                    // El usuario SÍ se guardó. Decirlo tal cual, porque un
+                    // "Error al guardar" a secas haría que lo intenten crear de
+                    // nuevo. En una edición se queda en la pantalla para poder
+                    // reintentar; en un alta no, porque volver a guardar
+                    // chocaría con el usuario recién creado.
+                    showToast('error', 'Usuario guardado, vínculo no', errorVinculo, 8000, 'bottom')
+                    if (!isEdit) navigation.goBack()
+                    return
+                }
+
                 showToast('success', 'Éxito', response.SuccessMessage || 'Registro guardado correctamente', 5000, 'bottom')
                 navigation.goBack()
             } else {
@@ -666,6 +731,32 @@ export default function UsersForm() {
                                                 }))}
                                             />
                                         )}
+                                    />
+
+                                    <EmpleadoPlanillaSection
+                                        // En un alta todavía no hay usuario que
+                                        // consultar; la sección arranca en el buscador.
+                                        //
+                                        // Y en una edición se espera a que el Code
+                                        // llegue: al montar todavía está vacío, y
+                                        // preguntar con eso mostraría el buscador un
+                                        // instante antes de la tarjeta del vinculado.
+                                        userCode={isEdit && typeof user_Code === 'string' && user_Code
+                                            ? user_Code
+                                            : undefined}
+                                        accion={accionEmpleado}
+                                        onAccion={setAccionEmpleado}
+                                        onElegir={(emp) => {
+                                            // Solo se llenan los campos vacíos: en una
+                                            // edición, lo que el administrador ya escribió
+                                            // manda sobre lo que diga planilla.
+                                            if (!getValues('Name')?.trim() && emp.PrimerNombre) {
+                                                setValue('Name', capitalizarNombre(emp.PrimerNombre), { shouldValidate: true })
+                                            }
+                                            if (!getValues('LastName')?.trim() && emp.ApePaterno) {
+                                                setValue('LastName', capitalizarNombre(emp.ApePaterno), { shouldValidate: true })
+                                            }
+                                        }}
                                     />
 
                                     <Controller

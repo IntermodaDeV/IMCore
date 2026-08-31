@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { IGenerarVisita, IHistorial, IHorario, IHorarioDetalle, IIdentificacion, IIdentificacionRequest, IIdentificacionResult, IMotivo, IValidarResult, IVentanaPase, IVisitaResult, IVisitaAcceso } from './visitas.types'
+import { IAgenda, IGenerarVisita, IHistorial, IHorario, IHorarioDetalle, IIdentificacion, IIdentificacionRequest, IIdentificacionResult, IMotivo, IValidarResult, IVentanaPase, IVisitaResult, IVisitaAcceso } from './visitas.types'
 
 const schema = 'Visitas'
 
@@ -43,6 +43,17 @@ export const visitasService = {
 
   getAccesos: (visitaId: number) =>
     httpClient.get<ExecutionResponse<IVisitaAcceso[]>>(`${schema}/Accesos?visita_Id=${visitaId}`),
+
+  // Agenda del tablero: una fila por día-ventana en el rango. Sin fechas
+  // devuelve la semana corriente (lunes a domingo) resuelta por el servidor.
+  // Las fechas van como 'YYYY-MM-DD' a propósito: mandar un ISO con zona hace
+  // que el servidor reciba el día anterior desde Honduras.
+  getAgenda: (userCode: string, desde?: string, hasta?: string) => {
+    const q = [`user_Code=${encodeURIComponent(userCode)}`]
+    if (desde) q.push(`desde=${desde}`)
+    if (hasta) q.push(`hasta=${hasta}`)
+    return httpClient.get<ExecutionResponse<IAgenda[]>>(`${schema}/Agenda?${q.join('&')}`)
+  },
 
   // Detalle de un pase por Id (para abrir desde una notificación)
   getVisitaById: (visitaId: number) =>

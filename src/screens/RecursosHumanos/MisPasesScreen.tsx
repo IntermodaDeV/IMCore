@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { RefreshControl } from 'react-native'
-import { YStack, XStack, Text, View, ScrollView, Spinner } from 'tamagui'
-import { DoorOpen, DoorClosed, History } from 'lucide-react-native'
+import { YStack, XStack, Text, View, ScrollView, Spinner, Button } from 'tamagui'
+import { DoorOpen, DoorClosed, History, QrCode, Clock } from 'lucide-react-native'
 import Page from '../../components/commons/Page'
 import { usePasesHeader } from './usePasesHeader'
 import { useAuth } from '../../context/AuthContext'
@@ -9,21 +9,27 @@ import { useShowToast } from '../../utils/useShowToast'
 import { handleError } from '../../utils/errorHandler'
 import { pasesService } from '../../api/modules/pases/pases.service'
 import { IPase } from '../../api/modules/pases/pases.types'
-import { fmtFechaHora } from './paseFormat'
+import PaseQrDialog from './PaseQrDialog'
+import { fmtFechaHora, sinCodigo, textoHoras, textoSecuencia } from './paseFormat'
 
 const ESTADO_COLOR: Record<number, { bg: string; fg: string }> = {
-  1: { bg: 'rgba(245,158,11,0.14)', fg: '#B45309' }, // Pendiente
-  2: { bg: 'rgba(34,197,94,0.14)', fg: '#15803D' },  // Aprobado
+  1: { bg: 'rgba(245,158,11,0.14)', fg: '#B45309' }, // Pendiente del jefe
+  2: { bg: 'rgba(34,197,94,0.14)', fg: '#15803D' },  // Aprobado (las dos firmas)
   3: { bg: 'rgba(239,68,68,0.14)', fg: '#B91C1C' },  // Rechazado
   4: { bg: 'rgba(59,130,246,0.14)', fg: '#1D4ED8' }, // Utilizado
   5: { bg: 'rgba(148,163,184,0.18)', fg: '#64748B' },// Vencido
+  6: { bg: 'rgba(168,85,247,0.14)', fg: '#7E22CE' }, // Pendiente RR. HH.
 }
+
 
 export default function MisPasesScreen() {
   const { user } = useAuth()
   const { showToast } = useShowToast()
 
   const [pases, setPases] = useState<IPase[]>([])
+  // El pase cuyo QR se está mostrando. Solo llegan con Token los propios: el
+  // servidor no lo entrega para los que uno creó a nombre de otra persona.
+  const [qrPase, setQrPase] = useState<IPase | null>(null)
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -46,6 +52,7 @@ export default function MisPasesScreen() {
   useEffect(() => {
     load()
   }, [])
+
 
   return (
     <Page>
@@ -107,9 +114,12 @@ export default function MisPasesScreen() {
                           : <DoorClosed size={18} color="#FF551A" />}
                       </View>
                       <YStack flex={1}>
-                        <Text fontWeight="700" fontSize={14} color="$text">{p.EmpleadoNombre}</Text>
+                        <Text fontWeight="700" fontSize={14} color="$text">
+                          {sinCodigo(p.EmpleadoNombre)}
+                        </Text>
                         <Text fontSize={12} color="$textMuted">
-                          {p.Categoria}{p.FechaPase ? ` · ${p.FechaPase}` : ''}
+                          {p.Categoria || textoSecuencia(p.Tipo)}
+                          {p.FechaPase ? ` · ${p.FechaPase}` : ''}
                         </Text>
                       </YStack>
                       <View
@@ -124,9 +134,28 @@ export default function MisPasesScreen() {
                       </View>
                     </XStack>
 
+                    {/* Las horas previstas: es contra estas que Seguridad
+                        compara la hora real en la puerta. */}
+                    {!!textoHoras(p) && (
+                      <XStack alignItems="center" gap="$1.5" paddingLeft={50}>
+                        <Clock size={12} color="#94A3B8" />
+                        <Text fontSize={12} color="$textMuted">{textoHoras(p)}</Text>
+                      </XStack>
+                    )}
+
                     <YStack gap="$0.5" paddingLeft={50}>
+                      {/* Avance del pase cuando tiene dos movimientos. */}
+                      {(p.MovimientosTotal ?? 1) > 1 && (
+                        <Text fontSize={11} color="$textMuted">
+                          {(p.MovimientosHechos ?? 0) === 0
+                            ? 'Sin registrar todavía'
+                            : (p.MovimientosHechos ?? 0) < (p.MovimientosTotal ?? 1)
+                              ? `Falta ${p.Tipo === 'SE' ? 'el regreso' : 'la salida'}`
+                              : 'Completo'}
+                        </Text>
+                      )}
                       {!!p.AprobadorNombre && (
-                        <Text fontSize={11} color="$textMuted">Aprueba: {p.AprobadorNombre}</Text>
+                        <Text fontSize={11} color="$textMuted">Autoriza: {sinCodigo(p.AprobadorNombre)}</Text>
                       )}
                       {!!p.Observacion && (
                         <Text fontSize={11} color="$textMuted">Obs: {p.Observacion}</Text>
@@ -138,12 +167,40 @@ export default function MisPasesScreen() {
                         <Text fontSize={11} color="$textMuted">Creado: {fmtFechaHora(p.Creation_Date)}</Text>
                       )}
                       {!!p.Aprobacion_Date && (
-                        <Text fontSize={11} color="#15803D">Aprobado: {fmtFechaHora(p.Aprobacion_Date)}</Text>
+                        <Text fontSize={11} color="#15803D">Jefe: {fmtFechaHora(p.Aprobacion_Date)}</Text>
+                      )}
+                      {!!p.RH_Aprobacion_Date && (
+                        <Text fontSize={11} color="#15803D">
+                          RR. HH.: {fmtFechaHora(p.RH_Aprobacion_Date)}
+                        </Text>
                       )}
                       {!!p.RegistradoAt && (
-                        <Text fontSize={11} color="#1D4ED8">Ingreso/registro: {fmtFechaHora(p.RegistradoAt)}</Text>
+                        <Text fontSize={11} color="#1D4ED8">Último registro: {fmtFechaHora(p.RegistradoAt)}</Text>
                       )}
                     </YStack>
+
+                    {/* El QR sirve solo si el pase ya está aprobado y todavía
+                        tiene movimientos por registrar. Es para cuando la
+                        persona no trae el carnet; el token es suyo y no se
+                        comparte. */}
+                    {!!p.Token && p.Estado_Id === 2 && (
+                      <XStack
+                        alignItems="center"
+                        justifyContent="center"
+                        gap="$2"
+                        marginTop="$1"
+                        paddingVertical="$2.5"
+                        borderRadius="$3"
+                        borderWidth={1}
+                        borderColor="$border"
+                        backgroundColor="$backgroundSurface"
+                        pressStyle={{ opacity: 0.7 }}
+                        onPress={() => setQrPase(p)}
+                      >
+                        <QrCode size={16} color="#FF551A" />
+                        <Text fontSize={13} fontWeight="700" color="$primary">Mostrar QR en la puerta</Text>
+                      </XStack>
+                    )}
                   </YStack>
                 )
               })}
@@ -151,6 +208,9 @@ export default function MisPasesScreen() {
           </ScrollView>
         )}
       </YStack>
+
+      <PaseQrDialog pase={qrPase} onClose={() => setQrPase(null)} />
+
     </Page>
   )
 }

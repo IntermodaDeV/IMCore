@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { RefreshControl } from 'react-native'
 import { YStack, XStack, Text, View, ScrollView, Spinner } from 'tamagui'
-import { DoorOpen, DoorClosed, FileStack } from 'lucide-react-native'
+import { DoorOpen, DoorClosed, FileStack, ArrowRightLeft, Clock, QrCode } from 'lucide-react-native'
 import Page from '../../components/commons/Page'
 import SearchInput from '../../components/commons/SearchInput'
 import { usePasesHeader } from './usePasesHeader'
@@ -10,9 +10,12 @@ import { useShowToast } from '../../utils/useShowToast'
 import { handleError } from '../../utils/errorHandler'
 import { pasesService } from '../../api/modules/pases/pases.service'
 import { IPase } from '../../api/modules/pases/pases.types'
+import PaseQrDialog from './PaseQrDialog'
+import { sinCodigo, textoCarnet, textoHoras, textoSecuencia } from './paseFormat'
 import { fmtFechaHora } from './paseFormat'
 
 const ESTADO_COLOR: Record<number, { bg: string; fg: string }> = {
+  6: { bg: 'rgba(168,85,247,0.14)', fg: '#7E22CE' }, // Pendiente RR. HH.
   1: { bg: 'rgba(245,158,11,0.14)', fg: '#B45309' },
   2: { bg: 'rgba(34,197,94,0.14)', fg: '#15803D' },
   3: { bg: 'rgba(239,68,68,0.14)', fg: '#B91C1C' },
@@ -25,6 +28,9 @@ export default function HistorialPasesScreen() {
   const { showToast } = useShowToast()
 
   const [pases, setPases] = useState<IPase[]>([])
+  // El QR solo se puede mostrar de los permisos propios: el servidor no manda
+  // el token de los de otra persona, aunque el historial los liste.
+  const [qrPase, setQrPase] = useState<IPase | null>(null)
   const [filtered, setFiltered] = useState<IPase[]>([])
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -86,6 +92,7 @@ export default function HistorialPasesScreen() {
               )}
 
               {filtered.map((p) => {
+                const dosMovimientos = (p.Tipo?.length ?? 1) > 1
                 const esEntrada = p.Tipo === 'E'
                 const color = ESTADO_COLOR[p.Estado_Id ?? 1] ?? ESTADO_COLOR[1]
                 return (
@@ -107,13 +114,27 @@ export default function HistorialPasesScreen() {
                         backgroundColor={esEntrada ? 'rgba(34,197,94,0.12)' : 'rgba(255,85,26,0.12)'}
                         justifyContent="center" alignItems="center"
                       >
-                        {esEntrada ? <DoorOpen size={18} color="#15803D" /> : <DoorClosed size={18} color="#FF551A" />}
+                        {dosMovimientos
+                          ? <ArrowRightLeft size={18} color="#FF551A" />
+                          : esEntrada
+                            ? <DoorOpen size={18} color="#15803D" />
+                            : <DoorClosed size={18} color="#FF551A" />}
                       </View>
-                      <YStack flex={1}>
-                        <Text fontWeight="700" fontSize={14} color="$text">{p.EmpleadoNombre}</Text>
-                        <Text fontSize={12} color="$textMuted">
-                          {p.Categoria}{p.FechaPase ? ` · ${p.FechaPase}` : ''}{p.Departamento ? ` · ${p.Departamento}` : ''}
+                      <YStack flex={1} gap="$0.5">
+                        <Text fontWeight="700" fontSize={14} color="$text">
+                          {sinCodigo(p.EmpleadoNombre)}
                         </Text>
+                        <Text fontSize={12} color="$textMuted">
+                          {p.Categoria || textoSecuencia(p.Tipo)}
+                          {p.FechaPase ? ` · ${p.FechaPase}` : ''}
+                          {p.Departamento ? ` · ${sinCodigo(p.Departamento)}` : ''}
+                        </Text>
+                        {!!textoHoras(p) && (
+                          <XStack alignItems="center" gap="$1.5">
+                            <Clock size={12} color="#94A3B8" />
+                            <Text fontSize={12} color="$textMuted">{textoHoras(p)}</Text>
+                          </XStack>
+                        )}
                       </YStack>
                       <View backgroundColor={color.bg} paddingHorizontal="$2.5" paddingVertical="$1.5" borderRadius="$10">
                         <Text fontSize={11} fontWeight="700" style={{ color: color.fg }}>{p.Estado}</Text>
@@ -122,15 +143,39 @@ export default function HistorialPasesScreen() {
 
                     <YStack gap="$0.5" paddingLeft={50}>
                       <Text fontSize={11} color="$textMuted">
-                        Código: {p.EmpleadoCode}{p.CodAlterno ? ` / ${p.CodAlterno}` : ''}
+                        {textoCarnet(p)}{p.EmpleadoCode ? ` · planilla ${p.EmpleadoCode}` : ''}
                       </Text>
                       {!!p.AprobadorNombre && <Text fontSize={11} color="$textMuted">Aprueba: {p.AprobadorNombre}</Text>}
                       {!!p.Creation_Date && <Text fontSize={11} color="$textMuted">Creado: {fmtFechaHora(p.Creation_Date)}</Text>}
-                      {!!p.Aprobacion_Date && <Text fontSize={11} color="#15803D">Aprobado: {fmtFechaHora(p.Aprobacion_Date)}</Text>}
+                      {!!p.Aprobacion_Date && <Text fontSize={11} color="#15803D">Jefe: {fmtFechaHora(p.Aprobacion_Date)}</Text>}
+                      {!!p.RH_Aprobacion_Date && (
+                        <Text fontSize={11} color="#15803D">RR. HH.: {fmtFechaHora(p.RH_Aprobacion_Date)}</Text>
+                      )}
                       {!!p.RegistradoAt && (
-                        <Text fontSize={11} color="#1D4ED8">Ingreso/registro: {fmtFechaHora(p.RegistradoAt)}</Text>
+                        <Text fontSize={11} color="#1D4ED8">Último registro: {fmtFechaHora(p.RegistradoAt)}</Text>
                       )}
                     </YStack>
+
+                    {/* Solo aparece en los permisos propios y aprobados: el
+                        token de los de otra persona no llega del servidor. */}
+                    {!!p.Token && p.Estado_Id === 2 && (
+                      <XStack
+                        alignItems="center"
+                        justifyContent="center"
+                        gap="$2"
+                        marginTop="$1"
+                        paddingVertical="$2.5"
+                        borderRadius="$3"
+                        borderWidth={1}
+                        borderColor="$border"
+                        backgroundColor="$backgroundSurface"
+                        pressStyle={{ opacity: 0.7 }}
+                        onPress={() => setQrPase(p)}
+                      >
+                        <QrCode size={16} color="#FF551A" />
+                        <Text fontSize={13} fontWeight="700" color="$primary">Mostrar QR en la puerta</Text>
+                      </XStack>
+                    )}
                   </YStack>
                 )
               })}
@@ -138,6 +183,8 @@ export default function HistorialPasesScreen() {
           </ScrollView>
         )}
       </YStack>
+
+      <PaseQrDialog pase={qrPase} onClose={() => setQrPase(null)} />
     </Page>
   )
 }

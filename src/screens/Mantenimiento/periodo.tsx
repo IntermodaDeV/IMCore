@@ -92,14 +92,17 @@ export function usePeriodo(inicial: ModoPeriodo = 'semana'): PeriodoState {
 // UI del filtro: chips Semana/Mes/Año + navegador ‹ etiqueta ›.
 export function PeriodoFiltro({ modo, etiqueta, puedeAvanzar, cambiarModo, navegar }: PeriodoState) {
   return (
-    <YStack gap="$2">
+    <YStack gap="$1.5">
       <XStack gap="$2">
         <PeriodoChip label="Semana" active={modo === 'semana'} onPress={() => cambiarModo('semana')} />
         <PeriodoChip label="Mes" active={modo === 'mes'} onPress={() => cambiarModo('mes')} />
         <PeriodoChip label="Año" active={modo === 'anio'} onPress={() => cambiarModo('anio')} />
       </XStack>
+      {/* Alto justo para el toque (44 pt de area util con el hitSlop de las flechas):
+          antes eran dos renglones muy altos y en un telefono el encabezado se comia
+          media pantalla antes del primer dato. */}
       <XStack alignItems="center" justifyContent="space-between" gap="$2"
-        borderWidth={1} borderColor="$border" borderRadius="$4" paddingVertical="$2" paddingHorizontal="$3">
+        borderWidth={1} borderColor="$border" borderRadius="$4" paddingVertical={5} paddingHorizontal="$3">
         <View onPress={() => navegar(-1)} pressStyle={{ opacity: 0.6 }} padding="$1" hitSlop={8}>
           <ChevronLeft size={22} color={ACCENT} />
         </View>
@@ -120,7 +123,7 @@ function PeriodoChip({ label, active, onPress }: { label: string; active: boolea
       pressStyle={{ opacity: 0.7 }}
       flex={1}
       borderRadius="$4"
-      height={36}
+      height={32}
       alignItems="center"
       justifyContent="center"
       borderWidth={1.5}

@@ -58,7 +58,6 @@ const TABS = [
   { key: 'activos', label: '🏭 Activos' },
   { key: 'distribucion', label: '📈 Distribución' },
   { key: 'rankings', label: '🏆 Rankings' },
-  { key: 'detalle', label: '📋 Detalle' },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -244,23 +243,26 @@ export default function MantenimientoDashboardScreen() {
         <RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={ACCENT} />
       }
     >
-      <YStack padding="$4" gap="$3" opacity={refetching ? 0.45 : 1}>
-        {/* ── Encabezado ── */}
+      <YStack padding="$4" paddingTop="$3" gap="$2" opacity={refetching ? 0.45 : 1}>
+        {/* ── Encabezado ──
+            SIN titulo propio: la barra de arriba ya dice "Mantenimiento" y repetirlo
+            costaba un renglon completo de una pantalla de telefono. Tampoco repite el
+            periodo —esta en el navegador de abajo— ni las prioridades, que estan en
+            sus chips. Queda lo unico que no se ve en otra parte: cuantos registros.
+            El aviso del periodo en curso se dice en UN renglon: la version larga
+            ocupaba dos y decia lo mismo. */}
         <YStack>
-          <Text fontSize={18} fontWeight="800" color="$text">
-            🔧 Dashboard de Mantenimiento
-          </Text>
-          <Text fontSize={12} color="$text">
-            📅 {periodo.etiqueta} · <Text fontWeight="700">{registros.length}</Text> registros
+          <Text fontSize={13} color="$text">
+            <Text fontWeight="800">{registros.length}</Text> registros
             {prioridades.length > 0 && prioridades.length < PRIORIDADES.length
               ? ` · ${prioridades.join(' + ')}`
               : ' · todas las prioridades'}
           </Text>
           {enCurso && (
-            <Text fontSize={11} color={AMBAR} marginTop={2} lineHeight={15}>
-              Período en curso
-              {enCurso.totales > 1 ? `: ${enCurso.corridos} de ${enCurso.totales} días` : ''} — los %
-              comparan contra el período anterior completo, así que todavía no son comparables.
+            <Text fontSize={11} color={AMBAR} marginTop={1} lineHeight={14}>
+              {enCurso.totales > 1
+                ? `En curso: ${enCurso.corridos} de ${enCurso.totales} días, los % aún no comparan.`
+                : 'Período en curso: los % aún no comparan.'}
             </Text>
           )}
         </YStack>
@@ -307,7 +309,7 @@ export default function MantenimientoDashboardScreen() {
         <XStack backgroundColor="$backgroundHover" borderRadius="$4" padding={3} gap={3}>
           {(['Todos', 'MAQUINA', 'AREA'] as const).map(t => {
             const on = tipoDest === t
-            const label = t === 'Todos' ? 'Todos' : t === 'MAQUINA' ? '🛠 Máquina' : '📍 Área'
+            const label = t === 'Todos' ? 'Todos' : t === 'MAQUINA' ? 'Máquina' : 'Área'
             return (
               <View
                 key={t}
@@ -316,7 +318,7 @@ export default function MantenimientoDashboardScreen() {
                 pressStyle={{ opacity: 0.85 }}
                 backgroundColor={on ? ACCENT : 'transparent'}
                 borderRadius="$3"
-                height={34}
+                height={30}
                 alignItems="center"
                 justifyContent="center"
               >
@@ -380,7 +382,6 @@ export default function MantenimientoDashboardScreen() {
               />
             )}
             {tabKey === 'rankings' && <TabRankings topMecanicos={topMecanicos} topFallas={topFallas} />}
-            {tabKey === 'detalle' && <TabDetalle registros={registros} />}
           </>
         )}
       </YStack>
@@ -521,13 +522,25 @@ function TabResumen({
 
       <SectionCard titulo="Estado de Tickets">
         <YStack alignItems="center" gap="$3">
+          {/* Etiqueta SOLO en las tajadas que la pueden contener. Con 288 tickets y
+              90% completados, las tajadas de 1-4% quedan casi en el mismo angulo y
+              sus porcentajes se montaban unos sobre otros: se leia "1%4%3%2%" pegado
+              y ninguno servia. El corte es 8% (~29 grados), que es lo que necesita un
+              "4%" para no chocar con el vecino.
+
+              No se pierde nada: la leyenda de abajo trae el nombre, el porcentaje con
+              un decimal y el conteo de TODOS los estados, incluidos los chicos. La
+              etiqueta en la tajada es un atajo para el que domina, no la fuente. */}
           <PieChart
             donut
-            data={estado.map((d: any) => ({
-              value: d.value,
-              color: colorEstado(d.label),
-              text: `${Math.round((d.value / totalEstado) * 100)}%`,
-            }))}
+            data={estado.map((d: any) => {
+              const pct = totalEstado ? (d.value / totalEstado) * 100 : 0
+              return {
+                value: d.value,
+                color: colorEstado(d.label),
+                text: pct >= 8 ? `${Math.round(pct)}%` : '',
+              }
+            })}
             radius={chartWidth / 3.4}
             innerRadius={chartWidth / 7}
             innerCircleColor={theme.backgroundElevated?.val}
@@ -1189,84 +1202,6 @@ function TabActivos({ desde, hasta, prioridades }: { desde: string; hasta: strin
       {/* Mismo indicador que en Tiempos, cortado por modelo: aquí la pregunta no es
           quién tarda más, sino qué modelo de máquina cuesta más reparar. */}
       <BloqueMttr desde={desde} hasta={hasta} agrupar="MODELO" prioridades={prioridades} />
-    </YStack>
-  )
-}
-
-// ════════ TAB: Detalle ════════
-const DETALLE_PAGINA = 30
-
-function TabDetalle({ registros }: any) {
-  const [visibles, setVisibles] = useState(DETALLE_PAGINA)
-
-  // Reiniciar la paginación cuando cambian los registros (filtros, período).
-  useEffect(() => {
-    setVisibles(DETALLE_PAGINA)
-  }, [registros])
-
-  const mostrados = registros.slice(0, visibles)
-  const hayMas = visibles < registros.length
-
-  return (
-    <YStack gap="$2">
-      <Text fontSize={15} fontWeight="700" color="$text">
-        📋 Detalle de Tickets ({registros.length})
-      </Text>
-      {mostrados.map((r: any, i: number) => (
-        <YStack
-          key={r.IDMantenimiento || i}
-          backgroundColor="$card2"
-          borderWidth={1}
-          borderColor="$border"
-          borderRadius="$3"
-          padding="$3"
-          gap="$1"
-        >
-          <XStack justifyContent="space-between" alignItems="center">
-            <Text fontSize={13} fontWeight="700" color="$text">
-              {r.CodigoTicket || '—'}
-            </Text>
-            <View
-              paddingHorizontal="$2"
-              paddingVertical={2}
-              borderRadius={6}
-              backgroundColor={colorEstado(r.Estado) + '22'}
-            >
-              <Text fontSize={10} fontWeight="700" color={colorEstado(r.Estado)}>
-                {r.Estado || 'Sin estado'}
-              </Text>
-            </View>
-          </XStack>
-          <Text fontSize={11} color="$text">
-            {(r.Fecha ?? '').slice(0, 10)} · {r.Area} · {r.TipoFalla}
-          </Text>
-          <XStack gap="$3" flexWrap="wrap">
-            <Text fontSize={11} color="$textMuted">
-              Máquina: {r.NumeroMaquina || '—'}
-            </Text>
-            <Text fontSize={11} color="$textMuted">
-              Prioridad: {r.Prioridad || '—'}
-            </Text>
-            <Text fontSize={11} color="$textMuted">
-              Mecánico: {r.Mecanico || '—'}
-            </Text>
-          </XStack>
-        </YStack>
-      ))}
-
-      {hayMas && (
-        <Button
-          marginTop="$2"
-          backgroundColor="$card2"
-          borderWidth={1}
-          borderColor="$border"
-          onPress={() => setVisibles(v => v + DETALLE_PAGINA)}
-        >
-          <Text fontSize={13} fontWeight="700" color={ACCENT}>
-            Ver más ({registros.length - visibles} restantes)
-          </Text>
-        </Button>
-      )}
     </YStack>
   )
 }

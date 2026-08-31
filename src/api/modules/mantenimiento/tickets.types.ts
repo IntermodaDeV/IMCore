@@ -64,6 +64,9 @@ export interface ITicket {
   Modification_Date: string | null
 
   // COUNT(*) OVER() del listado, para paginación (viene en cada fila).
+  // Quedó del turno anterior: se reportó antes de que arrancara la jornada en curso,
+  // nadie lo arrancó y sigue vivo. Es una BANDERA, no la prioridad del ticket.
+  DelTurnoAnterior: boolean
   TotalCount: number
 }
 
@@ -119,6 +122,10 @@ export interface ITicketFiltros {
   hasta?: string
   skip?: number
   take?: number
+  // Solo lo que quedó del turno anterior. IGNORA desde/hasta a propósito: un lunes a
+  // las 7 am el ticket que quedó del viernes cae fuera de «esta semana» y es justo el
+  // que hay que ver.
+  soloTurnoAnterior?: boolean
 }
 
 // ── Catálogos / cascadas ─────────────────────────────────────────────────────

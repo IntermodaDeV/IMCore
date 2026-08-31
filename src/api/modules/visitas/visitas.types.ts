@@ -221,14 +221,88 @@ export interface IVisitaAcceso {
   Id: number
   Visita_Id: number
   AccessDate: string // YYYY-MM-DD
+  /** A qué ventana pertenece. Un día puede tener varias (horario de mañana y
+   *  tarde) y por fecha no se pueden separar. */
+  VisitaDia_Id?: number | null
   EntradaAt: string
   SalidaAt?: string | null
   EntradaBy?: string | null
   SalidaBy?: string | null
+  /** Los mismos, ya traducidos a nombre por el servidor ('SISTEMA' → «Sistema»;
+   *  un usuario borrado cae de vuelta al Code). Opcionales: una API vieja no
+   *  los manda, y la pantalla tiene que seguir mostrando algo. */
+  EntradaByNombre?: string | null
+  SalidaByNombre?: string | null
   // Ventana que autorizó la entrada
   VentanaInicio?: string | null
   VentanaFin?: string | null
   MinutosExceso?: number | null // minutos fuera de ventana al salir; 0 = en horario
   MinutosDentro?: number | null // null mientras siga adentro
   CierreAuto?: boolean // true = salida inferida por el sistema, no escaneada
+}
+
+// ─────────────────────────── Tablero / Agenda ───────────────────────────
+
+export type EstadoAgenda =
+  | 'EnPlanta'      // entró y no ha salido, todavía dentro de su ventana
+  | 'Vencida'       // entró y no ha salido, y su ventana ya cerró (+ tolerancia)
+  | 'Finalizada'    // entró y salió en tiempo
+  | 'ConExceso'     // entró y salió, pero pasado de tiempo
+  | 'Programada'    // no ha entrado y su ventana no ha cerrado
+  | 'NoSePresento'  // no ha entrado y su ventana ya cerró
+
+/** Una fila por DÍA-VENTANA de pase: la unidad del tablero.
+ *
+ *  No es una fila por pase porque un recurrente de lunes a viernes es UN pase
+ *  pero CINCO cosas en un calendario. Un mismo día puede tener varios
+ *  movimientos (salió a almorzar y volvió); acá vienen agregados.
+ *
+ *  El Estado lo calcula el SERVIDOR (Visitas.SP_GetAgenda). La app NO lo
+ *  recalcula: la tolerancia y el reloj tienen que ser los mismos que usó la
+ *  validación en portería. */
+export interface IAgenda {
+  VisitaDia_Id: number
+  Visita_Id: number
+  Token?: string
+  VisitTo: string
+  Motivo: string
+  VisitReasonOther?: string | null
+  IsRecurrent: boolean
+  Personas?: string | null
+  PersonasCount: number
+
+  Dia: string
+  VentanaInicio: string
+  VentanaFin: string
+  Horario?: string | null
+
+  Empresa_Id: number
+  Empresa?: string | null
+  EmpresaCode?: string | null
+
+  AccesosCount: number
+  PrimeraEntrada?: string | null
+  /** Solo viene cuando YA cerraron todos los movimientos del día. */
+  UltimaSalida?: string | null
+  MinutosDentroTotal: number
+  /** Exceso ya REGISTRADO en los movimientos cerrados. */
+  MinutosExcesoTotal: number
+  DentroAhora: boolean
+  CierreAuto: boolean
+
+  /** Negativo = la ventana ya abrió. */
+  MinutosParaIniciar: number
+  /** Exceso EN CURSO de quien sigue adentro, ya descontada la tolerancia. */
+  MinutosExcesoEnCurso: number
+
+  Estado: EstadoAgenda
+
+  RequiereId: boolean
+  IdCadaEntrada: boolean
+  IdRespaldado: boolean
+
+  Create_By?: string
+  /** Nombre de quien generó el pase; cae al Code si no se resuelve. */
+  CreadoPor?: string | null
+  Creation_Date?: string
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { FlatList } from 'react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
-import { Plus, RotateCw, Pencil, KeyRound, Eye, EyeOff, ChevronDown, ChevronUp, Trash2, LogOut, UserPlus  } from 'lucide-react-native'
+import { Plus, RotateCw, Pencil, KeyRound, Eye, EyeOff, ChevronDown, ChevronUp, Trash2, LogOut, UserPlus, AlertTriangle  } from 'lucide-react-native'
 import { YStack, Text, Card, XStack, View, useTheme, Button, Dialog, Spinner, styled } from 'tamagui'
 import { securityService } from '../../../api/modules/security/security.service'
 import { IUserExternalCodes, UsersDTO } from '../../../api/modules/security/security.types'
@@ -401,6 +401,10 @@ export default function UsersScreen() {
                     : []
                   const isExternalOpen = openExternalCodes === item.Id
                   const isActive = item?.Status_Id === 1
+                  // Sin código de personal no hay forma de saber qué empleado es
+                  // este usuario, así que no puede pedir permisos personales. Se
+                  // marca en la lista para poder encontrarlos y completarlos.
+                  const sinPlanilla = isActive && !String(item.DynamicColumns?.Payweb ?? '').trim()
 
                   return (
                     <Card
@@ -417,9 +421,27 @@ export default function UsersScreen() {
                           <Text fontSize={14} fontWeight="800" color="$text">
                             {item.Name} {item.LastName}
                           </Text>
-                          <Text fontSize={11} color="$textMuted">
-                            {item.Code}
-                          </Text>
+                          <XStack alignItems="center" gap="$1.5" flexWrap="wrap">
+                            <Text fontSize={11} color="$textMuted">
+                              {item.Code}
+                            </Text>
+
+                            {sinPlanilla && (
+                              <XStack
+                                alignItems="center"
+                                gap={3}
+                                backgroundColor="rgba(245,158,11,0.12)"
+                                paddingHorizontal={6}
+                                paddingVertical={1}
+                                borderRadius={999}
+                              >
+                                <AlertTriangle size={9} color="#F59E0B" />
+                                <Text fontSize={9} color="#F59E0B" fontWeight="700">
+                                  sin empleado
+                                </Text>
+                              </XStack>
+                            )}
+                          </XStack>
 
                           {/* Roles como chips — solo si existen */}
                           {roles.length > 0 && (
