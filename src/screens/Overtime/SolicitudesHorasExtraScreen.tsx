@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet } from 'react-native'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
-import { CalendarDays, Check, CheckSquare, Clock, Square, UserRound, X } from 'lucide-react-native'
+import { ArrowRight, Briefcase, CalendarDays, Check, CheckSquare, ChevronDown, Clock, MessageSquare, Square, UserRound, Wallet, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -60,6 +60,26 @@ const puedeAutorizar = (item: IOvertimeRequestDetail, nombreEntidad: string): bo
   return estado === '' || estado === 'Pendiente'
 }
 
+/**
+ * Una solicitud con sus renglones pendientes.
+ *
+ * La bandeja llega renglón por renglón —un empleado cada uno— porque eso es lo
+ * que se firma. Para la última entidad eso no alcanza: lo que decide es cuánto
+ * cuesta LA SOLICITUD, y con los empleados sueltos hay que sumarlos de cabeza.
+ */
+interface GrupoSolicitud {
+  requestId: number
+  correlativo: string
+  fecha: string | null
+  solicitante: string
+  motivo: string
+  comentario: string
+  detalles: IOvertimeRequestDetail[]
+  horas: number
+  /** Suma de lo que cuesta aprobar los renglones que siguen pendientes. */
+  costo: number | null
+}
+
 /** 'Juan Pérez' o '3 empleados · 12h 30m' para los textos del lote. */
 const resumenLote = (detalles: IOvertimeRequestDetail[]): string => {
   const horas = detalles.reduce((acc, d) => acc + (d.Total_Overtime_Hours ?? 0), 0)
@@ -100,11 +120,21 @@ export default function SolicitudesHorasExtraScreen() {
   // Impacto de la firma sobre el presupuesto. Solo llega con contenido en la
   // última etapa del flujo, que es la que compromete el dinero.
   const [impacto, setImpacto] = useState<IOvertimeApprovalImpact[]>([])
+
+  // Impacto de TODA la bandeja, no del lote que se está por firmar. Es lo que
+  // permite poner el costo en cada tarjeta antes de abrir nada.
+  const [impactoBandeja, setImpactoBandeja] = useState<IOvertimeApprovalImpact[]>([])
+  // Solicitudes desplegadas. Arrancan cerradas: la tarjeta cerrada ya dice
+  // cuántos empleados, cuántas horas y cuánto cuesta, que es con lo que se
+  // decide; el detalle es para cuando algo no cuadra.
+  const [expandidas, setExpandidas] = useState<Set<number>>(new Set())
   const [motivo, setMotivo] = useState('')
   const [motivoError, setMotivoError] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [resaltadaId, setResaltadaId] = useState<number | null>(null)
-  const listaRef = useRef<FlatList<IOvertimeRequestDetail> | null>(null)
+  // Sin tipo fijo: la lista muestra renglones o solicitudes agrupadas según
+  // la etapa, y son dos formas distintas.
+  const listaRef = useRef<FlatList<any> | null>(null)
 
   const companyCode = defaultCompany?.Code ?? ''
 
@@ -134,6 +164,40 @@ export default function SolicitudesHorasExtraScreen() {
     }
   }, [companyCode])
 
+  /**
+   * Costo de cada renglón de la bandeja, para poder mostrarlo en la lista.
+   *
+   * El procedimiento devuelve el desglose por EMPLEADO, no por renglón, así
+   * que de ahí sale una tarifa —costo entre horas— y con ella se reparte el
+   * costo entre los renglones de ese empleado. Con un solo renglón pendiente
+   * por empleado, que es el caso normal, el reparto es exacto; con más de uno
+   * el total de la solicitud sigue siendo exacto y lo aproximado es cuánto
+   * pone cada renglón.
+   *
+   * De mejor esfuerzo: si falla, las tarjetas salen sin monto y todo lo demás
+   * funciona igual.
+   */
+  const pedirImpactoBandeja = useCallback(
+    async (filas: IOvertimeRequestDetail[]) => {
+      if (!companyCode || !entidad || filas.length === 0) {
+        setImpactoBandeja([])
+        return
+      }
+
+      try {
+        const res = await overtimeService.getApprovalImpact(
+          companyCode,
+          Number(entidad),
+          filas.map(d => d.Id),
+        )
+        setImpactoBandeja(res?.Success && res.Data ? res.Data : [])
+      } catch {
+        setImpactoBandeja([])
+      }
+    },
+    [companyCode, entidad],
+  )
+
   const loadData = useCallback(async (silent = false) => {
     if (!companyCode || !entidad) {
       setData([])
@@ -159,6 +223,8 @@ export default function SolicitudesHorasExtraScreen() {
       setData(filas)
       setFiltered(filas)
 
+      pedirImpactoBandeja(filas)
+
       // Lo que ya no está en la bandeja no se puede seguir teniendo marcado.
       setSeleccionados(prev => {
         const vigentes = new Set(filas.map(d => d.Id))
@@ -172,7 +238,7 @@ export default function SolicitudesHorasExtraScreen() {
       setRefreshing(false)
       loader.hide()
     }
-  }, [companyCode, entidad])
+  }, [companyCode, entidad, pedirImpactoBandeja])
 
   /**
    * Registra la decisión sobre uno o varios detalles.
@@ -209,6 +275,11 @@ export default function SolicitudesHorasExtraScreen() {
         setFiltered(quitar)
 
         setSeleccionados(prev => new Set([...prev].filter(id => !resueltos.has(id))))
+
+        // El costo de la solicitud lo pone lo que sigue PENDIENTE, así que al
+        // aprobar a uno tiene que bajar. Se vuelve a pedir con lo que quedó.
+        pedirImpactoBandeja(data.filter(d => !resueltos.has(d.Id)))
+
         setAprobando(null)
         setRechazando(null)
         setMotivo('')
@@ -229,7 +300,7 @@ export default function SolicitudesHorasExtraScreen() {
         loader.hide()
       }
     },
-    [companyCode, entidad, loader, showToast],
+    [companyCode, entidad, loader, showToast, data, pedirImpactoBandeja],
   )
 
   /**
@@ -302,7 +373,10 @@ export default function SolicitudesHorasExtraScreen() {
 
       // Se espera a que la recarga pinte la lista antes de buscar la posición.
       setTimeout(() => {
-        const indice = filtradosRef.current.findIndex(d => d.Request_Id === requestId)
+        // Sirve para las dos formas: agrupada la fila ES la solicitud.
+        const indice = filtradosRef.current.findIndex(
+          (x: any) => (x?.requestId ?? x?.Request_Id) === requestId,
+        )
         if (indice >= 0) {
           listaRef.current?.scrollToIndex({ index: indice, animated: true, viewPosition: 0 })
         }
@@ -324,6 +398,189 @@ export default function SolicitudesHorasExtraScreen() {
     () => entidades.find(e => String(e.Id) === entidad)?.Name ?? '',
     [entidades, entidad],
   )
+
+  /**
+   * ¿Le toca la última firma?
+   *
+   * Es la que compromete el dinero, y es donde agrupar por solicitud cambia
+   * algo: las etapas anteriores solo dan el visto bueno de su gente y ven una
+   * cola corta. El procedimiento del impacto ya resuelve la pregunta, así que
+   * no hace falta reconocer a la entidad por su nombre —que cambiaría con
+   * cualquier renombre en AdmSys.
+   */
+  /**
+   * ¿Le toca la última firma?
+   *
+   * Sale de la entidad seleccionada y no del impacto: el impacto es una
+   * consulta aparte que puede tardar o fallar, y con la agrupación colgando de
+   * ella la bandeja se dibujaba plana y ya no se reacomodaba. Cómo está armado
+   * el flujo es algo que se sabe apenas se eligen las entidades.
+   */
+  const esUltimaEntidad = useMemo(
+    () => entidades.find(e => String(e.Id) === entidad)?.Es_Ultima === true,
+    [entidades, entidad],
+  )
+
+  const veCosto = useMemo(
+    () => impactoBandeja.some(r => r.Es_Ultima_Entidad && r.Ve_Costo),
+    [impactoBandeja],
+  )
+
+  /** Tarifa por hora de cada empleado, deducida del impacto. */
+  const tarifaPorEmpleado = useMemo(() => {
+    const mapa = new Map<string, number>()
+
+    impactoBandeja.forEach(area => {
+      let empleados: any[] = []
+      try {
+        const parsed = JSON.parse(area.Empleados_Json ?? '[]')
+        empleados = Array.isArray(parsed) ? parsed : []
+      } catch {
+        empleados = []
+      }
+
+      empleados.forEach(e => {
+        const horas = Number(e?.horas ?? 0)
+        const costo = e?.costo
+        if (horas > 0 && costo !== null && costo !== undefined) {
+          mapa.set(String(e.employee_Code), Number(costo) / horas)
+        }
+      })
+    })
+
+    return mapa
+  }, [impactoBandeja])
+
+  /** Centro de costos de cada empleado, según el desglose del impacto. */
+  const areaPorEmpleado = useMemo(() => {
+    const mapa = new Map<string, string>()
+
+    impactoBandeja.forEach(area => {
+      let empleados: any[] = []
+      try {
+        const parsed = JSON.parse(area.Empleados_Json ?? '[]')
+        empleados = Array.isArray(parsed) ? parsed : []
+      } catch {
+        empleados = []
+      }
+
+      empleados.forEach(e => {
+        if (e?.employee_Code) mapa.set(String(e.employee_Code), area.Area_Codigo)
+      })
+    })
+
+    return mapa
+  }, [impactoBandeja])
+
+  /**
+   * Presupuesto de la semana por centro de costos.
+   *
+   * 'Consumido' es lo que ya está comprometido y no depende del lote que se
+   * consultó, así que sirve de piso para calcular el disponible de CUALQUIER
+   * solicitud. Lo que sí depende del lote —Costo_Nuevo, Consumido_Despues— no se
+   * usa acá: el impacto se pidió con la bandeja completa y esos números son de
+   * toda la bandeja, no de una solicitud.
+   */
+  const presupuestoPorArea = useMemo(() => {
+    const mapa = new Map<string, { nombre: string; disponible: number }>()
+
+    impactoBandeja.forEach(area => {
+      if (area.Presupuesto === null || area.Presupuesto === undefined) return
+      mapa.set(area.Area_Codigo, {
+        nombre: area.Area_Nombre || area.Area_Codigo,
+        disponible: Number(area.Presupuesto) - Number(area.Consumido ?? 0),
+      })
+    })
+
+    return mapa
+  }, [impactoBandeja])
+
+  /**
+   * Presupuesto disponible de una solicitud, antes y después de firmarla.
+   *
+   * Se suman los centros de costos que toca la solicitud (normalmente uno: el
+   * del asesor). 'Despues' baja por lo que cuesta aprobar lo que sigue
+   * pendiente, que es el mismo costo que muestra la tarjeta.
+   */
+  const presupuestoDeGrupo = useCallback(
+    (grupo: GrupoSolicitud): { nombre: string; areas: number; antes: number; despues: number } | null => {
+      const codigos = new Set<string>()
+      grupo.detalles.forEach(d => {
+        const codigo = areaPorEmpleado.get(String(d.Employee_Code))
+        if (codigo && presupuestoPorArea.has(codigo)) codigos.add(codigo)
+      })
+
+      if (codigos.size === 0) return null
+
+      const areas = [...codigos].map(c => presupuestoPorArea.get(c)!)
+      const antes = areas.reduce((acc, a) => acc + a.disponible, 0)
+
+      return {
+        // Con más de un centro de costos el nombre no aplica: se dice cuántos son.
+        nombre: areas.length === 1 ? areas[0].nombre : `${areas.length} centros de costo`,
+        areas: areas.length,
+        antes,
+        despues: antes - (grupo.costo ?? 0),
+      }
+    },
+    [areaPorEmpleado, presupuestoPorArea],
+  )
+
+  const costoDetalle = useCallback(
+    (d: IOvertimeRequestDetail): number | null => {
+      const tarifa = tarifaPorEmpleado.get(String(d.Employee_Code))
+      if (tarifa === undefined) return null
+      return tarifa * (d.Total_Overtime_Hours ?? 0)
+    },
+    [tarifaPorEmpleado],
+  )
+
+  /** La bandeja vista por solicitud, en el orden en que ya venía. */
+  const grupos = useMemo<GrupoSolicitud[]>(() => {
+    const porId = new Map<number, GrupoSolicitud>()
+
+    filtered.forEach(d => {
+      let g = porId.get(d.Request_Id)
+
+      if (!g) {
+        g = {
+          requestId: d.Request_Id,
+          correlativo: d.Correlative,
+          fecha: d.Date,
+          solicitante: d.Solicitante || d.Create_By,
+          motivo: d.Category_Name,
+          comentario: d.Comment,
+          detalles: [],
+          horas: 0,
+          costo: null,
+        }
+        porId.set(d.Request_Id, g)
+      }
+
+      g.detalles.push(d)
+      g.horas += d.Total_Overtime_Hours ?? 0
+
+      const c = costoDetalle(d)
+      if (c !== null) g.costo = (g.costo ?? 0) + c
+    })
+
+    return [...porId.values()]
+  }, [filtered, costoDetalle])
+
+  // La ref sigue a lo que realmente se está pintando, que es lo que hay que
+  // recorrer para ubicar una solicitud que llegó por notificación.
+  useEffect(() => {
+    filtradosRef.current = esUltimaEntidad ? grupos : filtered
+  }, [esUltimaEntidad, grupos, filtered])
+
+  const alternarGrupo = useCallback((requestId: number) => {
+    setExpandidas(prev => {
+      const copia = new Set(prev)
+      if (copia.has(requestId)) copia.delete(requestId)
+      else copia.add(requestId)
+      return copia
+    })
+  }, [])
 
   const alternarSeleccion = useCallback((id: number) => {
     setSeleccionados(prev => {
@@ -365,8 +622,7 @@ export default function SolicitudesHorasExtraScreen() {
 
   // El callback del bus se registra una sola vez, así que leería un `filtered`
   // viejo. La ref siempre tiene el actual.
-  const filtradosRef = useRef(filtered)
-  useEffect(() => { filtradosRef.current = filtered }, [filtered])
+  const filtradosRef = useRef<any[]>(filtered)
 
   /**
    * Conteo del pie de los filtros.
@@ -496,8 +752,10 @@ export default function SolicitudesHorasExtraScreen() {
 
       <FlatList
         ref={listaRef}
-        data={filtered}
-        keyExtractor={item => String(item.Id)}
+        // Para la última entidad la unidad de decisión es la SOLICITUD; para
+        // las anteriores sigue siendo el renglón de su gente.
+        data={(esUltimaEntidad ? grupos : filtered) as any[]}
+        keyExtractor={(item: any) => String(esUltimaEntidad ? item.requestId : item.Id)}
         onScrollToIndexFailed={info => {
           listaRef.current?.scrollToOffset({
             offset: info.averageItemLength * info.index,
@@ -533,21 +791,42 @@ export default function SolicitudesHorasExtraScreen() {
             />
           )
         }
-        renderItem={({ item }) => (
-          <SolicitudCard
-            item={item}
-            resaltada={item.Request_Id === resaltadaId}
-            seleccionada={seleccionados.has(item.Id)}
-            firmable={puedeAutorizar(item, nombreEntidad)}
-            onSeleccionar={() => alternarSeleccion(item.Id)}
-            onAprobar={() => abrirAprobacion([item])}
-            onRechazar={() => {
-              setMotivo('')
-              setMotivoError('')
-              setRechazando([item])
-            }}
-          />
-        )}
+        renderItem={({ item }: any) =>
+          esUltimaEntidad ? (
+            <SolicitudGrupoCard
+              grupo={item}
+              resaltada={item.requestId === resaltadaId}
+              abierta={expandidas.has(item.requestId)}
+              veCosto={veCosto}
+              presupuesto={presupuestoDeGrupo(item)}
+              seleccionados={seleccionados}
+              esFirmable={d => puedeAutorizar(d, nombreEntidad)}
+              costoDe={costoDetalle}
+              onAlternar={() => alternarGrupo(item.requestId)}
+              onSeleccionar={id => alternarSeleccion(id)}
+              onAprobar={detalles => abrirAprobacion(detalles)}
+              onRechazar={detalles => {
+                setMotivo('')
+                setMotivoError('')
+                setRechazando(detalles)
+              }}
+            />
+          ) : (
+            <SolicitudCard
+              item={item}
+              resaltada={item.Request_Id === resaltadaId}
+              seleccionada={seleccionados.has(item.Id)}
+              firmable={puedeAutorizar(item, nombreEntidad)}
+              onSeleccionar={() => alternarSeleccion(item.Id)}
+              onAprobar={() => abrirAprobacion([item])}
+              onRechazar={() => {
+                setMotivo('')
+                setMotivoError('')
+                setRechazando([item])
+              }}
+            />
+          )
+        }
       />
 
     </View>
@@ -659,10 +938,73 @@ const fmtDinero = (valor: number | null | undefined): string =>
  * Solo llega acá con el acceso 'CostoHE': el filtro está en la consulta, así
  * que si el usuario no lo tiene el bloque ni se pide.
  */
+/**
+ * El presupuesto COMPLETO de quien firma.
+ *
+ * Las tarjetas de área dicen cómo queda cada centro de costos, que es la
+ * pregunta contable. Esta dice cómo queda ÉL: un jefe con seis centros a cargo
+ * firma contra su bolsa entera, y esa bolsa no salía en ningún lado.
+ *
+ * Los tres números van en fila —asignado, gastado, después de aprobar— porque
+ * el salto entre los dos últimos ES el costo de firmar, y puestos al lado se
+ * ve sin restar de cabeza.
+ */
+function TotalPresupuesto({ fila }: { fila: IOvertimeApprovalImpact }) {
+  const presupuesto = fila.Presupuesto ?? 0
+  const despues = fila.Consumido_Despues ?? 0
+  const disponible = presupuesto - despues
+  const excedido = disponible < 0
+
+  return (
+    <YStack
+      width="100%"
+      backgroundColor={excedido ? '#FEF2F2' : '#F0FDF4'}
+      borderWidth={1}
+      borderColor={excedido ? '#FECACA' : '#BBF7D0'}
+      borderRadius={10}
+      padding="$2.5"
+      gap="$1.5"
+    >
+      <XStack justifyContent="space-between" alignItems="center" gap="$2">
+        <Text fontSize={10} fontWeight="700" color={excedido ? '#991B1B' : '#166534'} letterSpacing={0.4}>
+          TU PRESUPUESTO
+        </Text>
+        <Text fontSize={11} fontWeight="700" color={excedido ? '#991B1B' : '#166534'}>
+          {excedido
+            ? `Excedido en ${fmtDinero(Math.abs(disponible))}`
+            : `Quedarían ${fmtDinero(disponible)}`}
+        </Text>
+      </XStack>
+
+      <XStack gap="$2">
+        {[
+          { label: 'ASIGNADO', valor: fila.Presupuesto, fuerte: false },
+          { label: 'GASTADO', valor: fila.Consumido, fuerte: false },
+          { label: 'DESPUÉS', valor: fila.Consumido_Despues, fuerte: true },
+        ].map(c => (
+          <YStack key={c.label} flex={1} gap={1}>
+            <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+              {c.label}
+            </Text>
+            <Text fontSize={c.fuerte ? 15 : 13} fontWeight={c.fuerte ? '800' : '700'} color="$text">
+              {fmtDinero(c.valor)}
+            </Text>
+          </YStack>
+        ))}
+      </XStack>
+    </YStack>
+  )
+}
+
 function ImpactoPresupuesto({ filas }: { filas: IOvertimeApprovalImpact[] }) {
+  const total = filas.find(r => r.Es_Total)
+  const areas = filas.filter(r => !r.Es_Total)
+
   return (
     <YStack gap="$2" width="100%">
-      {filas.map(r => {
+      {total && <TotalPresupuesto fila={total} />}
+
+      {areas.map(r => {
         const empleados: any[] = (() => {
           try {
             const parsed = JSON.parse(r.Empleados_Json ?? '[]')
@@ -714,6 +1056,299 @@ function ImpactoPresupuesto({ filas }: { filas: IOvertimeApprovalImpact[] }) {
         )
       })}
     </YStack>
+  )
+}
+
+/**
+ * Una solicitud completa, con sus empleados adentro.
+ *
+ * Cerrada dice lo que hace falta para decidir: cuántos empleados, cuántas
+ * horas y cuánto cuesta aprobarla entera. Abierta muestra renglón por renglón
+ * con su motivo, porque la decisión también puede ser parcial —aprobar a tres
+ * de cinco— y para eso hay que poder mirar a cada uno.
+ *
+ * El costo del encabezado es el de lo que sigue PENDIENTE: al aprobar a uno,
+ * su renglón sale de la bandeja y el total de la solicitud baja solo.
+ */
+function SolicitudGrupoCard({
+  grupo,
+  resaltada,
+  abierta,
+  veCosto,
+  presupuesto,
+  seleccionados,
+  esFirmable,
+  costoDe,
+  onAlternar,
+  onSeleccionar,
+  onAprobar,
+  onRechazar,
+}: {
+  grupo: GrupoSolicitud
+  resaltada?: boolean
+  abierta?: boolean
+  /** El usuario tiene el acceso para ver montos. */
+  veCosto: boolean
+  /** Disponible del centro de costos, antes y después de firmar. Null si no se sabe. */
+  presupuesto: { nombre: string; areas: number; antes: number; despues: number } | null
+  seleccionados: Set<number>
+  esFirmable: (d: IOvertimeRequestDetail) => boolean
+  costoDe: (d: IOvertimeRequestDetail) => number | null
+  onAlternar: () => void
+  onSeleccionar: (id: number) => void
+  onAprobar: (detalles: IOvertimeRequestDetail[]) => void
+  onRechazar: (detalles: IOvertimeRequestDetail[]) => void
+}) {
+  const theme = useTheme()
+  const firmables = grupo.detalles.filter(esFirmable)
+
+  return (
+    <Card
+      backgroundColor={resaltada ? '$primaryOpacity2' : '$backgroundElevated'}
+      borderRadius={14}
+      padding="$3"
+      borderWidth={resaltada ? 2 : 1}
+      borderColor={resaltada ? '$primary' : '$border'}
+    >
+      <YStack gap="$2.5">
+
+        {/* Encabezado: toda la tarjeta abre y cierra, no un ícono chiquito */}
+        <XStack alignItems="flex-start" gap="$2" pressStyle={{ opacity: 0.7 }} onPress={onAlternar}>
+          <YStack flex={1} gap="$1">
+            <XStack alignItems="center" gap="$2">
+              <Text fontSize={15} fontWeight="700" color="$text">
+                {grupo.correlativo}
+              </Text>
+              <XStack
+                paddingHorizontal={8}
+                paddingVertical={3}
+                borderRadius={20}
+                alignItems="center"
+                gap="$1"
+                backgroundColor={resaltada ? 'transparent' : '$backgroundSurface'}
+              >
+                <CalendarDays size={11} color={theme.textMuted?.val as string} />
+                <Text fontSize={11} fontWeight="600" color="$textSecondary">
+                  {fmtFecha(grupo.fecha)}
+                </Text>
+              </XStack>
+            </XStack>
+
+            <XStack alignItems="center" gap="$2">
+              <UserRound size={13} color={theme.textMuted?.val as string} />
+              <Text fontSize={12} color="$textMuted" numberOfLines={1} flex={1}>
+                Solicita{' '}
+                <Text fontSize={12} fontWeight="600" color="$textSecondary">
+                  {nombreConCodigo(grupo.solicitante) || '—'}
+                </Text>
+              </Text>
+            </XStack>
+          </YStack>
+
+          <YStack alignItems="flex-end" gap={2}>
+            <Text fontSize={18} fontWeight="800" color="$text">
+              {fmtHoras(grupo.horas)}
+            </Text>
+            {veCosto && grupo.costo !== null && (
+              <Text fontSize={13} fontWeight="700" color="$textSecondary">
+                {fmtDinero(grupo.costo)}
+              </Text>
+            )}
+            <Text fontSize={10} color="$textMuted">
+              {grupo.detalles.length} empleado{grupo.detalles.length === 1 ? '' : 's'}
+            </Text>
+          </YStack>
+
+          {/* Una flecha que gira y no dos glifos distintos: el giro se lee
+              como "esto se abre". */}
+          <View rotate={abierta ? '180deg' : '0deg'} paddingTop={2}>
+            <ChevronDown size={18} color={theme.textMuted?.val as string} />
+          </View>
+        </XStack>
+
+        {/* Presupuesto: con qué queda el centro de costos si se firma. Es la
+            pregunta que se hace quien pone la última firma —"¿me alcanza?"— y
+            hasta ahora había que abrir el confirm para verla. Va detrás del
+            acceso de ver costos, igual que cualquier monto de la pantalla. */}
+        {veCosto && presupuesto && (
+          <XStack alignItems="center" gap="$1.5" flexWrap="wrap">
+            <Wallet size={11} color={theme.textMuted?.val as string} />
+            <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.3}>
+              DISPONIBLE
+            </Text>
+            <Text fontSize={11} fontWeight="600" color="$textSecondary">
+              {fmtDinero(presupuesto.antes)}
+            </Text>
+            <ArrowRight size={10} color={theme.textMuted?.val as string} />
+            <Text
+              fontSize={11}
+              fontWeight="800"
+              color={presupuesto.despues < 0 ? '$error' : '$success'}
+            >
+              {fmtDinero(presupuesto.despues)}
+            </Text>
+            <Text fontSize={10} color="$textMuted" numberOfLines={1} flex={1}>
+              {presupuesto.nombre}
+            </Text>
+          </XStack>
+        )}
+
+        {/* El motivo del encabezado, si lo tiene */}
+        {(!!grupo.motivo || !!grupo.comentario) && (
+          <Text fontSize={11} color="$textMuted" numberOfLines={abierta ? 4 : 1}>
+            {[grupo.motivo, grupo.comentario].filter(Boolean).join(' · ')}
+          </Text>
+        )}
+
+        {/* Los empleados */}
+        {abierta && (
+          <YStack gap="$2" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
+            {grupo.detalles.map(d => {
+              const firmable = esFirmable(d)
+              const costo = costoDe(d)
+
+              return (
+                <YStack
+                  key={d.Id}
+                  backgroundColor={seleccionados.has(d.Id) ? '$primaryOpacity2' : '$backgroundSurface'}
+                  borderRadius={10}
+                  padding="$2.5"
+                  gap="$1.5"
+                >
+                  <XStack alignItems="flex-start" gap="$2">
+                    {firmable && (
+                      <View hitSlop={12} paddingTop={2} pressStyle={{ opacity: 0.6 }} onPress={() => onSeleccionar(d.Id)}>
+                        {seleccionados.has(d.Id) ? (
+                          <CheckSquare size={18} color={theme.primary?.val as string} />
+                        ) : (
+                          <Square size={18} color={theme.textMuted?.val as string} />
+                        )}
+                      </View>
+                    )}
+
+                    <YStack flex={1} gap={2}>
+                      <Text fontSize={13} fontWeight="600" color="$text" numberOfLines={2}>
+                        {nombreConCodigo(d.Employee_Name, d.Employee_Code)}
+                      </Text>
+                      <XStack alignItems="center" gap="$1.5">
+                        <Clock size={11} color={theme.textMuted?.val as string} />
+                        <Text fontSize={11} color="$textMuted">
+                          {fmtHora(d.Start_Time)} — {fmtHora(d.End_Time)}
+                        </Text>
+                      </XStack>
+                    </YStack>
+
+                    <YStack alignItems="flex-end" gap={2}>
+                      <Text fontSize={14} fontWeight="700" color="$text">
+                        {fmtHoras(d.Total_Overtime_Hours)}
+                      </Text>
+                      {veCosto && costo !== null && (
+                        <Text fontSize={11} fontWeight="600" color="$textMuted">
+                          {fmtDinero(costo)}
+                        </Text>
+                      )}
+                    </YStack>
+                  </XStack>
+
+                  {/* Centro de costos del empleado: es de donde sale el dinero,
+                      así que es lo que dice si la firma cabe en el presupuesto. */}
+                  {!!d.Centro_Costos && (
+                    <XStack alignItems="center" gap="$1.5">
+                      <Briefcase size={11} color={theme.textMuted?.val as string} />
+                      <Text fontSize={11} color="$textMuted" numberOfLines={1} flex={1}>
+                        {d.Centro_Costos}
+                      </Text>
+                    </XStack>
+                  )}
+
+                  {/* Por qué estas horas. Es lo que el jefe escribió por ESTE
+                      empleado y el dato que sostiene la firma, así que se muestra
+                      siempre: que venga vacío también es información. */}
+                  <XStack alignItems="flex-start" gap="$1.5">
+                    <View paddingTop={2}>
+                      <MessageSquare size={11} color={theme.textMuted?.val as string} />
+                    </View>
+                    {d.Detail_Comment ? (
+                      <Text fontSize={11} color="$textSecondary" lineHeight={15} flex={1}>
+                        {d.Detail_Comment}
+                      </Text>
+                    ) : (
+                      <Text fontSize={11} color="$textMuted" fontStyle="italic" flex={1}>
+                        Sin comentario
+                      </Text>
+                    )}
+                  </XStack>
+
+                  {/* Decisión de este empleado: dos botones chicos al margen. Los
+                      grandes con texto son los de la solicitud completa, al pie de
+                      la tarjeta, que es la decisión frecuente; acá se firma la
+                      excepción y no tiene por qué competir con ella. */}
+                  {firmable && (
+                    <XStack gap="$2" justifyContent="flex-end" paddingTop={2}>
+                      <Button
+                        height={28} width={42} borderRadius={8} padding={0}
+                        backgroundColor="$backgroundElevated"
+                        borderWidth={1} borderColor="$border"
+                        pressStyle={{ opacity: 0.7 }}
+                        accessibilityLabel={`Rechazar horas de ${d.Employee_Name}`}
+                        onPress={() => onRechazar([d])}
+                      >
+                        <X size={14} color={theme.error?.val as string} />
+                      </Button>
+
+                      <Button
+                        height={28} width={42} borderRadius={8} padding={0}
+                        backgroundColor="$success"
+                        pressStyle={{ opacity: 0.85 }}
+                        accessibilityLabel={`Aprobar horas de ${d.Employee_Name}`}
+                        onPress={() => onAprobar([d])}
+                      >
+                        <Check size={14} color="white" />
+                      </Button>
+                    </XStack>
+                  )}
+                </YStack>
+              )
+            })}
+          </YStack>
+        )}
+
+        {/* La solicitud entera. Se muestra abierta o cerrada: es la decisión
+            más frecuente y no debería exigir desplegar primero. */}
+        {firmables.length > 0 && (
+          <XStack gap="$2" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
+            <Button
+              flex={1} height={40} borderRadius={10}
+              backgroundColor="$backgroundSurface"
+              borderWidth={1} borderColor="$border"
+              pressStyle={{ opacity: 0.7 }}
+              onPress={() => onRechazar(firmables)}
+            >
+              <XStack alignItems="center" gap="$2">
+                <X size={15} color={theme.error?.val as string} />
+                <Text fontSize={13} fontWeight="700" color="$error">
+                  {firmables.length > 1 ? 'Rechazar todo' : 'Rechazar'}
+                </Text>
+              </XStack>
+            </Button>
+
+            <Button
+              flex={1} height={40} borderRadius={10}
+              backgroundColor="$success"
+              pressStyle={{ opacity: 0.85 }}
+              onPress={() => onAprobar(firmables)}
+            >
+              <XStack alignItems="center" gap="$2">
+                <Check size={15} color="white" />
+                <Text fontSize={13} fontWeight="700" color="white">
+                  {firmables.length > 1 ? 'Aprobar todo' : 'Aprobar'}
+                </Text>
+              </XStack>
+            </Button>
+          </XStack>
+        )}
+      </YStack>
+    </Card>
   )
 }
 

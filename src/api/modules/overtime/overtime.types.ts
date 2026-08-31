@@ -11,6 +11,19 @@ export interface IUserEntity {
   Entities_Code: string
   Name: string
   User: string
+
+  /** Posición de la etapa dentro del flujo. */
+  Order: number
+
+  /**
+   * Es la ÚLTIMA etapa del proceso: la que compromete el dinero.
+   *
+   * Lo resuelve el servidor. La pantalla solo recibe las entidades DEL
+   * USUARIO, así que no tiene con qué saber cuál es la última del proceso, y
+   * reconocerla por el nombre —'Autoriza Gerente'— se rompería con cualquier
+   * renombre en AdmSys.
+   */
+  Es_Ultima: boolean
 }
 
 /**
@@ -39,6 +52,8 @@ export interface IOvertimeRequestDetail {
   Start_Time: string | null
   End_Time: string | null
   Total_Overtime_Hours: number | null
+  /** Por qué este empleado hace estas horas. Lo escribe quien la solicita. */
+  Detail_Comment: string | null
   Clock_In: string | null
   Clock_Out: string | null
 
@@ -231,6 +246,21 @@ export interface IOvertimeBudgetRow {
   Porcentaje_Consumido: number
 }
 
+/**
+ * Lo gastado en un día del período.
+ *
+ * El total de la semana dice cuánto se gastó; esto dice CUÁNDO. Un mismo total
+ * puede ser cuatro días parejos o un martes desbocado, y solo lo segundo es un
+ * problema que se puede ir a mirar.
+ */
+export interface IOvertimeDayTotal {
+  Fecha: string
+  Empleados: number
+  Solicitudes: number
+  Horas: number
+  Costo: number
+}
+
 export interface IOvertimeBudgetDashboard {
   UnidadesNegocio: IOvertimeBudgetRow[]
   Departamentos: IOvertimeBudgetRow[]
@@ -247,6 +277,12 @@ export interface IOvertimeBudgetDashboard {
 
   /** Las horas del período abiertas por banda de recargo. */
   Conceptos: IOvertimeConceptTotal[]
+
+  /**
+   * El gasto día por día. Solo vienen los días CON movimiento: la pantalla
+   * conoce el rango de la semana y dibuja el hueco.
+   */
+  Dias: IOvertimeDayTotal[]
 
   /**
    * El usuario no tiene áreas configuradas. Hay que distinguirlo de "sí tiene
@@ -291,9 +327,52 @@ export interface IOvertimeBudgetEmployee {
  * Los montos llegan en null si el usuario no tiene el acceso 'CostoHE'; los
  * porcentajes siempre vienen. Ese recorte lo hace la base, no la pantalla.
  */
+/**
+ * Lo que cuesta resolver una diferencia, en los dos escenarios.
+ *
+ * Mientras la revisión está abierta el presupuesto YA tiene contadas las horas
+ * solicitadas, así que rechazar no lo mueve —no es que no cueste, es que ya
+ * está contado— y aprobar lo mueve en (marcaje − solicitado).
+ */
+export interface IOvertimeReviewImpact {
+  Es_Ultima_Entidad: boolean
+  Ve_Costo: boolean
+  /** La fila del presupuesto completo del usuario. */
+  Es_Total: boolean
+
+  Area_Codigo: string
+  Area_Nombre: string
+
+  Semana_Inicio: string | null
+  Semana_Fin: string | null
+
+  Empleados: number
+  Horas_Solicitadas: number
+  Horas_Marcaje: number
+
+  Presupuesto: number | null
+  Consumido: number | null
+
+  /** Lo que esas horas ya le cuestan al presupuesto. */
+  Costo_Actual: number | null
+  /** Lo que costarían si se reconoce el marcaje. */
+  Costo_Si_Aprueba: number | null
+
+  Consumido_Si_Rechaza: number | null
+  Consumido_Si_Aprueba: number | null
+
+  Porcentaje_Antes: number
+  Porcentaje_Si_Aprueba: number
+
+  /** JSON con correlativo, empleado, horas y costo de cada revisión. */
+  Revisiones_Json: string | null
+}
+
 export interface IOvertimeApprovalImpact {
   Es_Ultima_Entidad: boolean
   Ve_Costo: boolean
+  /** La fila del total: el presupuesto completo del usuario, no el de un área. */
+  Es_Total: boolean
 
   /** Centro de costos del empleado: donde vive el presupuesto. */
   Area_Codigo: string

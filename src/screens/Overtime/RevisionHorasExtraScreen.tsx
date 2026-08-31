@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet } from 'react-native'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
-import { CalendarDays, Check, CheckSquare, MessageSquareWarning, Square, TrendingDown, TrendingUp, X } from 'lucide-react-native'
+import { CalendarDays, Check, CheckSquare, ChevronDown, MessageSquareWarning, Square, TrendingDown, TrendingUp, UserRound, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -19,7 +19,11 @@ import AppInput from '../../components/commons/AppInput'
 import ConfirmDialog from '../../components/commons/ConfirmDialog'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
 import { overtimeService } from '../../api/modules/overtime/overtime.service'
-import { IOvertimeReviewToAuth, IUserEntity } from '../../api/modules/overtime/overtime.types'
+import {
+  IOvertimeReviewImpact,
+  IOvertimeReviewToAuth,
+  IUserEntity,
+} from '../../api/modules/overtime/overtime.types'
 import {
   DistribucionHoras,
   fmtFecha,
@@ -93,6 +97,27 @@ const etiquetaDiferencia = (diff: number | null | undefined) => {
   return `${diff > 0 ? '+' : '-'}${fmtHoras(Math.abs(diff))}`
 }
 
+/**
+ * Una solicitud con las diferencias que le quedan pendientes.
+ *
+ * La bandeja llega revisión por revisión —un empleado cada una— porque eso es
+ * lo que se firma. Para la última entidad eso no alcanza: lo que decide es
+ * cuánto se mueve LA SOLICITUD, y con los empleados sueltos hay que sumarlos
+ * de cabeza.
+ */
+interface GrupoRevision {
+  requestId: number
+  correlativo: string
+  fecha: string | null
+  solicitante: string
+  revisiones: IOvertimeReviewToAuth[]
+  horasSolicitadas: number
+  horasMarcaje: number
+  /** Lo que esas horas ya cuestan, y lo que costarían al reconocer el marcaje. */
+  costoActual: number | null
+  costoSiAprueba: number | null
+}
+
 export default function RevisionHorasExtraScreen() {
   const { defaultCompany } = useAuth()
   const loader = useLoader()
@@ -118,6 +143,18 @@ export default function RevisionHorasExtraScreen() {
   // de uno. Así el confirm, el envío y el mensaje son un solo camino en vez de
   // dos que hay que mantener parejos.
   const [aprobando, setAprobando] = useState<IOvertimeReviewToAuth[] | null>(null)
+
+  // Impacto de la decisión sobre el presupuesto. Solo llega con contenido en
+  // la última etapa del flujo y con el acceso 'CostoHE'.
+  const [impacto, setImpacto] = useState<IOvertimeReviewImpact[]>([])
+
+  // Impacto de TODA la bandeja, no del lote que se está por firmar. Es lo que
+  // permite poner el costo en cada tarjeta antes de abrir nada.
+  const [impactoBandeja, setImpactoBandeja] = useState<IOvertimeReviewImpact[]>([])
+  // Solicitudes desplegadas. Arrancan cerradas: la tarjeta cerrada ya dice
+  // cuántos empleados, cuántas horas y cuánto se mueve, que es con lo que se
+  // decide; el detalle es para cuando algo no cuadra.
+  const [expandidas, setExpandidas] = useState<Set<number>>(new Set())
   const [rechazando, setRechazando] = useState<IOvertimeReviewToAuth[] | null>(null)
 
   // Ids marcados para resolver en lote.
@@ -161,6 +198,36 @@ export default function RevisionHorasExtraScreen() {
    * `silent` es el modo del gesto de recargar: sin loader a pantalla completa
    * ni esqueleto, solo el indicador propio de la lista.
    */
+  /**
+   * Costo de cada revisión de la bandeja, para poder mostrarlo en la lista.
+   *
+   * El procedimiento devuelve el desglose POR REVISIÓN dentro de cada área, así
+   * que acá no hay que repartir nada: cada renglón trae su propio costo.
+   *
+   * De mejor esfuerzo: si falla, las tarjetas salen sin monto y todo lo demás
+   * funciona igual.
+   */
+  const pedirImpactoBandeja = useCallback(
+    async (filas: IOvertimeReviewToAuth[]) => {
+      if (!companyCode || !entidad || filas.length === 0) {
+        setImpactoBandeja([])
+        return
+      }
+
+      try {
+        const res = await overtimeService.getReviewImpact(
+          companyCode,
+          Number(entidad),
+          filas.map(r => r.Id),
+        )
+        setImpactoBandeja(res?.Success && res.Data ? res.Data : [])
+      } catch {
+        setImpactoBandeja([])
+      }
+    },
+    [companyCode, entidad],
+  )
+
   const loadData = useCallback(async (silent = false) => {
     if (!companyCode || !entidad) {
       setData([])
@@ -185,6 +252,7 @@ export default function RevisionHorasExtraScreen() {
       const filas = res.Data ?? []
       setData(filas)
       setFiltered(filas)
+      pedirImpactoBandeja(filas)
 
       // Lo que ya no está en la bandeja no se puede seguir teniendo marcado.
       setSeleccionados(prev => {
@@ -202,7 +270,7 @@ export default function RevisionHorasExtraScreen() {
     // `loader` queda fuera a propósito: el provider no memoiza su valor, así que
     // incluirlo cambiaría la identidad de loadData en cada render y el
     // useFocusEffect volvería a consultar sin parar.
-  }, [companyCode, entidad])
+  }, [companyCode, entidad, pedirImpactoBandeja])
 
   /**
    * Registra la decisión sobre la diferencia.
@@ -265,6 +333,46 @@ export default function RevisionHorasExtraScreen() {
     [companyCode, entidad, loader, showToast],
   )
 
+  /**
+   * Pide el impacto de resolver estas diferencias.
+   *
+   * De mejor esfuerzo: si falla, el confirm sale sin el bloque. Es información
+   * de apoyo para decidir, no un requisito para poder firmar.
+   */
+  const pedirImpacto = useCallback(
+    async (revisiones: IOvertimeReviewToAuth[]) => {
+      setImpacto([])
+      if (!companyCode || !entidad || revisiones.length === 0) return
+
+      try {
+        const res = await overtimeService.getReviewImpact(
+          companyCode,
+          Number(entidad),
+          revisiones.map(r => r.Id),
+        )
+
+        // Las dos condiciones: que sea la última firma —antes no se compromete
+        // nada— y que el usuario pueda ver montos.
+        const filas = res?.Success && res.Data
+          ? res.Data.filter(r => r.Es_Ultima_Entidad && r.Ve_Costo)
+          : []
+        setImpacto(filas)
+      } catch {
+        setImpacto([])
+      }
+    },
+    [companyCode, entidad],
+  )
+
+  /** Abrir el confirm: se muestra ya y el impacto llega después. */
+  const abrirAprobacion = useCallback(
+    (revisiones: IOvertimeReviewToAuth[]) => {
+      setAprobando(revisiones)
+      pedirImpacto(revisiones)
+    },
+    [pedirImpacto],
+  )
+
   const confirmarRechazo = useCallback(() => {
     if (!rechazando || rechazando.length === 0) return
 
@@ -318,6 +426,108 @@ export default function RevisionHorasExtraScreen() {
 
     return { empleados, texto }
   }, [filtered, data])
+
+  /**
+   * ¿Le toca la última firma?
+   *
+   * Es la que compromete el dinero, y donde agrupar por solicitud cambia algo:
+   * las etapas anteriores ven una cola corta de su propia gente. Lo resuelve el
+   * procedimiento del impacto, así que no hace falta reconocer a la entidad por
+   * su nombre —que cambiaría con cualquier renombre en AdmSys.
+   */
+  /**
+   * ¿Le toca la última firma?
+   *
+   * Sale de la entidad seleccionada y no del impacto: el impacto es una
+   * consulta aparte que puede tardar o fallar, y con la agrupación colgando de
+   * ella la bandeja se dibujaba plana y ya no se reacomodaba. Cómo está armado
+   * el flujo es algo que se sabe apenas se eligen las entidades.
+   */
+  const esUltimaEntidad = useMemo(
+    () => entidades.find(e => String(e.Id) === entidad)?.Es_Ultima === true,
+    [entidades, entidad],
+  )
+
+  const veCosto = useMemo(
+    () => impactoBandeja.some(r => r.Es_Ultima_Entidad && r.Ve_Costo),
+    [impactoBandeja],
+  )
+
+  /**
+   * Costo de cada revisión, por Id.
+   *
+   * Sale del desglose que trae cada área: no hay que repartir nada porque el
+   * procedimiento ya lo devuelve renglón por renglón.
+   */
+  const costoPorRevision = useMemo(() => {
+    const mapa = new Map<number, { actual: number; siAprueba: number }>()
+
+    impactoBandeja.forEach(area => {
+      let filas: any[] = []
+      try {
+        const parsed = JSON.parse(area.Revisiones_Json ?? '[]')
+        filas = Array.isArray(parsed) ? parsed : []
+      } catch {
+        filas = []
+      }
+
+      filas.forEach(f => {
+        const id = Number(f?.reviews_Id)
+        if (!id) return
+        mapa.set(id, {
+          actual: Number(f?.costo_Actual ?? 0),
+          siAprueba: Number(f?.costo_Si_Aprueba ?? 0),
+        })
+      })
+    })
+
+    return mapa
+  }, [impactoBandeja])
+
+  /** La bandeja vista por solicitud, en el orden en que ya venía. */
+  const grupos = useMemo<GrupoRevision[]>(() => {
+    const porId = new Map<number, GrupoRevision>()
+
+    filtered.forEach(r => {
+      let g = porId.get(r.Request_Id)
+
+      if (!g) {
+        g = {
+          requestId: r.Request_Id,
+          correlativo: r.Correlative,
+          fecha: r.Date,
+          solicitante: r.Solicitante || r.Sent_To_Review_By,
+          revisiones: [],
+          horasSolicitadas: 0,
+          horasMarcaje: 0,
+          costoActual: null,
+          costoSiAprueba: null,
+        }
+        porId.set(r.Request_Id, g)
+      }
+
+      g.revisiones.push(r)
+      g.horasSolicitadas += r.Requested_Overtime_Hours ?? 0
+      g.horasMarcaje += r.Worked_Overtime_Hours ?? 0
+
+      const c = costoPorRevision.get(r.Id)
+      if (c) {
+        g.costoActual = (g.costoActual ?? 0) + c.actual
+        g.costoSiAprueba = (g.costoSiAprueba ?? 0) + c.siAprueba
+      }
+    })
+
+    return [...porId.values()]
+  }, [filtered, costoPorRevision])
+
+  const alternarGrupo = useCallback((requestId: number) => {
+    setExpandidas(prev => {
+      const copia = new Set(prev)
+      if (copia.has(requestId)) copia.delete(requestId)
+      else copia.add(requestId)
+      return copia
+    })
+  }, [])
 
   const alternarSeleccion = useCallback((id: number) => {
     setSeleccionados(prev => {
@@ -475,8 +685,10 @@ export default function RevisionHorasExtraScreen() {
       {/* La lista se monta siempre, incluso vacía, para que el gesto de
           recargar exista también cuando no hay nada pendiente. */}
       <FlatList
-        data={filtered}
-        keyExtractor={item => String(item.Id)}
+        // Para la última entidad la unidad de decisión es la SOLICITUD; para
+        // las anteriores sigue siendo la diferencia de su gente.
+        data={(esUltimaEntidad ? grupos : filtered) as any[]}
+        keyExtractor={(item: any) => String(esUltimaEntidad ? item.requestId : item.Id)}
         contentContainerStyle={
           filtered.length === 0
             ? { flexGrow: 1 }
@@ -503,20 +715,39 @@ export default function RevisionHorasExtraScreen() {
             />
           )
         }
-        renderItem={({ item }) => (
-          <RevisionCard
-            item={item}
-            seleccionada={seleccionados.has(item.Id)}
-            firmable={puedeAutorizar(item, nombreEntidad)}
-            onSeleccionar={() => alternarSeleccion(item.Id)}
-            onAprobar={() => setAprobando([item])}
-            onRechazar={() => {
-              setMotivo('')
-              setMotivoError('')
-              setRechazando([item])
-            }}
-          />
-        )}
+        renderItem={({ item }: any) =>
+          esUltimaEntidad ? (
+            <RevisionGrupoCard
+              grupo={item}
+              abierta={expandidas.has(item.requestId)}
+              veCosto={veCosto}
+              seleccionados={seleccionados}
+              esFirmable={r => puedeAutorizar(r, nombreEntidad)}
+              costoDe={r => costoPorRevision.get(r.Id) ?? null}
+              onAlternar={() => alternarGrupo(item.requestId)}
+              onSeleccionar={id => alternarSeleccion(id)}
+              onAprobar={revisiones => abrirAprobacion(revisiones)}
+              onRechazar={revisiones => {
+                setMotivo('')
+                setMotivoError('')
+                setRechazando(revisiones)
+              }}
+            />
+          ) : (
+            <RevisionCard
+              item={item}
+              seleccionada={seleccionados.has(item.Id)}
+              firmable={puedeAutorizar(item, nombreEntidad)}
+              onSeleccionar={() => alternarSeleccion(item.Id)}
+              onAprobar={() => abrirAprobacion([item])}
+              onRechazar={() => {
+                setMotivo('')
+                setMotivoError('')
+                setRechazando([item])
+              }}
+            />
+          )
+        }
       />
 
     </View>
@@ -525,7 +756,7 @@ export default function RevisionHorasExtraScreen() {
           que cambia y no se deduce del botón. */}
       <ConfirmDialog
         open={!!aprobando}
-        onOpenChange={abierto => { if (!abierto) setAprobando(null) }}
+        onOpenChange={abierto => { if (!abierto) { setAprobando(null); setImpacto([]) } }}
         title="Aprobar diferencia"
         message={
           !aprobando
@@ -542,7 +773,8 @@ export default function RevisionHorasExtraScreen() {
         confirmColor="#22C55E"
         loading={enviando}
         onConfirm={() => aprobando && enviarDecision(aprobando, true, '')}
-        onCancel={() => setAprobando(null)}
+        onCancel={() => { setAprobando(null); setImpacto([]) }}
+        extra={impacto.length > 0 ? <ImpactoRevision filas={impacto} aprueba /> : undefined}
       />
 
       {/* Rechazar: el motivo es obligatorio, así que no alcanza un confirm */}
@@ -682,6 +914,271 @@ function GrupoHoras({
 
       <DistribucionHoras conceptos={conceptos} compacta />
     </YStack>
+  )
+}
+
+/**
+ * Una solicitud con las diferencias que le quedan pendientes.
+ *
+ * Cerrada dice lo que hace falta para decidir: cuántos empleados, cómo se
+ * mueven las horas y —con el acceso— cuánto se mueve la plata. Abierta muestra
+ * renglón por renglón, porque la decisión también puede ser parcial y para eso
+ * hay que poder mirar a cada uno.
+ *
+ * El salto en dinero se muestra con su signo: reconocer el marcaje puede
+ * costar más o menos que lo solicitado, y esa dirección es la mitad de la
+ * decisión.
+ */
+function RevisionGrupoCard({
+  grupo,
+  abierta,
+  veCosto,
+  seleccionados,
+  esFirmable,
+  costoDe,
+  onAlternar,
+  onSeleccionar,
+  onAprobar,
+  onRechazar,
+}: {
+  grupo: GrupoRevision
+  abierta?: boolean
+  /** El usuario tiene el acceso para ver montos. */
+  veCosto: boolean
+  seleccionados: Set<number>
+  esFirmable: (r: IOvertimeReviewToAuth) => boolean
+  costoDe: (r: IOvertimeReviewToAuth) => { actual: number; siAprueba: number } | null
+  onAlternar: () => void
+  onSeleccionar: (id: number) => void
+  onAprobar: (revisiones: IOvertimeReviewToAuth[]) => void
+  onRechazar: (revisiones: IOvertimeReviewToAuth[]) => void
+}) {
+  const theme = useTheme()
+  const firmables = grupo.revisiones.filter(esFirmable)
+
+  const delta = (grupo.costoSiAprueba ?? 0) - (grupo.costoActual ?? 0)
+  const hayCosto = veCosto && grupo.costoActual !== null
+
+  return (
+    <Card
+      backgroundColor="$backgroundElevated"
+      borderRadius={14}
+      padding="$3"
+      borderWidth={1}
+      borderColor="$border"
+    >
+      <YStack gap="$2.5">
+
+        {/* Encabezado: toda la tarjeta abre y cierra, no un ícono chiquito */}
+        <XStack alignItems="flex-start" gap="$2" pressStyle={{ opacity: 0.7 }} onPress={onAlternar}>
+          <YStack flex={1} gap="$1">
+            <XStack alignItems="center" gap="$2">
+              <Text fontSize={15} fontWeight="700" color="$text">
+                {grupo.correlativo}
+              </Text>
+              <XStack
+                paddingHorizontal={8}
+                paddingVertical={3}
+                borderRadius={20}
+                alignItems="center"
+                gap="$1"
+                backgroundColor="$backgroundSurface"
+              >
+                <CalendarDays size={11} color={theme.textMuted?.val as string} />
+                <Text fontSize={11} fontWeight="600" color="$textSecondary">
+                  {fmtFecha(grupo.fecha)}
+                </Text>
+              </XStack>
+            </XStack>
+          </YStack>
+
+          <YStack alignItems="flex-end" gap={2}>
+            {/* De dónde a dónde se mueven las horas: es la decisión entera */}
+            <Text fontSize={14} fontWeight="800" color="$text">
+              {fmtHoras(grupo.horasSolicitadas)} → {fmtHoras(grupo.horasMarcaje)}
+            </Text>
+            {hayCosto && (
+              <Text
+                fontSize={13}
+                fontWeight="700"
+                color={Math.abs(delta) < 0.005 ? '$textMuted' : delta > 0 ? '#B45309' : '#166534'}
+              >
+                {Math.abs(delta) < 0.005
+                  ? 'sin cambio'
+                  : `${delta > 0 ? '+' : '−'}${fmtDinero(Math.abs(delta))}`}
+              </Text>
+            )}
+            <Text fontSize={10} color="$textMuted">
+              {grupo.revisiones.length} empleado{grupo.revisiones.length === 1 ? '' : 's'}
+            </Text>
+          </YStack>
+
+          <View rotate={abierta ? '180deg' : '0deg'} paddingTop={2}>
+            <ChevronDown size={18} color={theme.textMuted?.val as string} />
+          </View>
+        </XStack>
+
+        {/* Los empleados */}
+        {abierta && (
+          <YStack gap="$2" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
+            {grupo.revisiones.map(r => {
+              const firmable = esFirmable(r)
+              const costo = costoDe(r)
+              const saltoFila = costo ? costo.siAprueba - costo.actual : 0
+
+              return (
+                <YStack
+                  key={r.Id}
+                  backgroundColor={seleccionados.has(r.Id) ? '$primaryOpacity2' : '$backgroundSurface'}
+                  borderRadius={10}
+                  padding="$2.5"
+                  gap="$1.5"
+                >
+                  <XStack alignItems="flex-start" gap="$2">
+                    {firmable && (
+                      <View hitSlop={12} paddingTop={2} pressStyle={{ opacity: 0.6 }} onPress={() => onSeleccionar(r.Id)}>
+                        {seleccionados.has(r.Id) ? (
+                          <CheckSquare size={18} color={theme.primary?.val as string} />
+                        ) : (
+                          <Square size={18} color={theme.textMuted?.val as string} />
+                        )}
+                      </View>
+                    )}
+
+                    <YStack flex={1} gap={2}>
+                      <Text fontSize={13} fontWeight="600" color="$text" numberOfLines={2}>
+                        {nombreConCodigo(r.Employee_Name, r.Employee_Code)}
+                      </Text>
+                      <Text fontSize={11} color="$textMuted">
+                        {fmtHoras(r.Requested_Overtime_Hours)} solicitadas · {fmtHoras(r.Worked_Overtime_Hours)} de marcaje
+                      </Text>
+                    </YStack>
+
+                    <YStack alignItems="flex-end" gap={2}>
+                      <Text fontSize={14} fontWeight="700" color="$text">
+                        {fmtHoras(r.Worked_Overtime_Hours)}
+                      </Text>
+                      {veCosto && costo && (
+                        <Text
+                          fontSize={11}
+                          fontWeight="600"
+                          color={Math.abs(saltoFila) < 0.005 ? '$textMuted' : saltoFila > 0 ? '#B45309' : '#166534'}
+                        >
+                          {Math.abs(saltoFila) < 0.005
+                            ? 'sin cambio'
+                            : `${saltoFila > 0 ? '+' : '−'}${fmtDinero(Math.abs(saltoFila))}`}
+                        </Text>
+                      )}
+                    </YStack>
+                  </XStack>
+
+                  {/* Los DOS montos, no solo el salto: uno dice lo que ya se
+                      había aprobado y el otro lo que pide la revisión. Con el
+                      salto solo no se sabe sobre qué base está calculado, y es
+                      justamente lo que hay que poder auditar. */}
+                  {veCosto && costo && (
+                    <XStack gap="$2">
+                      <YStack flex={1} gap={1}>
+                        <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+                          YA APROBADO
+                        </Text>
+                        <Text fontSize={12} fontWeight="700" color="$textSecondary">
+                          {fmtDinero(costo.actual)}
+                        </Text>
+                      </YStack>
+
+                      <YStack flex={1} gap={1}>
+                        <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+                          PIDE LA REVISIÓN
+                        </Text>
+                        <Text fontSize={12} fontWeight="800" color="$text">
+                          {fmtDinero(costo.siAprueba)}
+                        </Text>
+                      </YStack>
+                    </XStack>
+                  )}
+
+                  {/* Por qué la mandaron a revisar */}
+                  {!!r.Comment && (
+                    <Text fontSize={11} color="$textSecondary" lineHeight={15}>
+                      {r.Comment}
+                    </Text>
+                  )}
+
+                  {/* Chicos y alineados a la derecha, no dos barras a lo
+                      ancho: la decisión de la solicitud entera vive al pie de
+                      la tarjeta, y estos son la excepción —resolver a uno
+                      aparte—. Con el mismo peso visual competían con ella. */}
+                  {firmable && (
+                    <XStack gap="$2" justifyContent="flex-end" paddingTop={2}>
+                      <Button
+                        height={28} borderRadius={8} paddingHorizontal="$2.5"
+                        backgroundColor="$backgroundElevated"
+                        borderWidth={1} borderColor="$border"
+                        pressStyle={{ opacity: 0.7 }}
+                        onPress={() => onRechazar([r])}
+                      >
+                        <XStack alignItems="center" gap="$1">
+                          <X size={12} color={theme.error?.val as string} />
+                          <Text fontSize={11} fontWeight="700" color="$error">Rechazar</Text>
+                        </XStack>
+                      </Button>
+
+                      <Button
+                        height={28} borderRadius={8} paddingHorizontal="$2.5"
+                        backgroundColor="$success"
+                        pressStyle={{ opacity: 0.85 }}
+                        onPress={() => onAprobar([r])}
+                      >
+                        <XStack alignItems="center" gap="$1">
+                          <Check size={12} color="white" />
+                          <Text fontSize={11} fontWeight="700" color="white">Aprobar</Text>
+                        </XStack>
+                      </Button>
+                    </XStack>
+                  )}
+                </YStack>
+              )
+            })}
+          </YStack>
+        )}
+
+        {/* La solicitud entera. Visible abierta o cerrada: es la decisión más
+            frecuente y no debería exigir desplegar primero. */}
+        {firmables.length > 0 && (
+          <XStack gap="$2" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
+            <Button
+              flex={1} height={40} borderRadius={10}
+              backgroundColor="$backgroundSurface"
+              borderWidth={1} borderColor="$border"
+              pressStyle={{ opacity: 0.7 }}
+              onPress={() => onRechazar(firmables)}
+            >
+              <XStack alignItems="center" gap="$2">
+                <X size={15} color={theme.error?.val as string} />
+                <Text fontSize={13} fontWeight="700" color="$error">
+                  {firmables.length > 1 ? 'Rechazar todo' : 'Rechazar'}
+                </Text>
+              </XStack>
+            </Button>
+
+            <Button
+              flex={1} height={40} borderRadius={10}
+              backgroundColor="$success"
+              pressStyle={{ opacity: 0.85 }}
+              onPress={() => onAprobar(firmables)}
+            >
+              <XStack alignItems="center" gap="$2">
+                <Check size={15} color="white" />
+                <Text fontSize={13} fontWeight="700" color="white">
+                  {firmables.length > 1 ? 'Aprobar todo' : 'Aprobar'}
+                </Text>
+              </XStack>
+            </Button>
+          </XStack>
+        )}
+      </YStack>
+    </Card>
   )
 }
 
@@ -867,4 +1364,125 @@ function RevisionCard({
       </YStack>
     </Card>
   )
+}
+
+
+/**
+ * Qué le pasa al presupuesto según lo que se firme.
+ *
+ * Mientras la revisión está abierta el presupuesto YA tiene contadas las horas
+ * solicitadas: el detalle se costea por lo pedido hasta que alguien resuelve la
+ * diferencia. Por eso rechazar no lo mueve —no es que no cueste, es que ya está
+ * contado— y aprobar lo mueve en (marcaje − solicitado).
+ *
+ * Se muestran los dos números aunque solo uno vaya a pasar: el salto entre
+ * ellos ES la decisión, y con uno solo no hay contra qué compararlo.
+ */
+function ImpactoRevision({ filas, aprueba }: { filas: IOvertimeReviewImpact[]; aprueba: boolean }) {
+  const total = filas.find(r => r.Es_Total)
+  const areas = filas.filter(r => !r.Es_Total)
+
+  return (
+    <YStack gap="$2" width="100%">
+      {total && <TotalRevision fila={total} aprueba={aprueba} />}
+
+      {areas.map(r => {
+        const actual = r.Costo_Actual ?? 0
+        const siAprueba = r.Costo_Si_Aprueba ?? 0
+        const delta = siAprueba - actual
+
+        return (
+          <YStack
+            key={r.Area_Codigo}
+            width="100%"
+            backgroundColor="$backgroundSurface"
+            borderRadius={10}
+            padding="$2.5"
+            gap="$1.5"
+          >
+            <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
+              <YStack flex={1} minWidth={0}>
+                <Text fontSize={12} fontWeight="700" color="$text" numberOfLines={1}>
+                  {r.Area_Nombre || r.Area_Codigo}
+                </Text>
+                <Text fontSize={10} color="$textMuted">
+                  {fmtHoras(r.Horas_Solicitadas)} solicitadas · {fmtHoras(r.Horas_Marcaje)} de marcaje
+                </Text>
+              </YStack>
+
+              {aprueba && Math.abs(delta) > 0.005 ? (
+                <Text fontSize={13} fontWeight="800" color={delta > 0 ? '#B45309' : '#166534'}>
+                  {delta > 0 ? '+' : '−'}{fmtDinero(Math.abs(delta))}
+                </Text>
+              ) : (
+                <Text fontSize={11} color="$textMuted">sin cambio</Text>
+              )}
+            </XStack>
+
+            <XStack justifyContent="space-between" gap="$2">
+              <Text fontSize={11} color="$textMuted">Ya contado</Text>
+              <Text fontSize={12} fontWeight="600" color="$textSecondary">{fmtDinero(actual)}</Text>
+            </XStack>
+            <XStack justifyContent="space-between" gap="$2">
+              <Text fontSize={11} color="$textMuted">Si se aprueba</Text>
+              <Text fontSize={12} fontWeight="700" color="$text">{fmtDinero(siAprueba)}</Text>
+            </XStack>
+          </YStack>
+        )
+      })}
+    </YStack>
+  )
+}
+
+/** El presupuesto completo del que firma, en el escenario que corresponda. */
+function TotalRevision({ fila, aprueba }: { fila: IOvertimeReviewImpact; aprueba: boolean }) {
+  const presupuesto = fila.Presupuesto ?? 0
+  const despues = (aprueba ? fila.Consumido_Si_Aprueba : fila.Consumido_Si_Rechaza) ?? 0
+  const disponible = presupuesto - despues
+  const excedido = disponible < 0
+
+  return (
+    <YStack
+      width="100%"
+      backgroundColor={excedido ? '#FEF2F2' : '#F0FDF4'}
+      borderWidth={1}
+      borderColor={excedido ? '#FECACA' : '#BBF7D0'}
+      borderRadius={10}
+      padding="$2.5"
+      gap="$1.5"
+    >
+      <XStack justifyContent="space-between" alignItems="center" gap="$2">
+        <Text fontSize={10} fontWeight="700" color={excedido ? '#991B1B' : '#166534'} letterSpacing={0.4}>
+          TU PRESUPUESTO
+        </Text>
+        <Text fontSize={11} fontWeight="700" color={excedido ? '#991B1B' : '#166534'}>
+          {excedido ? `Excedido en ${fmtDinero(Math.abs(disponible))}` : `Quedarían ${fmtDinero(disponible)}`}
+        </Text>
+      </XStack>
+
+      <XStack gap="$2">
+        {[
+          { label: 'ASIGNADO', valor: fila.Presupuesto, fuerte: false },
+          { label: 'GASTADO HOY', valor: fila.Consumido, fuerte: false },
+          { label: aprueba ? 'SI APRUEBAS' : 'SI RECHAZAS', valor: despues, fuerte: true },
+        ].map(c => (
+          <YStack key={c.label} flex={1} gap={1}>
+            <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+              {c.label}
+            </Text>
+            <Text fontSize={c.fuerte ? 15 : 13} fontWeight={c.fuerte ? '800' : '700'} color="$text">
+              {fmtDinero(c.valor)}
+            </Text>
+          </YStack>
+        ))}
+      </XStack>
+    </YStack>
+  )
+}
+
+/** 'L 1,234'. Redondeado: los centavos no cambian ninguna decisión acá. */
+const fmtDinero = (valor: number | null | undefined): string => {
+  const n = Number(valor ?? 0)
+  if (!isFinite(n)) return 'L 0'
+  return `L ${Math.round(n).toLocaleString('es-HN')}`
 }

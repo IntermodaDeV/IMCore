@@ -7,6 +7,7 @@ import {
   IOvertimeRequestDetail,
   IOvertimeReviewToAuth,
   IOvertimeApprovalImpact,
+  IOvertimeReviewImpact,
   IOvertimeBudgetDashboard,
   IOvertimeBudgetEmployee,
   IPayWebWeek,
@@ -48,6 +49,18 @@ export const overtimeService = {
     httpClient.post<ExecutionResponse<IOvertimeApprovalImpact[]>, number[]>(
       `${schema}/ApprovalImpact?companyCode=${encodeURIComponent(companyCode)}&entityId=${entityId}`,
       details,
+    ),
+
+  /**
+   * Lo que cuesta resolver una diferencia, en los dos escenarios.
+   *
+   * Pensado para la última etapa del segundo flujo. Los montos solo vienen con
+   * el acceso 'CostoHE'.
+   */
+  getReviewImpact: (companyCode: string, entityId: number, reviews: number[]) =>
+    httpClient.post<ExecutionResponse<IOvertimeReviewImpact[]>, number[]>(
+      `${schema}/ReviewImpact?companyCode=${encodeURIComponent(companyCode)}&entityId=${entityId}`,
+      reviews,
     ),
 
   /** Aprueba o rechaza los detalles indicados. */

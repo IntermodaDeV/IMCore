@@ -18,6 +18,7 @@ import {
   IOvertimeBudgetEmployee,
   IOvertimeBudgetRow,
   IOvertimeConceptTotal,
+  IOvertimeDayTotal,
   IPayWebWeek,
 } from '../../api/modules/overtime/overtime.types'
 import { BarraApilada } from '../Mantenimiento/components'
@@ -636,6 +637,12 @@ export default function DashboardHorasExtraScreen() {
               </>
             )}
           </YStack>
+
+          {/* ── Gasto día por día ─────────────────────────────────────────
+              El total de la semana dice cuánto se gastó; esto dice cuándo. */}
+          <GastoPorDia dias={data?.Dias ?? []} total={data?.Total_Costo ?? 0} ancho={chartWidth} />
+
+
         </>
       )}
 
@@ -649,6 +656,140 @@ export default function DashboardHorasExtraScreen() {
       />
     </ScrollView>
   )
+}
+
+// ── Gasto día por día ───────────────────────────────────────────────────────
+//
+// Las barras se miden contra el día MÁS CARO y no contra el presupuesto: acá
+// se viene a ver el reparto de la semana, y contra el presupuesto semanal
+// todas quedarían igual de chatas y no se distinguiría el día desbocado, que
+// es justo lo que se busca.
+function GastoPorDia({
+  dias,
+  total,
+  ancho,
+}: {
+  dias: IOvertimeDayTotal[]
+  total: number
+  /** Ancho del lienzo, que ya calcula la pantalla para los otros gráficos. */
+  ancho: number
+}) {
+  const maxCosto = dias.reduce((m, d) => Math.max(m, Number(d.Costo ?? 0)), 0)
+
+  /**
+   * Tope del eje, un 20% por encima del día más caro.
+   *
+   * Sin esto la librería hace que la barra más alta llegue justo al techo del
+   * lienzo, y el monto que va ENCIMA de esa barra queda fuera y se corta. El
+   * aire de arriba es para la etiqueta, no para el dato.
+   *
+   * Se redondea hacia arriba a una cifra "limpia" para que el eje no quede con
+   * números como 1,437: se busca la potencia de diez del valor y se sube al
+   * siguiente múltiplo de la mitad de esa potencia.
+   */
+  const topeEje = (() => {
+    if (maxCosto <= 0) return undefined
+
+    const conAire = maxCosto * 1.2
+    const escala = Math.pow(10, Math.floor(Math.log10(conAire)))
+    const paso = escala / 2
+
+    return Math.ceil(conAire / paso) * paso
+  })()
+
+  return (
+    <YStack
+      backgroundColor="$backgroundElevated"
+      borderRadius="$4"
+      paddingVertical="$2.5"
+      paddingHorizontal="$3"
+      gap="$2"
+      {...shadows.sm}
+    >
+      <XStack alignItems="center" gap="$2">
+        <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4} flex={1}>
+          GASTO POR DÍA
+        </Text>
+        <Text fontSize={11} fontWeight="700" color="$text">
+          {fmtDinero(total)}
+        </Text>
+      </XStack>
+
+      {dias.length === 0 ? (
+        <Text fontSize={11} color="$textMuted">
+          Sin días en el período seleccionado.
+        </Text>
+      ) : maxCosto === 0 ? (
+        // Siete barras en cero no dibujan nada y se ven igual que un gráfico
+        // roto. Se dice con palabras, como en el gráfico de los cortes.
+        <Text fontSize={12} color="$textMuted" lineHeight={17}>
+          No hubo horas extra aprobadas ningún día de esta semana. Puede haber
+          solicitudes pendientes de firma: acá solo cuentan las que ya pasaron por
+          todas las entidades.
+        </Text>
+      ) : (
+        // Mismo gráfico que los cortes por nivel, para que las dos lecturas de
+        // la pantalla se vean iguales. Siete barras entran sin scroll, así que
+        // el ancho se ajusta al lienzo en vez de calcularse por barra.
+        <BarChart
+          data={dias.map(d => ({
+            value: Number(d.Costo ?? 0),
+            label: diaCorto(d.Fecha),
+            // Un solo color, el mismo de la banda del 25%: el tablero ya tiene
+            // bastante color y acá no hay categorías que distinguir — son
+            // siete días de lo mismo y lo que compara es el alto.
+            frontColor: colorConcepto(0.25),
+            topLabelComponent: () =>
+              Number(d.Costo ?? 0) > 0 ? (
+                <Text fontSize={8} color="$textMuted" marginBottom={2}>
+                  {fmtDinero(d.Costo)}
+                </Text>
+              ) : null,
+          }))}
+          width={ancho}
+          height={130}
+          barWidth={Math.max(14, Math.floor((ancho - 40) / Math.max(dias.length, 1)) - 10)}
+          spacing={10}
+          initialSpacing={10}
+          maxValue={topeEje}
+          noOfSections={3}
+          yAxisTextStyle={{ fontSize: 9, color: '#94A3B8' }}
+          xAxisLabelTextStyle={{ fontSize: 9, color: '#94A3B8' }}
+          yAxisThickness={0}
+          xAxisThickness={1}
+          xAxisColor="#E2E8F0"
+          rulesColor="#E2E8F0"
+          rulesType="dashed"
+        />
+      )}
+    </YStack>
+  )
+}
+
+/**
+ * La fecha, sin que el dispositivo la corra un día.
+ *
+ * `new Date('2026-08-25')` se interpreta como UTC y en Honduras se lee como el
+ * 24 por la tarde: el gasto del martes aparecería el lunes. Partiendo el texto
+ * y armando la fecha local eso no pasa.
+ */
+const fechaLocal = (valor: string): Date | null => {
+  const [y, m, d] = String(valor ?? '').substring(0, 10).split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(y, m - 1, d)
+}
+
+const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+const diaCorto = (valor: string): string => {
+  const d = fechaLocal(valor)
+  return d ? DIAS_CORTOS[d.getDay()] : ''
+}
+
+const fechaCorta = (valor: string): string => {
+  const d = fechaLocal(valor)
+  if (!d) return ''
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 // ── Reparto de las horas por banda de recargo ───────────────────────────────
