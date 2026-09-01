@@ -25,12 +25,20 @@ export interface IEmpleado {
   Departamento?: string | null
   JefeCode?: string | null
   JefeNombre?: string | null
+  /** El alterno del jefe. Con esto el servidor resuelve quién debe firmar;
+   *  cruzar por JefeCode da falsos positivos (el código se repite por empresa). */
+  JefeAlterno?: string | null
 }
 
 export interface IAprobador {
   User_Code: string
   Nombre: string
-  ExternalCode?: string | null // código PayWeb (para preseleccionar al jefe)
+  ExternalCode?: string | null // código PayWeb
+  Alterno?: string | null      // el del carnet: con este se cruza el jefe
+  /** El que la pantalla deja preseleccionado. Lo decide el servidor. */
+  Sugerido?: boolean
+  /** Si el sugerido es el jefe de verdad o un reemplazo por defecto. */
+  EsJefeReal?: boolean
 }
 
 export interface ICrearPase {

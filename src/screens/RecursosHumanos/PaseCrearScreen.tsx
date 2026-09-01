@@ -130,12 +130,8 @@ export default function PaseCrearScreen() {
   useEffect(() => {
     ;(async () => {
       try {
-        const [cat, apr] = await Promise.all([
-          pasesService.getCategorias(true),
-          pasesService.getAprobadores(''),
-        ])
+        const cat = await pasesService.getCategorias(true)
         if (cat.Success) setCategorias(cat.Data ?? [])
-        if (apr.Success) setAprobadores(apr.Data ?? [])
       } catch (err) {
         showToast('error', 'Error', handleError(err).message, 4000, 'bottom')
       }
@@ -152,7 +148,7 @@ export default function PaseCrearScreen() {
 
         if (resp?.Success && resp.Data) {
           setEmpleado(resp.Data)
-          preseleccionarJefe(resp.Data)
+          await cargarAprobadores(resp.Data)
         } else if (resp?.ErrorMessage) {
           setErrorVinculo(resp.ErrorMessage)
         }
@@ -164,17 +160,29 @@ export default function PaseCrearScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.Code])
 
-  const preseleccionarJefe = (e: IEmpleado) => {
-    if (sinJefe || !e.JefeCode) return
-    const jefe = aprobadores.find(a => a.ExternalCode && a.ExternalCode === e.JefeCode)
-    if (jefe) setAprobadorUser(jefe.User_Code)
+  /**
+   * Los aprobadores se piden CON el alterno del jefe del empleado, porque quién
+   * va preseleccionado lo decide el servidor: su jefe real si lo puede resolver
+   * y, si no, el aprobador por defecto.
+   *
+   * Antes se cruzaba acá `a.ExternalCode === e.JefeCode`, o sea por código de
+   * personal — y ese código se repite entre empresas. Medido contra Pro: a 12
+   * personas les habría propuesto como jefe a un homónimo de otra compañía.
+   */
+  const cargarAprobadores = async (e: IEmpleado | null) => {
+    try {
+      const apr = await pasesService.getAprobadores('', e?.JefeAlterno)
+      if (!apr.Success) return
+      const lista = apr.Data ?? []
+      setAprobadores(lista)
+      if (!sinJefe) {
+        const sugerido = lista.find(a => a.Sugerido)
+        if (sugerido) setAprobadorUser(sugerido.User_Code)
+      }
+    } catch (err) {
+      showToast('error', 'Error', handleError(err).message, 4000, 'bottom')
+    }
   }
-
-  // Los aprobadores pueden llegar después que el empleado.
-  useEffect(() => {
-    if (empleado && !aprobadorUser) preseleccionarJefe(empleado)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aprobadores])
 
   const onChangeQuery = (text: string) => {
     setQuery(text)
@@ -200,7 +208,9 @@ export default function PaseCrearScreen() {
     setEmpleado(e)
     setResultados([])
     setQuery('')
-    preseleccionarJefe(e)
+    // Otra persona, otro jefe: la sugerencia se vuelve a resolver.
+    setAprobadorUser(undefined)
+    void cargarAprobadores(e)
   }
 
   /**
