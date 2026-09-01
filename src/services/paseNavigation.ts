@@ -9,15 +9,29 @@
  *  - Si aún no -> queda pendiente y se "drena" al suscribirse.
  */
 
-type Listener = (paseId: number) => void
+/**
+ * Además del pase, viaja la BANDEJA a la que hay que llevar.
+ *
+ * Sin esto la pantalla abría siempre la del jefe, así que quien autoriza por
+ * RR. HH. tocaba su notificación y caía en una lista donde ese pase no está:
+ * el aviso lo dejaba peor que no tocarlo.
+ *
+ * `modo` puede venir vacío (avisos viejos que ya salieron sin él); en ese caso
+ * la pantalla lo deduce buscando el pase en la otra bandeja.
+ */
+export type ModoAprobacion = 'jefe' | 'rh'
 
-let pending: number | null = null
+type Destino = { paseId: number; modo?: ModoAprobacion }
+type Listener = (destino: Destino) => void
+
+let pending: Destino | null = null
 let listener: Listener | null = null
 
-export function requestOpenPaseAprobacion(paseId: number) {
+export function requestOpenPaseAprobacion(paseId: number, modo?: ModoAprobacion) {
   if (!paseId || paseId <= 0) return
-  if (listener) listener(paseId)
-  else pending = paseId
+  const destino: Destino = { paseId, modo }
+  if (listener) listener(destino)
+  else pending = destino
 }
 
 export function subscribeOpenPaseAprobacion(cb: Listener): () => void {

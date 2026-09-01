@@ -43,8 +43,10 @@ export function routeNotification(data: any): boolean {
   // Pase pendiente de aprobación -> pantalla de Aprobaciones (resalta el pase)
   if (category === 'pase_aprobacion') {
     const paseId = Number(data.paseId ?? data.PaseId)
+    // La bandeja viene en el aviso: la del jefe o la de RR. HH.
+    const modo = String(data.modo ?? data.Modo ?? '') === 'rh' ? 'rh' : undefined
     navigateWhenReady('paseAprobaciones')
-    if (paseId > 0) requestOpenPaseAprobacion(paseId)
+    if (paseId > 0) requestOpenPaseAprobacion(paseId, modo)
     return true
   }
 

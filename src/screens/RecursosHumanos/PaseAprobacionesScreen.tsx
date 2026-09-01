@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Modal, RefreshControl } from 'react-native'
 import { YStack, XStack, Text, Button, View, ScrollView, Spinner } from 'tamagui'
 import { Check, X, DoorOpen, DoorClosed, CheckCheck, Clock, ArrowRightLeft, CheckSquare, Square } from 'lucide-react-native'
@@ -53,6 +53,11 @@ export default function PaseAprobacionesScreen() {
 
   usePasesHeader('Aprobaciones')
 
+  // La lista viva para el handler del deep-link, que no se re-suscribe en cada
+  // render: sin el ref leería el `pases` del render en que se registró.
+  const pasesRef = useRef<IPase[]>([])
+  useEffect(() => { pasesRef.current = pases }, [pases])
+
   const load = async (silent = false) => {
     if (!user?.Code) return
     if (!silent) setLoading(true)
@@ -101,15 +106,40 @@ export default function PaseAprobacionesScreen() {
     setAprobandoLote(false)
   }
 
-  // Deep-link desde notificación: resalta el pase indicado y refresca la lista.
+  /**
+   * Deep-link desde notificación: abre la BANDEJA que corresponde, resalta el
+   * pase y refresca.
+   *
+   * El aviso trae `modo`. Si no lo trae —avisos que ya habían salido antes de
+   * que el servidor lo mandara— se deduce: se busca el pase en la bandeja
+   * contraria y, si está ahí, se cambia. Sin esto, quien autoriza por RR. HH.
+   * tocaba su notificación y caía en la bandeja del jefe, donde ese pase no
+   * existe: el aviso lo dejaba peor que no tocarlo.
+   */
   useEffect(() => {
-    const unsub = subscribeOpenPaseAprobacion((paseId) => {
+    const unsub = subscribeOpenPaseAprobacion(({ paseId, modo: destino }) => {
       setHighlightId(paseId)
-      load(true)
       setTimeout(() => setHighlightId(null), 4000)
+
+      const ir = (m: 'jefe' | 'rh') => (m === modo ? load(true) : setModo(m))
+
+      if (destino) { ir(destino === 'rh' && !puedeRH ? 'jefe' : destino); return }
+
+      // Sin modo: si no está en la bandeja actual, se prueba la otra.
+      if (pasesRef.current.some(p => p.Id === paseId)) { load(true); return }
+      const otra = modo === 'jefe' ? 'rh' : 'jefe'
+      if (otra === 'rh' && !puedeRH) { load(true); return }
+
+      pasesService.getPorAprobar(user!.Code, otra)
+        .then(r => {
+          if (r.Success && (r.Data ?? []).some(p => p.Id === paseId)) setModo(otra)
+          else load(true)
+        })
+        .catch(() => load(true))
     })
     return unsub
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modo, puedeRH])
 
   const aprobar = async (p: IPase) => {
     setActingId(p.Id)
