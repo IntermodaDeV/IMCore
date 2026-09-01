@@ -169,11 +169,20 @@ export type ICrearSolicitud = {
  *  - Empleado != null   -> aplica, se muestra el botón
  *  - Motivo != null     -> no aplica, se muestra el motivo
  */
+/** Minimo y maximo que puede aportar, definidos en CooInter.FN_LimitesAporte. */
+export type ILimitesAporte = {
+  Minimo: number
+  Maximo: number
+}
+
 export type IEstadoAfiliacion = {
   Empleado: IEmpleadoSinAfiliacion | null
   Solicitud: ISolicitudSocio | null
   Motivo: string | null
   PuedeSolicitar: boolean
+
+  /** Rango permitido del aporte. Null si no se pudo leer. */
+  LimitesAporte: ILimitesAporte | null
 
   /**
    * El servidor le acaba de dar el menú del socio en esta misma consulta.

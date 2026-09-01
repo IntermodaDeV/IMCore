@@ -1,15 +1,16 @@
 import React, { useCallback, useState } from 'react'
-import { RefreshControl } from 'react-native'
+import { RefreshControl, KeyboardAvoidingView, Platform } from 'react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { YStack, XStack, Text, Button, ScrollView, View, Spinner } from 'tamagui'
 import {
   Handshake, UserCog, CalendarDays, IdCard, Mail, Phone, MapPin,
   Building2, AlertCircle, Clock, XCircle, MessageSquare, RotateCcw, BadgeCheck,
-  FilePlus2,
+  FilePlus2, PiggyBank, Info,
 } from 'lucide-react-native'
 import { cooperativaService } from '../../api/modules/cooperativa/cooperativa.service'
 import {
   IEstadoAfiliacion,
+  ILimitesAporte,
   IEmpleadoSinAfiliacion,
   ISolicitudSocio,
   IEstadoCuenta,
@@ -17,6 +18,8 @@ import {
 } from '../../api/modules/cooperativa/cooperativa.types'
 import { ExecutionResponse } from '../../api/modules/response.type'
 import { usePageHeader } from '../../hooks/usePageHeader'
+import { useKeyboardHeight } from '../../hooks/useKeyboardInset'
+import AppInput from '../../components/commons/AppInput'
 import { handleError } from '../../utils/errorHandler'
 import { useShowToast } from '../../utils/useShowToast'
 import SkeletonForm from '../../components/Skeletons/SkeletonForm'
@@ -44,6 +47,31 @@ const TIPO_PLANILLA: Record<string, string> = {
   Q: 'Quincenal',
   M: 'Mensual',
   X: 'Sin clasificar',
+}
+
+/**
+ * Cada cuanto se le descuenta el aporte, segun su planilla.
+ *
+ * Se le dice en las palabras de su pago, no en las del catalogo: alguien que
+ * cobra cada quincena entiende "de cada quincena", no "TipoPlanilla = Q".
+ */
+const CADA_PAGO: Record<string, string> = {
+  S: 'de cada pago semanal',
+  Q: 'de cada quincena',
+  M: 'de cada pago mensual',
+}
+
+/** Monto en lempiras. Cooperativa maneja HNL. */
+const fmtMoneda = (valor: number | null | undefined): string => {
+  if (valor === null || valor === undefined) return '-'
+  return `L ${Number(valor).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** Solo digitos y un punto decimal, para que el monto no llegue con basura. */
+const soloDecimal = (v: string): string => {
+  const limpio = v.replace(/[^0-9.]/g, '')
+  const partes = limpio.split('.')
+  return partes.length <= 2 ? limpio : `${partes[0]}.${partes.slice(1).join('')}`
 }
 
 /** Fecha ISO -> dd/mm/aaaa. Devuelve '-' si no hay dato o no parsea. */
@@ -143,6 +171,17 @@ export default function PerfilSocioScreen() {
   const [enviando, setEnviando] = useState(false)
   const [estado, setEstado] = useState<IEstadoAfiliacion | null>(null)
   const [estadoCuenta, setEstadoCuenta] = useState<IEstadoCuenta | null>(null)
+
+  // Aporte que va a ahorrar en cada pago. Se pide antes de solicitar porque al
+  // aprobarse pasa a su cuenta y se le empieza a descontar de planilla.
+  const [aporte, setAporte] = useState('')
+  const [errorAporte, setErrorAporte] = useState('')
+
+  // En Android con edge-to-edge, adjustResize no achica la ventana, asi que el
+  // KeyboardAvoidingView por si solo no alcanza: se reserva el alto del teclado
+  // como padding para poder scrollear el campo por encima de el.
+  const kbHeight = useKeyboardHeight()
+  const bottomPad = Platform.OS === 'android' ? kbHeight : 0
   const { showToast } = useShowToast()
   const navigation = useNavigation()
 
@@ -186,11 +225,18 @@ export default function PerfilSocioScreen() {
           Solicitud: null,
           Motivo: response?.ErrorMessage || 'No se pudo consultar tu afiliación.',
           PuedeSolicitar: false,
+          LimitesAporte: null,
         })
       }
     } catch (err) {
       const error = handleError(err)
-      setEstado({ Empleado: null, Solicitud: null, Motivo: error.message, PuedeSolicitar: false })
+      setEstado({
+        Empleado: null,
+        Solicitud: null,
+        Motivo: error.message,
+        PuedeSolicitar: false,
+        LimitesAporte: null,
+      })
     }
   }, [])
 
@@ -214,9 +260,21 @@ export default function PerfilSocioScreen() {
   }
 
   const solicitar = async () => {
+    const monto = Number(aporte)
+    if (!aporte.trim() || isNaN(monto) || monto <= 0) {
+      setErrorAporte('Escribí cuánto querés aportar')
+      return
+    }
+
+    if (limites && (monto < limites.Minimo || monto > limites.Maximo)) {
+      setErrorAporte(`Debe estar entre ${fmtMoneda(limites.Minimo)} y ${fmtMoneda(limites.Maximo)}`)
+      return
+    }
+
+    setErrorAporte('')
     setEnviando(true)
     try {
-      const response = await cooperativaService.crearSolicitudSocio()
+      const response = await cooperativaService.crearSolicitudSocio(monto)
 
       if (!response?.Success) {
         showToast('error', 'Error', response?.ErrorMessage || 'No se pudo enviar tu solicitud', 5000, 'top')
@@ -252,6 +310,71 @@ export default function PerfilSocioScreen() {
   // Tras un rechazo puede corregir y volver a mandarla: la API devuelve el
   // empleado justamente para eso.
   const puedeSolicitar = !!empleado && (!solicitud || rechazada)
+  const limites: ILimitesAporte | null = estado?.LimitesAporte ?? null
+
+  // Como se le va a descontar. Sin planilla reconocida se dice en general: es
+  // preferible a afirmar una frecuencia que puede no ser la suya.
+  const cadaPago = CADA_PAGO[(empleado?.TipoPlanilla ?? '').toUpperCase()] ?? 'de cada pago de planilla'
+
+  /**
+   * El campo del aporte con su explicacion.
+   *
+   * Se muestra en los dos caminos que llevan a solicitar: el alta nueva y el
+   * "volver a solicitar" despues de un rechazo. Repetirlo seria dejar dos
+   * textos que se pueden desalinear.
+   *
+   * Se INVOCA como funcion — {renderCampoAporte()} — y no se usa como
+   * <CampoAporte />. Declarado dentro del render, cada pasada crearia un tipo
+   * de componente distinto, React desmontaria y volveria a montar el arbol, y
+   * el input perderia el foco con cada tecla.
+   */
+  const renderCampoAporte = () => (
+    <YStack
+      gap="$3"
+      padding="$4"
+      borderRadius="$4"
+      backgroundColor="$backgroundSurface"
+      borderWidth={1}
+      borderColor="$border"
+    >
+      <XStack gap="$2.5" alignItems="center">
+        <PiggyBank size={18} color="#22C55E" />
+        <Text fontSize={14} fontWeight="700" color="$text">
+          Tu aporte
+        </Text>
+      </XStack>
+
+      <AppInput
+        label="Monto a aportar"
+        value={aporte}
+        onChangeText={(v: string) => {
+          setAporte(soloDecimal(v))
+          setErrorAporte('')
+        }}
+        keyboardType="decimal-pad"
+        placeholder="0.00"
+        error={errorAporte}
+      />
+
+      {!!limites && (
+        <Text fontSize={12} color="$textMuted">
+          Entre {fmtMoneda(limites.Minimo)} y {fmtMoneda(limites.Maximo)}
+        </Text>
+      )}
+
+      {/* Lo que de verdad tiene que entender antes de aceptar: que este monto
+          le sale del sueldo, y cada cuanto. */}
+      <XStack gap="$2.5" alignItems="flex-start">
+        <View marginTop={2}>
+          <Info size={15} color="#F59E0B" />
+        </View>
+        <Text fontSize={13} color="$textMuted" flex={1} lineHeight={19}>
+          Este monto se te va a deducir {cadaPago}, y se ahorra en tu cuenta de
+          la cooperativa.
+        </Text>
+      </XStack>
+    </YStack>
+  )
 
   /* ------------------------------------------------------------------------
      APROBADA — la información es lo que importa.
@@ -313,10 +436,17 @@ export default function PerfilSocioScreen() {
   }
 
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
     <ScrollView
       flex={1}
       backgroundColor="$backgroundPage"
-      contentContainerStyle={{ padding: 16, paddingBottom: 32, gap: 16 }}
+      // El alto del teclado se suma al padding para que el campo del aporte se
+      // pueda subir por encima de el en vez de quedar tapado.
+      contentContainerStyle={{ padding: 16, paddingBottom: 32 + bottomPad, gap: 16 }}
+      keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       {/* Encabezado */}
@@ -418,6 +548,8 @@ export default function PerfilSocioScreen() {
           <FichaDatos datos={solicitud} />
 
           {/* Rechazada: puede corregir y volver a mandarla. */}
+          {puedeSolicitar && renderCampoAporte()}
+
           {puedeSolicitar && (
             <Button
               backgroundColor="$primary"
@@ -438,6 +570,8 @@ export default function PerfilSocioScreen() {
       ) : empleado ? (
         <>
           <FichaDatos datos={empleado} />
+
+          {renderCampoAporte()}
 
           <Button
             backgroundColor="$primary"
@@ -475,5 +609,6 @@ export default function PerfilSocioScreen() {
         </YStack>
       )}
     </ScrollView>
+    </KeyboardAvoidingView>
   )
 }
