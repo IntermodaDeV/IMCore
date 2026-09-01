@@ -33,10 +33,11 @@ export const cooperativaService = {
    *
    * Devuelve la solicitud ya creada, con el estado resuelto.
    */
-  crearSolicitudSocio: () =>
-    httpClient.post<ExecutionResponse<ISolicitudSocio>, undefined>(
+  /** El aporte es lo unico que manda la pantalla: el resto lo resuelve la API. */
+  crearSolicitudSocio: (aporte: number) =>
+    httpClient.post<ExecutionResponse<ISolicitudSocio>, { Aporte: number }>(
       `${schema}/SolicitudSocio`,
-      undefined,
+      { Aporte: aporte },
     ),
 
   /**
