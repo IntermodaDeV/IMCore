@@ -405,6 +405,7 @@ function NumberConfigRow({
 }: {
   label: string; descripcion?: string | null; unidad?: string; valor: string; saving: boolean; onSave: (v: string) => void
 }) {
+  const theme = useTheme()
   const [txt, setTxt] = useState(valor)
   // Sincroniza si el valor externo cambia (recarga / guardado optimista).
   useEffect(() => { setTxt(valor) }, [valor])
@@ -420,13 +421,26 @@ function NumberConfigRow({
         {!!descripcion && <Text fontSize="$2" color="$textMuted">{descripcion}</Text>}
       </YStack>
       <XStack gap="$2" alignItems="center">
+        {/* color, fondo y placeholder EXPLICITOS. Sin ellos el Input tomaba los
+            defaults de Tamagui y en tema oscuro el texto quedaba invisible (claro
+            sobre claro): no se veia lo que uno escribia. Misma receta que el resto
+            de los inputs de la app (ver Repuestos/NewDiarioScreen). */}
         <Input
           flex={1}
+          height={44}
           keyboardType="number-pad"
           value={txt}
           onChangeText={setTxt}
           placeholder="0"
+          placeholderTextColor={theme.textMuted?.val}
           maxLength={7}
+          borderWidth={1}
+          borderColor="$border"
+          borderRadius={8}
+          backgroundColor="$backgroundElevated"
+          paddingHorizontal="$3"
+          fontSize="$5"
+          color="$text"
         />
         {!!unidad && <Text fontSize="$3" color="$textMuted">{unidad}</Text>}
         <Button
