@@ -1,0 +1,51 @@
+diff --git a/node_modules/react-native-camera-kit/android/src/main/java/com/rncamerakit/CKCamera.kt b/node_modules/react-native-camera-kit/android/src/main/java/com/rncamerakit/CKCamera.kt
+index bf8d9e7..d9eefb2 100644
+--- a/node_modules/react-native-camera-kit/android/src/main/java/com/rncamerakit/CKCamera.kt
++++ b/node_modules/react-native-camera-kit/android/src/main/java/com/rncamerakit/CKCamera.kt
+@@ -20,6 +20,9 @@ import android.widget.LinearLayout
+ import androidx.annotation.ColorInt
+ import androidx.appcompat.app.AppCompatActivity
+ import androidx.camera.core.*
++import androidx.camera.core.resolutionselector.AspectRatioStrategy
++import androidx.camera.core.resolutionselector.ResolutionSelector
++import androidx.camera.core.resolutionselector.ResolutionStrategy
+ import androidx.camera.lifecycle.ProcessCameraProvider
+ import androidx.camera.view.PreviewView
+ import androidx.core.app.ActivityCompat
+@@ -351,9 +354,35 @@ class CKCamera(context: ThemedReactContext) : FrameLayout(context), LifecycleObs
+             .build()
+ 
+         // ImageAnalysis
++        // PARCHE (IMCore): sin setResolutionSelector, CameraX usa su default de
++        // 640x480 para el analisis. Con la app en vertical, una barra horizontal
++        // cae sobre el LADO CORTO del fotograma: 480 px. El numero de factura del
++        // CD es un CODE 128 de 264 modulos, o sea ~1.1 px por barra en un
++        // encuadre real: indecodificable. Los QR si se leian (2D, con correccion
++        // de errores), y de ahi el sintoma "solo lee QR".
++        // A 1920x1080 el lado corto da 1080 px = ~2.45 px por barra al 60% del
++        // ancho y 4.1 al 100%, sobre el umbral de ~2 que piden los decodificadores.
++        // Se usa ResolutionSelector (API vigente en CameraX 1.4.x) y NO
++        // setTargetAspectRatio: mezclarlos lanza IllegalArgumentException, asi que
++        // la proporcion se conserva con AspectRatioStrategy dentro del selector.
+         imageAnalyzer = ImageAnalysis.Builder()
+             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+-            .setTargetAspectRatio(previewAspectRatio)
++            .setResolutionSelector(
++                ResolutionSelector.Builder()
++                    .setAspectRatioStrategy(
++                        if (previewAspectRatio == AspectRatio.RATIO_16_9)
++                            AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
++                        else
++                            AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
++                    )
++                    .setResolutionStrategy(
++                        ResolutionStrategy(
++                            Size(1920, 1080),
++                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
++                        )
++                    )
++                    .build()
++            )
+             .build()
+ 
+         val useCases = mutableListOf(preview, imageCapture)
