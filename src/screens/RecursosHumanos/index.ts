@@ -5,6 +5,7 @@ import PaseAprobacionesScreen from './PaseAprobacionesScreen'
 import PaseValidarScreen from './PaseValidarScreen'
 import PaseCategoriasScreen from './PaseCategoriasScreen'
 import HistorialPasesScreen from './HistorialPasesScreen'
+import PaseTableroScreen from './PaseTableroScreen'
 import PersonalScreen from './Personal/PersonalScreen'
 
 export const ScreensRecursosHumanos: TScreens = {
@@ -34,6 +35,10 @@ export const ScreensRecursosHumanos: TScreens = {
   },
   paseHistorialTodos: {
     Screen: HistorialPasesScreen,
+    Childs: {},
+  },
+  paseTablero: {
+    Screen: PaseTableroScreen,
     Childs: {},
   },
 }

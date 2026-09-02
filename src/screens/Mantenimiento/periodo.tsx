@@ -6,7 +6,14 @@ import { ACCENT, MESES } from './mantenimiento.helpers'
 // Selector de período (Semana / Mes / Año) + navegador ‹ ›, compartido por el
 // Resumen y el Listado de tickets para que ambos usen EXACTAMENTE el mismo filtro.
 
-export type ModoPeriodo = 'semana' | 'mes' | 'anio'
+export type ModoPeriodo = 'dia' | 'semana' | 'mes' | 'anio'
+
+// Qué chips se ofrecen. Por omisión los tres de siempre, así que agregar 'dia'
+// no le cambió la barra a las pantallas que ya lo usaban.
+const MODOS_POR_DEFECTO: ModoPeriodo[] = ['semana', 'mes', 'anio']
+const ETIQUETA_MODO: Record<ModoPeriodo, string> = {
+  dia: 'Día', semana: 'Semana', mes: 'Mes', anio: 'Año',
+}
 
 // Fecha local como 'YYYY-MM-DDTHH:mm:ss' (sin zona) para que el backend la
 // interprete en hora local del servidor y no se desfase el rango por UTC.
@@ -49,7 +56,9 @@ export function usePeriodo(inicial: ModoPeriodo = 'semana'): PeriodoState {
   }
   // Navegar ‹ / › según el modo (anterior / siguiente).
   const navegar = (dir: -1 | 1) => {
-    if (modo === 'semana') {
+    if (modo === 'dia') {
+      setSemRef(prev => { const d = new Date(prev); d.setDate(d.getDate() + dir); return d })
+    } else if (modo === 'semana') {
       setSemRef(prev => { const d = new Date(prev); d.setDate(d.getDate() + dir * 7); return d })
     } else if (modo === 'mes') {
       let m = mes + dir, a = anio
@@ -62,6 +71,19 @@ export function usePeriodo(inicial: ModoPeriodo = 'semana'): PeriodoState {
 
   // Rango [desde, hasta) según el modo seleccionado.
   const { desde, hasta, etiqueta } = useMemo(() => {
+    if (modo === 'dia') {
+      const d = new Date(semRef); d.setHours(0, 0, 0, 0)
+      const sig = new Date(d); sig.setDate(d.getDate() + 1)
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+      return {
+        desde: d,
+        hasta: sig,
+        // "Hoy" en vez de la fecha: es el caso normal y se lee de un golpe.
+        etiqueta: d.getTime() === hoy.getTime()
+          ? 'Hoy'
+          : d.toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short' }),
+      }
+    }
     if (modo === 'semana') {
       const base = new Date(semRef)
       const diffToMon = (base.getDay() + 6) % 7 // lunes = inicio de semana
@@ -90,13 +112,20 @@ export function usePeriodo(inicial: ModoPeriodo = 'semana'): PeriodoState {
 }
 
 // UI del filtro: chips Semana/Mes/Año + navegador ‹ etiqueta ›.
-export function PeriodoFiltro({ modo, etiqueta, puedeAvanzar, cambiarModo, navegar }: PeriodoState) {
+export function PeriodoFiltro({
+  modo, etiqueta, puedeAvanzar, cambiarModo, navegar, modos,
+}: PeriodoState & { modos?: ModoPeriodo[] }) {
   return (
     <YStack gap="$1.5">
       <XStack gap="$2">
-        <PeriodoChip label="Semana" active={modo === 'semana'} onPress={() => cambiarModo('semana')} />
-        <PeriodoChip label="Mes" active={modo === 'mes'} onPress={() => cambiarModo('mes')} />
-        <PeriodoChip label="Año" active={modo === 'anio'} onPress={() => cambiarModo('anio')} />
+        {(modos ?? MODOS_POR_DEFECTO).map(m => (
+          <PeriodoChip
+            key={m}
+            label={ETIQUETA_MODO[m]}
+            active={modo === m}
+            onPress={() => cambiarModo(m)}
+          />
+        ))}
       </XStack>
       {/* Alto justo para el toque (44 pt de area util con el hitSlop de las flechas):
           antes eran dos renglones muy altos y en un telefono el encabezado se comia

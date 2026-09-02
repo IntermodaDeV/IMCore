@@ -4,6 +4,7 @@ import { YStack, XStack, Text, View, ScrollView, Spinner } from 'tamagui'
 import { DoorOpen, DoorClosed, FileStack, ArrowRightLeft, Clock, QrCode } from 'lucide-react-native'
 import Page from '../../components/commons/Page'
 import SearchInput from '../../components/commons/SearchInput'
+import { PeriodoFiltro, fmtLocal, usePeriodo } from '../Mantenimiento/periodo'
 import { usePasesHeader } from './usePasesHeader'
 import { useAuth } from '../../context/AuthContext'
 import { useShowToast } from '../../utils/useShowToast'
@@ -27,6 +28,10 @@ export default function HistorialPasesScreen() {
   const { user } = useAuth()
   const { showToast } = useShowToast()
 
+  // Arranca en SEMANA: lo que se consulta casi siempre es "esta semana", y el
+  // día suelto ya lo cubre el tablero.
+  const periodo = usePeriodo('semana')
+
   const [pases, setPases] = useState<IPase[]>([])
   // El QR solo se puede mostrar de los permisos propios: el servidor no manda
   // el token de los de otra persona, aunque el historial los liste.
@@ -37,11 +42,18 @@ export default function HistorialPasesScreen() {
 
   usePasesHeader('Historial de pases')
 
+  // El hook entrega [desde, hasta) y el SP espera los dos extremos INCLUSIVOS.
+  const desde = fmtLocal(periodo.desde).slice(0, 10)
+  const hasta = fmtLocal(new Date(periodo.hasta.getTime() - 1)).slice(0, 10)
+
   const load = async (silent = false) => {
     if (!user?.Code) return
     if (!silent) setLoading(true)
     try {
-      const resp = await pasesService.getHistorialTodos(user.Code)
+      // El rango va al SERVIDOR y no al filtro de la lista: el SP tiene tope,
+      // así que filtrando acá un período viejo se vería vacío por culpa del
+      // tope y no porque no hubiera permisos.
+      const resp = await pasesService.getHistorialTodos(user.Code, desde, hasta)
       if (resp.Success) {
         setPases(resp.Data ?? [])
         setFiltered(resp.Data ?? [])
@@ -57,12 +69,17 @@ export default function HistorialPasesScreen() {
 
   useEffect(() => {
     load()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desde, hasta])
 
   return (
     <Page>
       <YStack flex={1} backgroundColor="$backgroundPage">
-        <View paddingHorizontal="$4" paddingTop="$3">
+        <View paddingHorizontal="$4" paddingTop="$3" paddingBottom="$2">
+          <PeriodoFiltro {...periodo} />
+        </View>
+
+        <View paddingHorizontal="$4">
           <SearchInput
             data={pases}
             searchKeys={['EmpleadoNombre', 'EmpleadoCode', 'CodAlterno', 'Departamento', 'Estado', 'Categoria']}

@@ -11,6 +11,7 @@ import {
   IPaseCategoria,
   IPaseResult,
   IRegistrarAcceso,
+  IPaseTablero,
   IRegistrarAccesoResult,
 } from './pases.types'
 
@@ -65,9 +66,21 @@ export const pasesService = {
   getMisPases: (userCode: string) =>
     httpClient.get<ExecutionResponse<IPase[]>>(`${schema}/MisPases?user_Code=${encodeURIComponent(userCode)}`),
 
-  // Historial global (todos los pases) — gated por access 'TodoHistorialPases'
-  getHistorialTodos: (userCode: string) =>
-    httpClient.get<ExecutionResponse<IPase[]>>(`${schema}/Historial?user_Code=${encodeURIComponent(userCode)}`),
+  /**
+   * Historial global (todos los pases) — el alcance lo resuelve el SP.
+   *
+   * desde/hasta filtran por la FECHA DEL PASE y van al SERVIDOR, no al filtro de
+   * la lista: el SP tiene tope, así que filtrando acá un período viejo se vería
+   * vacío por culpa del tope y no porque no hubiera permisos.
+   */
+  getHistorialTodos: (userCode: string, desde?: string, hasta?: string) => {
+    const q = [
+      `user_Code=${encodeURIComponent(userCode)}`,
+      desde ? `desde=${desde}` : '',
+      hasta ? `hasta=${hasta}` : '',
+    ].filter(Boolean).join('&')
+    return httpClient.get<ExecutionResponse<IPase[]>>(`${schema}/Historial?${q}`)
+  },
 
   /**
    * Las dos bandejas de autorización:
@@ -79,6 +92,16 @@ export const pasesService = {
     httpClient.get<ExecutionResponse<IPase[]>>(
       `${schema}/PorAprobar?user_Code=${encodeURIComponent(userCode)}&modo=${modo}`
     ),
+
+  /**
+   * El TABLERO del día: una fila por permiso con su situación ya resuelta
+   * (afuera / por salir / por entrar / esperando firma / completo). Es la
+   * única fuente de esa pantalla. Sin fecha, hoy.
+   */
+  getTablero: (desde?: string, hasta?: string) => {
+    const q = [desde ? `desde=${desde}` : '', hasta ? `hasta=${hasta}` : ''].filter(Boolean).join('&')
+    return httpClient.get<ExecutionResponse<IPaseTablero[]>>(`${schema}/Tablero${q ? `?${q}` : ''}`)
+  },
 
   getSeguridad: (fecha?: string) =>
     httpClient.get<ExecutionResponse<IPase[]>>(`${schema}/Seguridad${fecha ? `?fecha=${fecha}` : ''}`),

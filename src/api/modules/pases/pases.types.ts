@@ -168,3 +168,71 @@ export interface IRegistrarAccesoResult {
   Faltan?: number | null
   Metodo?: string | null
 }
+
+/**
+ * En qué punto está un permiso del día. La calcula el SERVIDOR a partir del
+ * mismo conteo de movimientos que usa la portería al validar.
+ *
+ *   afuera          salió y le falta volver           ← el que pide atención
+ *   adentro         entró (secuencia ES) y le falta salir
+ *   por_salir       autorizado, todavía no sale
+ *   por_entrar      autorizado a llegar, todavía no llega
+ *   completo        usó todos sus movimientos
+ *   pendiente_jefe  espera la primera firma
+ *   pendiente_rh    espera la de RR. HH.
+ *   rechazado · anulado · vencido
+ */
+export type SituacionPase =
+  | 'afuera' | 'adentro' | 'por_salir' | 'por_entrar' | 'completo'
+  | 'pendiente_jefe' | 'pendiente_rh' | 'rechazado' | 'anulado' | 'vencido'
+
+/**
+ * Una fila del TABLERO. Es la ÚNICA fuente de esa pantalla: los contadores y
+ * las listas se agrupan de acá. Dos consultas distintas podrían contradecirse
+ * —el contador diría "2 afuera" y la lista mostraría 3— y a esa altura nadie
+ * vuelve a creerle al tablero.
+ */
+export interface IPaseTablero {
+  Id: number
+  EmpleadoCode?: string
+  CodAlterno?: string | null
+  EmpleadoNombre?: string
+  Departamento?: string | null
+  cod_Departamento?: string | null
+  Categoria?: string
+  Tipo?: string
+  AprobadorUser?: string | null
+  AprobadorNombre?: string | null
+  Estado_Id?: number
+  Estado?: string
+  Observacion?: string | null
+  MotivoRechazo?: string | null
+  FechaPase?: string
+  HoraSalida?: string | null
+  HoraEntrada?: string | null
+
+  MovimientosHechos?: number | null
+  MovimientosTotal?: number | null
+  UltimoMovAt?: string | null
+  UltimoMovTipo?: string | null
+
+  /** 'S' o 'E': el movimiento que le toca. NULL si ya completó. */
+  ProximoMov?: string | null
+  Situacion?: SituacionPase
+  /** La hora a la que se esperaba ese movimiento, "HH:mm". */
+  HoraProxima?: string | null
+  /**
+   * Minutos por encima de esa hora. Negativo = le queda tiempo. NULL cuando el
+   * tablero no es de hoy: medir el atraso contra "ahora" diría que todos
+   * llegaron catorce horas tarde.
+   */
+  MinutosDeMas?: number | null
+  MinutosDesdeUltimo?: number | null
+  /**
+   * Si la fila es del día en curso. En un rango conviven días pasados con el de
+   * hoy, y las situaciones no significan lo mismo: un 'afuera' de ayer no es
+   * alguien que está afuera ahora, es un permiso al que nunca le registraron el
+   * regreso.
+   */
+  EsDeHoy?: boolean
+}

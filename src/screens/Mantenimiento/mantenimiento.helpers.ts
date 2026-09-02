@@ -210,7 +210,9 @@ export const fmtEntero = (n: number) => n.toLocaleString('es-HN')
 export function rangoAnterior(
   desde: Date,
   hasta: Date,
-  modo: 'semana' | 'mes' | 'anio',
+  // 'dia' cae en la rama genérica de abajo, que retrocede el mismo largo: para
+  // un día eso es el día anterior, que es lo correcto.
+  modo: 'dia' | 'semana' | 'mes' | 'anio',
 ): { desde: Date; hasta: Date } {
   if (modo === 'mes') {
     return {
