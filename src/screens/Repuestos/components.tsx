@@ -7,18 +7,32 @@ import { Camera } from 'react-native-camera-kit'
 // Color de acento del módulo (primary de la app).
 export const ACCENT = '#FF551A'
 
-// Estados de ticket que admiten despacho de repuestos.
-// Permitidos: PENDIENTE, EN_PROCESO, PAUSADO, RECHAZADO y COMPLETADO SIN VALIDAR.
-// Bloqueados: CANCELADO y COMPLETADO ya validado (sello de producción). Debe
-// coincidir con la validación del backend (SP_Linea_Insertar).
-export const ESTADOS_DESPACHO = ['PENDIENTE', 'EN_PROCESO', 'PAUSADO', 'RECHAZADO', 'COMPLETADO']
-export const puedeDespachar = (estadoCode?: string | null, validadoPor?: string | null): boolean => {
+// Qué situaciones del ticket admiten despacho ya NO está horneado: lo gobierna la
+// configuración global 'Mtto.EstadosDespachoRepuestos', que el SP_Linea_Insertar
+// lee del lado del servidor. Acá solo se pre-filtra para avisarle a tiempo al
+// despachador, antes de que escanee el repuesto.
+//
+// El default es el mismo que el del SP (todas menos CANCELADO) y se usa cuando la
+// configuración no se pudo leer —la tablet sin señal un momento—: trabar el piso
+// por no poder leer una lista sería peor. No abre ninguna puerta, porque el SP
+// revalida siempre; como mucho el rechazo llega un paso más tarde con su motivo.
+export const SITUACIONES_DESPACHO_DEFAULT = [
+  'PENDIENTE', 'EN_PROCESO', 'PAUSADO', 'RECHAZADO', 'COMPLETADO', 'VALIDADO',
+]
+
+// La SITUACIÓN no es el estado crudo: 'VALIDADO' es un COMPLETADO con sello
+// (ValidadoPor). Se resuelve igual que en el SP para que las dos compuertas no
+// puedan discrepar.
+export const situacionTicket = (estadoCode?: string | null, validadoPor?: string | null): string => {
   const code = (estadoCode ?? '').toUpperCase()
-  if (!ESTADOS_DESPACHO.includes(code)) return false
-  // Un COMPLETADO ya validado (con sello de producción) no admite despacho.
-  if (code === 'COMPLETADO' && !!validadoPor) return false
-  return true
+  return code === 'COMPLETADO' && !!validadoPor ? 'VALIDADO' : code
 }
+
+export const puedeDespachar = (
+  estadoCode?: string | null,
+  validadoPor?: string | null,
+  situacionesPermitidas: string[] = SITUACIONES_DESPACHO_DEFAULT,
+): boolean => situacionesPermitidas.includes(situacionTicket(estadoCode, validadoPor))
 
 // ms de una fecha ISO (para ordenar desc); 0 si vacía/ inválida.
 export const ts = (iso?: string | null): number => {

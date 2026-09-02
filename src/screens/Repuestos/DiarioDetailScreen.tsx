@@ -9,9 +9,10 @@ import { useShowToast } from '../../utils/useShowToast'
 import { repuestosService } from '../../api/modules/repuestos/repuestos.service'
 import { ILinea } from '../../api/modules/repuestos/repuestos.types'
 import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
+import { configuracionService } from '../../api/modules/configuracion/configuracion.service'
 import { ITicket } from '../../api/modules/mantenimiento/tickets.types'
 import { shadows } from '../../theme/shadows'
-import { ACCENT, Field, ScannerModal, puedeDespachar, fmtFechaHora, ts } from './components'
+import { ACCENT, Field, ScannerModal, puedeDespachar, situacionTicket, SITUACIONES_DESPACHO_DEFAULT, fmtFechaHora, ts } from './components'
 
 const ERR = '#ef4444'
 const GREEN = '#16a34a'   // ticket disponible para despachar
@@ -54,6 +55,27 @@ export default function DiarioDetailScreen() {
   const [posteando, setPosteando] = useState(false)
   // Campo con teclado manual habilitado (null = modo láser, teclado suprimido).
   const [teclado, setTeclado] = useState<null | 'ticket' | 'ubicacion' | 'barcode'>(null)
+
+  // Qué situaciones admiten despacho: lo decide la configuración global
+  // (Mtto.EstadosDespachoRepuestos). Si la lectura falla se queda con el default,
+  // igual que el SP: el servidor revalida, y trabar el piso por no poder leer una
+  // lista sería peor.
+  const [situaciones, setSituaciones] = useState<string[]>(SITUACIONES_DESPACHO_DEFAULT)
+  useEffect(() => {
+    let vivo = true
+    configuracionService
+      .getAll()
+      .then(r => {
+        if (!vivo || !r?.Success) return
+        const c = (r.Data ?? []).find(x => x.Clave === 'Mtto.EstadosDespachoRepuestos')
+        const lista = (c?.Valor ?? '').split(',').map(x => x.trim().toUpperCase()).filter(Boolean)
+        // Lista vacía => default, el MISMO criterio del SP. Si no, apagar todas las
+        // casillas se leería como "no dejar ninguna" acá y como "todas" allá.
+        if (lista.length) setSituaciones(lista)
+      })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [])
 
   const barcodeRef = useRef<TextInput>(null)
   const ubicacionRef = useRef<TextInput>(null)
@@ -111,18 +133,18 @@ export default function DiarioDetailScreen() {
     setTimeout(() => ref.current?.focus(), 80)
   }
 
-  // Valida el estado y activa el ticket. Admiten despacho: PENDIENTE/EN_PROCESO/
-  // PAUSADO/RECHAZADO y COMPLETADO sin validar; se bloquea CANCELADO y COMPLETADO
-  // ya validado (sello de producción). Devuelve false si el ticket no aplica.
+  // Activa el ticket si su SITUACIÓN está entre las configuradas. Devuelve false
+  // si no aplica, diciendo cuál es la situación para que el despachador sepa qué
+  // pedirle al mecánico.
   const aplicarTicket = useCallback((t: ITicket): boolean => {
-    if (!puedeDespachar(t.EstadoCode, t.ValidadoPor)) {
-      const validado = (t.EstadoCode ?? '').toUpperCase() === 'COMPLETADO' && !!t.ValidadoPor
+    if (!puedeDespachar(t.EstadoCode, t.ValidadoPor, situaciones)) {
+      const sit = situacionTicket(t.EstadoCode, t.ValidadoPor)
       showToast(
         'warning',
         'Ticket no disponible',
-        validado
-          ? `${t.CodigoTicket} ya fue validado. Un ticket validado no admite despacho.`
-          : `${t.CodigoTicket} está ${t.Estado ?? ''}. Solo se despacha a tickets Pendiente, En Proceso, Pausado, Rechazado o Completado (sin validar).`,
+        sit === 'VALIDADO'
+          ? `${t.CodigoTicket} ya fue validado, y la configuración no admite despacho a tickets validados.`
+          : `${t.CodigoTicket} está ${t.Estado ?? sit}, y la configuración no admite despacho en esa situación.`,
         6000,
       )
       return false
@@ -135,7 +157,9 @@ export default function DiarioDetailScreen() {
     // Encadenar el flujo del lector: primero la ubicación (teclado suprimido).
     setTimeout(() => ubicacionRef.current?.focus(), 300)
     return true
-  }, [showToast])
+  // situaciones va en las deps: la configuración se lee DESPUÉS del montaje, y sin
+  // esto el callback se quedaría con el default inicial para siempre.
+  }, [showToast, situaciones])
 
   // ── Resolver el ticket escaneado (QR = CodigoTicket, o Id numérico) ──────────
   const resolverTicket = useCallback(async (codigo: string) => {
