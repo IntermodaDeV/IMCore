@@ -18,6 +18,7 @@ import {
   ISolicitarProveedorRequest,
   IApproveGastoRequest,
   IRejectGastoRequest,
+  IExpenseDateRange,
 } from './gastosViaje.types'
 
 
@@ -68,6 +69,16 @@ export const gastosViajeService = {
   getTaxConfig: async (_company: string): Promise<ExecutionResponse<ITaxConfig>> => {
     const res = await httpClient.get<IGiraApiResponse<{TAXCODE:string, TAXVALUE: number}[]>>(`Gira/TaxPercentage/${_company}`)
     return { Success: true, Data: { Rate: (res.Data[0].TAXVALUE / 100)}, SuccessMessage: 'OK', ErrorMessage: '' }
+  },
+
+  getExpenseDateRange: async (company: string): Promise<ExecutionResponse<IExpenseDateRange>> => {
+    const res = await httpClient.get<IGiraApiResponse<IExpenseDateRange>>(`Gira/ExpenseDateRange/${company}`)
+    return {
+      Success: res.Succeeded,
+      Data: res.Data,
+      SuccessMessage: res.Message ?? '',
+      ErrorMessage: res.Errors ?? '',
+    }
   },
 
   searchProvider: async (query: string, company: string): Promise<ExecutionResponse<IGiraVendorResponse[]>> => {
