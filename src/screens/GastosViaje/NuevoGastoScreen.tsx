@@ -100,10 +100,8 @@ export default function NuevoGastoScreen() {
   const [alimentacionSubtypes, setAlimentacionSubtypes] = useState<IAlimentacionSubtype[]>([])
   const [fuelTypes, setFuelTypes]                     = useState<IFuelType[]>([])
   const [taxRate, setTaxRate]                         = useState(0)
-  const today     = dayjs()
-  const daysToMon = today.day() === 0 ? 6 : today.day() - 1
-  const weekStart = today.subtract(daysToMon, 'day').format('YYYY-MM-DD')
-  const weekEnd   = today.subtract(daysToMon, 'day').add(6, 'day').format('YYYY-MM-DD')
+  const [invoiceMinDate, setInvoiceMinDate]           = useState<string | undefined>(undefined)
+  const [invoiceMaxDate, setInvoiceMaxDate]           = useState<string | undefined>(undefined)
   const [allProviders, setAllProviders]               = useState<IGiraVendorResponse[]>([])
   const [selectedProviderId, setSelectedProviderId]   = useState('')
   const [providerCurrency, setProviderCurrency]       = useState('')
@@ -182,9 +180,21 @@ export default function NuevoGastoScreen() {
         
         const typesRes = await gastosViajeService.getExpenseTypes(defaultCompany?.Code ?? '')
         if (typesRes.Success) setExpenseTypes(typesRes.Data)
-        
+
+        const dateRangeRes = await gastosViajeService.getExpenseDateRange(defaultCompany?.Code ?? '')
+        if (dateRangeRes.Success) {
+          const minDate = dayjs(dateRangeRes.Data.MinDate).format('YYYY-MM-DD')
+          const maxDate = dayjs(dateRangeRes.Data.MaxDate).format('YYYY-MM-DD')
+          setInvoiceMinDate(minDate)
+          setInvoiceMaxDate(maxDate)
+
+          const currentInvoiceDate = getValues('InvoiceDate')
+          if (currentInvoiceDate < minDate) setValue('InvoiceDate', minDate)
+          else if (currentInvoiceDate > maxDate) setValue('InvoiceDate', maxDate)
+        }
           const taxRes = await gastosViajeService.getTaxConfig(defaultCompany?.Code ?? '')
         if (taxRes.Success) setTaxRate(taxRes.Data.Rate)
+
 
       } catch(error:any) {
         let responseData;
@@ -721,8 +731,8 @@ export default function NuevoGastoScreen() {
                       value={field.value || null}
                       onChange={v => field.onChange(v ?? '')}
                       displayFormat="DD/MM/YYYY"
-                      minDate={weekStart}
-                      maxDate={weekEnd}
+                      minDate={invoiceMinDate}
+                      maxDate={invoiceMaxDate}
                       error={errors.InvoiceDate?.message}
                     />
                   )}
