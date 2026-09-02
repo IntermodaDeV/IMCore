@@ -49,7 +49,7 @@ function agruparPorCategoria(items: IConfiguracion[]) {
 //  - 'number': campo numérico con botón guardar (Valor = entero como texto). unidad opcional.
 //  - 'multi': checklist con botón guardar (Valor = códigos separados por coma).
 // Si la clave no está aquí, se asume 'bool' y se muestra la clave tal cual.
-type ConfigKind = 'bool' | 'options' | 'number' | 'multi'
+type ConfigKind = 'bool' | 'options' | 'number' | 'multi' | 'companyMap'
 const CONFIG_META: Record<
   string,
   {
@@ -65,6 +65,10 @@ const CONFIG_META: Record<
     permiteOff?: boolean
     // Solo para 'multi': las casillas, en el orden en que se muestran y se guardan.
     opciones?: { value: string; label: string }[]
+    // Solo para 'companyMap': Valor es un JSON { [codigoCompania]: number }, ej.
+    // '{"IMGT":0,"IMHN":2,"IMCR":1}'. Se edita como un solo bloque y se guarda completo
+    // (no hay forma de actualizar una sola compañía sin reenviar las demás).
+    companias?: string[]
   }
 > = {
   'Mtto.UnTicketPorMaquina': { label: 'Un ticket por máquina', kind: 'bool' },
@@ -126,6 +130,12 @@ const CONFIG_META: Record<
     label: 'Costo por hora de mano de obra',
     kind: 'number',
     unidad: 'L/hora',
+  },
+  'Gira.ExpenseDateRange': {
+    label: 'Días de más permitidos por compañía para ingreso de gastos',
+    kind: 'companyMap',
+    unidad: 'días',
+    companias: ['IMHN', 'IMGT', 'IMCR'],
   },
 }
 
@@ -276,6 +286,16 @@ export default function ConfiguracionesGlobalesScreen() {
                       valor={c.Valor ?? ''}
                       saving={saving}
                       onSave={(v) => guardarValor(c, v, 'Situaciones actualizadas')}
+                    />
+                  ) : meta.kind === 'companyMap' ? (
+                    <CompanyMapConfigRow
+                      label={meta.label}
+                      descripcion={c.Descripcion}
+                      unidad={meta.unidad}
+                      valor={c.Valor ?? ''}
+                      companias={meta.companias ?? []}
+                      saving={saving}
+                      onSave={(v) => guardarValor(c, v, 'Guardado')}
                     />
                   ) : meta.kind === 'options' ? (
                     <YStack gap="$3">
@@ -453,6 +473,109 @@ function NumberConfigRow({
           {saving ? <Spinner size="small" color="white" /> : <Check size={18} color={valido && cambiado ? 'white' : ACCENT} />}
         </Button>
       </XStack>
+    </YStack>
+  )
+}
+
+// Parsea el Valor JSON '{"IMGT":0,"IMHN":2,"IMCR":1}' a un mapa código->número,
+// rellenando con 0 cualquier compañía ausente o si el JSON viene vacío/roto.
+function parseCompanyMap(valor: string, companias: string[]): Record<string, number> {
+  let parsed: any = {}
+  try { parsed = JSON.parse(valor || '{}') } catch { parsed = {} }
+  const out: Record<string, number> = {}
+  companias.forEach(code => {
+    const n = Number(parsed?.[code])
+    out[code] = Number.isFinite(n) ? n : 0
+  })
+  return out
+}
+
+function CompanyMapConfigRow({
+  label, descripcion, unidad, valor, companias, saving, onSave,
+}: {
+  label: string
+  descripcion?: string | null
+  unidad?: string
+  valor: string
+  companias: string[]
+  saving: boolean
+  onSave: (v: string) => void
+}) {
+  const theme = useTheme()
+  const original = parseCompanyMap(valor, companias)
+  const [txts, setTxts] = useState<Record<string, string>>(
+    () => Object.fromEntries(companias.map(code => [code, String(original[code])]))
+  )
+
+  // Sincroniza si el valor externo cambia (recarga / guardado optimista).
+  useEffect(() => {
+    const parsed = parseCompanyMap(valor, companias)
+    setTxts(Object.fromEntries(companias.map(code => [code, String(parsed[code])])))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valor])
+
+  const limpios = Object.fromEntries(
+    companias.map(code => [code, (txts[code] ?? '').replace(/[^0-9]/g, '')])
+  )
+  const valido = companias.every(code => limpios[code] !== '')
+  const cambiado = companias.some(code => Number(limpios[code]) !== original[code])
+
+  const handleSave = () => {
+    const nuevo: Record<string, number> = {}
+    companias.forEach(code => { nuevo[code] = Number(limpios[code]) })
+    onSave(JSON.stringify(nuevo))
+  }
+
+  return (
+    <YStack gap="$3">
+      <YStack gap="$1">
+        <Text fontSize="$4" fontWeight="800" color="$text">{label}</Text>
+        {!!descripcion && <Text fontSize="$2" color="$textMuted">{descripcion}</Text>}
+      </YStack>
+      <YStack gap="$2">
+        {companias.map(code => (
+          <XStack key={code} gap="$2" alignItems="center">
+            <Text fontSize="$3" color="$textMuted" width={100}>{code}</Text>
+            {/* color, fondo y placeholder EXPLICITOS: sin ellos el Input toma los
+                defaults de Tamagui y en tema oscuro el texto queda invisible. Este
+                campo venia del merge con Development, con el mismo bug que se acababa
+                de corregir en NumberConfigRow. */}
+            <Input
+              flex={1}
+              height={44}
+              keyboardType="number-pad"
+              value={txts[code] ?? ''}
+              onChangeText={(v: string) => setTxts(prev => ({ ...prev, [code]: v }))}
+              placeholder="0"
+              placeholderTextColor={theme.textMuted?.val}
+              maxLength={4}
+              borderWidth={1}
+              borderColor="$border"
+              borderRadius={8}
+              backgroundColor="$backgroundElevated"
+              paddingHorizontal="$3"
+              fontSize="$5"
+              color="$text"
+            />
+            {!!unidad && <Text fontSize="$3" color="$textMuted">{unidad}</Text>}
+          </XStack>
+        ))}
+      </YStack>
+      <Button
+        alignSelf="flex-end"
+        height={44}
+        paddingHorizontal="$4"
+        backgroundColor={valido && cambiado ? ACCENT : '$backgroundHover'}
+        disabled={!valido || !cambiado || saving}
+        onPress={handleSave}
+      >
+        {saving
+          ? <Spinner size="small" color="white" />
+          : <XStack gap="$2" alignItems="center">
+              <Check size={18} color={valido && cambiado ? 'white' : ACCENT} />
+              <Text color={valido && cambiado ? 'white' : ACCENT} fontWeight="700">Guardar</Text>
+            </XStack>}
+      </Button>
     </YStack>
   )
 }

@@ -62,6 +62,11 @@ export interface ITaxConfig {
   Rate: number
 }
 
+export interface IExpenseDateRange {
+  MinDate: string
+  MaxDate: string
+}
+
 export interface IGiraVendorResponse {
   VATNUM: string
   NAME: string
