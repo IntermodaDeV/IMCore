@@ -1,7 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react'
-import { ScrollView as RNScrollView } from 'react-native'
+import { BackHandler, ScrollView as RNScrollView } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
+import { useDrawerStatus } from '@react-navigation/drawer'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
-import { ScanBarcode, RotateCw, Search, CheckCircle2 } from 'lucide-react-native'
+import { ArrowLeft, ScanBarcode, RotateCw, Search, CheckCircle2 } from 'lucide-react-native'
 
 import KeyboardAwareForm from '../../components/commons/KeyboardAwareForm'
 import AppInput from '../../components/commons/AppInput'
@@ -29,12 +31,9 @@ import {
  * bloqueada.
  */
 export default function SalidaFacturaScreen() {
-  usePageHeader({
-    center: <Text fontSize="$4" fontWeight="700" color="$text">Salida de Facturas</Text>,
-  })
-
   const theme = useTheme()
   const { showToast } = useShowToast()
+  const drawerAbierto = useDrawerStatus() === 'open'
 
   const [scannerOpen, setScannerOpen] = useState(false)
   const [manual, setManual] = useState('')
@@ -74,12 +73,57 @@ export default function SalidaFacturaScreen() {
     buscar(code)
   }
 
-  const limpiar = () => {
+  const limpiar = useCallback(() => {
     setFactura(null)
     setError(null)
     setSalida(null)
     setManual('')
-  }
+  }, [])
+
+  // ── Volver ────────────────────────────────────────────────────────────────
+  // La pantalla tiene dos momentos: el recuadro para escanear, y la factura (o
+  // el error / el acuse de salida) que vino de ese escaneo.
+  const hayResultado = !!factura || !!error || !!salida
+
+  // Regresar al escaneo solo se podía desde el botón del fondo, y con una
+  // factura de varios artículos eso son varias pantallas de scroll. La flecha
+  // del header está siempre a la vista.
+  //
+  // «Atrás» son dos pasos, iguales para la flecha y para el botón del
+  // teléfono: primero limpia lo que hay en pantalla (y queda listo para la
+  // siguiente factura), y recién entonces sale. El drawer no apila pantallas:
+  // al salir regresa a Inicio, que es su primera ruta.
+  //
+  // Sin nada que limpiar, la flecha le cede el lugar al ☰: así se entra al
+  // Historial sin pasar por Inicio.
+  usePageHeader({
+    center: <Text fontSize="$4" fontWeight="700" color="$text">Salida de Facturas</Text>,
+    left: hayResultado
+      ? (
+        <View onPress={limpiar} pressStyle={{ opacity: 0.6 }} hitSlop={12} paddingVertical="$1" paddingRight="$2">
+          <ArrowLeft size={24} color={theme.text?.val as string} />
+        </View>
+      )
+      : undefined,
+  }, [hayResultado])
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        // Con el menú abierto, «atrás» es cerrar el menú, y eso lo hace la
+        // navegación. Este handler corre ANTES que el suyo (Android llama al
+        // último registrado primero), así que si no se aparta, atrás borraría la
+        // factura y dejaría el menú abierto.
+        if (drawerAbierto) return false
+        // El escáner es un Modal y Android lo cierra por su cuenta; si de todos
+        // modos llegara acá, cerrarlo es lo que corresponde antes de salir.
+        if (scannerOpen) { setScannerOpen(false); return true }
+        if (hayResultado) { limpiar(); return true }
+        return false // sin nada que limpiar: que el drawer haga lo suyo
+      })
+      return () => sub.remove()
+    }, [drawerAbierto, scannerOpen, hayResultado, limpiar]),
+  )
 
   // ── Marcar artículos ──────────────────────────────────────────────────────
 
