@@ -114,7 +114,7 @@ export default function VisitasHorariosScreen() {
     setEditing(h)
     setName(h.Name)
     setDescription(h.Description ?? '')
-    setSoloAcceso(h.SoloConAcceso ?? false)
+    setSoloAcceso(h.SoloConAcceso === 1)
     setVentanas([])
     setPicker(null)
     setModalOpen(true)
@@ -176,7 +176,7 @@ export default function VisitasHorariosScreen() {
         Name: name.trim(),
         Description: description.trim() || null,
         Status_Id: editing?.Status_Id ?? 1,
-        SoloConAcceso: soloAcceso,
+        SoloConAcceso: soloAcceso ? 1 : 0,
         Create_By: user?.Code,
         Modified_By: user?.Code,
         Detalle: detalle,
@@ -314,7 +314,7 @@ export default function VisitasHorariosScreen() {
                                 </Text>
                               </XStack>
                             )}
-                            {h.SoloConAcceso && (
+                            {h.SoloConAcceso === 1 && (
                               <XStack
                                 backgroundColor="rgba(147,51,234,0.14)"
                                 paddingHorizontal="$2"

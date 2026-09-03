@@ -32,8 +32,13 @@ export interface IHorario {
   Resumen?: string | null // "Lun 08:00-12:00 · Lun 13:00-17:00 · ..."
   Dias?: string | null // "1,2,3,4,5"
   /** Horario RESERVADO: solo lo ve, y solo lo puede usar, quien tiene el acceso
-   *  'VisitasLargaDuracion'. El servidor ni lo devuelve a los demás. */
-  SoloConAcceso?: boolean
+   *  'VisitasLargaDuracion'. El servidor ni lo devuelve a los demás.
+   *
+   *  1 = reservado · 0 = de todos · omitido al guardar = no se toca. Es un NÚMERO
+   *  y no un booleano porque el servidor necesita distinguir "false" de "no me lo
+   *  mandaron": con un bool no nullable, un cliente que no conoce el campo lo
+   *  desmarcaba en silencio. */
+  SoloConAcceso?: number | null
   // Se envía al guardar; el backend reemplaza el detalle completo
   Detalle?: IHorarioDetalle[]
 }
@@ -181,10 +186,12 @@ export interface IValidarResult {
   RequiereId?: boolean
   /** Movimiento contra el que se cuelga la foto del documento */
   AccesoId?: number | null
-  /** ¿Este pase avisa sus movimientos? Lo decide el servidor. En la app solo
-   *  sirve para explicar en portería por qué no salió notificación. */
-  Notifica?: boolean | null
-  LargaDuracion?: boolean | null
+  /** ¿Este pase avisa sus movimientos? Lo decide el servidor. 1 = avisa · 0 =
+   *  mudo · null = sin dato (una API vieja), que se lee como "avisa".
+   *  Viaja como NÚMERO y no como booleano porque el mapeador SP→DTO de la API no
+   *  soporta `bool?` y descartaba la columna en silencio. */
+  Notifica?: number | null
+  LargaDuracion?: boolean
   // ── Empresa del parque dueña del pase ──
   // El guardia atiende a las dos empresas del parque, así que tiene que ver de
   // cuál es el pase que acaba de escanear.
