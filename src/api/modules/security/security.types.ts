@@ -20,6 +20,9 @@ export type LoginResponse = {
 }
 
 interface RoleDTO {
+  // El servidor manda las dos. Para decidir permisos se usa el Id y NUNCA el
+  // nombre: los literales con acento ya han fallado al compararse.
+  Role_Id?: number
   RoleName: string
 }
 

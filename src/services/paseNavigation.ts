@@ -45,3 +45,35 @@ export function subscribeOpenPaseAprobacion(cb: Listener): () => void {
     if (listener === cb) listener = null
   }
 }
+
+
+/* ───────────────────────────────────────────────────────────────────────────
+   SEGUNDO CANAL: el pase PROPIO, en «Mis pases».
+   
+   Es otro bus y no el de arriba porque son dos pantallas distintas y dos
+   papeles distintos: arriba se va a FIRMAR un pase ajeno, acá solo a VER el
+   propio. El aviso `pase_estado` («tu jefe autorizó», «pase aprobado»,
+   «rechazado») llevaba a la lista sin señalar cuál era, aunque el aviso ya
+   traía el paseId: con varios permisos en pantalla, había que buscarlo a ojo.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+let pendingMio: number | null = null
+let listenerMio: ((paseId: number) => void) | null = null
+
+export function requestOpenMiPase(paseId: number) {
+  if (!paseId || paseId <= 0) return
+  if (listenerMio) listenerMio(paseId)
+  else pendingMio = paseId
+}
+
+export function subscribeOpenMiPase(cb: (paseId: number) => void): () => void {
+  listenerMio = cb
+  if (pendingMio != null) {
+    const p = pendingMio
+    pendingMio = null
+    cb(p)
+  }
+  return () => {
+    if (listenerMio === cb) listenerMio = null
+  }
+}

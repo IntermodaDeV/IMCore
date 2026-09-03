@@ -1,6 +1,6 @@
 import { navigateWhenReady } from '../navigation/navigationRef'
 import { requestOpenPass } from './passNavigation'
-import { requestOpenPaseAprobacion } from './paseNavigation'
+import { requestOpenMiPase, requestOpenPaseAprobacion } from './paseNavigation'
 import { requestOpenHistorialHoraExtra, requestOpenSolicitudHoraExtra } from './overtimeNavigation'
 import { requestMenuRefresh } from './menuRefresh'
 
@@ -50,9 +50,13 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
-  // Resultado del pase (aprobado/rechazado/registrado) -> Mis pases
+  // Resultado del pase (aprobado/rechazado/registrado) -> Mis pases, con el
+  // pase señalado. El aviso siempre trajo el paseId; no usarlo dejaba al
+  // usuario buscando a ojo cuál de sus permisos era el del aviso.
   if (category === 'pase_estado') {
+    const paseId = Number(data.paseId ?? data.PaseId)
     navigateWhenReady('paseHistorial')
+    if (paseId > 0) requestOpenMiPase(paseId)
     return true
   }
 
