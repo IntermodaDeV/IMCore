@@ -38,10 +38,17 @@ const vigenciaTexto = (h: IHistorial) => {
 }
 
 // Estilo del estado del pase (por ventana de vigencia)
+// 'finalizado' se muestra como VENCIDO: es la palabra con la que el lector
+// responde al escanear un pase pasado de fecha, y la pantalla no puede llamarlo
+// distinto que el portón. El valor del servidor NO se renombró — la app instalada
+// usa `EstadoPase !== 'finalizado'` más abajo para decidir qué acciones ofrece.
+// Un pase LARGO vencido no se acabó: hay que renovarlo, y eso se dice.
 const estadoStyle = (h: IHistorial) => {
   switch (h.EstadoPase) {
     case 'finalizado':
-      return { color: '#64748B', bg: 'rgba(100,116,139,0.16)', label: 'Finalizado', Icon: CheckCircle2 }
+      return h.LargaDuracion
+        ? { color: '#dc2626', bg: 'rgba(220,38,38,0.14)', label: 'Vencido · renovar', Icon: CheckCircle2 }
+        : { color: '#64748B', bg: 'rgba(100,116,139,0.16)', label: 'Vencido', Icon: CheckCircle2 }
     case 'pendiente':
       return { color: '#FF551A', bg: 'rgba(255,85,26,0.12)', label: 'Pendiente', Icon: Clock }
     default:

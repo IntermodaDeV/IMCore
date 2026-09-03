@@ -13,6 +13,7 @@ import AppInput from '../../components/commons/AppInput'
 import AppSelect from '../../components/commons/AppSelect'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
+import { configuracionService } from '../../api/modules/configuracion/configuracion.service'
 import { useShowToast } from '../../utils/useShowToast'
 import { visitasService } from '../../api/modules/visitas/visitas.service'
 import { IGenerarVisita, IHorario, IHorarioDetalle, IMotivo } from '../../api/modules/visitas/visitas.types'
@@ -54,6 +55,10 @@ type Generated = {
   /** Empresa del parque dueña del pase: define el nombre y el logo de la tarjeta */
   empresa: string | null
   empresaCode: string | null
+  /** Cómo quedó el pase según el SERVIDOR: pudo forzar el aviso o rechazar la
+   *  marca, así que la tarjeta no lo recalcula. */
+  larga: boolean
+  notifica: boolean
 }
 
 const fmtDate = (d: Date) =>
@@ -73,6 +78,42 @@ const vigenciaTexto = (g: Generated) => {
   }
   return prettyDate(g.dias[0] ?? g.entryDate)
 }
+
+/** El acceso que habilita los pases de meses y los horarios reservados. */
+const ACCESO_LARGA = 'VisitasLargaDuracion'
+
+const tieneAcceso = (access: string | null | undefined, key: string) =>
+  (access ?? '').split(',').map((s) => s.trim()).includes(key)
+
+/** Días de vigencia: del primero al último, AMBOS incluidos. Misma cuenta que el
+ *  servidor, y es lo que se limita: cuánto TIEMPO vive la credencial, no cuántos
+ *  días abre. Con "días específicos" se podrían elegir diez fechas repartidas en
+ *  medio año, y el pase seguiría abriendo la puerta durante medio año. */
+const diasDeVigencia = (dias: string[]): number => {
+  if (dias.length === 0) return 0
+  const p = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number)
+    return new Date(y, (m ?? 1) - 1, d ?? 1)
+  }
+  return Math.round((p(dias[dias.length - 1]).getTime() - p(dias[0]).getTime()) / 86400000) + 1
+}
+
+/** El último día de un pase de N meses: el mismo día del mes N meses después,
+ *  MENOS UNO.
+ *
+ *  El "menos uno" no es un detalle: "un mes" contado hasta el mismo número
+ *  (15/03 -> 15/04) son 32 días en los meses de 31, y el pase se rechazaría
+ *  contra un techo de 31. Contado así, "un mes" nunca pasa de 31 días y "seis
+ *  meses" nunca pasa de 184 — que es lo que hace que los topes por omisión
+ *  funcionen para cualquier fecha de inicio. */
+const finDeMeses = (desde: Date, meses: number): Date => {
+  const d = new Date(desde.getFullYear(), desde.getMonth() + meses, desde.getDate())
+  if (d.getDate() !== desde.getDate()) d.setDate(0) // se pasó de mes: al último del anterior
+  d.setDate(d.getDate() - 1)
+  return d
+}
+
+const MESES_PRESET = [1, 2, 3, 6]
 
 export default function VisitasGenerarScreen() {
   const { user, theme } = useAuth()
@@ -112,6 +153,18 @@ export default function VisitasGenerarScreen() {
   // Apagado por omisión: una lectura legible respalda todo el pase. Pedir el
   // documento en cada entrada es el respaldo extra y se elige a propósito.
   const [idCadaEntrada, setIdCadaEntrada] = useState(false)
+  // ── Larga duración ──
+  // Solo con el acceso 'VisitasLargaDuracion'. Se DECLARA en vez de deducirse de
+  // la vigencia: si se dedujera, a quien tiene el acceso un pase rutinario de un
+  // mes le saldría marcado como largo —y mudo— sin haberlo pedido.
+  const puedeLarga = tieneAcceso(user?.Access, ACCESO_LARGA)
+  const [esLarga, setEsLarga] = useState(false)
+  // Nace MUDO: seis meses de avisos diarios son ~240 notificaciones por pase, y
+  // esa bandeja se deja de leer justo cuando algo importa.
+  const [notifica, setNotifica] = useState(false)
+  // Topes configurables (Configuraciones globales › Visitas). Los valores de
+  // arranque son los mismos del SP: si la consulta falla, el formulario sirve.
+  const [limites, setLimites] = useState({ maxNormal: 31, minLarga: 30, maxLarga: 186 })
   const [logos, setLogos] = useState<Record<string, any> | null>(null)
   const [loadingGen, setLoadingGen] = useState(false)
   const [result, setResult] = useState<Generated | null>(null)
@@ -167,12 +220,27 @@ export default function VisitasGenerarScreen() {
   useEffect(() => {
     ;(async () => {
       try {
-        const [respMot, respHor] = await Promise.all([
+        const [respMot, respHor, respCfg] = await Promise.all([
           visitasService.getMotivos() as Promise<ExecutionResponse<IMotivo[]>>,
-          visitasService.getHorarios(true),
+          // Con el usuario: los horarios RESERVADOS (recoger familiares) no le
+          // llegan a quien no tiene el acceso.
+          visitasService.getHorarios(true, user?.Code),
+          configuracionService.getAll(),
         ])
         if (respMot.Success) setMotivos(respMot.Data ?? [])
         if (respHor.Success) setHorarios(respHor.Data ?? [])
+        if (respCfg.Success) {
+          const filas = respCfg.Data ?? []
+          const num = (clave: string, porOmision: number) => {
+            const v = Number(filas.find((f) => f.Clave === clave)?.Valor)
+            return Number.isFinite(v) && v > 0 ? v : porOmision
+          }
+          setLimites({
+            maxNormal: num('Visitas.MaxDiasVigencia', 31),
+            minLarga: num('Visitas.LargaDuracionMinDias', 30),
+            maxLarga: num('Visitas.LargaDuracionMaxDias', 186),
+          })
+        }
       } catch (err) {
         const e = handleError(err)
         showToast('error', 'Error', e.message, 4000, 'bottom')
@@ -268,6 +336,26 @@ export default function VisitasGenerarScreen() {
     // Si el horario no cubre ningún día elegido, el pase no autorizaría nada.
     // El backend lo rechaza igual, pero se avisa antes para no perder el viaje.
     const efectivos = diasHabilitadosPorHorario(dias, horarioDetalle)
+    // Los mismos tres límites que aplica el SP. Acá es solo para no hacer llenar
+    // el formulario y rebotar al final; la decisión la toma el servidor.
+    const vig = diasDeVigencia(efectivos)
+    if (puedeLarga && esLarga) {
+      if (vig > 0 && vig < limites.minLarga)
+        return showToast('error', 'Validación',
+          `Un pase de larga duración tiene que valer al menos ${limites.minLarga} días; este vale ${vig}. Para menos tiempo, apaga la casilla.`,
+          5000, 'bottom')
+      if (vig > limites.maxLarga)
+        return showToast('error', 'Validación',
+          `Un pase de larga duración llega hasta ${limites.maxLarga} días; este vale ${vig}. Después de eso hay que renovarlo.`,
+          5000, 'bottom')
+    } else if (vig > limites.maxNormal) {
+      return showToast('error', 'Validación',
+        `Un pase vale hasta ${limites.maxNormal} días; el elegido vale ${vig}.` +
+        (puedeLarga
+          ? ' Para más tiempo, marca el pase como de larga duración.'
+          : ' Para más tiempo hace falta el acceso de pases de larga duración.'),
+        5000, 'bottom')
+    }
     if (efectivos.length === 0)
       return showToast(
         'error',
@@ -292,6 +380,10 @@ export default function VisitasGenerarScreen() {
         RequiereId: requiereId,
         // Solo tiene sentido si se pide documento; si no, el SP lo ignora igual.
         IdCadaEntrada: requiereId && idCadaEntrada,
+        // Sin el acceso ni se manda: el servidor lo rechazaría igual, pero así
+        // el payload dice la verdad de lo que la pantalla pudo ofrecer.
+        LargaDuracion: puedeLarga && esLarga,
+        NotificaMovimientos: puedeLarga && esLarga ? notifica : true,
         Create_By: user?.Code ?? '',
         Personas: cleanPersonas,
       }
@@ -319,6 +411,8 @@ export default function VisitasGenerarScreen() {
           // se fue por WhatsApp.
           empresa: resp.Data.Empresa ?? null,
           empresaCode: resp.Data.EmpresaCode ?? null,
+          larga: resp.Data.LargaDuracion ?? false,
+          notifica: resp.Data.NotificaMovimientos ?? true,
         })
       } else {
         showToast('error', 'Error', resp.ErrorMessage || 'No se pudo generar el pase', 5000, 'bottom')
@@ -424,6 +518,8 @@ export default function VisitasGenerarScreen() {
     setEndDate(new Date())
     setDiasList([])
     setPickerFor(null)
+    setEsLarga(false)
+    setNotifica(false)
   }
 
   // Cierra el resultado: limpia el formulario y regresa a la pantalla anterior
@@ -539,6 +635,18 @@ export default function VisitasGenerarScreen() {
                 <InfoRow label="Motivo" value={result.motivo} />
                 <InfoRow label={result.isRecurrent ? 'Vigencia' : 'Fecha de ingreso'} value={vigenciaTexto(result)} />
                 {result.isRecurrent && <InfoRow label="Días habilitados" value={`${result.dias.length}`} />}
+                {result.larga && (
+                  <>
+                    <InfoRow
+                      label="Tipo de pase"
+                      value={`Larga duración · vence ${prettyDate(result.dias[result.dias.length - 1])}`}
+                    />
+                    <InfoRow
+                      label="Avisos"
+                      value={result.notifica ? 'Avisa cada entrada y salida' : 'Sin avisos (los movimientos sí se registran)'}
+                    />
+                  </>
+                )}
                 <InfoRow label="Horario" value={result.horario ?? 'Día completo'} />
                 <InfoRow
                   label="Identificación"
@@ -817,6 +925,79 @@ export default function VisitasGenerarScreen() {
             </View>
           </XStack>
 
+          {/* ── Larga duración ──
+              Solo con el acceso, y FUERA del bloque recurrente aunque un pase de
+              meses sea siempre de varios días: adentro quedaba escondido detrás
+              de un interruptor que nadie relaciona con esto. Se elegía el horario
+              de recoger familiares y la opción no aparecía por ningún lado.
+              Encenderlo enciende «Pase recurrente» solo. */}
+            {puedeLarga && (
+              <YStack gap="$2" borderWidth={1} borderColor="$border" borderRadius="$3" padding="$3">
+                <View onPress={() => {
+                  const on = !esLarga
+                  setEsLarga(on)
+                  // Un pase de meses es de varios días por definición, así que el
+                  // interruptor se basta solo: no hay que acordarse de encender
+                  // «Pase recurrente» primero.
+                  if (on) setIsRecurrent(true)
+                  // Y un mes de arranque: es el piso, y deja el formulario válido
+                  // en vez de con un error ya puesto.
+                  if (on && recurMode === 'rango') setEndDate(finDeMeses(startDate, 1))
+                }} pressStyle={{ opacity: 0.7 }}>
+                  <XStack alignItems="center" justifyContent="space-between" gap="$3">
+                    <YStack flex={1} gap="$1">
+                      <Text fontSize={14} fontWeight="700" color="$text">Pase de larga duración</Text>
+                      <Text fontSize={11} color="$textMuted">
+                        Para quien viene a diario, como recoger a un familiar. De{' '}
+                        {limites.minLarga} a {limites.maxLarga} días; después hay que renovarlo.
+                      </Text>
+                    </YStack>
+                    <XStack width={44} height={24} borderRadius={12} padding={2}
+                      backgroundColor={esLarga ? '$primary' : '$border'} alignItems="center">
+                      <View width={20} height={20} borderRadius={10} backgroundColor="white"
+                        alignSelf={esLarga ? 'flex-end' : 'flex-start'} />
+                    </XStack>
+                  </XStack>
+                </View>
+
+                {esLarga && (() => {
+                  const avisos = diasEfectivos().length * 2
+                  return (
+                    <YStack gap="$2" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
+                      <View onPress={() => setNotifica((v) => !v)} pressStyle={{ opacity: 0.7 }}>
+                        <XStack alignItems="center" justifyContent="space-between" gap="$3">
+                          <YStack flex={1} gap="$1">
+                            <Text fontSize={14} fontWeight="700" color="$text">
+                              Avisar cada entrada y salida
+                            </Text>
+                            <Text fontSize={11} color="$textMuted">
+                              {notifica
+                                ? `Le llega a quien genera el pase y a quien tenga las notificaciones de Visitas. Con los días habilitados son hasta ${avisos} avisos.`
+                                : 'Los movimientos se registran igual: quedan en el historial y en el tablero. Lo que no llega es el aviso.'}
+                            </Text>
+                          </YStack>
+                          <XStack width={44} height={24} borderRadius={12} padding={2}
+                            backgroundColor={notifica ? '$primary' : '$border'} alignItems="center">
+                            <View width={20} height={20} borderRadius={10} backgroundColor="white"
+                              alignSelf={notifica ? 'flex-end' : 'flex-start'} />
+                          </XStack>
+                        </XStack>
+                      </View>
+                      {notifica && avisos > 60 && (
+                        <XStack alignItems="center" gap="$1.5">
+                          <TriangleAlert size={12} color="#E58E26" />
+                          <Text fontSize={11} color="#E58E26" flexShrink={1}>
+                            Son unos {avisos} avisos en toda la vigencia. Una bandeja con ese
+                            volumen se deja de leer, y ahí se pierden los que sí importan.
+                          </Text>
+                        </XStack>
+                      )}
+                    </YStack>
+                  )
+                })()}
+              </YStack>
+            )}
+
           {/* ÚNICO: una sola fecha */}
           {!isRecurrent && (
             <View
@@ -862,6 +1043,7 @@ export default function VisitasGenerarScreen() {
               </XStack>
 
               {recurMode === 'rango' ? (
+                <YStack gap="$2">
                 <XStack gap="$2">
                   <View
                     flex={1}
@@ -890,6 +1072,36 @@ export default function VisitasGenerarScreen() {
                     <CalendarRange size={16} color="#94A3B8" />
                   </View>
                 </XStack>
+
+                {/* Los meses de golpe. Solo con el acceso y con la casilla
+                    encendida: sin eso el techo es de un mes y estos botones
+                    ofrecerían algo que el servidor va a rebotar. */}
+                {puedeLarga && esLarga && (
+                  <XStack gap="$2" flexWrap="wrap" alignItems="center">
+                    {MESES_PRESET.map((m) => {
+                      const fin = finDeMeses(startDate, m)
+                      const activo = fmtDate(fin) === fmtDate(endDate)
+                      return (
+                        <View
+                          key={m}
+                          onPress={() => setEndDate(fin)}
+                          pressStyle={{ opacity: 0.7 }}
+                          backgroundColor={activo ? '$primary' : 'transparent'}
+                          borderWidth={1}
+                          borderColor={activo ? '$primary' : '$border'}
+                          borderRadius="$10"
+                          paddingHorizontal="$3"
+                          paddingVertical="$1.5"
+                        >
+                          <Text fontSize={12} fontWeight="700" color={activo ? 'white' : '$text'}>
+                            {m} {m === 1 ? 'mes' : 'meses'}
+                          </Text>
+                        </View>
+                      )
+                    })}
+                  </XStack>
+                )}
+                </YStack>
               ) : (
                 <YStack gap="$2">
                   <Button
@@ -926,12 +1138,21 @@ export default function VisitasGenerarScreen() {
                 const pedidos = buildDias()
                 const efectivos = diasEfectivos()
                 const descartados = pedidos.length - efectivos.length
+                const vig = diasDeVigencia(efectivos)
                 return (
                   <YStack gap="$1">
                     <Text fontSize={11} color="$textMuted">
                       {efectivos.length} día(s) habilitado(s)
                       {horarioId ? ` · ${contarVentanas(efectivos, horarioDetalle)} ventana(s)` : ''}
                     </Text>
+                    {/* La VIGENCIA es lo que se limita —cuánto tiempo vive el
+                        pase—, y en "días específicos" no se deduce de las fechas
+                        que se ven. Por eso va escrita. */}
+                    {vig > 1 && (
+                      <Text fontSize={11} color="$textMuted">
+                        Vigencia: {vig} día(s) ({prettyDate(efectivos[0])} – {prettyDate(efectivos[efectivos.length - 1])})
+                      </Text>
+                    )}
                     {/* El rango se expande completo, pero el horario manda: los días
                         que no están en el horario no se habilitan. */}
                     {descartados > 0 && (

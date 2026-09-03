@@ -155,6 +155,32 @@ const CONFIG_META: Record<
     max: 1440,
     ayudaRango: '0 a 1440 min (24 h). 0 = límite exacto.',
   },
+  // En DÍAS, no en meses: un mes no son 30 días. Los botones del formulario
+  // (1/2/3/6 meses) usan meses de calendario y lo que se valida es el resultado.
+  'Visitas.MaxDiasVigencia': {
+    label: 'Vigencia máxima de un pase (sin acceso especial)',
+    kind: 'number',
+    unidad: 'días',
+    min: 1,
+    max: 366,
+    ayudaRango: '31 = un mes · 14 = dos semanas · 21 = tres semanas.',
+  },
+  'Visitas.LargaDuracionMinDias': {
+    label: 'Desde cuántos días un pase es de larga duración',
+    kind: 'number',
+    unidad: 'días',
+    min: 1,
+    max: 366,
+    ayudaRango: 'Por debajo de esto el pase es normal y avisa cada movimiento.',
+  },
+  'Visitas.LargaDuracionMaxDias': {
+    label: 'Vigencia máxima de un pase de larga duración',
+    kind: 'number',
+    unidad: 'días',
+    min: 1,
+    max: 400,
+    ayudaRango: '186 = seis meses. Pasado eso hay que renovarlo.',
+  },
   'RH.AprobadorPorDefecto': {
     label: 'Aprobador de pases por defecto',
     // Es un USUARIO, no un interruptor: tiene que tener el rol 'Aprobador de
