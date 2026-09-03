@@ -952,11 +952,16 @@ export default function VisitasGenerarScreen() {
                         {limites.minLarga} a {limites.maxLarga} días; después hay que renovarlo.
                       </Text>
                     </YStack>
-                    <XStack width={44} height={24} borderRadius={12} padding={2}
-                      backgroundColor={esLarga ? '$primary' : '$border'} alignItems="center">
-                      <View width={20} height={20} borderRadius={10} backgroundColor="white"
+                    {/* View y NO XStack: en un contenedor de FILA `alignSelf`
+                        gobierna el eje vertical, así que la perilla se iba abajo en
+                        vez de correrse a la derecha — el fondo se ponía naranja y
+                        la perilla no se movía. Mismo patrón y mismas medidas que
+                        los interruptores vecinos. */}
+                    <View width={48} height={28} borderRadius={14} padding={3}
+                      backgroundColor={esLarga ? '$primary' : '$border'} justifyContent="center">
+                      <View width={22} height={22} borderRadius={11} backgroundColor="white"
                         alignSelf={esLarga ? 'flex-end' : 'flex-start'} />
-                    </XStack>
+                    </View>
                   </XStack>
                 </View>
 
@@ -976,11 +981,11 @@ export default function VisitasGenerarScreen() {
                                 : 'Los movimientos se registran igual: quedan en el historial y en el tablero. Lo que no llega es el aviso.'}
                             </Text>
                           </YStack>
-                          <XStack width={44} height={24} borderRadius={12} padding={2}
-                            backgroundColor={notifica ? '$primary' : '$border'} alignItems="center">
-                            <View width={20} height={20} borderRadius={10} backgroundColor="white"
+                          <View width={48} height={28} borderRadius={14} padding={3}
+                            backgroundColor={notifica ? '$primary' : '$border'} justifyContent="center">
+                            <View width={22} height={22} borderRadius={11} backgroundColor="white"
                               alignSelf={notifica ? 'flex-end' : 'flex-start'} />
-                          </XStack>
+                          </View>
                         </XStack>
                       </View>
                       {notifica && avisos > 60 && (

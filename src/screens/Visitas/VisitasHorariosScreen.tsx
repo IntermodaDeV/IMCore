@@ -445,22 +445,23 @@ export default function VisitasHorariosScreen() {
                         recoger familiares.
                       </Text>
                     </YStack>
-                    <XStack
-                      width={44}
-                      height={24}
-                      borderRadius={12}
-                      padding={2}
+                    {/* View y NO XStack: ver la nota en VisitasGenerarScreen. */}
+                    <View
+                      width={48}
+                      height={28}
+                      borderRadius={14}
+                      padding={3}
                       backgroundColor={soloAcceso ? '$primary' : '$border'}
-                      alignItems="center"
+                      justifyContent="center"
                     >
                       <View
-                        width={20}
-                        height={20}
-                        borderRadius={10}
+                        width={22}
+                        height={22}
+                        borderRadius={11}
                         backgroundColor="white"
                         alignSelf={soloAcceso ? 'flex-end' : 'flex-start'}
                       />
-                    </XStack>
+                    </View>
                   </XStack>
                 </View>
 
