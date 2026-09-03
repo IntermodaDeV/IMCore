@@ -46,7 +46,7 @@ export const pasesService = {
     ),
 
   /**
-   * Candidatos a aprobador (rol "Aprobador de pases").
+   * Candidatos a aprobador (los que tienen el acceso `AprobadorPases`).
    *
    * Con el alterno del jefe que trae planilla, el servidor marca cuál es el
    * jefe REAL de la persona (`Sugerido` + `EsJefeReal`); si no lo resuelve,

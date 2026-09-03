@@ -21,16 +21,19 @@ const tieneAcceso = (access: string | null | undefined, key: string) =>
 const ACCESO_RH = 'AutorizarPasesRH'
 
 /**
- * «Aprobador de pases»: el rol de quienes pueden ser elegidos como jefe que
- * autoriza. Por Id y no por nombre a propósito — comparar el literal con acento
- * ya ha fallado antes en este proyecto.
+ * La PRIMERA firma: quién puede ser elegido como el jefe que autoriza.
  *
  * Hace falta porque tener `AutorizarPasesRH` NO convierte a nadie en jefe: los
- * cuatro de RR. HH. que ponen la segunda firma tienen rol General y no son
- * aprobadores de nadie. Sin esta distinción se les mostraba la pestaña «Como
- * jefe», que para ellos está vacía siempre y no puede dejar de estarlo.
+ * de RR. HH. que ponen la segunda firma no son aprobadores de nadie. Sin esta
+ * distinción se les mostraba la pestaña «Como jefe», que para ellos está vacía
+ * siempre y no puede dejar de estarlo.
+ *
+ * Era un ROL y pasó a ser un ACCESO (RH_18), por dos razones: los seis permisos
+ * del módulo quedan juntos en una sola pantalla, y el Id del rol NO era el
+ * mismo en cada base —en Pro el 9 era «Aprobador de pases», en Dev el 9 es
+ * «Recursos Humanos»—, así que gatear por Id acá era directamente inseguro.
  */
-const ROL_APROBADOR_PASES = 9
+const ACCESO_JEFE = 'AprobadorPases'
 
 /** Las horas previstas, en el orden de la secuencia del pase. */
 const textoHoras = (p: IPase): string => {
@@ -62,9 +65,9 @@ export default function PaseAprobacionesScreen() {
   // El rol dice quién PUEDE ser jefe; la red de seguridad cubre a quien salió
   // del rol pero todavía tiene permisos esperando su firma: esos no pueden
   // quedar huérfanos por esconderle la bandeja.
-  const esAprobadorPorRol = (user?.Roles ?? []).some(r => r.Role_Id === ROL_APROBADOR_PASES)
+  const esAprobadorPorAcceso = tieneAcceso(user?.Access, ACCESO_JEFE)
   const [tienePendientesComoJefe, setTienePendientesComoJefe] = useState(false)
-  const puedeJefe = esAprobadorPorRol || tienePendientesComoJefe
+  const puedeJefe = esAprobadorPorAcceso || tienePendientesComoJefe
 
   const [modo, setModo] = useState<'jefe' | 'rh'>('jefe')
 
@@ -130,18 +133,18 @@ export default function PaseAprobacionesScreen() {
   /**
    * Red de seguridad de la bandeja del jefe.
    *
-   * A quien no está en el rol se le esconde la pestaña «Como jefe», pero si
-   * alguien salió del rol y todavía tiene permisos asignados a su nombre, esos
+   * A quien no tiene el acceso se le esconde la pestaña «Como jefe», pero si a
+   * alguien se lo quitaron y todavía tiene permisos asignados a su nombre, esos
    * quedarían sin quien los firme y sin pantalla donde verlos. Se pregunta UNA
-   * vez, y solo a quien no es aprobador por rol.
+   * vez, y solo a quien no lo tiene.
    */
   useEffect(() => {
-    if (!user?.Code || esAprobadorPorRol || tienePendientesComoJefe) return
+    if (!user?.Code || esAprobadorPorAcceso || tienePendientesComoJefe) return
     pasesService.getPorAprobar(user.Code, 'jefe')
       .then(r => { if (r.Success && (r.Data ?? []).length > 0) setTienePendientesComoJefe(true) })
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.Code, esAprobadorPorRol])
+  }, [user?.Code, esAprobadorPorAcceso])
 
   // Arranca en la bandeja que la persona realmente puede usar. Se decide con la
   // sesión ya cargada: con `user` en null todavía no se sabe si es jefe.
