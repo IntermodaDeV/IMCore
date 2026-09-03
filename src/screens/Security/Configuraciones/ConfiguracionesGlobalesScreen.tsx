@@ -6,6 +6,8 @@ import { Settings, Check, ChevronDown, ChevronRight } from 'lucide-react-native'
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
 import { configuracionService, IConfiguracion } from '../../../api/modules/configuracion/configuracion.service'
+import { pasesService } from '../../../api/modules/pases/pases.service'
+import { IAprobador } from '../../../api/modules/pases/pases.types'
 
 const ACCENT = '#FF551A'
 
@@ -48,8 +50,9 @@ function agruparPorCategoria(items: IConfiguracion[]) {
 //  - 'options': selector de chips (Valor = uno de options, como texto).
 //  - 'number': campo numérico con botón guardar (Valor = entero como texto). unidad opcional.
 //  - 'multi': checklist con botón guardar (Valor = códigos separados por coma).
-// Si la clave no está aquí, se asume 'bool' y se muestra la clave tal cual.
-type ConfigKind = 'bool' | 'options' | 'number' | 'multi' | 'companyMap'
+//  - 'usuario': elige un usuario de una lista (Valor = User_Code).
+//  - 'texto': campo libre, el fallback de una clave sin metadatos (ver abajo).
+type ConfigKind = 'bool' | 'options' | 'number' | 'multi' | 'companyMap' | 'usuario' | 'texto'
 const CONFIG_META: Record<
   string,
   {
@@ -57,6 +60,11 @@ const CONFIG_META: Record<
     kind: ConfigKind
     options?: number[]
     unidad?: string
+    // Solo para 'number': rango permitido. Fuera de él el botón de guardar no se
+    // habilita, así que un valor imposible no llega a la base.
+    min?: number
+    max?: number
+    ayudaRango?: string
     // Solo para 'options': unidad de los chips ('min' si no se indica), etiqueta del
     // chip 0, y si se ofrece un chip de apagado (guarda el texto 'Off', que el SQL lee
     // como apagado porque TRY_CAST lo deja en NULL).
@@ -136,6 +144,22 @@ const CONFIG_META: Record<
     kind: 'companyMap',
     unidad: 'días',
     companias: ['IMHN', 'IMGT', 'IMCR'],
+  },
+  'Visitas.ToleranciaMinutos': {
+    label: 'Tolerancia de la ventana horaria',
+    kind: 'number',
+    unidad: 'min',
+    // Un pase de visita es de un día: pasada la jornada la tolerancia no
+    // significa nada, así que el techo es 24 h. 0 = límite exacto.
+    min: 0,
+    max: 1440,
+    ayudaRango: '0 a 1440 min (24 h). 0 = límite exacto.',
+  },
+  'RH.AprobadorPorDefecto': {
+    label: 'Aprobador de pases por defecto',
+    // Es un USUARIO, no un interruptor: tiene que tener el rol 'Aprobador de
+    // pases' o el formulario de pases sale sin sugerir a nadie.
+    kind: 'usuario',
   },
 }
 
@@ -264,7 +288,13 @@ export default function ConfiguracionesGlobalesScreen() {
                 </View>
               )}
             {(grupos.length === 1 || abiertos[g.prefijo]) && g.items.map(c => {
-              const meta = CONFIG_META[c.Clave] ?? { label: c.Clave, kind: 'bool' as ConfigKind }
+              // Una clave sin metadatos cae en 'texto', NO en 'bool'. El fallback a
+              // interruptor no era neutro: la pintaba apagada (su valor no era '1') y
+              // un toque la reescribía con '1'/'0'. Así se perdió el valor de
+              // 'RH.AprobadorPorDefecto' en producción el 2-sep: tenía 'daragon' y
+              // quedó en '0'. Un campo de texto aguanta cualquier forma de valor y
+              // exige escribir y confirmar.
+              const meta = CONFIG_META[c.Clave] ?? { label: c.Clave, kind: 'texto' as ConfigKind }
               const saving = guardando === c.Clave
               return (
                 <View key={c.Clave} backgroundColor="$backgroundElevated" borderRadius="$5"
@@ -277,6 +307,25 @@ export default function ConfiguracionesGlobalesScreen() {
                       valor={c.Valor ?? ''}
                       saving={saving}
                       onSave={(v) => guardarValor(c, v, `${v} ${meta.unidad ?? ''}`.trim())}
+                      min={meta.min}
+                      max={meta.max}
+                      ayudaRango={meta.ayudaRango}
+                    />
+                  ) : meta.kind === 'usuario' ? (
+                    <UsuarioConfigRow
+                      label={meta.label}
+                      descripcion={c.Descripcion}
+                      valor={c.Valor ?? ''}
+                      saving={saving}
+                      onSave={(v) => guardarValor(c, v, v === '' ? 'Sin aprobador por defecto' : 'Aprobador actualizado')}
+                    />
+                  ) : meta.kind === 'texto' ? (
+                    <TextoConfigRow
+                      label={meta.label}
+                      descripcion={c.Descripcion}
+                      valor={c.Valor ?? ''}
+                      saving={saving}
+                      onSave={(v) => guardarValor(c, v, 'Guardado')}
                     />
                   ) : meta.kind === 'multi' ? (
                     <MultiConfigRow
@@ -421,9 +470,10 @@ function MultiConfigRow({
 }
 
 function NumberConfigRow({
-  label, descripcion, unidad, valor, saving, onSave,
+  label, descripcion, unidad, valor, saving, onSave, min = 0, max = 9999999, ayudaRango,
 }: {
-  label: string; descripcion?: string | null; unidad?: string; valor: string; saving: boolean; onSave: (v: string) => void
+  label: string; descripcion?: string | null; unidad?: string; valor: string; saving: boolean
+  onSave: (v: string) => void; min?: number; max?: number; ayudaRango?: string
 }) {
   const theme = useTheme()
   const [txt, setTxt] = useState(valor)
@@ -431,8 +481,10 @@ function NumberConfigRow({
   useEffect(() => { setTxt(valor) }, [valor])
 
   const limpio = txt.replace(/[^0-9]/g, '')
-  const valido = limpio !== '' && Number(limpio) >= 0
+  const n = Number(limpio)
+  const valido = limpio !== '' && n >= min && n <= max
   const cambiado = limpio !== (valor ?? '').trim()
+  const fuera = limpio !== '' && (n < min || n > max)
 
   return (
     <YStack gap="$3">
@@ -473,6 +525,149 @@ function NumberConfigRow({
           {saving ? <Spinner size="small" color="white" /> : <Check size={18} color={valido && cambiado ? 'white' : ACCENT} />}
         </Button>
       </XStack>
+      {!!ayudaRango && (
+        <Text fontSize="$1" color={fuera ? '#EF4444' : '$textMuted'}>{ayudaRango}</Text>
+      )}
+    </YStack>
+  )
+}
+
+// Campo libre. Es el fallback de una clave sin metadatos: aguanta cualquier forma de
+// valor (un usuario, minutos, JSON, una lista con comas) y exige escribir y confirmar,
+// así que no se destruye de un toque como pasaba con el interruptor.
+function TextoConfigRow({
+  label, descripcion, valor, saving, onSave,
+}: {
+  label: string; descripcion?: string | null; valor: string; saving: boolean; onSave: (v: string) => void
+}) {
+  const theme = useTheme()
+  const [txt, setTxt] = useState(valor)
+  useEffect(() => { setTxt(valor) }, [valor])
+
+  const limpio = txt.trim()
+  const cambiado = limpio !== (valor ?? '').trim()
+
+  return (
+    <YStack gap="$3">
+      <YStack gap="$1">
+        <Text fontSize="$4" fontWeight="800" color="$text">{label}</Text>
+        {!!descripcion && <Text fontSize="$2" color="$textMuted">{descripcion}</Text>}
+      </YStack>
+      <XStack gap="$2" alignItems="center">
+        <Input
+          flex={1}
+          height={44}
+          value={txt}
+          onChangeText={setTxt}
+          placeholder="(vacío)"
+          placeholderTextColor={theme.textMuted?.val}
+          autoCapitalize="none"
+          borderWidth={1}
+          borderColor="$border"
+          borderRadius={8}
+          backgroundColor="$backgroundElevated"
+          paddingHorizontal="$3"
+          fontSize="$5"
+          color="$text"
+        />
+        <Button
+          height={44}
+          paddingHorizontal="$3"
+          backgroundColor={cambiado ? ACCENT : '$backgroundHover'}
+          disabled={!cambiado || saving}
+          onPress={() => onSave(limpio)}
+        >
+          {saving ? <Spinner size="small" color="white" /> : <Check size={18} color={cambiado ? 'white' : ACCENT} />}
+        </Button>
+      </XStack>
+    </YStack>
+  )
+}
+
+// Elegir un usuario con el rol 'Aprobador de pases'. La lista sale del MISMO endpoint
+// que usa el formulario de pases, así que lo que se puede elegir acá es exactamente lo
+// que ese formulario podrá sugerir. Un código fuera del rol no marcaría a nadie, y por
+// eso se muestra aparte y señalado en vez de quedar invisible.
+function UsuarioConfigRow({
+  label, descripcion, valor, saving, onSave,
+}: {
+  label: string; descripcion?: string | null; valor: string; saving: boolean; onSave: (v: string) => void
+}) {
+  const [lista, setLista] = useState<IAprobador[]>([])
+  const [cargando, setCargando] = useState(true)
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const r = await pasesService.getAprobadores('')
+        if (vivo) setLista(r?.Data ?? [])
+      } catch { /* la pantalla se banca la lista vacía */ }
+      finally { if (vivo) setCargando(false) }
+    })()
+    return () => { vivo = false }
+  }, [])
+
+  const actual = (valor ?? '').trim()
+  const huerfano = !!actual && !cargando && !lista.some(a => a.User_Code === actual)
+  const ninguno = actual === ''
+
+  return (
+    <YStack gap="$3">
+      <YStack gap="$1">
+        <Text fontSize="$4" fontWeight="800" color="$text">{label}</Text>
+        {!!descripcion && <Text fontSize="$2" color="$textMuted">{descripcion}</Text>}
+      </YStack>
+      {cargando ? (
+        <XStack gap="$2" alignItems="center"><Spinner size="small" color={ACCENT} />
+          <Text fontSize="$2" color="$textMuted">Cargando aprobadores…</Text></XStack>
+      ) : (
+        <YStack gap="$2">
+          {/* Se puede quedar SIN aprobador por defecto: guarda vacío, y el SP marca a
+              nadie (compara u.Code contra el valor, y ningún usuario tiene Code vacío).
+              Sin esta opción la clave era de una sola vía: una vez elegido a alguien no
+              había forma de volver atrás desde la pantalla. */}
+          <Button
+            height={44}
+            justifyContent="flex-start"
+            backgroundColor={ninguno ? ACCENT : '$backgroundHover'}
+            disabled={saving}
+            onPress={() => { if (!ninguno) onSave('') }}
+          >
+            <Text fontSize="$3" fontWeight={ninguno ? '800' : '600'} color={ninguno ? 'white' : '$textMuted'}>
+              Sin aprobador por defecto
+            </Text>
+          </Button>
+          {lista.map(a => {
+            const on = a.User_Code === actual
+            return (
+              <Button
+                key={a.User_Code}
+                height={44}
+                justifyContent="flex-start"
+                backgroundColor={on ? ACCENT : '$backgroundHover'}
+                disabled={saving}
+                onPress={() => { if (!on) onSave(a.User_Code) }}
+              >
+                <Text fontSize="$3" fontWeight={on ? '800' : '600'} color={on ? 'white' : '$text'}>
+                  {a.Nombre || a.User_Code} · {a.User_Code}
+                </Text>
+              </Button>
+            )
+          })}
+          {huerfano && (
+            <Text fontSize="$1" color="#EF4444">
+              El valor guardado «{actual}» no tiene el rol Aprobador de pases: el formulario no sugiere a nadie.
+            </Text>
+          )}
+          {ninguno && (
+            <Text fontSize="$1" color="$textMuted">
+              Cuando no se pueda resolver el jefe real, el formulario de pases sale sin
+              sugerencia y la persona elige de la lista.
+            </Text>
+          )}
+        </YStack>
+      )}
     </YStack>
   )
 }
