@@ -50,6 +50,14 @@ export default function AccessScreen() {
       if (!map.has(cat)) map.set(cat, [])
       map.get(cat)!.push(a)
     }
+    // Dentro de cada categoría manda el `Orden` declarado, y después el nombre.
+    // Sin esto salían en orden de Id, o sea en el orden en que se fueron
+    // creando: los seis permisos de pases aparecían mezclados y el de jefe
+    // —que es el primer paso del flujo— último, porque se creó al final.
+    for (const items of map.values())
+      items.sort((x, y) =>
+        (x.Orden ?? 9999) - (y.Orden ?? 9999) || (x.Name ?? '').localeCompare(y.Name ?? ''))
+
     return [...map.entries()].sort(([a], [b]) => {
       if (a === OTROS) return 1
       if (b === OTROS) return -1

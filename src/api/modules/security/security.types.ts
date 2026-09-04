@@ -143,6 +143,8 @@ export type AccessDTO = {
   Name?: string;
   Description?: string;
   Category?: string | null;
+  /** Orden declarado dentro de su categoría. null = sin orden, va al final. */
+  Orden?: number | null;
   Status_Id?: number;
   Create_By?: string;
   Creation_Date?: string;
