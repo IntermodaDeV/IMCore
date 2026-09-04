@@ -29,6 +29,11 @@ export interface ILinea {
   Ticket_Id: number | null
   TicketCodigo: string | null
   Costo: number | null   // costo unitario congelado (solo diarios posteados)
+  // REPUESTO va contra un ticket; SUMINISTRO contra un centro de costo, que lo
+  // trae el articulo desde AX (lo resuelve el servidor, no la app).
+  Tipo: 'REPUESTO' | 'SUMINISTRO'
+  CentroCosto: string | null
+  CentroCostoNombre: string | null
   Fecha: string | null   // fecha/hora en que se agregó la línea (local)
 }
 
@@ -78,4 +83,18 @@ export interface IAgregarLinea {
   Almacen: string
   Ticket_Id?: number | null
   TicketCodigo?: string | null
+  // Omitido = REPUESTO (comportamiento de siempre). Con 'SUMINISTRO' no se manda
+  // ticket y el servidor resuelve el centro de costo del articulo en AX.
+  Tipo?: 'REPUESTO' | 'SUMINISTRO'
+}
+
+// Consumo de suministros por centro de costo en un periodo. KPI SEPARADO del de
+// repuestos: los suministros son de planta y no se usan en un ticket concreto.
+export interface ISuministroPorCentroCosto {
+  CentroCosto: string
+  CentroCostoNombre: string | null
+  Salidas: number
+  Unidades: number
+  CostoTotal: number
+  SinCosto: number
 }

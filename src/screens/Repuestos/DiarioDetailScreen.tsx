@@ -51,6 +51,12 @@ export default function DiarioDetailScreen() {
   const [almacen, setAlmacen] = useState(almacenDiario)
   const [agregando, setAgregando] = useState(false)
 
+  // Qué se está despachando. REPUESTO va contra un ticket (flujo de siempre);
+  // SUMINISTRO es consumo de planta y va contra el CENTRO DE COSTO que el propio
+  // artículo trae en AX (lo resuelve el servidor al agregar la línea).
+  // Van en el MISMO diario a propósito: Óscar no quiere andar creando diarios.
+  const [modo, setModo] = useState<'REPUESTO' | 'SUMINISTRO'>('REPUESTO')
+
   const [scanMode, setScanMode] = useState<ScanMode>(null)
   const [posteando, setPosteando] = useState(false)
   // Campo con teclado manual habilitado (null = modo láser, teclado suprimido).
@@ -114,9 +120,10 @@ export default function DiarioDetailScreen() {
   // cámara. No roba el foco mientras se resuelve ni con la cámara abierta.
   useEffect(() => {
     if (cerrado || ticket || resolviendo || scanMode !== null || teclado) return
+    if (modo === 'SUMINISTRO') return   // en suministros no hay campo de ticket que enfocar
     const t = setTimeout(() => manualRef.current?.focus(), 350)
     return () => clearTimeout(t)
-  }, [cerrado, ticket, resolviendo, scanMode, teclado])
+  }, [cerrado, ticket, resolviendo, scanMode, teclado, modo])
 
   // Al ocultarse el teclado (por cualquier medio: enter, back, tap fuera) volvemos
   // a modo láser en todos los campos.
@@ -202,7 +209,8 @@ export default function DiarioDetailScreen() {
   // ── Agregar repuesto (línea) al ticket activo ────────────────────────────────
   const agregarRepuesto = useCallback(async (codigoBarras?: string) => {
     const bc = (codigoBarras ?? barcode).trim()
-    if (!ticket) { showToast('warning', 'Escanea un ticket', 'Primero escanea el QR del ticket'); return }
+    const esSuministro = modo === 'SUMINISTRO'
+    if (!esSuministro && !ticket) { showToast('warning', 'Escanea un ticket', 'Primero escanea el QR del ticket'); return }
     if (!bc) { showToast('warning', 'Falta el código', 'Escanea o escribe el código de barras'); return }
     const cant = Number(cantidad) || 1
 
@@ -213,8 +221,12 @@ export default function DiarioDetailScreen() {
         Cantidad: cant,
         Ubicacion: ubicacion.trim() || null,
         Almacen: almacen.trim() || almacenDiario,
-        Ticket_Id: ticket.Id,
-        TicketCodigo: ticket.CodigoTicket,
+        // El centro de costo NO se manda desde acá: lo resuelve el servidor leyendo
+        // la dimensión del artículo en AX. Así no depende de la versión de la app
+        // ni se puede mandar un valor inventado desde el cliente.
+        ...(esSuministro
+          ? { Tipo: 'SUMINISTRO' as const }
+          : { Tipo: 'REPUESTO' as const, Ticket_Id: ticket!.Id, TicketCodigo: ticket!.CodigoTicket }),
       })
       const ax = res.Data
       if (res.Success && ax?.Ok) {
@@ -238,15 +250,15 @@ export default function DiarioDetailScreen() {
     } finally {
       setAgregando(false)
     }
-  }, [ticket, barcode, cantidad, ubicacion, almacen, almacenDiario, journalId, cargarLineas, showToast])
+  }, [ticket, modo, barcode, cantidad, ubicacion, almacen, almacenDiario, journalId, cargarLineas, showToast])
 
   // Encadenado del lector (teclado suprimido, el ENTER no dispara onSubmitEditing):
   // al terminar la ráfaga de la UBICACIÓN saltamos el foco al código de barras.
   useEffect(() => {
-    if (!ticket || agregando || !ubicacion.trim() || barcode || teclado === 'ubicacion') return
+    if ((!ticket && modo !== 'SUMINISTRO') || agregando || !ubicacion.trim() || barcode || teclado === 'ubicacion') return
     const t = setTimeout(() => barcodeRef.current?.focus(), 250)
     return () => clearTimeout(t)
-  }, [ubicacion, ticket, barcode, agregando, teclado])
+  }, [ubicacion, ticket, modo, barcode, agregando, teclado])
 
   // El CÓDIGO DE BARRAS NO se auto-agrega: al escanearlo queda en el campo para
   // que el usuario confirme la cantidad y presione "Agregar repuesto". (Evita
@@ -309,6 +321,16 @@ export default function DiarioDetailScreen() {
     [lineas],
   )
 
+  // Un mismo diario puede llevar las dos naturalezas, así que el total se DESGLOSA:
+  // sumarlas sin distinguir haría creer que todo es costo de mantenimiento.
+  const costoDe = (ls: ILinea[]) =>
+    ls.reduce((s, l) => s + (l.Costo != null ? l.Costo * Math.abs(l.Cantidad) : 0), 0)
+  const totalSuministros = useMemo(
+    () => costoDe(lineas.filter(l => l.Tipo === 'SUMINISTRO')), [lineas])
+  const totalRepuestos = useMemo(
+    () => costoDe(lineas.filter(l => l.Tipo !== 'SUMINISTRO')), [lineas])
+  const haySuministros = useMemo(() => lineas.some(l => l.Tipo === 'SUMINISTRO'), [lineas])
+
   // Filtro sutil por repuesto (item/desc/barcode) o ticket.
   const lineasFiltradas = useMemo(() => {
     const q = filtro.trim().toLowerCase()
@@ -317,7 +339,9 @@ export default function DiarioDetailScreen() {
       (l.ItemId || '').toLowerCase().includes(q) ||
       (l.Descripcion || '').toLowerCase().includes(q) ||
       (l.Barcode || '').toLowerCase().includes(q) ||
-      (l.TicketCodigo || '').toLowerCase().includes(q))
+      (l.TicketCodigo || '').toLowerCase().includes(q) ||
+      (l.CentroCosto || '').toLowerCase().includes(q) ||
+      (l.CentroCostoNombre || '').toLowerCase().includes(q))
   }, [lineas, filtro])
 
   // Líneas agrupadas por ticket (un diario puede tener varios tickets).
@@ -326,7 +350,12 @@ export default function DiarioDetailScreen() {
     const ordenadas = [...lineasFiltradas].sort((a, b) => ts(b.Fecha) - ts(a.Fecha))
     const map = new Map<string, ILinea[]>()
     for (const l of ordenadas) {
-      const key = l.TicketCodigo || 'Sin ticket'
+      // Los suministros no tienen ticket: se agrupan por centro de costo, que es
+      // su destino real. Los que aún no lo traen se ven juntos, para ir a AX a
+      // registrarlos en vez de que queden escondidos.
+      const key = l.Tipo === 'SUMINISTRO'
+        ? `Suministro · ${l.CentroCostoNombre || l.CentroCosto || 'sin centro de costo'}`
+        : (l.TicketCodigo || 'Sin ticket')
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(l)
     }
@@ -372,7 +401,16 @@ export default function DiarioDetailScreen() {
           )}
 
           {!cerrado && (<>
-          {/* Ticket activo */}
+          {/* Qué se está despachando. Las dos naturalezas conviven en el MISMO diario. */}
+          <XStack marginBottom="$3" gap="$2">
+            <ModoChip label="Repuesto" hint="a un ticket" activo={modo === 'REPUESTO'}
+              onPress={() => setModo('REPUESTO')} />
+            <ModoChip label="Suministro" hint="a un centro de costo" activo={modo === 'SUMINISTRO'}
+              onPress={() => { setModo('SUMINISTRO'); setTicket(null); setManual('') }} />
+          </XStack>
+
+          {/* Ticket activo (solo en modo repuesto) */}
+          {modo === 'REPUESTO' && (
           <YStack marginBottom="$3" gap="$1.5">
             <Text fontSize="$2" fontWeight="700" color="$text">Ticket de mantenimiento</Text>
             {ticket ? (
@@ -429,12 +467,26 @@ export default function DiarioDetailScreen() {
               </YStack>
             )}
           </YStack>
+          )}
 
-          {/* Agregar repuesto (sólo con ticket activo) */}
-          {ticket && (
+          {/* En suministros el destino lo pone AX: el centro de costo viene del artículo. */}
+          {modo === 'SUMINISTRO' && (
+            <XStack marginBottom="$3" alignItems="center" gap="$2" padding="$3" borderWidth={1}
+              borderColor="$border" borderRadius={12} backgroundColor="$backgroundElevated">
+              <Package size={18} color={ACCENT} />
+              <Text fontSize="$2" color="$textMuted" flex={1}>
+                El centro de costo lo toma del artículo en AX al agregarlo.
+              </Text>
+            </XStack>
+          )}
+
+          {/* Captura: con ticket activo, o siempre en modo suministro */}
+          {(ticket || modo === 'SUMINISTRO') && (
             <YStack marginBottom="$3" padding="$3" borderWidth={1} borderColor="$border" borderRadius={12}
               backgroundColor="$backgroundElevated" gap="$1">
-              <Text fontSize="$2" fontWeight="700" color="$text" marginBottom="$1.5">Agregar repuesto</Text>
+              <Text fontSize="$2" fontWeight="700" color="$text" marginBottom="$1.5">
+                {modo === 'SUMINISTRO' ? 'Agregar suministro' : 'Agregar repuesto'}
+              </Text>
 
               {/* Ubicación primero: en la PDA se escanea la etiqueta de ubicación y el
                   foco salta al código de barras; al escanear el repuesto se agrega. */}
@@ -516,9 +568,28 @@ export default function DiarioDetailScreen() {
 
           {/* Líneas agrupadas por ticket */}
           <XStack alignItems="center" justifyContent="space-between" marginBottom="$2" gap="$2" flexWrap="wrap">
-            <Text fontSize="$3" fontWeight="700" color="$text">Repuestos del diario ({lineas.length})</Text>
+            <Text fontSize="$3" fontWeight="700" color="$text">
+              {haySuministros ? 'Líneas del diario' : 'Repuestos del diario'} ({lineas.length})
+            </Text>
             {totalDiario > 0 && <Text fontSize="$3" fontWeight="900" color={ACCENT}>Total {fmtL(totalDiario)}</Text>}
           </XStack>
+
+          {/* Con las dos naturalezas en el mismo diario, el total suelto engaña:
+              solo una parte es costo de mantenimiento. Por eso se desglosa. */}
+          {haySuministros && totalDiario > 0 && (
+            <XStack marginBottom="$3" gap="$2">
+              <YStack flex={1} padding="$2.5" borderWidth={1} borderColor="$border" borderRadius={10}
+                backgroundColor="$backgroundElevated">
+                <Text fontSize="$1" color="$textMuted">Repuestos (tickets)</Text>
+                <Text fontSize="$4" fontWeight="900" color="$text">{fmtL(totalRepuestos)}</Text>
+              </YStack>
+              <YStack flex={1} padding="$2.5" borderWidth={1} borderColor="$border" borderRadius={10}
+                backgroundColor="$backgroundElevated">
+                <Text fontSize="$1" color="$textMuted">Suministros (centro de costo)</Text>
+                <Text fontSize="$4" fontWeight="900" color="$text">{fmtL(totalSuministros)}</Text>
+              </YStack>
+            </XStack>
+          )}
 
           {!cargando && !errorCarga && lineas.length > 0 && (
             <XStack alignItems="center" gap="$2" marginBottom="$3" borderWidth={1} borderColor="$border"
@@ -626,6 +697,30 @@ export default function DiarioDetailScreen() {
         onClose={() => setScanMode(null)}
         onRead={onScan}
       />
+    </View>
+  )
+}
+
+// Selector de qué se está despachando. Dos opciones y no un interruptor: "repuesto"
+// y "suministro" son destinos distintos, no el on/off de una misma cosa.
+function ModoChip({ label, hint, activo, onPress }: {
+  label: string; hint: string; activo: boolean; onPress: () => void
+}) {
+  return (
+    <View
+      onPress={onPress}
+      pressStyle={{ opacity: 0.7 }}
+      flex={1}
+      borderRadius="$4"
+      paddingVertical="$2"
+      alignItems="center"
+      justifyContent="center"
+      borderWidth={1.5}
+      borderColor={ACCENT}
+      backgroundColor={activo ? ACCENT : 'transparent'}
+    >
+      <Text fontSize="$3" fontWeight="800" color={activo ? '#fff' : ACCENT}>{label}</Text>
+      <Text fontSize="$1" color={activo ? 'rgba(255,255,255,0.85)' : '$textMuted'}>{hint}</Text>
     </View>
   )
 }

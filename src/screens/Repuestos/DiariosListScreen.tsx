@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import { FlatList, RefreshControl, useWindowDimensions } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
-import { Plus, Package, ChevronRight, ChevronLeft, ClipboardList } from 'lucide-react-native'
+import { Plus, Package, PackageOpen, ChevronRight, ChevronLeft, ClipboardList } from 'lucide-react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -9,52 +9,18 @@ import { useShowToast } from '../../utils/useShowToast'
 import { repuestosService } from '../../api/modules/repuestos/repuestos.service'
 import { IDiario } from '../../api/modules/repuestos/repuestos.types'
 import { shadows } from '../../theme/shadows'
-import { ACCENT, fmtFechaHora } from './components'
-
-type Periodo = 'semana' | 'mes' | 'anio'
-const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-const MESES_L = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-
-const pad = (n: number) => String(n).padStart(2, '0')
-// ISO local (sin zona) para que el rango coincida con Creation_Date del servidor.
-const toParam = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-const fmtL = (n: number) => `L ${(n || 0).toFixed(2)}`
-
-// Lunes 00:00 de la semana de `d`.
-function inicioSemana(d: Date) {
-  const x = new Date(d); x.setHours(0, 0, 0, 0)
-  const dow = (x.getDay() + 6) % 7   // 0 = lunes
-  x.setDate(x.getDate() - dow)
-  return x
-}
-
-// Rango [desde, hasta) + etiqueta según período y desplazamiento (0 = actual, -1 = anterior).
-function rango(periodo: Periodo, offset: number): { desde: Date; hasta: Date; label: string } {
-  const now = new Date()
-  if (periodo === 'semana') {
-    const desde = inicioSemana(now); desde.setDate(desde.getDate() + offset * 7)
-    const hasta = new Date(desde); hasta.setDate(desde.getDate() + 7)
-    const fin = new Date(hasta); fin.setDate(hasta.getDate() - 1)
-    const label = `${desde.getDate()} ${MESES[desde.getMonth()]} – ${fin.getDate()} ${MESES[fin.getMonth()]}`
-    return { desde, hasta, label }
-  }
-  if (periodo === 'mes') {
-    const desde = new Date(now.getFullYear(), now.getMonth() + offset, 1)
-    const hasta = new Date(now.getFullYear(), now.getMonth() + offset + 1, 1)
-    return { desde, hasta, label: `${MESES_L[desde.getMonth()]} ${desde.getFullYear()}` }
-  }
-  const desde = new Date(now.getFullYear() + offset, 0, 1)
-  const hasta = new Date(now.getFullYear() + offset + 1, 0, 1)
-  return { desde, hasta, label: `${desde.getFullYear()}` }
-}
+import { ACCENT, fmtFechaHora, Periodo, rango, toParam, fmtL } from './components'
 
 export default function DiariosListScreen() {
-  usePageHeader({
-    center: <Text fontSize="$4" fontWeight="700" color="$text">Despacho de Repuestos</Text>,
-  })
-
   const theme = useTheme()
   const navigation = useNavigation<any>()
+
+  usePageHeader({
+    center: <Text fontSize="$4" fontWeight="700" color="$text">Despacho de Repuestos</Text>,
+    // Los suministros van en estos mismos diarios, pero su consumo se lee aparte:
+    // no pertenecen a una máquina, así que no entran al costo de mantenimiento.
+    right: <PackageOpen color={theme.text?.val} onPress={() => navigation.navigate('repuestosSuministros')} />,
+  })
   const { showToast } = useShowToast()
   const { width } = useWindowDimensions()
   const CONTENT_MAX = 1000

@@ -20,8 +20,9 @@ const CATEGORIA_LABEL: Record<string, string> = {
   Visitas: 'Visitas',
   RH: 'Recursos Humanos',
   Gira: 'Gira · gastos de viaje',
+  Repuestos: 'Repuestos y suministros',
 }
-const CATEGORIA_ORDEN = ['Mtto', 'Visitas', 'RH', 'Gira']
+const CATEGORIA_ORDEN = ['Mtto', 'Repuestos', 'Visitas', 'RH', 'Gira']
 
 const prefijoDe = (clave: string) => {
   const i = clave.indexOf('.')
@@ -80,6 +81,14 @@ const CONFIG_META: Record<
   }
 > = {
   'Mtto.UnTicketPorMaquina': { label: 'Un ticket por máquina', kind: 'bool' },
+  'Repuestos.DimensionCentroCosto': {
+    label: 'Dimensión de AX que es el centro de costo',
+    kind: 'texto',
+  },
+  'Repuestos.EnviarCentroCostoAX': {
+    label: 'Enviar el centro de costo a AX',
+    kind: 'bool',
+  },
   // Trabaja con SITUACIONES y no con el catálogo de estados: 'VALIDADO' no es un
   // estado, es la bandera ValidadoPor sobre un COMPLETADO. Mismo orden y mismos
   // códigos que el web y que el SP, para que las tres no puedan discrepar.
