@@ -170,7 +170,11 @@ export const MESES_L = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', '
 const padNum = (n: number) => String(n).padStart(2, '0')
 // ISO local (sin zona) para que el rango coincida con Creation_Date del servidor.
 export const toParam = (d: Date) => `${d.getFullYear()}-${padNum(d.getMonth() + 1)}-${padNum(d.getDate())}T${padNum(d.getHours())}:${padNum(d.getMinutes())}:${padNum(d.getSeconds())}`
-export const fmtL = (n: number) => `L ${(n || 0).toFixed(2)}`
+// Con separador de miles: en el dashboard de consumo los montos son agregados
+// (L 28,622.68) y sin separador no se leen. Los totales de un diario suelto, que
+// es de donde venia esta funcion, nunca llegaban a esa magnitud.
+export const fmtL = (n: number) =>
+  `L ${(n || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 // Lunes 00:00 de la semana de `d`.
 export function inicioSemana(d: Date) {

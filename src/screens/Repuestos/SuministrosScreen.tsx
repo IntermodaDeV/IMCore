@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import { FlatList, RefreshControl, useWindowDimensions } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
-import { ChevronLeft, ChevronRight, PackageOpen, TriangleAlert } from 'lucide-react-native'
-import { useFocusEffect } from '@react-navigation/native'
+import { ArrowLeft, ChevronLeft, ChevronRight, PackageOpen, TriangleAlert } from 'lucide-react-native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { repuestosService } from '../../api/modules/repuestos/repuestos.service'
@@ -16,12 +16,18 @@ import { ACCENT, Periodo, rango, toParam, fmtL } from './components'
 // que un suministro es gasto de planta que se carga a un centro de costo. Mezclarlos
 // inflaría el costo de mantenimiento con guantes y limpieza.
 export default function SuministrosScreen() {
+  const theme = useTheme()
+  const navigation = useNavigation<any>()
+  const { width } = useWindowDimensions()
+
+  // La flecha de regreso es OBLIGATORIA acá: esta pantalla es hija del Stack, no
+  // del Drawer. Sin `left` el encabezado cae al botón de menú, que despacha
+  // OPEN_DRAWER y ningún navegador lo atiende.
   usePageHeader({
-    center: <Text fontSize="$4" fontWeight="700" color="$text">Suministros por centro de costo</Text>,
+    left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
+    center: <Text fontSize="$4" fontWeight="700" color="$text">Suministros</Text>,
   })
 
-  const theme = useTheme()
-  const { width } = useWindowDimensions()
   const CONTENT_MAX = 1000
   const ancho = Math.min(width, CONTENT_MAX)
 

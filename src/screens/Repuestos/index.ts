@@ -2,6 +2,7 @@ import { TScreens } from '../../navigation/screens.types'
 import DiariosListScreen from './DiariosListScreen'
 import NewDiarioScreen from './NewDiarioScreen'
 import DiarioDetailScreen from './DiarioDetailScreen'
+import RepuestosDashboardScreen from './RepuestosDashboardScreen'
 import SuministrosScreen from './SuministrosScreen'
 
 // La key del nivel superior debe coincidir con el `Route` del ítem de menú en la
@@ -14,5 +15,11 @@ export const ScreensRepuestos: TScreens = {
       repuestosDetalle: DiarioDetailScreen,
       repuestosSuministros: SuministrosScreen,
     },
+  },
+  // Dashboard de consumo: va como nivel superior y NO como hija del despacho,
+  // porque es otra tarea (analizar cuanto se consume) y otro permiso. Su clave
+  // tiene que coincidir con el Route del menu en la BD.
+  repuestosConsumo: {
+    Screen: RepuestosDashboardScreen,
   },
 }

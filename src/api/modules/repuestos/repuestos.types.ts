@@ -98,3 +98,27 @@ export interface ISuministroPorCentroCosto {
   CostoTotal: number
   SinCosto: number
 }
+
+// Consumo de repuestos por ACTIVO (maquina) en un periodo.
+export interface IRepuestoPorActivo {
+  Activo: string
+  Modelo: string | null
+  Salidas: number
+  Tickets: number
+  Unidades: number
+  CostoTotal: number
+  SinCosto: number
+}
+
+// Consumo por ARTICULO. Sirve para repuestos y suministros segun el tipo pedido.
+// `Destinos` = a cuantas maquinas (o centros de costo) distintos fue.
+export interface IConsumoItem {
+  ItemId: string | null
+  Descripcion: string | null
+  Salidas: number
+  Unidades: number
+  CostoTotal: number
+  CostoUnitario: number
+  SinCosto: number
+  Destinos: number
+}
