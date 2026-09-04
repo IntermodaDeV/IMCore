@@ -57,6 +57,11 @@ export default function DiarioDetailScreen() {
   // Van en el MISMO diario a propósito: Óscar no quiere andar creando diarios.
   const [modo, setModo] = useState<'REPUESTO' | 'SUMINISTRO'>('REPUESTO')
 
+  // Como se llama lo que se esta agregando. Un diario mezcla las dos naturalezas,
+  // asi que los textos del bloque de captura siguen al MODO, y los que hablan del
+  // diario entero se quedan neutrales ("linea", "articulos").
+  const palabra = modo === 'SUMINISTRO' ? 'suministro' : 'repuesto'
+
   const [scanMode, setScanMode] = useState<ScanMode>(null)
   const [posteando, setPosteando] = useState(false)
   // Campo con teclado manual habilitado (null = modo láser, teclado suprimido).
@@ -243,10 +248,10 @@ export default function DiarioDetailScreen() {
         showToast('warning', 'AX no respondió', 'La línea quedó pendiente de reconciliar. Revisa antes de reintentar.', 5000)
         await cargarLineas()
       } else {
-        showToast('error', 'No se agregó', ax?.Error || ax?.CodError || res.ErrorMessage || 'AX rechazó el repuesto')
+        showToast('error', 'No se agregó', ax?.Error || ax?.CodError || res.ErrorMessage || `AX rechazó el ${palabra}`)
       }
     } catch (e: any) {
-      showToast('error', 'Error', e?.message || 'No se pudo agregar el repuesto')
+      showToast('error', 'Error', e?.message || `No se pudo agregar el ${palabra}`)
     } finally {
       setAgregando(false)
     }
@@ -266,7 +271,7 @@ export default function DiarioDetailScreen() {
 
   // ── Borrar línea ─────────────────────────────────────────────────────────────
   const confirmarBorrar = (l: ILinea) => {
-    Alert.alert('Eliminar repuesto', `¿Eliminar ${l.ItemId} (${l.Descripcion})?`, [
+    Alert.alert(l.Tipo === 'SUMINISTRO' ? 'Eliminar suministro' : 'Eliminar repuesto', `¿Eliminar ${l.ItemId} (${l.Descripcion})?`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: () => borrar(l) },
     ])
@@ -283,7 +288,7 @@ export default function DiarioDetailScreen() {
 
   // ── Postear ──────────────────────────────────────────────────────────────────
   const confirmarPostear = () => {
-    if (lineas.length === 0) { showToast('warning', 'Diario vacío', 'Agrega al menos un repuesto antes de postear'); return }
+    if (lineas.length === 0) { showToast('warning', 'Diario vacío', 'Agrega al menos una línea antes de postear'); return }
     Alert.alert(
       'Postear diario',
       `Se ejecutará la rebaja en AX de ${lineas.length} ${lineas.length === 1 ? 'línea' : 'líneas'}. Esta acción no se puede deshacer. ¿Continuar?`,
@@ -560,7 +565,9 @@ export default function DiarioDetailScreen() {
                 opacity={agregando ? 0.7 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
                 alignItems="center" justifyContent="center" flexDirection="row" gap="$2" marginTop="$1">
                 {agregando ? <Spinner color="#fff" /> : <Plus size={20} color="#fff" />}
-                <Text color="#fff" fontWeight="800" fontSize="$4">{agregando ? 'Agregando…' : 'Agregar repuesto'}</Text>
+                <Text color="#fff" fontWeight="800" fontSize="$4">
+                  {agregando ? 'Agregando…' : `Agregar ${palabra}`}
+                </Text>
               </View>
             </YStack>
           )}
@@ -596,7 +603,7 @@ export default function DiarioDetailScreen() {
               borderRadius={8} backgroundColor="$backgroundElevated" paddingHorizontal="$3" height={42}>
               <Search size={16} color={theme.textMuted?.val} />
               <Input flex={1} unstyled height="100%" fontSize="$3" color="$text" autoCapitalize="none"
-                placeholder="Filtrar repuesto o ticket…" placeholderTextColor={theme.textMuted?.val}
+                placeholder="Filtrar artículo, ticket o centro de costo…" placeholderTextColor={theme.textMuted?.val}
                 value={filtro} onChangeText={setFiltro} />
               {filtro.length > 0 && (
                 <View onPress={() => setFiltro('')} hitSlop={8} pressStyle={{ opacity: 0.6 }}>
@@ -624,7 +631,7 @@ export default function DiarioDetailScreen() {
           ) : lineas.length === 0 ? (
             <YStack alignItems="center" paddingVertical="$6" gap="$2">
               <Package size={40} color={theme.textMuted?.val} />
-              <Text color="$textMuted" textAlign="center">Aún no hay repuestos.{'\n'}Escanea un ticket y agrega repuestos.</Text>
+              <Text color="$textMuted" textAlign="center">Aún no hay líneas.{'\n'}Elegí Repuesto o Suministro arriba y escanea.</Text>
             </YStack>
           ) : grupos.length === 0 ? (
             <YStack alignItems="center" paddingVertical="$5" gap="$2">
