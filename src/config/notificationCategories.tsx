@@ -1,4 +1,4 @@
-import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale } from 'lucide-react-native'
+import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins } from 'lucide-react-native'
 import type { NotificationCategory } from '../api/modules/notifications/notifications.service'
 
 /**
@@ -73,6 +73,33 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
     Icon: Scale,
     color: '#7C3AED',
     bg: 'rgba(124,58,237,0.12)',
+  },
+  // Cooperativa. Las cuatro llevan el mismo ícono de billete: en la bandeja,
+  // lo que importa de un vistazo es de qué módulo viene. El color separa lo
+  // que hay que atender (naranja) de lo que solo se informa.
+  coointer_solicitud_prestamo: {
+    label: 'Solicitud de préstamo',
+    Icon: HandCoins,
+    color: '#FF551A',
+    bg: 'rgba(255,85,26,0.12)',
+  },
+  coointer_prestamo_asignado: {
+    label: 'Préstamo por aprobar',
+    Icon: HandCoins,
+    color: '#FF551A',
+    bg: 'rgba(255,85,26,0.12)',
+  },
+  coointer_prestamo_resultado: {
+    label: 'Resultado del préstamo',
+    Icon: HandCoins,
+    color: '#15803D',
+    bg: 'rgba(34,197,94,0.12)',
+  },
+  coointer_prestamo_no_requerido: {
+    label: 'Préstamo resuelto',
+    Icon: HandCoins,
+    color: '#64748B',
+    bg: 'rgba(100,116,139,0.12)',
   },
 }
 

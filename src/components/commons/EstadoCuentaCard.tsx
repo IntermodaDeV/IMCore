@@ -89,8 +89,23 @@ export default function EstadoCuentaCard({
             </YStack>
           )}
 
+          {/* Tres columnas: concepto, CUOTA y saldo.
+              La cuota va en medio porque responde otra pregunta: el saldo dice
+              cuánto lleva o cuánto debe, la cuota dice cuánto le sale de cada
+              pago de planilla. */}
+          <XStack alignItems="center" gap="$2">
+            <View width={16} />
+            <View flex={1} />
+            <Text fontSize={10} color="$textMuted" width={82} textAlign="right">
+              CUOTA
+            </Text>
+            <Text fontSize={10} color="$textMuted" width={96} textAlign="right">
+              SALDO
+            </Text>
+          </XStack>
+
           {/* Ahorros, a favor */}
-          <XStack alignItems="center" gap="$2.5">
+          <XStack alignItems="center" gap="$2">
             <PiggyBank size={16} color="#22C55E" />
             <YStack flex={1}>
               <Text fontSize={13} color="$text">Ahorros</Text>
@@ -98,14 +113,17 @@ export default function EstadoCuentaCard({
                 {datos.TotalCuentas} {datos.TotalCuentas === 1 ? 'cuenta' : 'cuentas'}
               </Text>
             </YStack>
-            <Text fontSize={14} fontWeight="700" color="$success">
+            <Text fontSize={13} color="$text" width={82} textAlign="right">
+              {fmtMoneda(datos.CuotaAhorro)}
+            </Text>
+            <Text fontSize={14} fontWeight="700" color="$success" width={96} textAlign="right">
               {fmtMoneda(datos.SaldoCuentas)}
             </Text>
           </XStack>
 
           {/* Deuda, en contra. Se antepone el signo para que la resta del saldo
               neto se lea sola. */}
-          <XStack alignItems="center" gap="$2.5">
+          <XStack alignItems="center" gap="$2">
             <Landmark size={16} color="#EF4444" />
             <YStack flex={1}>
               <Text fontSize={13} color="$text">Préstamos</Text>
@@ -113,16 +131,36 @@ export default function EstadoCuentaCard({
                 {datos.TotalPrestamos} {datos.TotalPrestamos === 1 ? 'préstamo' : 'préstamos'}
               </Text>
             </YStack>
-            <Text fontSize={14} fontWeight="700" color="$error">
+            <Text fontSize={13} color="$text" width={82} textAlign="right">
+              {fmtMoneda(datos.CuotaPrestamo)}
+            </Text>
+            <Text fontSize={14} fontWeight="700" color="$error" width={96} textAlign="right">
               {datos.SaldoPrestamos > 0 ? '-' : ''}{fmtMoneda(datos.SaldoPrestamos)}
             </Text>
           </XStack>
 
-          <XStack alignItems="center" paddingTop="$2.5" borderTopWidth={1} borderTopColor="$border">
+          <XStack
+            alignItems="center"
+            gap="$2"
+            paddingTop="$2.5"
+            borderTopWidth={1}
+            borderTopColor="$border"
+          >
             <Text fontSize={13} fontWeight="600" color="$text" flex={1}>
               Saldo neto
             </Text>
-            <Text fontSize={16} fontWeight="700" color={datos.SaldoNeto < 0 ? '$error' : '$success'}>
+            {/* Debajo de la columna de cuotas, su total: lo que se le va de
+                cada pago entre ahorro y préstamos. */}
+            <Text fontSize={13} fontWeight="700" color="$text" width={82} textAlign="right">
+              {fmtMoneda((datos.CuotaAhorro ?? 0) + (datos.CuotaPrestamo ?? 0))}
+            </Text>
+            <Text
+              fontSize={16}
+              fontWeight="700"
+              color={datos.SaldoNeto < 0 ? '$error' : '$success'}
+              width={96}
+              textAlign="right"
+            >
               {fmtMoneda(datos.SaldoNeto)}
             </Text>
           </XStack>

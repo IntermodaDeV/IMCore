@@ -2,7 +2,6 @@ import { navigateWhenReady } from '../navigation/navigationRef'
 import { requestOpenPass } from './passNavigation'
 import { requestOpenPaseAprobacion } from './paseNavigation'
 import { requestOpenHistorialHoraExtra, requestOpenSolicitudHoraExtra } from './overtimeNavigation'
-import { requestMenuRefresh } from './menuRefresh'
 
 // Enruta una notificación (push o bandeja) a su pantalla de detalle según la
 // categoría. `data` es el payload de la notificación (FCM data o el Data del inbox).
@@ -10,14 +9,42 @@ export function routeNotification(data: any): boolean {
   if (!data) return false
   const category = data.category ?? data.type ?? data.Category
 
-  if (category === 'coointer_solicitud_socio') {
-    navigateWhenReady('RequestSocio')
+  // Las dos categorias de AFILIACION a la cooperativa desaparecieron con su
+  // paso de aprobacion: ahora la afiliacion es directa, asi que no hay
+  // solicitud que avisarle a nadie ni resultado que esperar. Las notificaciones
+  // viejas que todavia esten en la bandeja caen al return false del final y no
+  // navegan. Las de PRESTAMO, que si tienen cadena de aprobacion, van abajo.
+
+  // Un socio pidio un prestamo -> la bandeja del primer aprobador, con la
+  // solicitud resaltada para no tener que buscarla en la lista.
+  if (category === 'coointer_solicitud_prestamo') {
+    const solicitud = Number(data.solicitudId ?? data.SolicitudId)
+    navigateWhenReady('RequestSocio', solicitud > 0 ? { solicitud } : undefined)
     return true
   }
 
-  if (category === 'coointer_solicitud_resultado') {
-    if ((data.statusCode ?? data.Status_Code) === 'APR') requestMenuRefresh()
-    navigateWhenReady('self')
+  // Le asignaron una solicitud para firmar -> la misma pantalla: el servidor le
+  // muestra solo lo suyo.
+  if (category === 'coointer_prestamo_asignado') {
+    const solicitud = Number(data.solicitudId ?? data.SolicitudId)
+    navigateWhenReady('RequestSocio', solicitud > 0 ? { solicitud } : undefined)
+    return true
+  }
+
+  // Ya no hace falta su firma: se cerro con el minimo de otros, la rechazaron,
+  // o lo sacaron de la cadena. Va a la misma pantalla, donde la solicitud ya
+  // aparece resuelta.
+  if (category === 'coointer_prestamo_no_requerido') {
+    const solicitud = Number(data.solicitudId ?? data.SolicitudId)
+    navigateWhenReady('RequestSocio', solicitud > 0 ? { solicitud } : undefined)
+    return true
+  }
+
+  // Al SOLICITANTE: su prestamo se resolvio. Va a "Mis solicitudes", no a la
+  // bandeja de aprobacion — el no aprueba nada.
+  if (category === 'coointer_prestamo_resultado') {
+    const solicitud = Number(data.solicitudId ?? data.SolicitudId)
+    navigateWhenReady('RequestCoo', solicitud > 0 ? { solicitud } : undefined)
     return true
   }
 

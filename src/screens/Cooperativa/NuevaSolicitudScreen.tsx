@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react'
 import { KeyboardAvoidingView, Platform, ScrollView as RNScrollView, Keyboard } from 'react-native'
-import { useFocusEffect, useNavigation } from '@react-navigation/native'
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import { YStack, XStack, Text, Button, View, Spinner, styled } from 'tamagui'
 import { Info, ArrowLeft } from 'lucide-react-native'
 import AppInput from '../../components/commons/AppInput'
@@ -63,9 +63,23 @@ const soloDecimal = (v: string): string => {
   return partes.length <= 2 ? limpio : `${partes[0]}.${partes.slice(1).join('')}`
 }
 
+/**
+ * Parametros de la ruta.
+ *
+ * Sin `id` la pantalla crea; con `id` edita esa solicitud. Es la misma pantalla
+ * a proposito: los campos y las validaciones son identicos, y tener dos copias
+ * garantizaria que se desalineen.
+ */
+type RutaParams = { nuevaSolicitudCoo?: { id?: number } }
+
 export default function NuevaSolicitudScreen() {
   const navigation = useNavigation()
+  const route = useRoute<RouteProp<RutaParams, 'nuevaSolicitudCoo'>>()
   const { showToast } = useShowToast()
+
+  // Id de la solicitud que se esta editando, si se llego a editar.
+  const editandoId = route.params?.id ?? null
+  const editando = !!editandoId
 
   const [catalogos, setCatalogos] = useState<ICatalogosSolicitud | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -90,7 +104,7 @@ export default function NuevaSolicitudScreen() {
   usePageHeader({
     center: (
       <Text fontSize={16} fontWeight="700" color="$text">
-        Nueva solicitud
+        {editando ? 'Editar solicitud' : 'Nueva solicitud'}
       </Text>
     ),
     left: (
@@ -116,6 +130,35 @@ export default function NuevaSolicitudScreen() {
       } catch {
         setEstadoCuenta(null)
       }
+
+      // Al editar, los campos se llenan con lo que ya se pidió. Va DESPUÉS de
+      // los catálogos: los Select necesitan sus opciones cargadas para poder
+      // mostrar el valor elegido.
+      if (editandoId) {
+        try {
+          const previa = await cooperativaService.getSolicitudPrestamo(editandoId)
+
+          if (previa?.Success && previa.Data) {
+            const d = previa.Data
+            setTipoId(d.TipoSolicitudId)
+            setPlazoId(d.PlazoId)
+            setMonto(d.Monto != null ? String(d.Monto) : '')
+            setDescripcion(d.Descripcion ?? '')
+            setDed13(d.Deduccion13vo ? String(d.Deduccion13vo) : '')
+            setDed14(d.Deduccion14vo ? String(d.Deduccion14vo) : '')
+          } else {
+            showToast(
+              'error',
+              'Error',
+              previa?.ErrorMessage || 'No se pudo cargar la solicitud',
+              5000,
+              'top',
+            )
+          }
+        } catch (err) {
+          showToast('error', 'Error', handleError(err).message, 5000, 'top')
+        }
+      }
     } catch (err) {
       showToast('error', 'Error', handleError(err).message, 5000, 'top')
     } finally {
@@ -123,7 +166,7 @@ export default function NuevaSolicitudScreen() {
     }
     // showToast se deja fuera de las dependencias: cambia de identidad en cada
     // render y recargaria los catalogos en bucle.
-  }, [])
+  }, [editandoId])
 
   useFocusEffect(
     useCallback(() => {
@@ -150,21 +193,40 @@ export default function NuevaSolicitudScreen() {
 
     setEnviando(true)
     try {
-      const response = await cooperativaService.crearSolicitud({
+      // Los mismos campos en los dos casos; lo unico que cambia es a donde
+      // van y si llevan el Id.
+      const campos = {
         TipoSolicitudId: tipoId!,
         PlazoId: plazoId!,
         Monto: Number(monto),
         Descripcion: descripcion.trim() || undefined,
         Deduccion13vo: aplicaTrece && ded13.trim() ? Number(ded13) : undefined,
         Deduccion14vo: aplicaCatorce && ded14.trim() ? Number(ded14) : undefined,
-      })
+      }
+
+      const response = editandoId
+        ? await cooperativaService.editarSolicitud({ Id: editandoId, ...campos })
+        : await cooperativaService.crearSolicitud(campos)
 
       if (!response?.Success) {
-        showToast('error', 'Error', response?.ErrorMessage || 'No se pudo crear la solicitud', 5000, 'top')
+        showToast(
+          'error',
+          'Error',
+          response?.ErrorMessage
+            || (editando ? 'No se pudo editar la solicitud' : 'No se pudo crear la solicitud'),
+          5000,
+          'top',
+        )
         return
       }
 
-      showToast('success', 'Solicitud enviada', response.SuccessMessage || '', 4000, 'top')
+      showToast(
+        'success',
+        editando ? 'Solicitud actualizada' : 'Solicitud enviada',
+        response.SuccessMessage || '',
+        4000,
+        'top',
+      )
       // Vuelve al listado, que recarga solo al tomar el foco (useFocusEffect).
       navigation.goBack()
     } catch (err) {
@@ -328,7 +390,11 @@ export default function NuevaSolicitudScreen() {
                 onPress={enviar}
               >
                 <Text color="white" fontWeight="700">
-                  {enviando ? 'Enviando...' : 'Enviar solicitud'}
+                  {enviando
+                    ? 'Guardando...'
+                    : editando
+                      ? 'Guardar cambios'
+                      : 'Enviar solicitud'}
                 </Text>
               </Button>
             </XStack>

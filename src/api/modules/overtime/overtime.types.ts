@@ -259,6 +259,20 @@ export interface IOvertimeDayTotal {
   Solicitudes: number
   Horas: number
   Costo: number
+
+  /**
+   * Quién puso el mayor gasto de ese día, en cada nivel.
+   *
+   * Los tres se calculan por separado y no bajando por el árbol: el
+   * departamento que más gasta no siempre está dentro de la unidad que más
+   * gasta. Vienen en null los días sin gasto.
+   */
+  Top_Unidad: string | null
+  Top_Unidad_Costo: number | null
+  Top_Departamento: string | null
+  Top_Departamento_Costo: number | null
+  Top_Centro: string | null
+  Top_Centro_Costo: number | null
 }
 
 export interface IOvertimeBudgetDashboard {

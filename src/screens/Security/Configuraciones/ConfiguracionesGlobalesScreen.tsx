@@ -18,8 +18,58 @@ const CATEGORIA_LABEL: Record<string, string> = {
   Visitas: 'Visitas',
   RH: 'Recursos Humanos',
   Gira: 'Gira · gastos de viaje',
+  CooInter: 'Cooperativa',
 }
-const CATEGORIA_ORDEN = ['Mtto', 'Visitas', 'RH', 'Gira']
+const CATEGORIA_ORDEN = ['Mtto', 'Visitas', 'RH', 'Gira', 'CooInter']
+
+// ── Pares mínimo/máximo que se muestran como UNA sola configuración ────────
+//
+// Un mínimo y un máximo del mismo concepto no son dos ajustes: son los dos
+// extremos de uno. En tarjetas separadas hay que leer las dos etiquetas y
+// compararlas mentalmente para saber qué rango quedó, y con cuatro planillas eso
+// son ocho tarjetas para entender cuatro rangos.
+//
+// Cada campo sigue guardando SU clave por separado: el servidor no sabe de esta
+// agrupación, es solo cómo se presenta. Mismo mapa que el web
+// (IMCoreWeb/src/components/ConfigGlobal.tsx).
+const RANGOS: {
+  prefijo: string
+  label: string
+  claveMin: string
+  claveMax: string
+  unidad?: string
+  nota?: string
+}[] = [
+  {
+    prefijo: 'CooInter',
+    label: 'Aporte · planilla semanal',
+    claveMin: 'CooInter.AporteMinimo.S',
+    claveMax: 'CooInter.AporteMaximo.S',
+    unidad: 'L/semana',
+  },
+  {
+    prefijo: 'CooInter',
+    label: 'Aporte · planilla quincenal',
+    claveMin: 'CooInter.AporteMinimo.Q',
+    claveMax: 'CooInter.AporteMaximo.Q',
+    unidad: 'L/quincena',
+  },
+  {
+    prefijo: 'CooInter',
+    label: 'Aporte · planilla mensual',
+    claveMin: 'CooInter.AporteMinimo.M',
+    claveMax: 'CooInter.AporteMaximo.M',
+    unidad: 'L/mes',
+  },
+  {
+    prefijo: 'CooInter',
+    label: 'Aporte · planilla sin clasificar',
+    claveMin: 'CooInter.AporteMinimo.Default',
+    claveMax: 'CooInter.AporteMaximo.Default',
+    unidad: 'L/pago',
+    nota: 'Se usa con los empleados cuyo tipo de planilla no es semanal, quincenal ni mensual.',
+  },
+]
 
 const prefijoDe = (clave: string) => {
   const i = clave.indexOf('.')
@@ -49,6 +99,31 @@ function agruparPorCategoria(items: IConfiguracion[]) {
 //  - 'number': campo numérico con botón guardar (Valor = entero como texto). unidad opcional.
 //  - 'multi': checklist con botón guardar (Valor = códigos separados por coma).
 // Si la clave no está aquí, se asume 'bool' y se muestra la clave tal cual.
+type Grupo = { prefijo: string; label: string; items: IConfiguracion[] }
+
+/**
+ * Los pares min/max de un grupo.
+ *
+ * Un rango solo cuenta si las DOS claves llegaron: con una sola se muestra
+ * suelta, en vez de desaparecer.
+ */
+const rangosDe = (g: Grupo) =>
+  RANGOS.filter(
+    r =>
+      r.prefijo === g.prefijo &&
+      g.items.some(c => c.Clave === r.claveMin) &&
+      g.items.some(c => c.Clave === r.claveMax),
+  )
+
+/** Las configuraciones del grupo que NO forman parte de un rango. */
+const sueltosDe = (g: Grupo) => {
+  const enRango = new Set(rangosDe(g).flatMap(r => [r.claveMin, r.claveMax]))
+  return g.items.filter(c => !enRango.has(c.Clave))
+}
+
+/** Cuántas TARJETAS se ven en el grupo. */
+const contarVisibles = (g: Grupo) => sueltosDe(g).length + rangosDe(g).length
+
 type ConfigKind = 'bool' | 'options' | 'number' | 'multi' | 'companyMap'
 const CONFIG_META: Record<
   string,
@@ -136,6 +211,69 @@ const CONFIG_META: Record<
     kind: 'companyMap',
     unidad: 'días',
     companias: ['IMHN', 'IMGT', 'IMCR'],
+  },
+
+  // ── Cooperativa: rango del aporte, por tipo de planilla ─────────────────
+  //
+  // Son ocho claves y no dos porque el mismo monto pesa distinto segun cada
+  // cuanto se descuenta: 500 al mes es una cosa, 500 por semana es cuatro veces
+  // mas. El socio elige su aporte dentro del rango de SU planilla.
+  //
+  // Sin estas entradas caerían en el fallback 'bool' y el interruptor dejaría
+  // los montos en 1 o 0 lempiras.
+  //
+  // Las etiquetas dicen la frecuencia y no la letra ('semanal', no 'S'): quien
+  // configura esto no tiene por qué saber los códigos de planilla.
+  // Cuántos meses tiene que llevar en la empresa para poder hacerse socio.
+  // 0 = sin restricción.
+  'CooInter.AntiguedadMinimaMeses': {
+    label: 'Antigüedad mínima para afiliarse',
+    kind: 'number',
+    unidad: 'meses',
+  },
+
+  'CooInter.AporteMinimo.S': {
+    label: 'Aporte mínimo · planilla semanal',
+    kind: 'number',
+    unidad: 'L/semana',
+  },
+  'CooInter.AporteMaximo.S': {
+    label: 'Aporte máximo · planilla semanal',
+    kind: 'number',
+    unidad: 'L/semana',
+  },
+  'CooInter.AporteMinimo.Q': {
+    label: 'Aporte mínimo · planilla quincenal',
+    kind: 'number',
+    unidad: 'L/quincena',
+  },
+  'CooInter.AporteMaximo.Q': {
+    label: 'Aporte máximo · planilla quincenal',
+    kind: 'number',
+    unidad: 'L/quincena',
+  },
+  'CooInter.AporteMinimo.M': {
+    label: 'Aporte mínimo · planilla mensual',
+    kind: 'number',
+    unidad: 'L/mes',
+  },
+  'CooInter.AporteMaximo.M': {
+    label: 'Aporte máximo · planilla mensual',
+    kind: 'number',
+    unidad: 'L/mes',
+  },
+  // El comodín: lo usan los empleados cuyo tipo de planilla no es S, Q ni M
+  // (viene en 'X' o vacío). Sin estas dos claves esas personas se quedarían sin
+  // rango y no podrían afiliarse.
+  'CooInter.AporteMinimo.Default': {
+    label: 'Aporte mínimo · planilla sin clasificar',
+    kind: 'number',
+    unidad: 'L/pago',
+  },
+  'CooInter.AporteMaximo.Default': {
+    label: 'Aporte máximo · planilla sin clasificar',
+    kind: 'number',
+    unidad: 'L/pago',
   },
 }
 
@@ -257,13 +395,37 @@ export default function ConfiguracionesGlobalesScreen() {
                     <View backgroundColor={abiertos[g.prefijo] ? ACCENT : '$backgroundHover'}
                       borderRadius="$10" paddingHorizontal="$2.5" paddingVertical="$1">
                       <Text fontSize="$1" fontWeight="800" color={abiertos[g.prefijo] ? '#fff' : '$textMuted'}>
-                        {g.items.length}
+                        {/* Un rango es UNA tarjeta, no dos: si contara las
+                            claves diria 8 donde se ven 4. */}
+                        {contarVisibles(g)}
                       </Text>
                     </View>
                   </XStack>
                 </View>
               )}
-            {(grupos.length === 1 || abiertos[g.prefijo]) && g.items.map(c => {
+            {/* Los rangos van primero: son los que se leen de corrido. */}
+            {(grupos.length === 1 || abiertos[g.prefijo]) && rangosDe(g).map(r => {
+              const cfgMin = g.items.find(c => c.Clave === r.claveMin)!
+              const cfgMax = g.items.find(c => c.Clave === r.claveMax)!
+
+              return (
+                <View key={r.claveMin} backgroundColor="$backgroundElevated" borderRadius="$5"
+                  borderWidth={1} borderColor="$border" padding="$4">
+                  <RangoConfigRow
+                    rango={r}
+                    cfgMin={cfgMin}
+                    cfgMax={cfgMax}
+                    guardandoClave={guardando}
+                    onSave={(clave, v) => {
+                      const cfg = clave === r.claveMin ? cfgMin : cfgMax
+                      guardarValor(cfg, v, `${v} ${r.unidad ?? ''}`.trim())
+                    }}
+                  />
+                </View>
+              )
+            })}
+
+            {(grupos.length === 1 || abiertos[g.prefijo]) && sueltosDe(g).map(c => {
               const meta = CONFIG_META[c.Clave] ?? { label: c.Clave, kind: 'bool' as ConfigKind }
               const saving = guardando === c.Clave
               return (
@@ -417,6 +579,145 @@ function MultiConfigRow({
         ) : null}
       </XStack>
     </YStack>
+  )
+}
+
+/**
+ * Un mínimo y un máximo en una sola tarjeta.
+ *
+ * Cada campo guarda su propia clave: son dos peticiones distintas, como si
+ * estuvieran en tarjetas separadas. Lo único compartido es la presentación.
+ *
+ * NO reusa NumberConfigRow porque ese descarta todo lo que no sea dígito
+ * (`[^0-9]`), y acá son montos en lempiras: un 25.00 se convertiría en 2500.
+ */
+function RangoConfigRow({
+  rango, cfgMin, cfgMax, guardandoClave, onSave,
+}: {
+  rango: { label: string; claveMin: string; claveMax: string; unidad?: string; nota?: string }
+  cfgMin: IConfiguracion
+  cfgMax: IConfiguracion
+  guardandoClave: string | null
+  onSave: (clave: string, valor: string) => void
+}) {
+  const min = Number(cfgMin.Valor)
+  const max = Number(cfgMax.Valor)
+
+  // Un mínimo por encima del máximo deja el rango vacío y NADIE puede afiliarse
+  // con esa planilla. Se avisa pero no se bloquea el guardado: si bloqueara,
+  // arreglarlo sería imposible — habría que guardar uno de los dos primero.
+  const invertido = Number.isFinite(min) && Number.isFinite(max) && min > max
+
+  return (
+    <YStack gap="$3">
+      <YStack gap="$1">
+        <Text fontSize="$4" fontWeight="800" color="$text">{rango.label}</Text>
+
+        {!!rango.nota && <Text fontSize="$2" color="$textMuted">{rango.nota}</Text>}
+
+        {/* El rango que quedó, en una línea: es la razón de juntar los dos
+            campos — se lee sin comparar dos tarjetas. */}
+        <Text fontSize="$2" color={invertido ? '$warning' : '$textMuted'}>
+          {Number.isFinite(min) && Number.isFinite(max)
+            ? `Rango actual: ${min.toLocaleString('es-HN')} a ${max.toLocaleString('es-HN')}`
+            : 'Rango actual: sin definir'}
+        </Text>
+
+        {invertido && (
+          <Text fontSize="$2" color="$warning">
+            El mínimo es mayor que el máximo: con este rango nadie puede afiliarse.
+          </Text>
+        )}
+      </YStack>
+
+      <MontoConfigInput
+        etiqueta="Mínimo"
+        unidad={rango.unidad}
+        valor={cfgMin.Valor ?? ''}
+        saving={guardandoClave === rango.claveMin}
+        onSave={v => onSave(rango.claveMin, v)}
+      />
+
+      <MontoConfigInput
+        etiqueta="Máximo"
+        unidad={rango.unidad}
+        valor={cfgMax.Valor ?? ''}
+        saving={guardandoClave === rango.claveMax}
+        onSave={v => onSave(rango.claveMax, v)}
+      />
+    </YStack>
+  )
+}
+
+/**
+ * Un monto con su botón de guardar.
+ *
+ * Acepta decimales, a diferencia de NumberConfigRow: son lempiras. Deja un solo
+ * punto y descarta el resto, para que "1.2.3" no llegue a la base.
+ */
+function MontoConfigInput({
+  etiqueta, unidad, valor, saving, onSave,
+}: {
+  etiqueta: string
+  unidad?: string
+  valor: string
+  saving: boolean
+  onSave: (v: string) => void
+}) {
+  const theme = useTheme()
+  const [txt, setTxt] = useState(valor)
+  useEffect(() => { setTxt(valor) }, [valor])
+
+  const limpiar = (v: string) => {
+    const soloNumeros = v.replace(/[^0-9.]/g, '')
+    const partes = soloNumeros.split('.')
+    return partes.length <= 2 ? soloNumeros : `${partes[0]}.${partes.slice(1).join('')}`
+  }
+
+  const limpio = txt.trim()
+  const num = Number(limpio)
+  const valido = limpio !== '' && Number.isFinite(num) && num >= 0
+  const cambiado = limpio !== (valor ?? '').trim()
+
+  return (
+    <XStack gap="$2" alignItems="center">
+      <Text fontSize="$3" color="$textMuted" width={58}>{etiqueta}</Text>
+
+      {/* color, fondo y placeholder EXPLICITOS: sin ellos el Input toma los
+          defaults de Tamagui y en tema oscuro el texto queda invisible. Misma
+          receta que NumberConfigRow. */}
+      <Input
+        flex={1}
+        height={44}
+        keyboardType="decimal-pad"
+        value={txt}
+        onChangeText={v => setTxt(limpiar(v))}
+        placeholder="0.00"
+        placeholderTextColor={theme.textMuted?.val}
+        maxLength={12}
+        borderWidth={1}
+        borderColor="$border"
+        borderRadius={8}
+        backgroundColor="$backgroundElevated"
+        paddingHorizontal="$3"
+        fontSize="$5"
+        color="$text"
+      />
+
+      {!!unidad && <Text fontSize="$2" color="$textMuted" width={72}>{unidad}</Text>}
+
+      <Button
+        height={44}
+        paddingHorizontal="$3"
+        backgroundColor={valido && cambiado ? ACCENT : '$backgroundHover'}
+        disabled={!valido || !cambiado || saving}
+        onPress={() => onSave(limpio)}
+      >
+        {saving
+          ? <Spinner size="small" color="white" />
+          : <Check size={18} color={valido && cambiado ? 'white' : ACCENT} />}
+      </Button>
+    </XStack>
   )
 }
 
