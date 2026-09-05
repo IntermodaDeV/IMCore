@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { IDiario, ILinea, IAxResult, ICrearDiario, IAgregarLinea, ICosto, ICostoPorTicket } from './repuestos.types'
+import { IDiario, ILinea, IAxResult, ICrearDiario, IAgregarLinea, ICosto, ICostoPorTicket, ISuministroPorCentroCosto, IRepuestoPorActivo, IConsumoItem } from './repuestos.types'
 
 // Consume los endpoints de api/Repuestos. baseUrl (API_URL) ya incluye /api/,
 // por eso las rutas van como 'Repuestos/...'. Todo requiere sesión (JWT).
@@ -23,6 +23,26 @@ export const repuestosService = {
     httpClient.get<ExecutionResponse<ILinea[]>>(
       `${schema}/Diarios/${encodeURIComponent(journalId)}/Lineas`,
       { company },
+      { timeoutMs: READ_TIMEOUT },
+    ),
+
+  // Consumo de repuestos por activo (maquina) en el periodo.
+  getRepuestosPorActivo: (desde?: string, hasta?: string) =>
+    httpClient.get<ExecutionResponse<IRepuestoPorActivo[]>>(
+      `${schema}/Repuestos/PorActivo`, { desde, hasta }, { timeoutMs: READ_TIMEOUT }),
+
+  // Consumo por articulo. tipo = 'REPUESTO' | 'SUMINISTRO'. "Mas consumido" se mide
+  // en UNIDADES que salieron del almacen; el costo es referencia.
+  getConsumoPorItem: (tipo: 'REPUESTO' | 'SUMINISTRO', desde?: string, hasta?: string) =>
+    httpClient.get<ExecutionResponse<IConsumoItem[]>>(
+      `${schema}/Consumo/PorItem`, { tipo, desde, hasta }, { timeoutMs: READ_TIMEOUT }),
+
+  // Consumo de suministros por centro de costo en un periodo (KPI aparte del de
+  // repuestos). Fechas ISO local 'YYYY-MM-DDTHH:mm:ss': desde inclusivo, hasta exclusivo.
+  getSuministrosPorCentroCosto: (desde?: string, hasta?: string) =>
+    httpClient.get<ExecutionResponse<ISuministroPorCentroCosto[]>>(
+      `${schema}/Suministros/PorCentroCosto`,
+      { desde, hasta },
       { timeoutMs: READ_TIMEOUT },
     ),
 

@@ -31,6 +31,14 @@ export interface IHorario {
   TieneNocturna?: boolean
   Resumen?: string | null // "Lun 08:00-12:00 · Lun 13:00-17:00 · ..."
   Dias?: string | null // "1,2,3,4,5"
+  /** Horario RESERVADO: solo lo ve, y solo lo puede usar, quien tiene el acceso
+   *  'VisitasLargaDuracion'. El servidor ni lo devuelve a los demás.
+   *
+   *  1 = reservado · 0 = de todos · omitido al guardar = no se toca. Es un NÚMERO
+   *  y no un booleano porque el servidor necesita distinguir "false" de "no me lo
+   *  mandaron": con un bool no nullable, un cliente que no conoce el campo lo
+   *  desmarcaba en silencio. */
+  SoloConAcceso?: number | null
   // Se envía al guardar; el backend reemplaza el detalle completo
   Detalle?: IHorarioDetalle[]
 }
@@ -122,6 +130,14 @@ export interface IGenerarVisita {
    *  lectura legible respalda el pase entero (un proveedor recurrente entrega el
    *  documento una vez). Pedirlo siempre es el respaldo extra y es opt-in. */
   IdCadaEntrada?: boolean
+  /** Pase de larga duración (meses). Se DECLARA, no se deduce de la vigencia: si
+   *  se dedujera, a quien tiene el acceso un pase rutinario de un mes le saldría
+   *  marcado como largo —y mudo— sin haberlo pedido. El servidor rechaza la marca
+   *  si el generador no tiene 'VisitasLargaDuracion'. */
+  LargaDuracion?: boolean
+  /** ¿Avisa cada entrada y salida? Solo se puede apagar en un pase de larga
+   *  duración; en uno normal el servidor lo fuerza a true. */
+  NotificaMovimientos?: boolean
   Create_By: string
   Personas: string[]
 }
@@ -136,6 +152,12 @@ export interface IVisitaResult {
    *  la tarjeta que se comparte no puede adivinarla desde el usuario local. */
   Empresa?: string | null
   EmpresaCode?: string | null
+  /** Cómo quedó el pase según el SERVIDOR: pudo forzar el aviso o rechazar la
+   *  marca, así que la tarjeta no lo recalcula. */
+  LargaDuracion?: boolean
+  NotificaMovimientos?: boolean
+  DiasVigencia?: number
+  VenceEl?: string | null // YYYY-MM-DD
 }
 
 export interface IValidarResult {
@@ -164,6 +186,12 @@ export interface IValidarResult {
   RequiereId?: boolean
   /** Movimiento contra el que se cuelga la foto del documento */
   AccesoId?: number | null
+  /** ¿Este pase avisa sus movimientos? Lo decide el servidor. 1 = avisa · 0 =
+   *  mudo · null = sin dato (una API vieja), que se lee como "avisa".
+   *  Viaja como NÚMERO y no como booleano porque el mapeador SP→DTO de la API no
+   *  soporta `bool?` y descartaba la columna en silencio. */
+  Notifica?: number | null
+  LargaDuracion?: boolean
   // ── Empresa del parque dueña del pase ──
   // El guardia atiende a las dos empresas del parque, así que tiene que ver de
   // cuál es el pase que acaba de escanear.
@@ -189,6 +217,9 @@ export interface IHistorial {
   ExitAt?: string | null // última salida
   DentroAhora?: boolean // tiene un movimiento sin salida (de cualquier fecha)
   EstadoPase?: string // pendiente | vigente | finalizado
+  /** Pase de larga duración, y si avisa. EndDate ya dice hasta cuándo vale. */
+  LargaDuracion?: boolean
+  NotificaMovimientos?: boolean
   Status_Id: number
   Create_By?: string
   Creation_Date?: string

@@ -46,17 +46,22 @@ export const pasesService = {
     ),
 
   /**
-   * Candidatos a aprobador (rol "Aprobador de pases").
+   * Candidatos a aprobador (los que tienen el acceso `AprobadorPases`).
    *
    * Con el alterno del jefe que trae planilla, el servidor marca cuál es el
    * jefe REAL de la persona (`Sugerido` + `EsJefeReal`); si no lo resuelve,
    * marca el aprobador por defecto. La lista viene completa igual: el sugerido
    * es un valor inicial, no un candado.
    */
-  getAprobadores: (query: string = '', jefeAlterno?: string | null) =>
+  /**
+   * @param excluirAlterno el alterno de la PERSONA DEL PASE. Nadie se autoriza
+   *   a sí mismo, así que se saca de su propia lista de aprobadores.
+   */
+  getAprobadores: (query: string = '', jefeAlterno?: string | null, excluirAlterno?: string | null) =>
     httpClient.get<ExecutionResponse<IAprobador[]>>(
       `${schema}/Aprobadores?query=${encodeURIComponent(query)}` +
-      (jefeAlterno ? `&jefeAlterno=${encodeURIComponent(jefeAlterno)}` : '')
+      (jefeAlterno ? `&jefeAlterno=${encodeURIComponent(jefeAlterno)}` : '') +
+      (excluirAlterno ? `&excluirAlterno=${encodeURIComponent(excluirAlterno)}` : '')
     ),
 
   // Pases

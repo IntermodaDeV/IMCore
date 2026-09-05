@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Platform, PermissionsAndroid, StyleSheet, Modal } from 'react-native'
 import { YStack, XStack, Text, View, Button, Spinner, ScrollView } from 'tamagui'
 import { Camera, CameraType } from 'react-native-camera-kit'
-import { XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, Users, X, LogIn, LogOut, Clock, AlarmClockOff, Timer, IdCard, Camera as CameraIcon, CheckCircle2, ShieldAlert } from 'lucide-react-native'
+import { XCircle, TriangleAlert, ScanLine, Keyboard, RotateCcw, Users, X, LogIn, LogOut, Clock, AlarmClockOff, Timer, IdCard, Camera as CameraIcon, CheckCircle2, ShieldAlert, CalendarX } from 'lucide-react-native'
 import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native'
 import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
@@ -249,6 +249,11 @@ export default function VisitasValidarScreen() {
     if (result.Reason === 'salida_tarde') return { color: '#E58E26', bg: 'rgba(229,142,38,0.14)', Icon: AlarmClockOff, title: 'Salida fuera de horario' }
     // Día correcto, hora equivocada: no entra.
     if (result.Reason === 'outoftime') return { color: '#E53935', bg: 'rgba(229,57,53,0.12)', Icon: Clock, title: 'Fuera de horario' }
+    // VENCIDO tiene su propio motivo, y en ROJO. Antes compartía 'outofrange'
+    // —el ámbar de "no válido hoy"— con "aún no inicia su vigencia", que es la
+    // situación opuesta: el guardia leía "hoy no" y dejaba a la persona esperando
+    // por un pase que ya no revive nunca.
+    if (result.Reason === 'expired') return { color: '#E53935', bg: 'rgba(229,57,53,0.12)', Icon: CalendarX, title: 'Pase vencido' }
     if (result.Reason === 'outofrange') return { color: '#E58E26', bg: 'rgba(229,142,38,0.12)', Icon: TriangleAlert, title: 'Pase no válido hoy' }
     if (result.Reason === 'finished') return { color: '#64748B', bg: 'rgba(100,116,139,0.14)', Icon: TriangleAlert, title: 'Pase ya utilizado' }
     return { color: '#E53935', bg: 'rgba(229,57,53,0.12)', Icon: XCircle, title: 'Pase no encontrado' }
@@ -332,6 +337,9 @@ export default function VisitasValidarScreen() {
                 )}
                 {result.Reason === 'outofrange' && (
                   <Row label="Vigente desde" value={prettyDate(result.EntryDate)} />
+                )}
+                {result.Reason === 'expired' && result.LargaDuracion && (
+                  <Row label="Tipo de pase" value="Larga duración — hay que renovarlo" />
                 )}
               </YStack>
             )}

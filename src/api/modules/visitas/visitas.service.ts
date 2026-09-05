@@ -16,8 +16,14 @@ export const visitasService = {
     httpClient.put<ExecutionResponse<any>, IMotivo>(`${schema}/Motivos`, data),
 
   // Horarios de visita
-  getHorarios: (onlyActive: boolean = true) =>
-    httpClient.get<ExecutionResponse<IHorario[]>>(`${schema}/Horarios?onlyActive=${onlyActive}`),
+  // userCode esconde los horarios RESERVADOS a quien no tiene el acceso
+  // 'VisitasLargaDuracion'. Se manda desde el formulario de Generar; la pantalla
+  // de administración lo omite y los ve todos, para poder marcarlos.
+  getHorarios: (onlyActive: boolean = true, userCode?: string) =>
+    httpClient.get<ExecutionResponse<IHorario[]>>(
+      `${schema}/Horarios?onlyActive=${onlyActive}` +
+      (userCode ? `&user_Code=${encodeURIComponent(userCode)}` : ''),
+    ),
 
   // Ventanas de un horario: sirve para previsualizar cuántos días de un rango
   // quedan realmente habilitados (un horario L-V sobre lunes-a-domingo son 5, no 7).

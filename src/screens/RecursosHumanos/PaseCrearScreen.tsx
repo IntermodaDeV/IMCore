@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import { Platform } from 'react-native'
 import { YStack, XStack, Text, Button, View, ScrollView, Input, Spinner, useTheme } from 'tamagui'
 import DateTimePicker from '@react-native-community/datetimepicker'
@@ -124,6 +125,56 @@ export default function PaseCrearScreen() {
 
   usePasesHeader('Crear permiso')
 
+  /** Deja el permiso a nombre de uno mismo, con su aprobador sugerido. */
+  const cargarMiEmpleado = async () => {
+    if (!user?.Code) return
+    setErrorVinculo(null)
+    try {
+      const resp = await pasesService.getMiEmpleado(user.Code)
+
+      if (resp?.Success && resp.Data) {
+        setEmpleado(resp.Data)
+        await cargarAprobadores(resp.Data)
+      } else if (resp?.ErrorMessage) {
+        setErrorVinculo(resp.ErrorMessage)
+      }
+    } catch (err) {
+      setErrorVinculo(handleError(err).message)
+    }
+    setCargandoYo(false)
+  }
+
+  /**
+   * La pantalla se LIMPIA al volver a entrar.
+   *
+   * En un drawer la pantalla no se desmonta al salir, así que el estado
+   * sobrevive: quien creaba un permiso y volvía a entrar se encontraba el
+   * formulario con lo anterior —fecha, horas, categoría y hasta el empleado que
+   * había buscado si tiene el acceso para pedir a nombre de otros—. Eso invita
+   * a mandar un permiso con datos que ya no son los que se quieren.
+   *
+   * Se salta la PRIMERA vez porque ahí el montaje ya deja todo en blanco y la
+   * carga inicial está en curso; limpiar encima solo la pisaría.
+   */
+  const yaEstuvo = useRef(false)
+  useFocusEffect(
+    useCallback(() => {
+      if (!yaEstuvo.current) { yaEstuvo.current = true; return }
+      setCategoriaId(undefined)
+      setHoraSalida(null)
+      setHoraEntrada(null)
+      setPickerHora(null)
+      setFecha(null)
+      setObservacion('')
+      setQuery('')
+      setResultados([])
+      // El empleado vuelve a ser uno mismo, que es el caso normal; con él, su
+      // aprobador sugerido. Sin esto seguiría cargado el de la búsqueda anterior.
+      void cargarMiEmpleado()
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.Code]),
+  )
+
   const categoriaSel = categorias.find(c => c.Id === categoriaId)
   const secuencia = categoriaSel?.Tipo
 
@@ -140,23 +191,7 @@ export default function PaseCrearScreen() {
 
   // Mi empleado: deja el permiso listo para mí, que es el caso normal.
   useEffect(() => {
-    if (!user?.Code) return
-
-    ;(async () => {
-      try {
-        const resp = await pasesService.getMiEmpleado(user.Code)
-
-        if (resp?.Success && resp.Data) {
-          setEmpleado(resp.Data)
-          await cargarAprobadores(resp.Data)
-        } else if (resp?.ErrorMessage) {
-          setErrorVinculo(resp.ErrorMessage)
-        }
-      } catch (err) {
-        setErrorVinculo(handleError(err).message)
-      }
-      setCargandoYo(false)
-    })()
+    void cargarMiEmpleado()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.Code])
 
@@ -171,7 +206,9 @@ export default function PaseCrearScreen() {
    */
   const cargarAprobadores = async (e: IEmpleado | null) => {
     try {
-      const apr = await pasesService.getAprobadores('', e?.JefeAlterno)
+      // El alterno del empleado saca a esa persona de su propia lista: un
+      // aprobador que pide su permiso se veía a sí mismo en «quién autoriza».
+      const apr = await pasesService.getAprobadores('', e?.JefeAlterno, e?.CodAlterno)
       if (!apr.Success) return
       const lista = apr.Data ?? []
       setAprobadores(lista)

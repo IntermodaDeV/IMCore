@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Modal, RefreshControl } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
 import { YStack, XStack, Text, Button, View, ScrollView, Spinner } from 'tamagui'
 import { Check, X, DoorOpen, DoorClosed, CheckCheck, Clock, ArrowRightLeft, CheckSquare, Square } from 'lucide-react-native'
 import Page from '../../components/commons/Page'
@@ -19,6 +20,21 @@ const tieneAcceso = (access: string | null | undefined, key: string) =>
 /** La segunda firma de los permisos personales. */
 const ACCESO_RH = 'AutorizarPasesRH'
 
+/**
+ * La PRIMERA firma: quién puede ser elegido como el jefe que autoriza.
+ *
+ * Hace falta porque tener `AutorizarPasesRH` NO convierte a nadie en jefe: los
+ * de RR. HH. que ponen la segunda firma no son aprobadores de nadie. Sin esta
+ * distinción se les mostraba la pestaña «Como jefe», que para ellos está vacía
+ * siempre y no puede dejar de estarlo.
+ *
+ * Era un ROL y pasó a ser un ACCESO (RH_18), por dos razones: los seis permisos
+ * del módulo quedan juntos en una sola pantalla, y el Id del rol NO era el
+ * mismo en cada base —en Pro el 9 era «Aprobador de pases», en Dev el 9 es
+ * «Recursos Humanos»—, así que gatear por Id acá era directamente inseguro.
+ */
+const ACCESO_JEFE = 'AprobadorPases'
+
 /** Las horas previstas, en el orden de la secuencia del pase. */
 const textoHoras = (p: IPase): string => {
   const salida = p.HoraSalida ? `Sale ${p.HoraSalida}` : ''
@@ -29,7 +45,7 @@ const textoHoras = (p: IPase): string => {
 }
 
 export default function PaseAprobacionesScreen() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const { showToast } = useShowToast()
 
   const [pases, setPases] = useState<IPase[]>([])
@@ -45,6 +61,14 @@ export default function PaseAprobacionesScreen() {
   // Dos bandejas. La de RR. HH. es la segunda firma y solo existe con el acceso;
   // el servidor la devuelve vacía a quien no lo tenga.
   const puedeRH = tieneAcceso(user?.Access, ACCESO_RH)
+
+  // El rol dice quién PUEDE ser jefe; la red de seguridad cubre a quien salió
+  // del rol pero todavía tiene permisos esperando su firma: esos no pueden
+  // quedar huérfanos por esconderle la bandeja.
+  const esAprobadorPorAcceso = tieneAcceso(user?.Access, ACCESO_JEFE)
+  const [tienePendientesComoJefe, setTienePendientesComoJefe] = useState(false)
+  const puedeJefe = esAprobadorPorAcceso || tienePendientesComoJefe
+
   const [modo, setModo] = useState<'jefe' | 'rh'>('jefe')
 
   // Selección para firmar en lote, en las dos bandejas.
@@ -63,7 +87,15 @@ export default function PaseAprobacionesScreen() {
     if (!silent) setLoading(true)
     try {
       const resp = await pasesService.getPorAprobar(user.Code, modo)
-      if (resp.Success) setPases(resp.Data ?? [])
+      if (resp.Success) {
+        const lista = resp.Data ?? []
+        setPases(lista)
+        // La selección se PODA contra lo que quedó en la lista. Sin esto, un
+        // permiso ya firmado seguía contando en la barra de «autorizar
+        // seleccionados» del pie: se salía de la pantalla, se volvía a entrar y
+        // la barra seguía ahí, ofreciendo firmar algo que ya no existe.
+        setSeleccion(prev => prev.filter(id => lista.some(p => p.Id === id)))
+      }
       else showToast('error', 'Error', resp.ErrorMessage || 'No se pudo cargar', 4000, 'bottom')
     } catch (err) {
       showToast('error', 'Error', handleError(err).message, 4000, 'bottom')
@@ -72,11 +104,56 @@ export default function PaseAprobacionesScreen() {
     setRefreshing(false)
   }
 
+  // OJO con `user?.Code` en las dependencias: `load` se va sin hacer nada si la
+  // sesion todavia no esta restaurada. Al abrir la app desde un push, esta
+  // pantalla se monta ANTES que eso, asi que sin esta dependencia la lista se
+  // quedaba vacia para siempre y habia que salir y volver a entrar a mano.
   useEffect(() => {
     setSeleccion([])
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modo])
+  }, [modo, user?.Code])
+
+  // Y al volver a la pantalla: un permiso que otro autorizador ya firmo no
+  // tiene por que seguir apareciendo, y uno recien pedido tiene que aparecer.
+  useFocusEffect(
+    useCallback(() => {
+      // Volver a la pantalla es empezar de nuevo: sin selección arrastrada.
+      setSeleccion([])
+      // Y con los permisos frescos. Qué pestañas se ven depende de `Access` y
+      // `Roles`, que viajan en la SESIÓN: sin esto, a quien le acaban de dar
+      // (o quitar) el acceso de RR. HH. le seguía apareciendo lo de antes hasta
+      // que cerraba la app por completo.
+      void refreshUser()
+      load(true)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [modo, user?.Code]),
+  )
+
+  /**
+   * Red de seguridad de la bandeja del jefe.
+   *
+   * A quien no tiene el acceso se le esconde la pestaña «Como jefe», pero si a
+   * alguien se lo quitaron y todavía tiene permisos asignados a su nombre, esos
+   * quedarían sin quien los firme y sin pantalla donde verlos. Se pregunta UNA
+   * vez, y solo a quien no lo tiene.
+   */
+  useEffect(() => {
+    if (!user?.Code || esAprobadorPorAcceso || tienePendientesComoJefe) return
+    pasesService.getPorAprobar(user.Code, 'jefe')
+      .then(r => { if (r.Success && (r.Data ?? []).length > 0) setTienePendientesComoJefe(true) })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.Code, esAprobadorPorAcceso])
+
+  // Arranca en la bandeja que la persona realmente puede usar. Se decide con la
+  // sesión ya cargada: con `user` en null todavía no se sabe si es jefe.
+  useEffect(() => {
+    if (!user?.Code) return
+    if (modo === 'jefe' && !puedeJefe && puedeRH) setModo('rh')
+    if (modo === 'rh' && !puedeRH) setModo('jefe')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.Code, puedeJefe, puedeRH])
 
   const alternar = (id: number) =>
     setSeleccion(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
@@ -116,30 +193,55 @@ export default function PaseAprobacionesScreen() {
    * tocaba su notificación y caía en la bandeja del jefe, donde ese pase no
    * existe: el aviso lo dejaba peor que no tocarlo.
    */
+  const aplicarDestino = ({ paseId, modo: destino }: { paseId: number; modo?: 'jefe' | 'rh' }) => {
+    setHighlightId(paseId)
+    setTimeout(() => setHighlightId(null), 4000)
+
+    const ir = (m: 'jefe' | 'rh') => (m === modo ? load(true) : setModo(m))
+
+    if (destino) { ir(destino === 'rh' && !puedeRH ? 'jefe' : destino); return }
+
+    // Sin modo: si no está en la bandeja actual, se prueba la otra.
+    if (pasesRef.current.some(p => p.Id === paseId)) { load(true); return }
+    const otra = modo === 'jefe' ? 'rh' : 'jefe'
+    if (otra === 'rh' && !puedeRH) { load(true); return }
+
+    pasesService.getPorAprobar(user!.Code, otra)
+      .then(r => {
+        if (r.Success && (r.Data ?? []).some(p => p.Id === paseId)) setModo(otra)
+        else load(true)
+      })
+      .catch(() => load(true))
+  }
+
+  /**
+   * El destino del deep-link se GUARDA si la sesión todavía no está lista.
+   *
+   * El bus entrega el pase pendiente en cuanto esta pantalla se suscribe, y eso
+   * pasa antes de que AuthContext termine de restaurar la sesión cuando la app
+   * arranca desde un push. Atenderlo ahí lo desperdiciaba dos veces: `puedeRH`
+   * todavía es falso —así que un aviso de RR. HH. caía en la bandeja del jefe—
+   * y `load` se iba sin pedir nada. El destino ya se había consumido, así que
+   * no quedaba rastro: la pantalla abría vacía y el aviso no servía de nada.
+   */
+  const destinoPendiente = useRef<{ paseId: number; modo?: 'jefe' | 'rh' } | null>(null)
+
   useEffect(() => {
-    const unsub = subscribeOpenPaseAprobacion(({ paseId, modo: destino }) => {
-      setHighlightId(paseId)
-      setTimeout(() => setHighlightId(null), 4000)
-
-      const ir = (m: 'jefe' | 'rh') => (m === modo ? load(true) : setModo(m))
-
-      if (destino) { ir(destino === 'rh' && !puedeRH ? 'jefe' : destino); return }
-
-      // Sin modo: si no está en la bandeja actual, se prueba la otra.
-      if (pasesRef.current.some(p => p.Id === paseId)) { load(true); return }
-      const otra = modo === 'jefe' ? 'rh' : 'jefe'
-      if (otra === 'rh' && !puedeRH) { load(true); return }
-
-      pasesService.getPorAprobar(user!.Code, otra)
-        .then(r => {
-          if (r.Success && (r.Data ?? []).some(p => p.Id === paseId)) setModo(otra)
-          else load(true)
-        })
-        .catch(() => load(true))
+    const unsub = subscribeOpenPaseAprobacion(destino => {
+      if (!user?.Code) { destinoPendiente.current = destino; return }
+      aplicarDestino(destino)
     })
     return unsub
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modo, puedeRH])
+  }, [modo, puedeRH, user?.Code])
+
+  useEffect(() => {
+    if (!user?.Code || !destinoPendiente.current) return
+    const guardado = destinoPendiente.current
+    destinoPendiente.current = null
+    aplicarDestino(guardado)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.Code])
 
   const aprobar = async (p: IPase) => {
     setActingId(p.Id)
@@ -189,9 +291,10 @@ export default function PaseAprobacionesScreen() {
     <Page>
       <YStack flex={1} backgroundColor="$backgroundPage">
 
-        {/* Las dos instancias. Solo aparece para quien puede firmar por RR. HH.;
-            para el resto la pantalla se ve igual que siempre. */}
-        {puedeRH && (
+        {/* El selector solo cuando la persona tiene LAS DOS bandejas. Quien solo
+            autoriza por RR. HH. no es jefe de nadie: mostrarle «Como jefe» era
+            ofrecerle una lista que nunca va a tener nada. */}
+        {puedeRH && puedeJefe && (
           <XStack padding="$4" paddingBottom="$0" gap="$2">
             {([
               { key: 'jefe' as const, label: 'Como jefe' },
@@ -221,6 +324,16 @@ export default function PaseAprobacionesScreen() {
                 </View>
               )
             })}
+          </XStack>
+        )}
+
+        {/* Sin pestañas se pierde el único indicador de en calidad de qué se
+            está firmando. Para quien solo autoriza por RR. HH. se dice acá. */}
+        {puedeRH && !puedeJefe && (
+          <XStack paddingHorizontal="$4" paddingTop="$4" paddingBottom="$0">
+            <Text fontSize={12} color="$textMuted">
+              Segunda firma de RR. HH. · permisos que el jefe ya autorizó
+            </Text>
           </XStack>
         )}
 

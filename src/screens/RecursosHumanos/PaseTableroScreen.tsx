@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import { RefreshControl } from 'react-native'
 import { YStack, XStack, Text, View, ScrollView, Spinner } from 'tamagui'
 import {
@@ -125,6 +126,16 @@ export default function PaseTableroScreen() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desde, hasta])
+
+  // Al volver a la pantalla se relee: los permisos se firman y se registran en
+  // la puerta mientras uno mira otra cosa, así que la lista de hace un rato ya
+  // no dice la verdad.
+  useFocusEffect(
+    useCallback(() => {
+      load(true)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [desde, hasta]),
+  )
 
   // Solo el tablero de HOY se refresca solo: uno de otro día ya no cambia.
   useEffect(() => {

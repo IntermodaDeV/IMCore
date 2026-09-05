@@ -122,6 +122,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const navigation = useNavigation()
   const { user, logout, refreshUser } = useAuth()
   const { refreshMenu } = useMenu()
+  const { showToast } = useShowToast()
   const [refreshing, setRefreshing] = useState(false)
 
   // Auto-refresca el menú y los permisos una vez al iniciar (el cache local puede
@@ -165,7 +166,13 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
     if (!user?.Code) return
     try {
       setRefreshing(true)
-      await Promise.all([refreshMenu(user.Code), refreshUser()])
+      const [, ok] = await Promise.all([refreshMenu(user.Code), refreshUser()])
+      // Un botón que no contesta nada no se distingue de uno que no funciona.
+      // Eso es lo que llevaba a cerrar la app entera para ver un acceso nuevo.
+      if (ok) showToast('success', 'Listo', 'Menú y permisos actualizados', 3000, 'top')
+      else showToast('error', 'No se pudo actualizar',
+        'Revisa la conexión e intenta de nuevo. Si sigue igual, cierra sesión y vuelve a entrar.',
+        5000, 'top')
     } finally {
       setRefreshing(false)
     }

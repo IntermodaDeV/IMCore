@@ -20,6 +20,9 @@ export type LoginResponse = {
 }
 
 interface RoleDTO {
+  // El servidor manda las dos. Para decidir permisos se usa el Id y NUNCA el
+  // nombre: los literales con acento ya han fallado al compararse.
+  Role_Id?: number
   RoleName: string
 }
 
@@ -140,6 +143,8 @@ export type AccessDTO = {
   Name?: string;
   Description?: string;
   Category?: string | null;
+  /** Orden declarado dentro de su categoría. null = sin orden, va al final. */
+  Orden?: number | null;
   Status_Id?: number;
   Create_By?: string;
   Creation_Date?: string;

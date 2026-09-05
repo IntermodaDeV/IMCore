@@ -11,7 +11,7 @@ type AuthContextType = {
   companyId: number | null
   setCompanyId: (companyId: number | null) => Promise<void>
   login: (user: UsersDTO) => Promise<void>
-  refreshUser: () => Promise<void>
+  refreshUser: () => Promise<boolean>
   logout: () => Promise<void>
   isAuthenticated: boolean
   theme: 'light' | 'dark'
@@ -229,17 +229,23 @@ export const AuthProvider = ({
   // Re-obtiene la sesión (Access/Roles frescos) del usuario actual sin re-loguear,
   // usando la misma fuente que el login (InfoUser de Security.Login_User opción 2),
   // para que los permisos otorgados/quitados se reflejen al instante en la UI.
-  const refreshUser = async () => {
-    if (!user?.Code) return
+  // Devuelve si de verdad se actualizó. Antes no devolvía nada y se tragaba
+  // TODAS las fallas: el botón de recargar giraba, no pasaba nada, y no había
+  // manera de distinguir «no hay permisos nuevos» de «el refresco falló». La
+  // gente terminaba cerrando la app entera para ver un acceso recién dado.
+  const refreshUser = async (): Promise<boolean> => {
+    if (!user?.Code) return false
     try {
       const resp = await securityService.getSessionInfo()
-      if (!resp?.Success || !resp.Data) return
+      if (!resp?.Success || !resp.Data) return false
       const fresh = JSON.parse(resp.Data) as UsersDTO
-      if (!fresh?.Code) return
+      if (!fresh?.Code) return false
       setUser(fresh)
       await AsyncStorage.setItem('user', JSON.stringify(fresh))
+      return true
     } catch (e) {
       console.log('refreshUser error', e)
+      return false
     }
   }
 

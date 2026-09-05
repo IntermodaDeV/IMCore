@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import { RefreshControl } from 'react-native'
 import { YStack, XStack, Text, View, ScrollView, Spinner, Button } from 'tamagui'
 import { DoorOpen, DoorClosed, History, QrCode, Clock } from 'lucide-react-native'
@@ -10,6 +11,7 @@ import { handleError } from '../../utils/errorHandler'
 import { pasesService } from '../../api/modules/pases/pases.service'
 import { IPase } from '../../api/modules/pases/pases.types'
 import PaseQrDialog from './PaseQrDialog'
+import { subscribeOpenMiPase } from '../../services/paseNavigation'
 import { fmtFechaHora, sinCodigo, textoHoras, textoSecuencia } from './paseFormat'
 
 const ESTADO_COLOR: Record<number, { bg: string; fg: string }> = {
@@ -32,6 +34,8 @@ export default function MisPasesScreen() {
   const [qrPase, setQrPase] = useState<IPase | null>(null)
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  // El pase que viene señalado desde una notificación.
+  const [highlightId, setHighlightId] = useState<number | null>(null)
 
   usePasesHeader('Mis pases')
 
@@ -49,9 +53,54 @@ export default function MisPasesScreen() {
     setRefreshing(false)
   }
 
+  // `user?.Code` en las dependencias porque `load` se va sin hacer nada si la
+  // sesión todavía no está restaurada, y al abrir la app desde una notificación
+  // esta pantalla se monta antes que eso.
   useEffect(() => {
     load()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.Code])
+
+  // Los permisos cambian de estado mientras uno mira otra cosa: al volver a la
+  // pantalla hay que releerlos, no mostrar la foto de hace un rato.
+  useFocusEffect(
+    useCallback(() => {
+      load(true)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.Code]),
+  )
+
+  /**
+   * Deep-link del aviso `pase_estado`: señala el permiso y refresca.
+   *
+   * Igual que en Aprobaciones, el destino se GUARDA si la sesión aún no está
+   * lista: el bus lo entrega en cuanto la pantalla se suscribe, y en un arranque
+   * en frío desde un push eso pasa antes de que AuthContext termine.
+   */
+  const pendiente = useRef<number | null>(null)
+
+  const resaltarPase = (paseId: number) => {
+    setHighlightId(paseId)
+    setTimeout(() => setHighlightId(null), 4000)
+    void load(true)
+  }
+
+  useEffect(() => {
+    const unsub = subscribeOpenMiPase(paseId => {
+      if (!user?.Code) { pendiente.current = paseId; return }
+      resaltarPase(paseId)
+    })
+    return unsub
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.Code])
+
+  useEffect(() => {
+    if (!user?.Code || pendiente.current == null) return
+    const guardado = pendiente.current
+    pendiente.current = null
+    resaltarPase(guardado)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.Code])
 
 
   return (
@@ -87,6 +136,7 @@ export default function MisPasesScreen() {
               {pases.map((p) => {
                 const esEntrada = p.Tipo === 'E'
                 const color = ESTADO_COLOR[p.Estado_Id ?? 1] ?? ESTADO_COLOR[1]
+                const resaltado = highlightId === p.Id
                 return (
                   <YStack
                     key={p.Id}
@@ -94,6 +144,8 @@ export default function MisPasesScreen() {
                     borderRadius="$4"
                     padding="$3"
                     gap="$2"
+                    borderWidth={resaltado ? 2 : 0}
+                    borderColor={resaltado ? '$primary' : 'transparent'}
                     shadowColor="#000"
                     shadowOffset={{ width: 0, height: 2 }}
                     shadowOpacity={0.07}

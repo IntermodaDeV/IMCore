@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Modal, RefreshControl, Platform } from 'react-native'
 import { YStack, XStack, Text, Button, View, ScrollView, Spinner } from 'tamagui'
-import { Plus, Pencil, Clock, X, Moon, CalendarClock, TriangleAlert } from 'lucide-react-native'
+import { Plus, Pencil, Clock, X, Moon, CalendarClock, TriangleAlert, Lock } from 'lucide-react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import Page from '../../components/commons/Page'
 import AppInput from '../../components/commons/AppInput'
@@ -66,6 +66,9 @@ export default function VisitasHorariosScreen() {
   const [editing, setEditing] = useState<IHorario | null>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  // Horario RESERVADO: solo lo ve en el formulario de Generar, y solo lo puede
+  // usar, quien tiene el acceso 'VisitasLargaDuracion'.
+  const [soloAcceso, setSoloAcceso] = useState(false)
   const [ventanas, setVentanas] = useState<VentanaEdit[]>([])
   const [saving, setSaving] = useState(false)
   const [loadingDetalle, setLoadingDetalle] = useState(false)
@@ -101,6 +104,7 @@ export default function VisitasHorariosScreen() {
     setEditing(null)
     setName('')
     setDescription('')
+    setSoloAcceso(false)
     setVentanas([{ key: nuevaKey(), dias: [1, 2, 3, 4, 5], horaDesde: '08:00', horaHasta: '17:00' }])
     setPicker(null)
     setModalOpen(true)
@@ -110,6 +114,7 @@ export default function VisitasHorariosScreen() {
     setEditing(h)
     setName(h.Name)
     setDescription(h.Description ?? '')
+    setSoloAcceso(h.SoloConAcceso === 1)
     setVentanas([])
     setPicker(null)
     setModalOpen(true)
@@ -171,6 +176,7 @@ export default function VisitasHorariosScreen() {
         Name: name.trim(),
         Description: description.trim() || null,
         Status_Id: editing?.Status_Id ?? 1,
+        SoloConAcceso: soloAcceso ? 1 : 0,
         Create_By: user?.Code,
         Modified_By: user?.Code,
         Detalle: detalle,
@@ -308,6 +314,21 @@ export default function VisitasHorariosScreen() {
                                 </Text>
                               </XStack>
                             )}
+                            {h.SoloConAcceso === 1 && (
+                              <XStack
+                                backgroundColor="rgba(147,51,234,0.14)"
+                                paddingHorizontal="$2"
+                                paddingVertical="$1"
+                                borderRadius="$10"
+                                alignItems="center"
+                                gap="$1"
+                              >
+                                <Lock size={10} color="#9333EA" />
+                                <Text fontSize={10} fontWeight="700" color="#9333EA">
+                                  Reservado
+                                </Text>
+                              </XStack>
+                            )}
                           </XStack>
                           {!!h.Description && (
                             <Text fontSize={12} color="$textMuted">
@@ -402,6 +423,47 @@ export default function VisitasHorariosScreen() {
                   value={description}
                   onChangeText={setDescription}
                 />
+
+                {/* Reservado: la lista de Generar ni siquiera se lo pide al
+                    servidor para quien no tiene el acceso, y el servidor lo
+                    rechaza aunque el Horario_Id llegue a mano. */}
+                <View
+                  onPress={() => setSoloAcceso((v) => !v)}
+                  pressStyle={{ opacity: 0.7 }}
+                  borderWidth={1}
+                  borderColor="$border"
+                  borderRadius="$3"
+                  padding="$3"
+                >
+                  <XStack alignItems="center" justifyContent="space-between" gap="$3">
+                    <YStack flex={1} gap="$1">
+                      <Text fontSize={14} fontWeight="700" color="$text">
+                        Horario reservado
+                      </Text>
+                      <Text fontSize={11} color="$textMuted">
+                        Solo para quien tiene el acceso de pases de larga duración, como el de
+                        recoger familiares.
+                      </Text>
+                    </YStack>
+                    {/* View y NO XStack: ver la nota en VisitasGenerarScreen. */}
+                    <View
+                      width={48}
+                      height={28}
+                      borderRadius={14}
+                      padding={3}
+                      backgroundColor={soloAcceso ? '$primary' : '$border'}
+                      justifyContent="center"
+                    >
+                      <View
+                        width={22}
+                        height={22}
+                        borderRadius={11}
+                        backgroundColor="white"
+                        alignSelf={soloAcceso ? 'flex-end' : 'flex-start'}
+                      />
+                    </View>
+                  </XStack>
+                </View>
 
                 <XStack alignItems="center" justifyContent="space-between" marginTop="$1">
                   <Text fontSize={13} fontWeight="700" color="$textMuted">

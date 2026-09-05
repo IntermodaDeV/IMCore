@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import { RefreshControl } from 'react-native'
 import { YStack, XStack, Text, View, ScrollView, Spinner } from 'tamagui'
 import { DoorOpen, DoorClosed, FileStack, ArrowRightLeft, Clock, QrCode } from 'lucide-react-native'
@@ -71,6 +72,16 @@ export default function HistorialPasesScreen() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desde, hasta])
+
+  // Al volver a la pantalla se relee: los permisos se firman y se registran en
+  // la puerta mientras uno mira otra cosa, así que la lista de hace un rato ya
+  // no dice la verdad.
+  useFocusEffect(
+    useCallback(() => {
+      load(true)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [desde, hasta]),
+  )
 
   return (
     <Page>
