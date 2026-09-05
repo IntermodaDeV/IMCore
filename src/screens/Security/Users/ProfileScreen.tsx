@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { ScrollView } from 'react-native'
-import { YStack, XStack, Text, useTheme, Button, AlertDialog, Spinner, View } from 'tamagui'
+import { YStack, XStack, Text, useTheme, Button, AlertDialog, Spinner, View, styled } from 'tamagui'
 import AppInput from '../../../components/commons/AppInput'
 import { useAuth } from '../../../context/AuthContext'
 import * as Icons from 'lucide-react-native'
@@ -27,6 +27,23 @@ import {
   isFaceBiometry,
   type BiometryKind,
 } from '../../../services/biometricAuth'
+/**
+ * La flecha de volver, con el color como TOKEN y no como valor.
+ *
+ * Con `color={theme.text?.val}` el color se congela: usePageHeader guarda el
+ * header una sola vez al enfocar la pantalla, así que el elemento queda con la
+ * tinta que tenía el tema en ese momento.
+ *
+ * Acá eso se nota más que en ninguna otra pantalla, porque ESTA es donde se
+ * cambia el tema: al pasar a oscuro la flecha se quedaba con el color del tema
+ * claro sobre un header ya oscuro, y desaparecía. En las demás no se ve porque
+ * al entrar el header se arma de nuevo con el tema vigente.
+ *
+ * Con el token, el ícono lo resuelve al pintarse y sigue al tema aunque el
+ * elemento sea el mismo.
+ */
+const ArrowLeftStyled = styled(Icons.ArrowLeft, { color: '$text' })
+
 export default function ProfileScreen() {
     const loader = useLoader();
     const { user, logout } = useAuth()
@@ -91,7 +108,7 @@ export default function ProfileScreen() {
 
     usePageHeader({
         left:(
-        <Icons.ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />   
+        <ArrowLeftStyled onPress={() => navigation.goBack()} />
         ),
             center: (
             <Text fontSize={16} fontWeight="700" color="$text">
