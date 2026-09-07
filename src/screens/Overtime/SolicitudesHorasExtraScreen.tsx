@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet } from 'react-native'
+import dayjs from 'dayjs'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
-import { ArrowRight, Briefcase, CalendarDays, Check, CheckSquare, ChevronDown, Clock, MessageSquare, Square, UserRound, Wallet, X } from 'lucide-react-native'
+import { Briefcase, CalendarDays, Check, CheckSquare, ChevronDown, Clock, MessageSquare, Square, UserRound, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -80,6 +81,57 @@ interface GrupoSolicitud {
   costo: number | null
 }
 
+const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+/**
+ * El 'yyyy-mm-dd' de una fecha, venga como venga.
+ *
+ * Se toma el prefijo cuando ya es ISO y se interpreta cuando no: la fecha de la
+ * solicitud y la que arma el filtro salen de fuentes distintas.
+ */
+const claveDia = (valor: string | null | undefined): string => {
+  const s = String(valor ?? '')
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10)
+
+  const d = dayjs(s)
+  return d.isValid() ? d.format('YYYY-MM-DD') : ''
+}
+
+/**
+ * Los días con algo pendiente, de la fecha más vieja a la más nueva.
+ *
+ * Salen de los DATOS y no de una semana fija, a diferencia de la pantalla del
+ * solicitante: esta bandeja es una cola de trabajo sin filtro de fecha, así que
+ * puede tener solicitudes de varias semanas y los siete días de una no
+ * alcanzarían. Un día que no aparece es un día sin nada que firmar.
+ *
+ * La etiqueta lleva día, número y mes ('Lun 07/09') porque la lista puede
+ * cruzar semanas Y meses: solo el nombre del día sería ambiguo, y sin el mes
+ * dos días 07 de meses distintos se verían iguales.
+ */
+const diasConPendientes = (
+  filas: IOvertimeRequestDetail[],
+): { key: string; label: string }[] => {
+  const claves = new Set<string>()
+
+  for (const f of filas) {
+    const k = claveDia(f.Date)
+    if (k) claves.add(k)
+  }
+
+  // Del día más VIEJO al más nuevo: lo que lleva más tiempo esperando una
+  // firma es lo primero que hay que atender. Las claves son 'yyyy-mm-dd', así
+  // que el orden alfabético ya es el cronológico.
+  return [...claves].sort().map(key => {
+    const d = dayjs(key)
+    return {
+      key,
+      // dayjs pone el domingo en 0; acá la semana arranca el lunes.
+      label: `${DIAS_CORTOS[(d.day() + 6) % 7]} ${key.substring(8, 10)}/${key.substring(5, 7)}`,
+    }
+  })
+}
+
 /** 'Juan Pérez' o '3 empleados · 12h 30m' para los textos del lote. */
 const resumenLote = (detalles: IOvertimeRequestDetail[]): string => {
   const horas = detalles.reduce((acc, d) => acc + (d.Total_Overtime_Hours ?? 0), 0)
@@ -105,6 +157,15 @@ export default function SolicitudesHorasExtraScreen() {
   const [entidad, setEntidad] = useState<string>('')
   const [data, setData] = useState<IOvertimeRequestDetail[]>([])
   const [filtered, setFiltered] = useState<IOvertimeRequestDetail[]>([])
+
+  /**
+   * Día elegido. null = toda la semana, que es el arranque.
+   *
+   * Al revés que en la pantalla del solicitante, donde arranca en hoy: esta es
+   * una cola de TRABAJO y lo primero que hay que ver es todo lo que falta
+   * firmar, no solo lo de un día.
+   */
+  const [dia, setDia] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
@@ -124,6 +185,17 @@ export default function SolicitudesHorasExtraScreen() {
   // Impacto de TODA la bandeja, no del lote que se está por firmar. Es lo que
   // permite poner el costo en cada tarjeta antes de abrir nada.
   const [impactoBandeja, setImpactoBandeja] = useState<IOvertimeApprovalImpact[]>([])
+
+  /**
+   * Por qué no se pudo traer el impacto.
+   *
+   * No bloquea aprobar —el impacto es información de apoyo, no un requisito—
+   * pero tampoco se descarta: sin el motivo, una consulta que revienta se ve
+   * exactamente igual que un usuario sin el acceso 'CostoHE' o que una etapa
+   * que todavía no compromete dinero, y los tres casos legítimamente no pintan
+   * nada. No había forma de distinguirlos.
+   */
+  const [errorImpacto, setErrorImpacto] = useState('')
   // Solicitudes desplegadas. Arrancan cerradas: la tarjeta cerrada ya dice
   // cuántos empleados, cuántas horas y cuánto cuesta, que es con lo que se
   // decide; el detalle es para cuando algo no cuadra.
@@ -190,9 +262,21 @@ export default function SolicitudesHorasExtraScreen() {
           Number(entidad),
           filas.map(d => d.Id),
         )
-        setImpactoBandeja(res?.Success && res.Data ? res.Data : [])
-      } catch {
+
+        // El fallo NO se traga. Sigue siendo de mejor esfuerzo —las tarjetas
+        // salen sin monto y todo lo demás funciona— pero el motivo se guarda:
+        // antes esto devolvía [] y una consulta que reventaba se veía igual que
+        // un usuario sin el acceso al costo, así que no había cómo distinguirlas.
+        if (res?.Success && res.Data) {
+          setImpactoBandeja(res.Data)
+          setErrorImpacto('')
+        } else {
+          setImpactoBandeja([])
+          setErrorImpacto(res?.ErrorMessage || 'El servidor no devolvió el impacto en el presupuesto.')
+        }
+      } catch (err) {
         setImpactoBandeja([])
+        setErrorImpacto(handleError(err).message)
       }
     },
     [companyCode, entidad],
@@ -322,15 +406,20 @@ export default function SolicitudesHorasExtraScreen() {
           detalles.map(d => d.Id),
         )
 
+        if (!res?.Success || !res.Data) {
+          setImpacto([])
+          setErrorImpacto(res?.ErrorMessage || 'El servidor no devolvió el impacto en el presupuesto.')
+          return
+        }
+
+        setErrorImpacto('')
         // Se piden las dos condiciones: que sea la última firma —antes no se
         // compromete nada— y que el usuario pueda ver montos. Sin lo segundo el
         // bloque quedaría vacío, porque ahora ES el dinero.
-        const filas = res?.Success && res.Data
-          ? res.Data.filter(r => r.Es_Ultima_Entidad && r.Ve_Costo)
-          : []
-        setImpacto(filas)
-      } catch {
+        setImpacto(res.Data.filter(r => r.Es_Ultima_Entidad && r.Ve_Costo))
+      } catch (err) {
         setImpacto([])
+        setErrorImpacto(handleError(err).message)
       }
     },
     [companyCode, entidad],
@@ -451,81 +540,6 @@ export default function SolicitudesHorasExtraScreen() {
     return mapa
   }, [impactoBandeja])
 
-  /** Centro de costos de cada empleado, según el desglose del impacto. */
-  const areaPorEmpleado = useMemo(() => {
-    const mapa = new Map<string, string>()
-
-    impactoBandeja.forEach(area => {
-      let empleados: any[] = []
-      try {
-        const parsed = JSON.parse(area.Empleados_Json ?? '[]')
-        empleados = Array.isArray(parsed) ? parsed : []
-      } catch {
-        empleados = []
-      }
-
-      empleados.forEach(e => {
-        if (e?.employee_Code) mapa.set(String(e.employee_Code), area.Area_Codigo)
-      })
-    })
-
-    return mapa
-  }, [impactoBandeja])
-
-  /**
-   * Presupuesto de la semana por centro de costos.
-   *
-   * 'Consumido' es lo que ya está comprometido y no depende del lote que se
-   * consultó, así que sirve de piso para calcular el disponible de CUALQUIER
-   * solicitud. Lo que sí depende del lote —Costo_Nuevo, Consumido_Despues— no se
-   * usa acá: el impacto se pidió con la bandeja completa y esos números son de
-   * toda la bandeja, no de una solicitud.
-   */
-  const presupuestoPorArea = useMemo(() => {
-    const mapa = new Map<string, { nombre: string; disponible: number }>()
-
-    impactoBandeja.forEach(area => {
-      if (area.Presupuesto === null || area.Presupuesto === undefined) return
-      mapa.set(area.Area_Codigo, {
-        nombre: area.Area_Nombre || area.Area_Codigo,
-        disponible: Number(area.Presupuesto) - Number(area.Consumido ?? 0),
-      })
-    })
-
-    return mapa
-  }, [impactoBandeja])
-
-  /**
-   * Presupuesto disponible de una solicitud, antes y después de firmarla.
-   *
-   * Se suman los centros de costos que toca la solicitud (normalmente uno: el
-   * del asesor). 'Despues' baja por lo que cuesta aprobar lo que sigue
-   * pendiente, que es el mismo costo que muestra la tarjeta.
-   */
-  const presupuestoDeGrupo = useCallback(
-    (grupo: GrupoSolicitud): { nombre: string; areas: number; antes: number; despues: number } | null => {
-      const codigos = new Set<string>()
-      grupo.detalles.forEach(d => {
-        const codigo = areaPorEmpleado.get(String(d.Employee_Code))
-        if (codigo && presupuestoPorArea.has(codigo)) codigos.add(codigo)
-      })
-
-      if (codigos.size === 0) return null
-
-      const areas = [...codigos].map(c => presupuestoPorArea.get(c)!)
-      const antes = areas.reduce((acc, a) => acc + a.disponible, 0)
-
-      return {
-        // Con más de un centro de costos el nombre no aplica: se dice cuántos son.
-        nombre: areas.length === 1 ? areas[0].nombre : `${areas.length} centros de costo`,
-        areas: areas.length,
-        antes,
-        despues: antes - (grupo.costo ?? 0),
-      }
-    },
-    [areaPorEmpleado, presupuestoPorArea],
-  )
-
   const costoDetalle = useCallback(
     (d: IOvertimeRequestDetail): number | null => {
       const tarifa = tarifaPorEmpleado.get(String(d.Employee_Code))
@@ -536,10 +550,26 @@ export default function SolicitudesHorasExtraScreen() {
   )
 
   /** La bandeja vista por solicitud, en el orden en que ya venía. */
+  // Los botones salen de TODO lo que hay, no de lo que deja el día elegido:
+  // si salieran de lo filtrado, elegir un día borraría los demás botones.
+  const dias = useMemo(() => diasConPendientes(data), [data])
+
+  /**
+   * Lo que se muestra: la búsqueda y después el día.
+   *
+   * En ese orden porque SearchInput trabaja sobre el conjunto completo;
+   * encadenarlo al revés dejaría fuera resultados que sí coinciden pero están
+   * en otro día.
+   */
+  const visibles = useMemo(
+    () => (dia ? filtered.filter(f => claveDia(f.Date) === dia) : filtered),
+    [filtered, dia],
+  )
+
   const grupos = useMemo<GrupoSolicitud[]>(() => {
     const porId = new Map<number, GrupoSolicitud>()
 
-    filtered.forEach(d => {
+    visibles.forEach(d => {
       let g = porId.get(d.Request_Id)
 
       if (!g) {
@@ -565,13 +595,13 @@ export default function SolicitudesHorasExtraScreen() {
     })
 
     return [...porId.values()]
-  }, [filtered, costoDetalle])
+  }, [visibles, costoDetalle])
 
   // La ref sigue a lo que realmente se está pintando, que es lo que hay que
   // recorrer para ubicar una solicitud que llegó por notificación.
   useEffect(() => {
-    filtradosRef.current = esUltimaEntidad ? grupos : filtered
-  }, [esUltimaEntidad, grupos, filtered])
+    filtradosRef.current = esUltimaEntidad ? grupos : visibles
+  }, [esUltimaEntidad, grupos, visibles])
 
   const alternarGrupo = useCallback((requestId: number) => {
     setExpandidas(prev => {
@@ -610,7 +640,7 @@ export default function SolicitudesHorasExtraScreen() {
   const seleccionarTodas = useCallback(() => {
     // Solo las visibles y firmables: "todas" sobre una lista filtrada tiene que
     // significar las que se están viendo.
-    const marcables = filtered.filter(d => puedeAutorizar(d, nombreEntidad)).map(d => d.Id)
+    const marcables = visibles.filter(d => puedeAutorizar(d, nombreEntidad)).map(d => d.Id)
     const todasMarcadas = marcables.length > 0 && marcables.every(id => seleccionados.has(id))
 
     setSeleccionados(prev => {
@@ -618,7 +648,7 @@ export default function SolicitudesHorasExtraScreen() {
       marcables.forEach(id => (todasMarcadas ? copia.delete(id) : copia.add(id)))
       return copia
     })
-  }, [filtered, nombreEntidad, seleccionados])
+  }, [visibles, nombreEntidad, seleccionados])
 
   // El callback del bus se registra una sola vez, así que leería un `filtered`
   // viejo. La ref siempre tiene el actual.
@@ -627,21 +657,21 @@ export default function SolicitudesHorasExtraScreen() {
   /**
    * Conteo del pie de los filtros.
    *
-   * Se cuenta sobre lo FILTRADO, que es lo que se está viendo, pero cuando el
-   * buscador recortó la lista se dice también el total: si no, parecería que la
-   * bandeja tiene menos de lo que tiene.
+   * Se cuenta sobre lo que se está VIENDO —búsqueda y día ya aplicados— pero
+   * cuando eso recortó la lista se dice también el total: si no, parecería que
+   * la bandeja tiene menos de lo que tiene.
    */
   const resumen = useMemo(() => {
-    const empleados = new Set(filtered.map(d => d.Employee_Code)).size
-    const horas = filtered.reduce((acc, d) => acc + (d.Total_Overtime_Hours ?? 0), 0)
+    const empleados = new Set(visibles.map(d => d.Employee_Code)).size
+    const horas = visibles.reduce((acc, d) => acc + (d.Total_Overtime_Hours ?? 0), 0)
 
     const texto =
-      filtered.length === data.length
+      visibles.length === data.length
         ? `${data.length} registro${data.length === 1 ? '' : 's'} · ${empleados} empleado${empleados === 1 ? '' : 's'}`
-        : `${filtered.length} de ${data.length} registros`
+        : `${visibles.length} de ${data.length} registros`
 
     return { empleados, horas, texto }
-  }, [filtered, data])
+  }, [visibles, data])
 
   if (loading) return <SkeletonList />
   if (error) return <ErrorState title={error.title} message={error.message} onRetry={loadData} />
@@ -667,6 +697,28 @@ export default function SolicitudesHorasExtraScreen() {
           onResults={setFiltered}
           placeholder="Buscar por empleado, correlativo o motivo"
         />
+
+        {/* Los días con algo pendiente. Solo aparece con más de uno: con todo
+            en el mismo día el filtro no separa nada y sería una fila de más. */}
+        {dias.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+          >
+            <ChipDia label="Todos" activo={!dia} onPress={() => setDia(null)} />
+            {dias.map(d => (
+              <ChipDia
+                key={d.key}
+                label={d.label}
+                activo={dia === d.key}
+                // Volver a tocar el día activo lo apaga: el camino corto a ver
+                // todo de nuevo.
+                onPress={() => setDia(dia === d.key ? null : d.key)}
+              />
+            ))}
+          </ScrollView>
+        )}
 
         {/* Barra de lote: aparece solo con tarjetas marcadas. Dice cuántas se
             van a firmar y cuántas quedan fuera, para que el conteo no
@@ -727,7 +779,7 @@ export default function SolicitudesHorasExtraScreen() {
         {/* Marcar o desmarcar lo que se está viendo, y cuánto hay */}
         {data.length > 0 && (
           <XStack alignItems="center" justifyContent="space-between" gap="$2" paddingVertical="$1">
-            {filtered.length > 0 ? (
+            {visibles.length > 0 ? (
               <XStack
                 alignItems="center"
                 gap="$2"
@@ -754,7 +806,7 @@ export default function SolicitudesHorasExtraScreen() {
         ref={listaRef}
         // Para la última entidad la unidad de decisión es la SOLICITUD; para
         // las anteriores sigue siendo el renglón de su gente.
-        data={(esUltimaEntidad ? grupos : filtered) as any[]}
+        data={(esUltimaEntidad ? grupos : visibles) as any[]}
         keyExtractor={(item: any) => String(esUltimaEntidad ? item.requestId : item.Id)}
         onScrollToIndexFailed={info => {
           listaRef.current?.scrollToOffset({
@@ -766,7 +818,7 @@ export default function SolicitudesHorasExtraScreen() {
           }, 250)
         }}
         contentContainerStyle={
-          filtered.length === 0
+          visibles.length === 0
             ? { flexGrow: 1 }
             : { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40, gap: 10 }
         }
@@ -784,6 +836,13 @@ export default function SolicitudesHorasExtraScreen() {
               title="Sin entidades asignadas"
               message="No participás en el flujo de aprobación de horas extra de esta empresa."
             />
+          ) : dia ? (
+            // Con un día puesto, "nada pendiente" sería falso: hay pendientes,
+            // pero de otros días.
+            <EmptyState
+              title="Sin pendientes ese día"
+              message='No hay nada que firmar de ese día. Tocá "Todos" para ver el resto.'
+            />
           ) : (
             <EmptyState
               title="Nada pendiente"
@@ -798,7 +857,6 @@ export default function SolicitudesHorasExtraScreen() {
               resaltada={item.requestId === resaltadaId}
               abierta={expandidas.has(item.requestId)}
               veCosto={veCosto}
-              presupuesto={presupuestoDeGrupo(item)}
               seleccionados={seleccionados}
               esFirmable={d => puedeAutorizar(d, nombreEntidad)}
               costoDe={costoDetalle}
@@ -832,15 +890,45 @@ export default function SolicitudesHorasExtraScreen() {
     </View>
       <ConfirmDialog
         open={!!aprobando}
-        onOpenChange={abierto => { if (!abierto) { setAprobando(null); setImpacto([]) } }}
+        onOpenChange={abierto => { if (!abierto) { setAprobando(null); setImpacto([]); setErrorImpacto('') } }}
         title="Aprobar horas extra"
         message={aprobando ? `¿Aprobar ${resumenLote(aprobando)}?` : ''}
         confirmLabel={aprobando && aprobando.length > 1 ? `Aprobar ${aprobando.length}` : 'Aprobar'}
         confirmColor="#22C55E"
         loading={enviando}
         onConfirm={() => aprobando && enviarDecision(aprobando, true, '')}
-        onCancel={() => { setAprobando(null); setImpacto([]) }}
-        extra={impacto.length > 0 ? <ImpactoPresupuesto filas={impacto} /> : undefined}
+        onCancel={() => { setAprobando(null); setImpacto([]); setErrorImpacto('') }}
+        // Con impacto se pinta el bloque; si la consulta falló se dice, para
+        // no firmar creyendo que el presupuesto está bien solo porque no
+        // apareció nada. Lo demás —sin acceso al costo, etapa que no
+        // compromete dinero— sigue sin mostrar nada, que es lo correcto.
+        extra={
+          impacto.length > 0 ? (
+            <ImpactoPresupuesto filas={impacto} />
+          ) : errorImpacto ? (
+            <XStack
+              gap="$2"
+              alignItems="flex-start"
+              padding="$3"
+              borderRadius={10}
+              backgroundColor="$backgroundSurface"
+              borderLeftWidth={3}
+              borderLeftColor="$warning"
+            >
+              <View marginTop={1}>
+                <MessageSquare size={14} color={theme.warning?.val as string} />
+              </View>
+              <YStack flex={1} gap={2}>
+                <Text fontSize={12} fontWeight="700" color="$warning">
+                  No se pudo consultar el presupuesto
+                </Text>
+                <Text fontSize={11} color="$textSecondary">
+                  {errorImpacto}
+                </Text>
+              </YStack>
+            </XStack>
+          ) : undefined
+        }
       />
 
       <Modal
@@ -939,21 +1027,28 @@ const fmtDinero = (valor: number | null | undefined): string =>
  * que si el usuario no lo tiene el bloque ni se pide.
  */
 /**
- * El presupuesto COMPLETO de quien firma.
+ * Lo único que hace falta para decidir si la firma cabe: el presupuesto, lo
+ * que cuesta aprobar, y con qué queda.
  *
- * Las tarjetas de área dicen cómo queda cada centro de costos, que es la
- * pregunta contable. Esta dice cómo queda ÉL: un jefe con seis centros a cargo
- * firma contra su bolsa entera, y esa bolsa no salía en ningún lado.
+ * Antes esto traía además el gastado de la semana y una tarjeta por centro de
+ * costos con su desglose por empleado. Todo eso es contabilidad, no decisión:
+ * quien firma no está eligiendo entre áreas, está contestando "¿me alcanza?",
+ * y para eso sobran tres números. Con seis, la respuesta había que armarla.
  *
- * Los tres números van en fila —asignado, gastado, después de aprobar— porque
- * el salto entre los dos últimos ES el costo de firmar, y puestos al lado se
- * ve sin restar de cabeza.
+ * El costo de aprobar sale de la fila TOTAL y no de sumar las de área: es el
+ * mismo número, pero pedido una sola vez y ya recortado al alcance del usuario.
+ *
+ * Solo llega acá con el acceso 'CostoHE' y con la entidad gerencial: el filtro
+ * está en la consulta, así que si no corresponde el bloque ni se pide.
  */
-function TotalPresupuesto({ fila }: { fila: IOvertimeApprovalImpact }) {
-  const presupuesto = fila.Presupuesto ?? 0
-  const despues = fila.Consumido_Despues ?? 0
-  const disponible = presupuesto - despues
-  const excedido = disponible < 0
+function ImpactoPresupuesto({ filas }: { filas: IOvertimeApprovalImpact[] }) {
+  const total = filas.find(r => r.Es_Total)
+  if (!total) return null
+
+  const presupuesto = total.Presupuesto ?? 0
+  const costo = total.Costo_Nuevo ?? 0
+  const despues = presupuesto - (total.Consumido_Despues ?? 0)
+  const excedido = despues < 0
 
   return (
     <YStack
@@ -962,99 +1057,35 @@ function TotalPresupuesto({ fila }: { fila: IOvertimeApprovalImpact }) {
       borderWidth={1}
       borderColor={excedido ? '#FECACA' : '#BBF7D0'}
       borderRadius={10}
-      padding="$2.5"
-      gap="$1.5"
+      padding="$3"
+      gap="$2"
     >
+      <Text fontSize={10} fontWeight="700" color={excedido ? '#991B1B' : '#166534'} letterSpacing={0.4}>
+        TU PRESUPUESTO
+      </Text>
+
       <XStack justifyContent="space-between" alignItems="center" gap="$2">
-        <Text fontSize={10} fontWeight="700" color={excedido ? '#991B1B' : '#166534'} letterSpacing={0.4}>
-          TU PRESUPUESTO
-        </Text>
-        <Text fontSize={11} fontWeight="700" color={excedido ? '#991B1B' : '#166534'}>
-          {excedido
-            ? `Excedido en ${fmtDinero(Math.abs(disponible))}`
-            : `Quedarían ${fmtDinero(disponible)}`}
-        </Text>
+        <Text fontSize={12} color="$textSecondary">Asignado</Text>
+        <Text fontSize={14} fontWeight="700" color="$text">{fmtDinero(presupuesto)}</Text>
       </XStack>
 
-      <XStack gap="$2">
-        {[
-          { label: 'ASIGNADO', valor: fila.Presupuesto, fuerte: false },
-          { label: 'GASTADO', valor: fila.Consumido, fuerte: false },
-          { label: 'DESPUÉS', valor: fila.Consumido_Despues, fuerte: true },
-        ].map(c => (
-          <YStack key={c.label} flex={1} gap={1}>
-            <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-              {c.label}
-            </Text>
-            <Text fontSize={c.fuerte ? 15 : 13} fontWeight={c.fuerte ? '800' : '700'} color="$text">
-              {fmtDinero(c.valor)}
-            </Text>
-          </YStack>
-        ))}
+      <XStack justifyContent="space-between" alignItems="center" gap="$2">
+        <Text fontSize={12} color="$textSecondary">Cuesta aprobar</Text>
+        <Text fontSize={14} fontWeight="700" color="$text">{fmtDinero(costo)}</Text>
       </XStack>
-    </YStack>
-  )
-}
 
-function ImpactoPresupuesto({ filas }: { filas: IOvertimeApprovalImpact[] }) {
-  const total = filas.find(r => r.Es_Total)
-  const areas = filas.filter(r => !r.Es_Total)
-
-  return (
-    <YStack gap="$2" width="100%">
-      {total && <TotalPresupuesto fila={total} />}
-
-      {areas.map(r => {
-        const empleados: any[] = (() => {
-          try {
-            const parsed = JSON.parse(r.Empleados_Json ?? '[]')
-            return Array.isArray(parsed) ? parsed : []
-          } catch {
-            return []
-          }
-        })()
-
-        return (
-          <YStack
-            key={r.Area_Codigo}
-            width="100%"
-            backgroundColor="$backgroundSurface"
-            borderRadius={10}
-            padding="$2.5"
-            gap="$1.5"
-          >
-            {/* Sin este rótulo el monto se puede leer como "el presupuesto
-                del área" en vez de "lo que cuesta esta firma", que es justo lo
-                contrario de lo que hay que entender. */}
-            <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-              COSTO DE APROBAR
-            </Text>
-
-            <XStack justifyContent="space-between" alignItems="flex-end" gap="$2">
-              <Text fontSize={11} color="$textMuted" numberOfLines={1} flex={1}>
-                {r.Area_Nombre || r.Area_Codigo}
-              </Text>
-              <Text fontSize={20} fontWeight="800" color="$text">
-                {fmtDinero(r.Costo_Nuevo)}
-              </Text>
-            </XStack>
-
-            {/* Un solo empleado ya está dicho en el mensaje del diálogo: el
-                desglose solo aporta cuando hay varios. */}
-            {empleados.length > 1 &&
-              empleados.map((e, i) => (
-                <XStack key={`${e?.employee_Code}-${i}`} justifyContent="space-between" gap="$2">
-                  <Text fontSize={10} color="$textMuted" numberOfLines={1} flex={1}>
-                    {nombreConCodigo(e?.employee_Name, e?.employee_Code)}
-                  </Text>
-                  <Text fontSize={10} color="$textSecondary" fontWeight="600">
-                    {fmtHoras(e?.horas)} · {fmtDinero(e?.costo)}
-                  </Text>
-                </XStack>
-              ))}
-          </YStack>
-        )
-      })}
+      {/* El que importa, y por eso es el único grande y con línea propia. */}
+      <XStack
+        justifyContent="space-between" alignItems="center" gap="$2"
+        borderTopWidth={1} borderTopColor={excedido ? '#FECACA' : '#BBF7D0'} paddingTop="$2"
+      >
+        <Text fontSize={12} fontWeight="700" color={excedido ? '#991B1B' : '#166534'}>
+          {excedido ? 'Excedido en' : 'Te quedarían'}
+        </Text>
+        <Text fontSize={20} fontWeight="800" color={excedido ? '#991B1B' : '#166534'}>
+          {fmtDinero(Math.abs(despues))}
+        </Text>
+      </XStack>
     </YStack>
   )
 }
@@ -1075,7 +1106,6 @@ function SolicitudGrupoCard({
   resaltada,
   abierta,
   veCosto,
-  presupuesto,
   seleccionados,
   esFirmable,
   costoDe,
@@ -1090,7 +1120,6 @@ function SolicitudGrupoCard({
   /** El usuario tiene el acceso para ver montos. */
   veCosto: boolean
   /** Disponible del centro de costos, antes y después de firmar. Null si no se sabe. */
-  presupuesto: { nombre: string; areas: number; antes: number; despues: number } | null
   seleccionados: Set<number>
   esFirmable: (d: IOvertimeRequestDetail) => boolean
   costoDe: (d: IOvertimeRequestDetail) => number | null
@@ -1166,37 +1195,14 @@ function SolicitudGrupoCard({
           </View>
         </XStack>
 
-        {/* Presupuesto: con qué queda el centro de costos si se firma. Es la
-            pregunta que se hace quien pone la última firma —"¿me alcanza?"— y
-            hasta ahora había que abrir el confirm para verla. Va detrás del
-            acceso de ver costos, igual que cualquier monto de la pantalla. */}
-        {veCosto && presupuesto && (
-          <XStack alignItems="center" gap="$1.5" flexWrap="wrap">
-            <Wallet size={11} color={theme.textMuted?.val as string} />
-            <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.3}>
-              DISPONIBLE
-            </Text>
-            <Text fontSize={11} fontWeight="600" color="$textSecondary">
-              {fmtDinero(presupuesto.antes)}
-            </Text>
-            <ArrowRight size={10} color={theme.textMuted?.val as string} />
-            <Text
-              fontSize={11}
-              fontWeight="800"
-              color={presupuesto.despues < 0 ? '$error' : '$success'}
-            >
-              {fmtDinero(presupuesto.despues)}
-            </Text>
-            <Text fontSize={10} color="$textMuted" numberOfLines={1} flex={1}>
-              {presupuesto.nombre}
-            </Text>
-          </XStack>
-        )}
-
-        {/* El motivo del encabezado, si lo tiene */}
-        {(!!grupo.motivo || !!grupo.comentario) && (
+        {/* El comentario del encabezado, si lo tiene.
+            El MOTIVO ya no va acá: es del detalle —en un mismo lote cada
+            empleado se queda por una razón distinta— así que ponerlo en la
+            tarjeta obligaba a elegir uno y mostrarlo como si fuera el de todos.
+            Ahora va en el renglón de cada empleado, que es de quien es. */}
+        {!!grupo.comentario && (
           <Text fontSize={11} color="$textMuted" numberOfLines={abierta ? 4 : 1}>
-            {[grupo.motivo, grupo.comentario].filter(Boolean).join(' · ')}
+            {grupo.comentario}
           </Text>
         )}
 
@@ -1250,6 +1256,18 @@ function SolicitudGrupoCard({
                     </YStack>
                   </XStack>
 
+                  {/* Por qué se queda ESTE empleado. Es del detalle: en un
+                      mismo lote cada uno tiene su razón, y es justamente lo
+                      que hay que leer antes de firmarle las horas. */}
+                  {!!d.Category_Name && (
+                    <XStack alignItems="flex-start" gap="$1.5">
+                      <MessageSquare size={11} color={theme.textMuted?.val as string} style={{ marginTop: 2 }} />
+                      <Text fontSize={11} color="$textSecondary" lineHeight={15} flex={1}>
+                        {d.Category_Name}
+                      </Text>
+                    </XStack>
+                  )}
+
                   {/* Centro de costos del empleado: es de donde sale el dinero,
                       así que es lo que dice si la firma cabe en el presupuesto. */}
                   {!!d.Centro_Costos && (
@@ -1260,24 +1278,6 @@ function SolicitudGrupoCard({
                       </Text>
                     </XStack>
                   )}
-
-                  {/* Por qué estas horas. Es lo que el jefe escribió por ESTE
-                      empleado y el dato que sostiene la firma, así que se muestra
-                      siempre: que venga vacío también es información. */}
-                  <XStack alignItems="flex-start" gap="$1.5">
-                    <View paddingTop={2}>
-                      <MessageSquare size={11} color={theme.textMuted?.val as string} />
-                    </View>
-                    {d.Detail_Comment ? (
-                      <Text fontSize={11} color="$textSecondary" lineHeight={15} flex={1}>
-                        {d.Detail_Comment}
-                      </Text>
-                    ) : (
-                      <Text fontSize={11} color="$textMuted" fontStyle="italic" flex={1}>
-                        Sin comentario
-                      </Text>
-                    )}
-                  </XStack>
 
                   {/* Decisión de este empleado: dos botones chicos al margen. Los
                       grandes con texto son los de la solicitud completa, al pie de
@@ -1503,5 +1503,44 @@ function SolicitudCard({
         </XStack>
       </YStack>
     </Card>
+  )
+}
+
+/**
+ * Un día del filtro. Solo se dibujan los que tienen algo pendiente, así que
+ * todos llevan a una lista con contenido.
+ */
+function ChipDia({
+  label,
+  activo,
+  onPress,
+}: {
+  label: string
+  activo: boolean
+  onPress: () => void
+}) {
+  return (
+    <View
+      // Compacto a propósito: los siete días más el de "todos" tienen que
+      // entrar sin que la fila se coma la pantalla en un teléfono angosto. El
+      // ScrollView horizontal se encarga del resto.
+      paddingHorizontal="$2"
+      paddingVertical={5}
+      borderRadius={999}
+      borderWidth={1}
+      borderColor={activo ? '$primary' : '$border'}
+      backgroundColor={activo ? '$primaryOpacity2' : '$backgroundElevated'}
+      pressStyle={{ opacity: 0.6 }}
+      onPress={onPress}
+    >
+      <Text
+        fontSize={10}
+        fontWeight="700"
+        color={activo ? '$primary' : '$textMuted'}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </View>
   )
 }

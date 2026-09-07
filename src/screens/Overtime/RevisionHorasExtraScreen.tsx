@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet } from 'react-native'
+import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet, TextInput } from 'react-native'
+import dayjs from 'dayjs'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
-import { CalendarDays, Check, CheckSquare, ChevronDown, MessageSquareWarning, Square, TrendingDown, TrendingUp, UserRound, X } from 'lucide-react-native'
+import { CalendarDays, Check, CheckSquare, ChevronDown, Info, MessageSquareWarning, Square, TrendingDown, TrendingUp, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -22,6 +23,7 @@ import { overtimeService } from '../../api/modules/overtime/overtime.service'
 import {
   IOvertimeReviewImpact,
   IOvertimeReviewToAuth,
+  IReviewRealHours,
   IUserEntity,
 } from '../../api/modules/overtime/overtime.types'
 import {
@@ -40,10 +42,28 @@ import {
 // revisa. Si decide no resolverlo por su cuenta, manda la diferencia acá.
 //
 // Lo que se aprueba en esta pantalla NO son las horas de la solicitud —esas ya
-// pasaron por el primer flujo— sino qué hacer con la diferencia:
-//   · aprobar  → se le reconocen las horas del MARCAJE
-//   · rechazar → se le pagan las horas SOLICITADAS
-// Por eso la tarjeta muestra los dos grupos enfrentados: la decisión es elegir
+// pasaron por el primer flujo— sino qué hacer con la diferencia. Y hay TRES
+// horarios en juego, no dos:
+//
+//   · Solicitado — lo que se autorizó en la solicitud.
+//   · Marcaje    — lo que dice el reloj.
+//   · Real       — lo que la primera entidad revisó que de verdad pasó.
+//
+// El tercero es el que suele ser cierto: el empleado marcó a las 22:15 pero se
+// fue a las 21:30.
+//
+//   Primera entidad — aprueba: vale el horario que revisó (sin revisar uno, el
+//                     marcaje). rechaza: se pagan las horas solicitadas.
+//   Segunda entidad — aprueba: confirma ese horario.
+//                     rechaza: lo descarta y valen las del marcaje.
+//
+// La segunda solo interviene cuando la primera RECONOCE bastantes más horas de
+// las que se habían solicitado —no cuando el marcaje trae mucha diferencia—,
+// porque el marcaje es un dato en bruto y quien revisa está justamente para
+// decir cuánto de eso es cierto. Cuántas horas de más se toleran lo dice
+// Tolerancia_Segunda_Firma, que llega del backend.
+//
+// Por eso la tarjeta muestra los grupos enfrentados: la decisión es elegir
 // entre ellos, y sin ver ambos no hay con qué decidir.
 //
 // El dato vive en InterfazPayWeb, lo publica IMCoreProxy y lo reenvía IMCoreApi
@@ -79,17 +99,157 @@ const puedeAutorizar = (item: IOvertimeReviewToAuth, nombreEntidad: string): boo
 }
 
 /**
+ * Las horas que quedarían con cada decisión, para UNA revisión.
+ *
+ * No son las mismas en las dos etapas y por eso hace falta saber en cuál se
+ * está: la primera elige entre lo solicitado y el reloj, la segunda entre el
+ * reloj y el horario que revisó su colega.
+ */
+const horasSiFirma = (r: IOvertimeReviewToAuth, primera: boolean): number =>
+  (primera ? r.Worked_Overtime_Hours : r.Real_Overtime_Hours ?? r.Worked_Overtime_Hours) ?? 0
+
+const horasSiRechaza = (r: IOvertimeReviewToAuth, primera: boolean): number =>
+  (primera ? r.Requested_Overtime_Hours : r.Worked_Overtime_Hours) ?? 0
+
+/**
  * Qué horas quedan aplicadas si se resuelve el lote de esta forma.
  *
- * Es el dato que hay que poder leer antes de firmar varias de golpe: aprobar
- * reconoce el MARCAJE y rechazar paga lo SOLICITADO, así que el total cambia
- * según la decisión.
+ * Es el dato que hay que poder leer antes de firmar varias de golpe: el total
+ * cambia según la decisión, y en lote no se revisa un horario por empleado.
  */
-const horasDelLote = (revisiones: IOvertimeReviewToAuth[], aprobar: boolean): number =>
+const horasDelLote = (
+  revisiones: IOvertimeReviewToAuth[],
+  aprobar: boolean,
+  primera: boolean,
+): number =>
   revisiones.reduce(
-    (acc, r) => acc + ((aprobar ? r.Worked_Overtime_Hours : r.Requested_Overtime_Hours) ?? 0),
+    (acc, r) => acc + (aprobar ? horasSiFirma(r, primera) : horasSiRechaza(r, primera)),
     0,
   )
+
+// ── El horario real, para revisarlo desde el teléfono ───────────────────────
+//
+// Acá no se escribe una hora: se ajusta de a cuartos de hora sobre la que ya
+// viene del marcaje. Escribir 'HH:mm' en un teclado numérico, con el teclado
+// tapando media pantalla, es la forma más incómoda de decir 'media hora menos'.
+
+/** Minutos desde medianoche de un datetime. */
+const minutosDe = (iso: string | null | undefined): number | null => {
+  if (!iso) return null
+  const d = dayjs(iso)
+  return d.isValid() ? d.hour() * 60 + d.minute() : null
+}
+
+const etiquetaMinutos = (minutos: number): string => {
+  const m = ((minutos % 1440) + 1440) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
+/**
+ * Horas entre el inicio de la hora extra y una hora de salida.
+ *
+ * Igual es CERO y no un día entero: significa 'solo trabajó su jornada', que es
+ * una resolución válida. Solo se envuelve cuando el fin es anterior, que es la
+ * forma de decir que terminó al día siguiente.
+ */
+const horasHasta = (inicio: string | null, minutosFin: number): number => {
+  const desde = minutosDe(inicio)
+  if (desde === null) return 0
+
+  let minutos = minutosFin - desde
+  if (minutos < 0) minutos += 1440
+
+  return +(minutos / 60).toFixed(2)
+}
+
+/**
+ * 'HH:mm' al datetime del día de la revisión, corriendo un día cuando cruza la
+ * medianoche.
+ *
+ * El día de más no es cosmético: el reparto por bandas se calcula sobre el
+ * rango, y sin él una salida a las 00:30 se leería como un rango negativo.
+ */
+/**
+ * ¿Reconocer estas horas obliga a la firma de la siguiente etapa?
+ *
+ * Lo que escala no es el marcaje sino lo que la primera entidad RECONOCE: el
+ * marcaje es un dato en bruto —quien se olvidó de marcar la salida aparece con
+ * cuatro horas de más— y quien revisa está para decir cuánto de eso es cierto.
+ *
+ * Es de un solo lado: reconocer menos de lo solicitado no necesita permiso de
+ * nadie, porque no compromete presupuesto que no estuviera ya aprobado.
+ *
+ * Acá es solo el aviso; quien decide de verdad es el backend, con este mismo
+ * umbral, que viaja en la fila justamente para no tener dos copias.
+ */
+const escala = (r: IOvertimeReviewToAuth, horas: number): boolean =>
+  horas - (r.Requested_Overtime_Hours ?? 0) > (r.Tolerancia_Segunda_Firma ?? 0)
+
+/**
+ * Con qué queda el empleado si se aprueba, dicho con todas las letras.
+ *
+ * No es lo mismo en las dos etapas ni con o sin horario revisado, y el botón
+ * dice 'Aprobar' en los cuatro casos: si la consecuencia no está escrita acá,
+ * no está en ningún lado.
+ */
+const mensajeAprobacion = (
+  revisiones: IOvertimeReviewToAuth[],
+  primera: boolean,
+  revisado: IReviewRealHours[],
+): string => {
+  if (revisiones.length > 1) {
+    const queda = fmtHoras(horasDelLote(revisiones, true, primera))
+    const pierde = fmtHoras(horasDelLote(revisiones, false, primera))
+
+    return primera
+      ? `A ${revisiones.length} empleados se les reconocerán las horas del MARCAJE: ` +
+        `${queda} en lugar de las ${pierde} solicitadas.`
+      : `A ${revisiones.length} empleados se les confirmará el horario REVISADO: ` +
+        `${queda} en lugar de las ${pierde} del marcaje.`
+  }
+
+  const r = revisiones[0]
+  const quien = nombreConCodigo(r.Employee_Name, r.Employee_Code)
+
+  // El horario que se acaba de revisar manda sobre lo que traía la fila.
+  const horasRevisadas = revisado.length > 0
+    ? revisado[0].Real_Overtime_Hours
+    : primera ? null : r.Real_Overtime_Hours
+
+  if (horasRevisadas !== null && horasRevisadas !== undefined) {
+    return primera
+      ? `Se le reconocerán ${fmtHoras(horasRevisadas)} a ${quien}, ` +
+        `en lugar de las ${fmtHoras(r.Requested_Overtime_Hours)} solicitadas.`
+      : `Se confirmarán las ${fmtHoras(horasRevisadas)} que se revisaron para ${quien}, ` +
+        `en lugar de las ${fmtHoras(r.Worked_Overtime_Hours)} del marcaje.`
+  }
+
+  // Sin marcaje, aprobar significa reconocer CERO. Decir 'se le reconocerán —
+  // del marcaje' dejaba la consecuencia a la imaginación, y es la que importa:
+  // se le quitan las horas.
+  if (r.Worked_Overtime_Hours === null || r.Worked_Overtime_Hours === undefined) {
+    return `${quien} no marcó, así que no se le reconocerá ninguna hora extra: ` +
+      `pierde las ${fmtHoras(r.Requested_Overtime_Hours)} solicitadas.`
+  }
+
+  return `Se le reconocerán ${fmtHoras(r.Worked_Overtime_Hours)} del marcaje a ${quien}, ` +
+    `en lugar de las ${fmtHoras(r.Requested_Overtime_Hours)} solicitadas.`
+}
+
+const fechaConHora = (
+  fecha: string | null,
+  inicio: string | null,
+  minutosFin: number,
+): string | null => {
+  if (!fecha) return null
+
+  const desde = minutosDe(inicio)
+  const base = dayjs(fecha)
+  if (!base.isValid()) return null
+
+  const dia = desde !== null && minutosFin < desde ? base.add(1, 'day') : base
+  return `${dia.format('YYYY-MM-DD')}T${etiquetaMinutos(minutosFin)}:00`
+}
 
 const etiquetaDiferencia = (diff: number | null | undefined) => {
   if (diff === null || diff === undefined) return 'Sin marcaje'
@@ -113,7 +273,16 @@ interface GrupoRevision {
   revisiones: IOvertimeReviewToAuth[]
   horasSolicitadas: number
   horasMarcaje: number
-  /** Lo que esas horas ya cuestan, y lo que costarían al reconocer el marcaje. */
+  /**
+   * Lo que quedaria reconocido: el horario que reviso la primera entidad, o el
+   * marcaje si todavia no lo reviso nadie.
+   *
+   * Va aparte de horasMarcaje porque para la segunda entidad ya no son lo
+   * mismo, y la tarjeta tiene que mostrar hacia donde se mueve LA DECISION que
+   * esa persona esta por firmar.
+   */
+  horasAReconocer: number
+  /** Lo que esas horas ya cuestan, y lo que costarían al aprobar. */
   costoActual: number | null
   costoSiAprueba: number | null
 }
@@ -157,6 +326,19 @@ export default function RevisionHorasExtraScreen() {
   const [expandidas, setExpandidas] = useState<Set<number>>(new Set())
   const [rechazando, setRechazando] = useState<IOvertimeReviewToAuth[] | null>(null)
 
+  // Revisión del horario real, antes del confirm. Solo aparece para la primera
+  // entidad y sobre una revisión sola: en lote no hay un horario por empleado.
+  const [revisando, setRevisando] = useState<IOvertimeReviewToAuth | null>(null)
+  const [minutosReales, setMinutosReales] = useState(0)
+  // Lo que se está tecleando. Va aparte de los minutos porque mientras se
+  // escribe hay estados intermedios que todavía no son una hora ('2', '21:')
+  // y no pueden pisar el valor bueno.
+  const [horaTexto, setHoraTexto] = useState('')
+  const [horaValida, setHoraValida] = useState(true)
+  // El horario ya revisado que va a viajar con la firma. Se guarda aparte de
+  // `revisando` porque ese modal se cierra al pasar al confirm.
+  const [horarioReal, setHorarioReal] = useState<IReviewRealHours[]>([])
+
   // Ids marcados para resolver en lote.
   const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set())
   const [motivo, setMotivo] = useState('')
@@ -164,6 +346,22 @@ export default function RevisionHorasExtraScreen() {
   const [enviando, setEnviando] = useState(false)
 
   const companyCode = defaultCompany?.Code ?? ''
+
+  /**
+   * ¿Se está firmando con la PRIMERA entidad del flujo?
+   *
+   * Es la única que revisa a qué hora se fue de verdad el empleado; las
+   * posteriores no lo revisan a él sino a esa decisión, y su respuesta es sí o
+   * no. Lo resuelve el servidor y no la pantalla, que solo recibe las entidades
+   * del usuario y no tiene con qué saber cuál es la primera del proceso.
+   *
+   * Sin la marca se asume que sí: es el caso de siempre —un flujo de una sola
+   * etapa— y deja el comportamiento anterior.
+   */
+  const esPrimeraEntidad = useMemo(
+    () => entidades.find(e => String(e.Id) === entidad)?.Es_Primera ?? true,
+    [entidades, entidad],
+  )
 
   usePageHeader({
     center: (
@@ -280,7 +478,12 @@ export default function RevisionHorasExtraScreen() {
    * todo: la respuesta es inmediata y no se pierde la posición del scroll.
    */
   const enviarDecision = useCallback(
-    async (revisiones: IOvertimeReviewToAuth[], aprobar: boolean, comentario: string) => {
+    async (
+      revisiones: IOvertimeReviewToAuth[],
+      aprobar: boolean,
+      comentario: string,
+      realHours: IReviewRealHours[] = [],
+    ) => {
       if (revisiones.length === 0) return
 
       try {
@@ -297,6 +500,8 @@ export default function RevisionHorasExtraScreen() {
           Auth: aprobar,
           Comment: comentario,
           Reviews: ids,
+          // Vacío en el lote y al rechazar: ahí no hay un horario que revisar.
+          Real_Hours: realHours,
         })
 
         if (!res.Success) {
@@ -312,14 +517,23 @@ export default function RevisionHorasExtraScreen() {
         setSeleccionados(prev => new Set([...prev].filter(id => !resueltas.has(id))))
         setAprobando(null)
         setRechazando(null)
+        setHorarioReal([])
         setMotivo('')
+
+        // Las horas que quedaron salen del horario que se acaba de revisar
+        // cuando lo hay: es lo que se firmó, no lo que decía la fila.
+        const horasFirmadas = realHours.length > 0
+          ? realHours.reduce((acc, h) => acc + (h.Real_Overtime_Hours ?? 0), 0)
+          : horasDelLote(revisiones, true, esPrimeraEntidad)
 
         showToast(
           'success',
           aprobar ? 'Diferencia aprobada' : 'Diferencia rechazada',
           aprobar
-            ? `Se reconocen ${fmtHoras(horasDelLote(revisiones, true))} del marcaje`
-            : `Se pagan ${fmtHoras(horasDelLote(revisiones, false))} solicitadas`,
+            ? `Se reconocen ${fmtHoras(horasFirmadas)}`
+            : esPrimeraEntidad
+              ? `Se pagan ${fmtHoras(horasDelLote(revisiones, false, true))} solicitadas`
+              : `Valen ${fmtHoras(horasDelLote(revisiones, false, false))} del marcaje`,
           3500,
           'top',
         )
@@ -330,7 +544,7 @@ export default function RevisionHorasExtraScreen() {
         loader.hide()
       }
     },
-    [companyCode, entidad, loader, showToast],
+    [companyCode, entidad, esPrimeraEntidad, loader, showToast],
   )
 
   /**
@@ -340,7 +554,7 @@ export default function RevisionHorasExtraScreen() {
    * de apoyo para decidir, no un requisito para poder firmar.
    */
   const pedirImpacto = useCallback(
-    async (revisiones: IOvertimeReviewToAuth[]) => {
+    async (revisiones: IOvertimeReviewToAuth[], realHours: IReviewRealHours[] = []) => {
       setImpacto([])
       if (!companyCode || !entidad || revisiones.length === 0) return
 
@@ -349,10 +563,15 @@ export default function RevisionHorasExtraScreen() {
           companyCode,
           Number(entidad),
           revisiones.map(r => r.Id),
+          // El horario que se acaba de revisar y todavía no se guardó. Sin él,
+          // el escenario 'si apruebas' costearía el marcaje mientras se firma
+          // otra cosa.
+          realHours,
         )
 
-        // Las dos condiciones: que sea la última firma —antes no se compromete
-        // nada— y que el usuario pueda ver montos.
+        // Las dos condiciones: que la firma RESUELVA la revisión —si se queda
+        // esperando otra etapa no compromete nada todavía— y que el usuario
+        // pueda ver montos. Las dos las decide el backend.
         const filas = res?.Success && res.Data
           ? res.Data.filter(r => r.Es_Ultima_Entidad && r.Ve_Costo)
           : []
@@ -364,14 +583,123 @@ export default function RevisionHorasExtraScreen() {
     [companyCode, entidad],
   )
 
-  /** Abrir el confirm: se muestra ya y el impacto llega después. */
+  /**
+   * Abre la decisión de aprobar.
+   *
+   * La primera entidad pasa antes por revisar el horario, y solo cuando es UNA
+   * revisión: en lote son varios empleados y cada uno se fue a una hora
+   * distinta, así que ahí aprobar sigue queriendo decir 'vale el marcaje'.
+   *
+   * El confirm se muestra ya y el impacto llega después.
+   */
   const abrirAprobacion = useCallback(
     (revisiones: IOvertimeReviewToAuth[]) => {
+      if (esPrimeraEntidad && revisiones.length === 1) {
+        const r = revisiones[0]
+
+        // Arranca en el marcaje: lo más probable es que sea correcto, y
+        // confirmarlo tiene que ser un toque. Sin marcaje, en lo solicitado.
+        const inicial = minutosDe(r.Clock_Out) ?? minutosDe(r.End_Time) ?? 0
+        setMinutosReales(inicial)
+        setHoraTexto(etiquetaMinutos(inicial))
+        setHoraValida(true)
+        setRevisando(r)
+        return
+      }
+
+      setHorarioReal([])
       setAprobando(revisiones)
       pedirImpacto(revisiones)
     },
-    [pedirImpacto],
+    [esPrimeraEntidad, pedirImpacto],
   )
+
+  /**
+   * Pasa del horario revisado al confirm.
+   *
+   * El modal del horario se cierra y el que decide es el de siempre: revisar la
+   * hora no es firmar, y meter las dos cosas en un solo paso haría que ajustar
+   * un cuarto de hora quedara a un toque de aplicar la decisión.
+   */
+  /**
+   * Poner una hora concreta, desde los atajos.
+   *
+   * Mueve el valor y el texto juntos: si solo moviera los minutos, el campo
+   * seguiría mostrando lo anterior.
+   */
+  const fijarHora = useCallback((minutos: number) => {
+    setMinutosReales(minutos)
+    setHoraTexto(etiquetaMinutos(minutos))
+    setHoraValida(true)
+  }, [])
+
+  /** Correr la hora de a cuartos, para el ajuste fino. */
+  const ajustarHora = useCallback((delta: number) => {
+    setMinutosReales(m => {
+      // Dos días de tope: una hora extra que cruza la medianoche sigue siendo
+      // del mismo día de trabajo, pero más allá de eso ya no hay nada que
+      // corregir, solo un botón que se quedó apretado.
+      const nuevo = Math.min(2 * 1440 - 15, Math.max(0, m + delta))
+      setHoraTexto(etiquetaMinutos(nuevo))
+      return nuevo
+    })
+    setHoraValida(true)
+  }, [])
+
+  /**
+   * Escribir la hora.
+   *
+   * Se aceptan solo dígitos y los dos puntos se ponen solos: en un teclado
+   * numérico el ':' no está a mano, y pedirlo convertiría 'escribir la hora' en
+   * cambiar de teclado dos veces.
+   */
+  const escribirHora = useCallback((texto: string) => {
+    const digitos = texto.replace(/\D/g, '').slice(0, 4)
+    const conFormato = digitos.length > 2
+      ? `${digitos.slice(0, 2)}:${digitos.slice(2)}`
+      : digitos
+
+    setHoraTexto(conFormato)
+
+    // Mientras falten dígitos no es un error todavía: es alguien escribiendo.
+    // Solo se marca en rojo lo que ya está completo y no es una hora.
+    if (digitos.length < 4) {
+      setHoraValida(true)
+      return
+    }
+
+    const h = Number(digitos.slice(0, 2))
+    const m = Number(digitos.slice(2))
+
+    if (h > 23 || m > 59) {
+      setHoraValida(false)
+      return
+    }
+
+    setHoraValida(true)
+    setMinutosReales(h * 60 + m)
+  }, [])
+
+  const confirmarHorario = useCallback(() => {
+    if (!revisando) return
+
+    const fin = fechaConHora(revisando.Date, revisando.Start_Time, minutosReales)
+    if (!fin) return
+
+    const payload: IReviewRealHours[] = [{
+      Reviews_Id: revisando.Id,
+      // El inicio no se discute: es el fin de la jornada. Va igual para que el
+      // contrato no dependa de un valor implícito del otro lado.
+      Real_Start_Time: revisando.Start_Time,
+      Real_End_Time: fin,
+      Real_Overtime_Hours: horasHasta(revisando.Start_Time, minutosReales),
+    }]
+
+    setHorarioReal(payload)
+    setAprobando([revisando])
+    setRevisando(null)
+    pedirImpacto([revisando], payload)
+  }, [revisando, minutosReales, pedirImpacto])
 
   const confirmarRechazo = useCallback(() => {
     if (!rechazando || rechazando.length === 0) return
@@ -408,6 +736,17 @@ export default function RevisionHorasExtraScreen() {
     () => entidades.find(e => String(e.Id) === entidad)?.Name ?? '',
     [entidades, entidad],
   )
+
+  /**
+   * Qué se espera de quien está en esta pantalla, en una línea.
+   *
+   * Lo que se decide acá no se deduce de las tarjetas: se ven dos bloques de
+   * horas y dos botones, y de ahí no sale ni qué queda registrado ni si la
+   * firma cierra el trámite. En la primera etapa se ESCRIBE un horario y en las
+   * siguientes se responde sí o no sobre el que escribió otro, que son dos
+   * trabajos distintos con los mismos botones.
+   */
+
 
   /**
    * Conteo del pie de los filtros.
@@ -500,6 +839,7 @@ export default function RevisionHorasExtraScreen() {
           revisiones: [],
           horasSolicitadas: 0,
           horasMarcaje: 0,
+          horasAReconocer: 0,
           costoActual: null,
           costoSiAprueba: null,
         }
@@ -509,6 +849,7 @@ export default function RevisionHorasExtraScreen() {
       g.revisiones.push(r)
       g.horasSolicitadas += r.Requested_Overtime_Hours ?? 0
       g.horasMarcaje += r.Worked_Overtime_Hours ?? 0
+      g.horasAReconocer += r.Real_Overtime_Hours ?? r.Worked_Overtime_Hours ?? 0
 
       const c = costoPorRevision.get(r.Id)
       if (c) {
@@ -600,7 +941,7 @@ export default function RevisionHorasExtraScreen() {
 
         {/* Barra de lote. Muestra las horas que quedarían aplicadas CON CADA
             decisión, no una sola cifra: acá aprobar y rechazar no son sí o no,
-            son dos totales distintos —el marcaje o lo solicitado— y sin ver
+            son dos totales distintos —cuáles depende de la etapa— y sin ver
             ambos no hay con qué decidir. */}
         {seleccionados.size > 0 && (
           <XStack
@@ -618,8 +959,8 @@ export default function RevisionHorasExtraScreen() {
                 {seleccionValida.length} seleccionada(s)
               </Text>
               <Text fontSize={11} color="$textMuted" numberOfLines={1}>
-                {fmtHoras(horasDelLote(seleccionValida, false))} →{' '}
-                {fmtHoras(horasDelLote(seleccionValida, true))}
+                {fmtHoras(horasDelLote(seleccionValida, false, esPrimeraEntidad))} →{' '}
+                {fmtHoras(horasDelLote(seleccionValida, true, esPrimeraEntidad))}
                 {bloqueadas > 0 ? ` · ${bloqueadas} sin acción` : ''}
               </Text>
             </YStack>
@@ -644,7 +985,7 @@ export default function RevisionHorasExtraScreen() {
               backgroundColor="$success"
               pressStyle={{ opacity: 0.85 }}
               disabled={seleccionValida.length === 0}
-              onPress={() => setAprobando(seleccionValida)}
+              onPress={() => abrirAprobacion(seleccionValida)}
             >
               <XStack alignItems="center" gap="$1.5">
                 <Check size={16} color="white" />
@@ -756,34 +1097,272 @@ export default function RevisionHorasExtraScreen() {
           que cambia y no se deduce del botón. */}
       <ConfirmDialog
         open={!!aprobando}
-        onOpenChange={abierto => { if (!abierto) { setAprobando(null); setImpacto([]) } }}
+        onOpenChange={abierto => { if (!abierto) { setAprobando(null); setImpacto([]); setHorarioReal([]) } }}
         title="Aprobar diferencia"
-        message={
-          !aprobando
-            ? ''
-            : aprobando.length === 1
-              // Sin marcaje, aprobar significa reconocer CERO. Decir 'se le
-              // reconocerán — del marcaje' dejaba la consecuencia a la
-              // imaginación, y es la que importa: se le quitan las horas.
-              ? aprobando[0].Worked_Overtime_Hours === null ||
-                aprobando[0].Worked_Overtime_Hours === undefined
-                ? `${nombreConCodigo(aprobando[0].Employee_Name, aprobando[0].Employee_Code)} no marcó, ` +
-                  `así que no se le reconocerá ninguna hora extra: pierde las ` +
-                  `${fmtHoras(aprobando[0].Requested_Overtime_Hours)} solicitadas.`
-                : `Se le reconocerán ${fmtHoras(aprobando[0].Worked_Overtime_Hours)} del marcaje a ` +
-                  `${nombreConCodigo(aprobando[0].Employee_Name, aprobando[0].Employee_Code)}, ` +
-                  `en lugar de las ${fmtHoras(aprobando[0].Requested_Overtime_Hours)} solicitadas.`
-              : `A ${aprobando.length} empleados se les reconocerán las horas del MARCAJE: ` +
-                `${fmtHoras(horasDelLote(aprobando, true))} en lugar de las ` +
-                `${fmtHoras(horasDelLote(aprobando, false))} solicitadas.`
-        }
+        message={!aprobando ? '' : mensajeAprobacion(aprobando, esPrimeraEntidad, horarioReal)}
         confirmLabel={aprobando && aprobando.length > 1 ? `Aprobar ${aprobando.length}` : 'Aprobar'}
         confirmColor="#22C55E"
         loading={enviando}
-        onConfirm={() => aprobando && enviarDecision(aprobando, true, '')}
-        onCancel={() => { setAprobando(null); setImpacto([]) }}
+        onConfirm={() => aprobando && enviarDecision(aprobando, true, '', horarioReal)}
+        onCancel={() => { setAprobando(null); setImpacto([]); setHorarioReal([]) }}
         extra={impacto.length > 0 ? <ImpactoRevision filas={impacto} aprueba /> : undefined}
       />
+
+      {/* Revisar el horario real, antes de aprobar.
+          Solo la primera entidad y de a una: ver más abajo abrirAprobacion.
+
+          No se escribe una hora: se ajusta de a cuartos sobre la que ya trae el
+          marcaje. Escribir 'HH:mm' en un teclado numérico, con el teclado
+          tapando media pantalla, es la forma más incómoda de decir 'media hora
+          menos'. */}
+      <Modal
+        visible={!!revisando}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setRevisando(null)}
+      >
+        <ScrollView
+          style={styles.backdrop}
+          contentContainerStyle={styles.backdropContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {revisando && (
+            <View style={[styles.modalCard, { backgroundColor: theme.backgroundElevated?.val as string }]}>
+              <XStack justifyContent="space-between" alignItems="flex-start" gap="$3">
+                <YStack flex={1} minWidth={0}>
+                  <Text fontSize={17} fontWeight="700" color="$text">
+                    Horas reales
+                  </Text>
+                  <Text fontSize={12} color="$textMuted" numberOfLines={2}>
+                    {nombreConCodigo(revisando.Employee_Name, revisando.Employee_Code)}
+                  </Text>
+                </YStack>
+
+                <View
+                  padding="$2" marginTop={-8} marginRight={-8} borderRadius={999}
+                  pressStyle={{ opacity: 0.6 }}
+                  onPress={() => setRevisando(null)}
+                >
+                  <X size={20} color={theme.textMuted?.val as string} />
+                </View>
+              </XStack>
+
+              {/* Los dos referentes, para poder compararlos sin salir */}
+              <XStack gap="$2" marginTop="$3">
+                <YStack
+                  flex={1} minWidth={0} borderRadius={10} padding="$2.5"
+                  borderWidth={1} borderColor="$border" backgroundColor="$backgroundSurface"
+                >
+                  <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+                    SOLICITADO
+                  </Text>
+                  <Text fontSize={14} fontWeight="700" color="$text" numberOfLines={1}>
+                    {fmtHora(revisando.Start_Time)} — {fmtHora(revisando.End_Time)}
+                  </Text>
+                  <Text fontSize={11} color="$textMuted">
+                    {fmtHoras(revisando.Requested_Overtime_Hours)}
+                  </Text>
+                </YStack>
+
+                <YStack
+                  flex={1} minWidth={0} borderRadius={10} padding="$2.5"
+                  borderWidth={1} borderColor="$border" backgroundColor="$backgroundSurface"
+                >
+                  <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+                    MARCAJE
+                  </Text>
+                  <Text fontSize={14} fontWeight="700" color="$text" numberOfLines={1}>
+                    {revisando.Clock_Out ? fmtHora(revisando.Clock_Out) : 'Sin marcaje'}
+                  </Text>
+                  <Text fontSize={11} color="$textMuted">
+                    {revisando.Worked_Overtime_Hours === null || revisando.Worked_Overtime_Hours === undefined
+                      ? '—'
+                      : fmtHoras(revisando.Worked_Overtime_Hours)}
+                  </Text>
+                </YStack>
+              </XStack>
+
+              {/* La hora que se está determinando */}
+              <YStack
+                marginTop="$3" borderRadius={12} padding="$3" gap="$2"
+                borderWidth={1} borderColor="$border"
+              >
+                <YStack gap={2}>
+                  <Text fontSize={11} fontWeight="700" color="$textMuted" letterSpacing={0.3}>
+                    ¿A QUÉ HORA SE FUE REALMENTE?
+                  </Text>
+                  <Text fontSize={11} color="$textMuted" lineHeight={15}>
+                    Es lo que se le va a pagar. Escribí la hora o tomá una de las de abajo.
+                  </Text>
+                </YStack>
+
+                {/* La hora se ESCRIBE, y los botones de a cuartos quedan para el
+                    ajuste fino. Corregir 22:15 a 21:30 son dos toques
+                    escribiendo y seis empujando de a quince. */}
+                <XStack alignItems="center" gap="$2">
+                  <Button
+                    width={44} height={52} borderRadius={10}
+                    backgroundColor="$backgroundSurface"
+                    borderWidth={1} borderColor="$border"
+                    pressStyle={{ opacity: 0.7 }}
+                    onPress={() => ajustarHora(-15)}
+                  >
+                    <Text fontSize={22} fontWeight="800" color="$text">−</Text>
+                  </Button>
+
+                  <YStack
+                    flex={1} minWidth={0} height={52} borderRadius={10}
+                    borderWidth={1}
+                    borderColor={horaValida ? '$border' : '$error'}
+                    backgroundColor="$backgroundSurface"
+                    alignItems="center" justifyContent="center"
+                  >
+                    <TextInput
+                      value={horaTexto}
+                      onChangeText={escribirHora}
+                      onBlur={() => setHoraTexto(etiquetaMinutos(minutosReales))}
+                      keyboardType="number-pad"
+                      maxLength={5}
+                      placeholder="HH:mm"
+                      placeholderTextColor={theme.textMuted?.val as string}
+                      selectTextOnFocus
+                      style={{
+                        width: '100%',
+                        textAlign: 'center',
+                        fontSize: 28,
+                        fontWeight: '800',
+                        letterSpacing: 1,
+                        color: (horaValida ? theme.text?.val : theme.error?.val) as string,
+                        padding: 0,
+                      }}
+                    />
+                  </YStack>
+
+                  <Button
+                    width={44} height={52} borderRadius={10}
+                    backgroundColor="$backgroundSurface"
+                    borderWidth={1} borderColor="$border"
+                    pressStyle={{ opacity: 0.7 }}
+                    onPress={() => ajustarHora(15)}
+                  >
+                    <Text fontSize={22} fontWeight="800" color="$text">+</Text>
+                  </Button>
+                </XStack>
+
+                {/* El resultado de lo que se acaba de escribir. Es la
+                    consecuencia y no un adorno: sin esto hay que hacer la resta
+                    de cabeza para saber cuántas horas se están reconociendo. */}
+                <XStack
+                  alignItems="center" justifyContent="space-between" gap="$2"
+                  borderRadius={9} paddingHorizontal="$2.5" paddingVertical="$2"
+                  backgroundColor="$backgroundSurface"
+                >
+                  <Text fontSize={12} color="$textSecondary" numberOfLines={1}>
+                    Desde {fmtHora(revisando.Start_Time)} hasta {etiquetaMinutos(minutosReales)}
+                  </Text>
+                  <Text fontSize={15} fontWeight="800" color="$text">
+                    {fmtHoras(horasHasta(revisando.Start_Time, minutosReales))}
+                  </Text>
+                </XStack>
+
+                {/* Los tres valores de siempre, a un toque: quedarse con lo
+                    pedido, con el reloj, o no reconocer hora extra. El borde
+                    marca cuál está puesto. */}
+                <XStack gap="$2">
+                  {revisando.End_Time && (
+                    <Button
+                      flex={1} height={36} borderRadius={9}
+                      backgroundColor="$backgroundSurface"
+                      borderWidth={1}
+                      borderColor={minutosReales === minutosDe(revisando.End_Time) ? '$primary' : '$border'}
+                      pressStyle={{ opacity: 0.7 }}
+                      onPress={() => fijarHora(minutosDe(revisando.End_Time) ?? 0)}
+                    >
+                      <Text fontSize={11} fontWeight="700" color="$textSecondary" numberOfLines={1}>
+                        Solicitado
+                      </Text>
+                    </Button>
+                  )}
+
+                  {revisando.Clock_Out && (
+                    <Button
+                      flex={1} height={36} borderRadius={9}
+                      backgroundColor="$backgroundSurface"
+                      borderWidth={1}
+                      borderColor={minutosReales === minutosDe(revisando.Clock_Out) ? '$primary' : '$border'}
+                      pressStyle={{ opacity: 0.7 }}
+                      onPress={() => fijarHora(minutosDe(revisando.Clock_Out) ?? 0)}
+                    >
+                      <Text fontSize={11} fontWeight="700" color="$textSecondary" numberOfLines={1}>
+                        Marcaje
+                      </Text>
+                    </Button>
+                  )}
+
+                  {/* Trabajó su jornada y nada más: cero horas extra. Los dos
+                      extremos caen en el inicio, que es como se dice cero en
+                      este modelo. */}
+                  <Button
+                    flex={1} height={36} borderRadius={9}
+                    backgroundColor="$backgroundSurface"
+                    borderWidth={1}
+                    borderColor={minutosReales === minutosDe(revisando.Start_Time) ? '$primary' : '$border'}
+                    pressStyle={{ opacity: 0.7 }}
+                    onPress={() => fijarHora(minutosDe(revisando.Start_Time) ?? 0)}
+                  >
+                    <Text fontSize={11} fontWeight="700" color="$textSecondary" numberOfLines={1}>
+                      Sin extra
+                    </Text>
+                  </Button>
+                </XStack>
+
+                {/* Reconocer más de lo que dice el reloj se puede, pero no en
+                    silencio: es lo que después hay que poder explicar. */}
+                {revisando.Clock_Out &&
+                  horasHasta(revisando.Start_Time, minutosReales) >
+                    (revisando.Worked_Overtime_Hours ?? 0) + 0.001 && (
+                  <Text fontSize={11} color="#B45309">
+                    Es más de lo que dice el reloj.
+                  </Text>
+                )}
+
+                {/* Que la firma cierre o no la revisión depende de la hora que
+                    se está eligiendo, así que el aviso se recalcula con cada
+                    toque: si saliera fijo, diría lo contrario en cuanto se
+                    ajuste el horario. */}
+                {escala(revisando, horasHasta(revisando.Start_Time, minutosReales)) && (
+                  <Text fontSize={11} color="#B45309" lineHeight={15}>
+                    Son más de {fmtHoras(revisando.Tolerancia_Segunda_Firma)} sobre lo solicitado:
+                    va a necesitar también la firma de la siguiente etapa.
+                  </Text>
+                )}
+              </YStack>
+
+              <XStack gap="$3" marginTop={16}>
+                <Button
+                  flex={1} height={44} borderRadius={10}
+                  backgroundColor="$backgroundSurface"
+                  borderWidth={1} borderColor="$border"
+                  pressStyle={{ opacity: 0.7 }}
+                  onPress={() => setRevisando(null)}
+                >
+                  <Text color="$text" fontWeight="600">Cancelar</Text>
+                </Button>
+                <Button
+                  flex={1} height={44} borderRadius={10}
+                  backgroundColor={horaValida ? '$success' : '$border'}
+                  pressStyle={{ opacity: 0.85 }}
+                  disabled={!horaValida}
+                  onPress={confirmarHorario}
+                >
+                  <Text color={horaValida ? 'white' : '$textMuted'} fontWeight="700">Continuar</Text>
+                </Button>
+              </XStack>
+            </View>
+          )}
+        </ScrollView>
+      </Modal>
 
       {/* Rechazar: el motivo es obligatorio, así que no alcanza un confirm */}
       <Modal
@@ -805,13 +1384,25 @@ export default function RevisionHorasExtraScreen() {
                   Rechazar diferencia
                 </Text>
                 <Text fontSize={13} color="$textMuted" marginBottom="$3">
-                  {rechazando
-                    ? rechazando.length === 1
-                      ? `Se le pagarán las ${fmtHoras(rechazando[0].Requested_Overtime_Hours)} solicitadas. Indica por qué.`
-                      : `A ${rechazando.length} empleados se les pagarán solo las horas SOLICITADAS: ` +
-                        `${fmtHoras(horasDelLote(rechazando, false))} en lugar de las ` +
-                        `${fmtHoras(horasDelLote(rechazando, true))} del marcaje. Indica por qué.`
-                    : ''}
+                  {!rechazando
+                    ? ''
+                    : esPrimeraEntidad
+                      // Rechazar en la primera etapa es no reconocer nada más
+                      // que lo pedido, y cierra el flujo.
+                      ? rechazando.length === 1
+                        ? `Se le pagarán las ${fmtHoras(rechazando[0].Requested_Overtime_Hours)} solicitadas. Indica por qué.`
+                        : `A ${rechazando.length} empleados se les pagarán solo las horas SOLICITADAS: ` +
+                          `${fmtHoras(horasDelLote(rechazando, false, true))} en lugar de las ` +
+                          `${fmtHoras(horasDelLote(rechazando, true, true))} del marcaje. Indica por qué.`
+                      // En una etapa posterior no se rechaza la solicitud sino
+                      // la REVISIÓN de la primera entidad: lo que queda en pie
+                      // es el reloj.
+                      : rechazando.length === 1
+                        ? `No se aceptará el horario revisado: valdrán las ` +
+                          `${fmtHoras(rechazando[0].Worked_Overtime_Hours)} del marcaje. Indica por qué.`
+                        : `A ${rechazando.length} empleados no se les aceptará el horario revisado: ` +
+                          `valdrán ${fmtHoras(horasDelLote(rechazando, false, false))} del marcaje en lugar de las ` +
+                          `${fmtHoras(horasDelLote(rechazando, true, false))} revisadas. Indica por qué.`}
                 </Text>
               </YStack>
 
@@ -1003,7 +1594,7 @@ function RevisionGrupoCard({
           <YStack alignItems="flex-end" gap={2}>
             {/* De dónde a dónde se mueven las horas: es la decisión entera */}
             <Text fontSize={14} fontWeight="800" color="$text">
-              {fmtHoras(grupo.horasSolicitadas)} → {fmtHoras(grupo.horasMarcaje)}
+              {fmtHoras(grupo.horasSolicitadas)} → {fmtHoras(grupo.horasAReconocer)}
             </Text>
             {hayCosto && (
               <Text
@@ -1060,11 +1651,20 @@ function RevisionGrupoCard({
                       <Text fontSize={11} color="$textMuted">
                         {fmtHoras(r.Requested_Overtime_Hours)} solicitadas · {fmtHoras(r.Worked_Overtime_Hours)} de marcaje
                       </Text>
+
+                      {/* El horario que reviso la primera entidad. Solo existe
+                          una vez que esa firma paso, asi que en su propia
+                          bandeja esta linea no aparece. */}
+                      {!!r.Real_End_Time && (
+                        <Text fontSize={11} fontWeight="700" color="$success" numberOfLines={1}>
+                          Revisado: se fue {fmtHora(r.Real_End_Time)} · {fmtHoras(r.Real_Overtime_Hours)}
+                        </Text>
+                      )}
                     </YStack>
 
                     <YStack alignItems="flex-end" gap={2}>
                       <Text fontSize={14} fontWeight="700" color="$text">
-                        {fmtHoras(r.Worked_Overtime_Hours)}
+                        {fmtHoras(r.Real_Overtime_Hours ?? r.Worked_Overtime_Hours)}
                       </Text>
                       {veCosto && costo && (
                         <Text
@@ -1414,7 +2014,7 @@ function ImpactoRevision({ filas, aprueba }: { filas: IOvertimeReviewImpact[]; a
                   {r.Area_Nombre || r.Area_Codigo}
                 </Text>
                 <Text fontSize={10} color="$textMuted">
-                  {fmtHoras(r.Horas_Solicitadas)} solicitadas · {fmtHoras(r.Horas_Marcaje)} de marcaje
+                  {fmtHoras(r.Horas_Solicitadas)} solicitadas · {fmtHoras(r.Horas_A_Reconocer)} a reconocer
                 </Text>
               </YStack>
 
