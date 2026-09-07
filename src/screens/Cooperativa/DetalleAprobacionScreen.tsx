@@ -33,6 +33,7 @@ import {
   FichaEmpleado,
   ResumenPrestaciones,
   CadenaFirmas,
+  DesgloseRefinanciamiento,
 } from './AprobacionPrestamosScreen'
 
 /**
@@ -285,6 +286,10 @@ export default function DetalleAprobacionScreen() {
                   DATOS DEL PRÉSTAMO
                 </Text>
               </XStack>
+
+              {/* El desglose antes que tipo y plazo: cambia qué significa el
+                  monto grande de arriba — parte es deuda que ya existe. */}
+              <DesgloseRefinanciamiento s={s} />
 
               <XStack gap="$2.5">
                 <View flex={1}>

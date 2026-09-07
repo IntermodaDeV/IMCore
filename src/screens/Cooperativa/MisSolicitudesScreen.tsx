@@ -22,6 +22,7 @@ import { handleError } from '../../utils/errorHandler'
 import SkeletonForm from '../../components/Skeletons/SkeletonForm'
 import { shadows } from '../../theme/shadows'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
+import { DesgloseRefinanciamiento } from './AprobacionPrestamosScreen'
 
 /**
  * Mis solicitudes (ruta 'RequestCoo', menú 1046).
@@ -475,6 +476,11 @@ export default function MisSolicitudesScreen() {
                     )}
                   </YStack>
                 </XStack>
+
+                {/* Si es refinanciamiento, el monto de arriba no es todo dinero
+                    nuevo: parte es lo que ya debía. Sin el desglose, el socio
+                    ve un préstamo de 65,000 donde pidió 20,000. */}
+                <DesgloseRefinanciamiento s={r} />
 
                 {!!r.Descripcion && (
                   <Text fontSize={14} color="$text" lineHeight={20}>

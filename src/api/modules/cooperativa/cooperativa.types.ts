@@ -204,6 +204,20 @@ export type ICrearSolicitud = {
   Descripcion?: string
   Deduccion13vo?: number
   Deduccion14vo?: number
+
+  /**
+   * El préstamo que se refinancia. Si va, la solicitud es un refinanciamiento
+   * y `Monto` se ignora.
+   *
+   * Solo viaja el Id: el saldo, la fecha y las cuotas los resuelve el servidor
+   * contra Cooperativa. El saldo es cuánto debe, no algo que el teléfono pueda
+   * declarar — si se aceptara de acá, refinanciar sería la forma de pedir
+   * cualquier monto diciendo que ya lo debía.
+   */
+  RefinanciaPrestamoId?: number
+
+  /** Cuánto pide DE MÁS sobre el saldo. Puede ser 0: solo estirar el plazo. */
+  MontoAdicional?: number
 }
 
 /**
@@ -299,6 +313,30 @@ export type ISolicitudPrestamo = {
   Creation_Date: string | null
   Modified_By: string | null
   Modification_Date: string | null
+
+  // ----------------------------------------------------------------------
+  // Refinanciamiento
+  //
+  // `Monto` (arriba) sigue siendo EL TOTAL: SaldoAnterior + MontoAdicional.
+  // Estos campos son el desglose, y son una FOTO del día que lo pidió — el
+  // saldo baja con cada descuento, así que consultarlo al aprobar daría un
+  // número distinto del que se pidió y del que se aprobó.
+  // ----------------------------------------------------------------------
+
+  /** false en una solicitud normal. */
+  EsRefinanciamiento: boolean
+  /** El PrestamoId de Cooperativa que se reemplaza. */
+  PrestamoAnteriorId: number | null
+  PrestamoAnteriorMonto: number | null
+  PrestamoAnteriorFecha: string | null
+  PrestamoAnteriorCuotasTotal: number | null
+  PrestamoAnteriorCuotasPagadas: number | null
+  /** Meses que llevaba con el anterior AL PEDIRLO, no hasta hoy. */
+  PrestamoAnteriorMeses: number | null
+  /** Lo que debía al pedirlo. Es lo que arrastra el préstamo nuevo. */
+  SaldoAnterior: number | null
+  /** Lo que pide de más sobre ese saldo. */
+  MontoAdicional: number | null
 
   /**
    * Área, puesto, jefe y antigüedad del solicitante.
@@ -668,6 +706,12 @@ export type IEditarSolicitud = {
   Descripcion?: string
   Deduccion13vo?: number
   Deduccion14vo?: number
+
+  /**
+   * En un refinanciamiento, lo único del monto que se puede cambiar. El saldo
+   * arrastrado no: el servidor recalcula el total con el que ya tiene guardado.
+   */
+  MontoAdicional?: number
 }
 
 

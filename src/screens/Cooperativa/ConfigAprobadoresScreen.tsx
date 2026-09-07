@@ -314,6 +314,14 @@ export default function ConfigAprobadoresScreen() {
       }
 
       showToast('success', 'Guardado', `${c.NombrePlanilla} · ${c.Tipo}`, 3000, 'top')
+
+      // El buscador se limpia al guardar. Lo escrito servía para armar ESTA
+      // configuración; una vez guardada, dejar el texto y los resultados
+      // puestos invita a seguir marcando gente sobre algo que ya se cerró, y no
+      // se distingue de una búsqueda recién hecha.
+      setBusqueda('')
+      setResultados([])
+
       await consultar()
     } catch (err) {
       showToast('error', 'Error', handleError(err).message, 5000, 'top')

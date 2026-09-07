@@ -6,6 +6,7 @@ import {
   Coins, CalendarDays, User, Clock, CheckCircle2, XCircle,
   Tag, Inbox, RotateCw, Wallet, Briefcase, UserCog,
   Check, X, Users, Square, SquareCheck, IdCard, ChevronDown, Pencil, Percent,
+  RefreshCcw,
 } from 'lucide-react-native'
 import { cooperativaService } from '../../api/modules/cooperativa/cooperativa.service'
 import {
@@ -499,6 +500,95 @@ const VISUAL_ESTADO = (code: string | null) => {
  * lejos de la etiqueta que lo nombra: el bloque se lee como cuatro cosas
  * sueltas en vez de dos pares. Apilados, las columnas quedan a plomo.
  */
+/**
+ * El desglose de un refinanciamiento, para quien aprueba.
+ *
+ * Sin esto, la solicitud llega como un préstamo de 65,000 y no se distingue de
+ * uno nuevo por ese monto. Son cosas distintas: acá 45,000 son deuda que ya
+ * existe y solo cambia de préstamo, y lo que realmente se está prestando de
+ * nuevo son 20,000.
+ *
+ * Los números son la FOTO del día que lo pidió, no el saldo de hoy: es sobre
+ * eso que se decide, y si se moviera con cada pago, dos aprobadores mirando la
+ * misma solicitud verían montos distintos.
+ *
+ * Devuelve null cuando la solicitud no es un refinanciamiento, así quien la usa
+ * no tiene que envolverla en una condición.
+ */
+export function DesgloseRefinanciamiento({ s }: { s: ISolicitudPrestamo }) {
+  if (!s.EsRefinanciamiento) return null
+
+  const saldo = s.SaldoAnterior ?? 0
+  const adicional = s.MontoAdicional ?? 0
+  const meses = s.PrestamoAnteriorMeses
+
+  const antiguedadTexto = (() => {
+    if (meses == null || meses < 0) return null
+    if (meses === 0) return 'menos de un mes'
+    const anios = Math.floor(meses / 12)
+    const resto = meses % 12
+    const partes: string[] = []
+    if (anios > 0) partes.push(`${anios} ${anios === 1 ? 'año' : 'años'}`)
+    if (resto > 0) partes.push(`${resto} ${resto === 1 ? 'mes' : 'meses'}`)
+    return partes.join(' ')
+  })()
+
+  return (
+    <YStack
+      gap="$2"
+      padding="$3"
+      borderRadius="$3"
+      backgroundColor="$backgroundSurface"
+      borderWidth={1}
+      borderColor="$primary"
+    >
+      <XStack alignItems="center" gap="$1.5">
+        <RefreshCcw size={12} color="#FF551A" />
+        <Text fontSize={10} fontWeight="800" color="$primary" letterSpacing={0.4}>
+          REFINANCIAMIENTO
+        </Text>
+      </XStack>
+
+      <XStack alignItems="center" gap="$2">
+        <Text fontSize={12} color="$textMuted" flex={1}>Deuda que arrastra</Text>
+        <Text fontSize={13} color="$text" fontWeight="600">{formatMonto(saldo)}</Text>
+      </XStack>
+
+      {/* Lo que de verdad se está prestando de nuevo. Es el número sobre el que
+          se decide, y por eso va marcado. */}
+      <XStack alignItems="center" gap="$2">
+        <Text fontSize={12} color="$textMuted" flex={1}>Dinero nuevo que pide</Text>
+        <Text fontSize={13} color="$primary" fontWeight="800">{formatMonto(adicional)}</Text>
+      </XStack>
+
+      <XStack
+        alignItems="center"
+        gap="$2"
+        paddingTop="$2"
+        borderTopWidth={1}
+        borderTopColor="$border"
+      >
+        <Text fontSize={12} fontWeight="700" color="$text" flex={1}>Préstamo nuevo</Text>
+        <Text fontSize={14} fontWeight="700" color="$text">{formatMonto(s.Monto)}</Text>
+      </XStack>
+
+      {/* Cómo venía pagando el anterior: es lo que dice si conviene o no. */}
+      {(!!antiguedadTexto || !!s.PrestamoAnteriorCuotasTotal) && (
+        <Text fontSize={11} color="$textMuted" lineHeight={16}>
+          {antiguedadTexto ? `Llevaba ${antiguedadTexto} con el anterior` : ''}
+          {antiguedadTexto && s.PrestamoAnteriorCuotasTotal ? ' · ' : ''}
+          {s.PrestamoAnteriorCuotasTotal
+            ? `${s.PrestamoAnteriorCuotasPagadas ?? 0} de ${s.PrestamoAnteriorCuotasTotal} cuotas pagadas`
+            : ''}
+          {s.PrestamoAnteriorMonto != null
+            ? ` · era de ${formatMonto(s.PrestamoAnteriorMonto)}`
+            : ''}
+        </Text>
+      )}
+    </YStack>
+  )
+}
+
 export function Dato({
   icono: Icono,
   etiqueta,
@@ -1442,6 +1532,11 @@ export default function AprobacionPrestamosScreen() {
                     DATOS DEL PRÉSTAMO
                   </Text>
                 </XStack>
+
+                {/* Antes de tipo y plazo: cambia qué significa el monto que ya
+                    se leyó arriba — parte es deuda vieja que solo cambia de
+                    préstamo. */}
+                <DesgloseRefinanciamiento s={s} />
 
                 {/* Tres columnas: lo que pide, en cuánto tiempo y cuándo.
                     Los tres son cortos y así el bloque entra en un renglón.

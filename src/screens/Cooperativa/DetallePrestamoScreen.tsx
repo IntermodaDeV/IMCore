@@ -68,11 +68,11 @@ function Dato({
 }) {
   return (
     <YStack>
-      <XStack gap="$1.5" alignItems="center">
-        <Icono size={11} color="#94A3B8" />
-        <Text fontSize={10} color="$textMuted">{etiqueta}</Text>
+      <XStack gap="$1" alignItems="center">
+        <Icono size={10} color="#94A3B8" />
+        <Text fontSize={9} color="$textMuted">{etiqueta}</Text>
       </XStack>
-      <Text fontSize={13} color="$text" fontWeight="600" lineHeight={18}>
+      <Text fontSize={12} color="$text" fontWeight="600" lineHeight={16}>
         {valor}
       </Text>
     </YStack>
@@ -145,23 +145,23 @@ export default function DetallePrestamoScreen() {
 
   if (cuotas.length === 0) {
     return (
-      <YStack flex={1} backgroundColor="$backgroundPage" padding="$5" gap="$3" alignItems="center">
-        <Wallet size={30} color="#94A3B8" />
+      <YStack flex={1} backgroundColor="$backgroundPage" padding="$4" gap="$2.5" alignItems="center">
+        <Wallet size={26} color="#94A3B8" />
         {/* Dos textos según de dónde vino: por préstamo el registro ya existe
             y lo que falta es su plan; por solicitud puede que ni préstamo
             haya. Decir "esta solicitud" en el histórico confundiría. */}
-        <Text fontSize={15} color="$text" textAlign="center">
+        <Text fontSize={14} color="$text" textAlign="center">
           {prestamoId > 0
             ? 'Este préstamo no tiene un plan de cuotas cargado.'
             : 'Esta solicitud todavía no tiene un préstamo con plan de cuotas.'}
         </Text>
-        <Text fontSize={13} color="$textMuted" textAlign="center" lineHeight={19}>
+        <Text fontSize={12} color="$textMuted" textAlign="center" lineHeight={17}>
           {prestamoId > 0
             ? 'Consulte con la cooperativa para ver el detalle de sus pagos.'
             : 'Aparece aquí en cuanto la cooperativa lo registre.'}
         </Text>
-        <Button height={42} borderRadius={10} marginTop="$2" onPress={() => navigation.goBack()}>
-          <Text fontSize={14} fontWeight="700" color="$text">Volver</Text>
+        <Button height={38} borderRadius={9} marginTop="$1.5" onPress={() => navigation.goBack()}>
+          <Text fontSize={13} fontWeight="700" color="$text">Volver</Text>
         </Button>
       </YStack>
     )
@@ -176,27 +176,27 @@ export default function DetallePrestamoScreen() {
     <ScrollView
       flex={1}
       backgroundColor="$backgroundPage"
-      contentContainerStyle={{ padding: 16, paddingBottom: 32, gap: 12 }}
+      contentContainerStyle={{ padding: 12, paddingBottom: 24, gap: 8 }}
       refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} />}
     >
       {/* ── El préstamo. Lo que se pidió y con qué condiciones. ────────── */}
       <YStack
-        gap="$3"
-        padding="$4"
+        gap="$2.5"
+        padding="$3"
         borderRadius="$4"
         backgroundColor="$backgroundElevated"
         borderWidth={1}
         borderColor="$border"
         {...shadows.sm}
       >
-        <YStack gap="$1">
-          <Text fontSize={13} color="$textMuted">Préstamo #{p.PrestamoId}</Text>
-          <Text fontSize={26} fontWeight="700" color="$text">
+        <YStack gap="$0.5">
+          <Text fontSize={11} color="$textMuted">Préstamo #{p.PrestamoId}</Text>
+          <Text fontSize={22} fontWeight="700" color="$text">
             {formatMonto(p.Monto)}
           </Text>
         </YStack>
 
-        <XStack gap="$2.5" paddingTop="$2.5" borderTopWidth={1} borderTopColor="$border">
+        <XStack gap="$2" paddingTop="$2" borderTopWidth={1} borderTopColor="$border">
           <View flex={1}>
             <Dato icono={Coins} etiqueta="Cuota" valor={formatMonto(p.Cuota)} />
           </View>
@@ -217,24 +217,24 @@ export default function DetallePrestamoScreen() {
         {/* El avance: cuántas cuotas van. Es lo que el socio busca de un
             vistazo, antes de leer el plan renglón por renglón. */}
         <YStack
-          gap="$2"
-          padding="$2.5"
-          borderRadius={10}
+          gap="$1.5"
+          padding="$2"
+          borderRadius={8}
           backgroundColor="$backgroundSurface"
           borderWidth={1}
           borderColor="$border"
         >
           <XStack alignItems="center" gap="$2">
-            <Text fontSize={12} color="$textMuted" flex={1}>Cuotas pagadas</Text>
-            <Text fontSize={15} fontWeight="700" color="$text">
+            <Text fontSize={11} color="$textMuted" flex={1}>Cuotas pagadas</Text>
+            <Text fontSize={13} fontWeight="700" color="$text">
               {pagadas} de {cuotas.length}
             </Text>
           </XStack>
 
           {/* La barra dice lo mismo que el número, pero se lee sin leerlo. */}
-          <View height={6} borderRadius={3} backgroundColor="$border" overflow="hidden">
+          <View height={5} borderRadius={3} backgroundColor="$border" overflow="hidden">
             <View
-              height={6}
+              height={5}
               borderRadius={3}
               backgroundColor={pagadas === cuotas.length ? '#22C55E' : '#FF551A'}
               width={`${Math.round((pagadas / cuotas.length) * 100)}%`}
@@ -245,8 +245,8 @@ export default function DetallePrestamoScreen() {
 
       {/* ── El plan, cuota por cuota ───────────────────────────────────── */}
       <YStack
-        gap="$2"
-        padding="$4"
+        gap="$1.5"
+        padding="$3"
         borderRadius="$4"
         backgroundColor="$backgroundElevated"
         borderWidth={1}
@@ -254,19 +254,19 @@ export default function DetallePrestamoScreen() {
         {...shadows.sm}
       >
         <XStack alignItems="center" gap="$1.5">
-          <CalendarDays size={12} color="#94A3B8" />
-          <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+          <CalendarDays size={11} color="#94A3B8" />
+          <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
             PLAN DE PAGOS
           </Text>
         </XStack>
 
         {/* Los encabezados de columna, para no repetir la etiqueta en cada
             renglón: con 120 cuotas eso sería una pared de texto. */}
-        <XStack alignItems="center" gap="$2" paddingTop="$1">
-          <Text fontSize={10} color="$textMuted" width={46}>N.º</Text>
-          <Text fontSize={10} color="$textMuted" flex={1}>FECHA</Text>
-          <Text fontSize={10} color="$textMuted" width={82} textAlign="right">CUOTA</Text>
-          <Text fontSize={10} color="$textMuted" width={92} textAlign="right">SALDO</Text>
+        <XStack alignItems="center" gap="$1.5">
+          <Text fontSize={9} color="$textMuted" width={40}>N.º</Text>
+          <Text fontSize={9} color="$textMuted" flex={1}>FECHA</Text>
+          <Text fontSize={9} color="$textMuted" width={76} textAlign="right">CUOTA</Text>
+          <Text fontSize={9} color="$textMuted" width={86} textAlign="right">SALDO</Text>
         </XStack>
 
         {/* Sin desglose de capital e interés: la cuota es lo que se le
@@ -277,22 +277,22 @@ export default function DetallePrestamoScreen() {
           <XStack
             key={c.NumeroCuota}
             alignItems="center"
-            gap="$2"
-            paddingVertical="$2"
+            gap="$1.5"
+            paddingVertical="$1.5"
             borderTopWidth={1}
             borderTopColor="$border"
           >
-            <XStack width={46} alignItems="center" gap="$1.5">
+            <XStack width={40} alignItems="center" gap="$1">
               {/* El check dice de un vistazo cuáles ya se pagaron, sin tener
                   que comparar montos. */}
               {c.Pagada
-                ? <CheckCircle2 size={12} color="#22C55E" />
-                : <Clock size={12} color="#94A3B8" />}
-              <Text fontSize={12} color="$textMuted">{c.NumeroCuota}</Text>
+                ? <CheckCircle2 size={11} color="#22C55E" />
+                : <Clock size={11} color="#94A3B8" />}
+              <Text fontSize={11} color="$textMuted">{c.NumeroCuota}</Text>
             </XStack>
 
             <Text
-              fontSize={13}
+              fontSize={12}
               color={c.Pagada ? '$textMuted' : '$text'}
               flex={1}
             >
@@ -300,10 +300,10 @@ export default function DetallePrestamoScreen() {
             </Text>
 
             <Text
-              fontSize={13}
+              fontSize={12}
               fontWeight="600"
               color={c.Pagada ? '$textMuted' : '$text'}
-              width={82}
+              width={76}
               textAlign="right"
             >
               {formatMonto(c.TotalCuota)}
@@ -311,7 +311,7 @@ export default function DetallePrestamoScreen() {
 
             {/* El saldo que deja esa cuota: es lo que le permite ver cómo va
                 bajando la deuda. */}
-            <Text fontSize={13} color="$textMuted" width={92} textAlign="right">
+            <Text fontSize={12} color="$textMuted" width={86} textAlign="right">
               {formatMonto(c.SaldoActual)}
             </Text>
           </XStack>
