@@ -107,6 +107,18 @@ const CONFIG_META: Record<
     max: 1440,
     ayudaRango: '0 apaga el seguimiento automático',
   },
+  // Cada cuánto se rehace la foto del último precio de compra de AX, que es el
+  // respaldo del costo cuando AX tiene la pieza valuada en un centavo. El barrido de
+  // AX dura ~80 s, así que no tiene sentido bajarlo mucho: los precios de compra no
+  // cambian varias veces al día.
+  'Repuestos.PrecioCompraAXHoras': {
+    label: 'Refrescar precios de compra de AX, cada',
+    kind: 'number',
+    unidad: 'h',
+    min: 0,
+    max: 168,
+    ayudaRango: '0 apaga el refresco automático',
+  },
   'Repuestos.CorreoDatosMaestros': {
     label: 'Correos de Datos Maestros (solicitudes de repuestos)',
     kind: 'texto',
