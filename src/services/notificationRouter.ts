@@ -101,6 +101,18 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
+  // El repuesto que pidio el mecanico ya entro a bodega -> su solicitud. Se abre
+  // primero el listado para que "atras" no lo deje fuera del modulo.
+  if (category === 'repuesto_ingresado') {
+    const id = Number(data.solicitudId ?? data.SolicitudId)
+    const numero = data.numero ?? data.Numero
+    navigateWhenReady('solicitudesRepuestos')
+    if (id > 0) {
+      setTimeout(() => navigateWhenReady('solicitudesRepuestosDetalle', { id, numero }), 300)
+    }
+    return true
+  }
+
   if (category === 'solicitud_compra') {
     const solicitud = data.solicitud ?? data.Solicitud
     navigateWhenReady('aprobacionSC', solicitud ? { solicitud: String(solicitud) } : undefined)
