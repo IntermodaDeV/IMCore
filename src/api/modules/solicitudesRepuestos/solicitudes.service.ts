@@ -41,7 +41,7 @@ export const solicitudesRepuestosService = {
     // que después permite medir cuánto paro costó esperarla.
     Ticket_Id?: number | null
     Observacion?: string | null
-    Lineas: { NumeroParte: string; Descripcion: string; Cantidad: number }[]
+    Lineas: { NumeroParte: string; Descripcion: string; Cantidad: number; PaginaManual?: string | null; FiguraManual?: string | null }[]
   }): Res<ISolicitudResult> => httpClient.post(schema, data),
 
   editar: (id: number, data: { Modelo: string; MotivoSolicitud_Id: number; Ticket_Id?: number | null; Observacion?: string | null }):
@@ -49,10 +49,12 @@ export const solicitudesRepuestosService = {
 
   anular: (id: number): Res<ISolicitudResult> => httpClient.delete(`${schema}/${id}`),
 
-  agregarLinea: (solicitudId: number, data: { NumeroParte: string; Descripcion: string; Cantidad: number }):
+  agregarLinea: (solicitudId: number, data: { NumeroParte: string; Descripcion: string; Cantidad: number; PaginaManual?: string | null; FiguraManual?: string | null }):
     Res<ISolicitudResult> => httpClient.post(`${schema}/${solicitudId}/Lineas`, data),
 
-  editarLinea: (lineaId: number, data: { NumeroParte: string; Descripcion: string; Cantidad: number }):
+  // OJO con omitir PaginaManual/FiguraManual: el servidor DEJA lo que ya estaba
+  // (misma regla que Categoria/CentroCosto). Para borrarlas se manda cadena vacía.
+  editarLinea: (lineaId: number, data: { NumeroParte: string; Descripcion: string; Cantidad: number; PaginaManual?: string | null; FiguraManual?: string | null }):
     Res<ISolicitudResult> => httpClient.put(`${schema}/Lineas/${lineaId}`, { ...data, Id: lineaId }),
 
   // anularSolicitud solo aplica cuando era el ÚLTIMO repuesto: cierra el número

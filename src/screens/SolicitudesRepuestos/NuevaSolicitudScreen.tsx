@@ -15,7 +15,16 @@ import { ITicket } from '../../api/modules/mantenimiento/tickets.types'
 import { shadows } from '../../theme/shadows'
 import { ACCENT, ESTADOS_TICKET_ABIERTO } from './components'
 
-type Pieza = { NumeroParte: string; Descripcion: string; Cantidad: string }
+type Pieza = {
+  NumeroParte: string
+  Descripcion: string
+  Cantidad: string
+  // Dónde salió la pieza en el manual. Opcionales: le ahorran a quien codifica
+  // buscarla de nuevo, pero no pueden trancar el pedido de una pieza urgente.
+  PaginaManual: string
+  FiguraManual: string
+}
+const PIEZA_VACIA: Pieza = { NumeroParte: '', Descripcion: '', Cantidad: '1', PaginaManual: '', FiguraManual: '' }
 
 // El formato de papel, en la tablet. Un modelo por solicitud: si necesita piezas
 // de otra máquina, es otra solicitud (así el correo a Datos Maestros y el
@@ -42,7 +51,7 @@ export default function NuevaSolicitudScreen() {
   const [modelo, setModelo] = useState('')
   const [motivoId, setMotivoId] = useState<number | null>(null)
   const [observacion, setObservacion] = useState('')
-  const [piezas, setPiezas] = useState<Pieza[]>([{ NumeroParte: '', Descripcion: '', Cantidad: '1' }])
+  const [piezas, setPiezas] = useState<Pieza[]>([{ ...PIEZA_VACIA }])
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [buscador, setBuscador] = useState(false)
@@ -50,6 +59,7 @@ export default function NuevaSolicitudScreen() {
   const [tickets, setTickets] = useState<ITicket[]>([])
   const [ticket, setTicket] = useState<ITicket | null>(null)
   const [buscadorTicket, setBuscadorTicket] = useState(false)
+  const [buscadorMotivo, setBuscadorMotivo] = useState(false)
   const [ticketsDeTodos, setTicketsDeTodos] = useState(false)   // ignorar el filtro por modelo
 
   // Los catálogos se cargan UNA vez, al montar. Sin el array de dependencias
@@ -97,6 +107,8 @@ export default function NuevaSolicitudScreen() {
     return tickets.filter(t => (t.Modelo ?? '') === modelo)
   }, [tickets, modelo, ticketsDeTodos])
 
+  const motivoSel = useMemo(() => motivos.find(m => m.Id === motivoId) ?? null, [motivos, motivoId])
+
   const setPieza = (i: number, campo: keyof Pieza, v: string) =>
     setPiezas(ps => ps.map((p, j) => (j === i ? { ...p, [campo]: v } : p)))
 
@@ -109,6 +121,10 @@ export default function NuevaSolicitudScreen() {
         NumeroParte: p.NumeroParte.trim(),
         Descripcion: p.Descripcion.trim(),
         Cantidad: Math.max(1, parseInt(p.Cantidad, 10) || 1),
+        // Vacío viaja como null: así el servidor guarda NULL y la pantalla de
+        // quien codifica muestra el guion, no una cadena vacía que parece dato.
+        PaginaManual: p.PaginaManual.trim() || null,
+        FiguraManual: p.FiguraManual.trim() || null,
       }))
       .filter(p => p.NumeroParte || p.Descripcion)
 
@@ -202,32 +218,25 @@ export default function NuevaSolicitudScreen() {
             </Text>
           </YStack>
 
+          {/* Desplegable y no cuatro tarjetas de radio: los motivos son textos
+              largos que ocupaban media pantalla y empujaban los repuestos —que es
+              lo que el mecánico viene a llenar— fuera de la vista. Mismo control
+              que Modelo y Ticket, para que los tres campos se toquen igual. */}
           <YStack gap="$1.5">
             <Text fontSize="$2" fontWeight="700" color="$textMuted">¿POR QUÉ LO NECESITA?</Text>
-            {motivos.map(m => {
-              const sel = m.Id === motivoId
-              return (
-                <View
-                  key={m.Id}
-                  onPress={() => setMotivoId(m.Id)}
-                  pressStyle={{ opacity: 0.85 }}
-                  backgroundColor={sel ? 'rgba(255,85,26,0.08)' : '$backgroundElevated'}
-                  borderWidth={1} borderColor={sel ? ACCENT : '$border'}
-                  borderRadius="$4" paddingHorizontal="$3.5" paddingVertical="$3"
-                >
-                  <XStack alignItems="center" gap="$2.5">
-                    <View
-                      width={18} height={18} borderRadius={9} borderWidth={2}
-                      borderColor={sel ? ACCENT : theme.border?.val}
-                      alignItems="center" justifyContent="center"
-                    >
-                      {sel && <View width={9} height={9} borderRadius={5} backgroundColor={ACCENT} />}
-                    </View>
-                    <Text flex={1} fontSize="$3" color="$text">{m.Name}</Text>
-                  </XStack>
-                </View>
-              )
-            })}
+            <View
+              onPress={() => setBuscadorMotivo(true)}
+              pressStyle={{ opacity: 0.85 }}
+              backgroundColor="$backgroundElevated" borderWidth={1} borderColor="$border"
+              borderRadius="$4" paddingHorizontal="$3.5" paddingVertical="$3"
+            >
+              <XStack alignItems="center" gap="$2">
+                <Text flex={1} fontSize="$3" color={motivoSel ? '$text' : '$textMuted'}>
+                  {motivoSel?.Name ?? 'Elija el motivo'}
+                </Text>
+                <ChevronDown size={18} color={theme.textMuted?.val} />
+              </XStack>
+            </View>
           </YStack>
 
           <YStack gap="$1.5">
@@ -249,7 +258,7 @@ export default function NuevaSolicitudScreen() {
             <XStack alignItems="center" justifyContent="space-between">
               <Text fontSize="$2" fontWeight="700" color="$textMuted">REPUESTOS QUE NECESITA</Text>
               <View
-                onPress={() => setPiezas(ps => [...ps, { NumeroParte: '', Descripcion: '', Cantidad: '1' }])}
+                onPress={() => setPiezas(ps => [...ps, { ...PIEZA_VACIA }])}
                 pressStyle={{ opacity: 0.8 }}
                 backgroundColor="rgba(255,85,26,0.10)" borderRadius="$10"
                 paddingHorizontal="$2.5" paddingVertical="$1.5"
@@ -295,6 +304,35 @@ export default function NuevaSolicitudScreen() {
                   autoCapitalize="characters"
                   backgroundColor="$background"
                 />
+                {/* Página y figura del manual: en una fila, porque son el par que
+                    se lee junto y ocupan poco. Sin autoCapitalize characters: acá
+                    se teclean números y guiones, no nombres de pieza. */}
+                <XStack gap="$2">
+                  <YStack flex={1} gap="$1">
+                    <Text fontSize="$2" color="$textMuted">Página del manual</Text>
+                    <Input
+                      value={p.PaginaManual}
+                      onChangeText={v => setPieza(i, 'PaginaManual', v)}
+                      placeholder="4-7"
+                      placeholderTextColor={theme.textMuted?.val}
+                      color="$text"
+                      onFocus={subirCampo}
+                      backgroundColor="$background"
+                    />
+                  </YStack>
+                  <YStack flex={1} gap="$1">
+                    <Text fontSize="$2" color="$textMuted">Figura</Text>
+                    <Input
+                      value={p.FiguraManual}
+                      onChangeText={v => setPieza(i, 'FiguraManual', v)}
+                      placeholder="12"
+                      placeholderTextColor={theme.textMuted?.val}
+                      color="$text"
+                      onFocus={subirCampo}
+                      backgroundColor="$background"
+                    />
+                  </YStack>
+                </XStack>
                 <XStack alignItems="center" gap="$2">
                   <Text fontSize="$3" color="$textMuted">Cantidad</Text>
                   <Input
@@ -441,6 +479,46 @@ export default function NuevaSolicitudScreen() {
               </Text>
             }
           />
+        </YStack>
+      </Modal>
+
+      {/* Sin buscador: son cuatro opciones fijas. Un campo de búsqueda acá sería
+          un paso de más para una lista que cabe entera en la pantalla. */}
+      <Modal visible={buscadorMotivo} animationType="slide" transparent onRequestClose={() => setBuscadorMotivo(false)}>
+        <YStack flex={1} justifyContent="flex-end" backgroundColor="rgba(0,0,0,0.5)">
+          <View flex={1} onPress={() => setBuscadorMotivo(false)} />
+          <YStack
+            backgroundColor="$background"
+            borderTopLeftRadius="$6" borderTopRightRadius="$6"
+            paddingTop="$4" paddingHorizontal="$4"
+            paddingBottom={insets.bottom + 16}
+            gap="$2"
+          >
+            <XStack alignItems="center" justifyContent="space-between" paddingBottom="$2">
+              <Text fontSize="$4" fontWeight="700" color="$text">¿Por qué lo necesita?</Text>
+              <View onPress={() => setBuscadorMotivo(false)} pressStyle={{ opacity: 0.7 }} hitSlop={10} padding="$1">
+                <X size={20} color={theme.text?.val} />
+              </View>
+            </XStack>
+            {motivos.map(m => {
+              const sel = m.Id === motivoId
+              return (
+                <View
+                  key={m.Id}
+                  onPress={() => { setMotivoId(m.Id); setBuscadorMotivo(false) }}
+                  pressStyle={{ opacity: 0.85 }}
+                  backgroundColor={sel ? 'rgba(255,85,26,0.08)' : '$backgroundElevated'}
+                  borderWidth={1} borderColor={sel ? ACCENT : '$border'}
+                  borderRadius="$4" paddingHorizontal="$3.5" paddingVertical="$3"
+                >
+                  <XStack alignItems="center" gap="$2.5">
+                    <Text flex={1} fontSize="$3" color="$text">{m.Name}</Text>
+                    {sel && <Check size={18} color={ACCENT} />}
+                  </XStack>
+                </View>
+              )
+            })}
+          </YStack>
         </YStack>
       </Modal>
     </YStack>

@@ -56,6 +56,8 @@ export default function SolicitudDetailScreen() {
   const [edParte, setEdParte] = useState('')
   const [edNombre, setEdNombre] = useState('')
   const [edCant, setEdCant] = useState('1')
+  const [edPagina, setEdPagina] = useState('')
+  const [edFigura, setEdFigura] = useState('')
   const [referencia, setReferencia] = useState('')
 
   const cargar = useCallback(async () => {
@@ -149,6 +151,15 @@ export default function SolicitudDetailScreen() {
                 <YStack flex={1}>
                   <Text fontSize="$3" fontWeight="700" color="$text">{l.Descripcion}</Text>
                   <Text fontSize="$2" color="$textMuted">{l.NumeroParte}</Text>
+                  {/* De dónde salió ese número de parte. Solo se pinta si hay algo:
+                      un renglón vacío en cada tarjeta sería ruido. Aguanta que venga
+                      solo uno de los dos, que pasa cuando la figura no está numerada. */}
+                  {(l.PaginaManual || l.FiguraManual) && (
+                    <Text fontSize="$2" color="$textMuted">
+                      Manual{l.PaginaManual ? ` · pág. ${l.PaginaManual}` : ''}
+                      {l.FiguraManual ? ` · fig. ${l.FiguraManual}` : ''}
+                    </Text>
+                  )}
                 </YStack>
                 <Text fontSize="$3" fontWeight="700" color="$textMuted">x{l.Cantidad}</Text>
               </XStack>
@@ -223,6 +234,7 @@ export default function SolicitudDetailScreen() {
                     onPress={() => {
                       setEditando(l); setEdParte(l.NumeroParte)
                       setEdNombre(l.Descripcion); setEdCant(String(l.Cantidad ?? 1))
+                      setEdPagina(l.PaginaManual ?? ''); setEdFigura(l.FiguraManual ?? '')
                     }}
                     pressStyle={{ opacity: 0.8 }}
                     backgroundColor="$background" borderWidth={1} borderColor="$border"
@@ -344,6 +356,24 @@ export default function SolicitudDetailScreen() {
                   placeholder="Nombre según el manual" placeholderTextColor={theme.textMuted?.val}
                   color="$text" autoCapitalize="characters" backgroundColor="$background"
                 />
+                <XStack gap="$2">
+                  <YStack flex={1} gap="$1">
+                    <Text fontSize="$2" color="$textMuted">Página del manual</Text>
+                    <Input
+                      value={edPagina} onChangeText={setEdPagina}
+                      placeholder="4-7" placeholderTextColor={theme.textMuted?.val}
+                      color="$text" backgroundColor="$background"
+                    />
+                  </YStack>
+                  <YStack flex={1} gap="$1">
+                    <Text fontSize="$2" color="$textMuted">Figura</Text>
+                    <Input
+                      value={edFigura} onChangeText={setEdFigura}
+                      placeholder="12" placeholderTextColor={theme.textMuted?.val}
+                      color="$text" backgroundColor="$background"
+                    />
+                  </YStack>
+                </XStack>
                 <XStack alignItems="center" gap="$2">
                   <Text fontSize="$3" color="$textMuted">Cantidad</Text>
                   <Input
@@ -363,6 +393,11 @@ export default function SolicitudDetailScreen() {
                         NumeroParte: edParte.trim(),
                         Descripcion: edNombre.trim(),
                         Cantidad: Math.max(1, parseInt(edCant, 10) || 1),
+                        // Van SIEMPRE, aunque vayan vacías: acá vacío significa "las
+                        // borré". Omitirlas le diría al servidor que las deje como
+                        // estaban y borrar no haría nada.
+                        PaginaManual: edPagina.trim(),
+                        FiguraManual: edFigura.trim(),
                       }), 'Repuesto actualizado')
                       if (ok) setEditando(null)
                     }}

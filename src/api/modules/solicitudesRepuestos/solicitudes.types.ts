@@ -51,6 +51,10 @@ export interface ISolicitudLinea {
   Correlativo: string | null
   CodigoAX: string | null
   Barcode: string | null
+  // Dónde encontró el mecánico la pieza en el manual, para que quien codifica se
+  // vaya al dibujo exacto. Texto y no número: los manuales paginan '4-7', 'A-12'.
+  PaginaManual: string | null
+  FiguraManual: string | null
   Estado: EstadoSolicitud
   FechaEnvioDM: string | null
   FechaCreacionAX: string | null
