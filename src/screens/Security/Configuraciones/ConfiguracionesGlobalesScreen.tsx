@@ -119,6 +119,17 @@ const CONFIG_META: Record<
     max: 168,
     ayudaRango: '0 apaga el refresco automático',
   },
+  // El cierre de inventario de AX corrige, semanas después, el costo con que se
+  // posteó cada salida. Sin este refresco el costo por máquina se queda con el
+  // número provisional, y siempre para abajo.
+  'Repuestos.CostoLiquidadoHoras': {
+    label: 'Traer el costo liquidado de AX, cada',
+    kind: 'number',
+    unidad: 'h',
+    min: 0,
+    max: 168,
+    ayudaRango: '0 apaga la corrección automática',
+  },
   'Repuestos.CorreoDatosMaestros': {
     label: 'Correos de Datos Maestros (solicitudes de repuestos)',
     kind: 'texto',
