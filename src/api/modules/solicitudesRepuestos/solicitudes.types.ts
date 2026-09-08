@@ -97,8 +97,13 @@ export interface IModeloMaquina {
 }
 
 export interface ISolicitudPermisos {
+  /** Ver todas, mover el estado a mano y tocar líneas de otro. */
   PuedeGestionar: boolean
+  /** Corregir una solicitud después de que salió a Datos Maestros. */
   PuedeEditarEnviada: boolean
+  /** Código de AX, categoría y centro de costo, y el envío a Datos Maestros.
+   *  Llave propia (script 28): antes iba dentro de PuedeGestionar. */
+  PuedeCodificar: boolean
 }
 
 export interface ISolicitudResult {

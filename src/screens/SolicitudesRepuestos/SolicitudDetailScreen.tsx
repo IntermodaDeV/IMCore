@@ -44,6 +44,9 @@ export default function SolicitudDetailScreen() {
   const [sol, setSol] = useState<ISolicitud | null>(null)
   const [lineas, setLineas] = useState<ISolicitudLinea[]>([])
   const [gestiona, setGestiona] = useState(false)
+  // Codificar es de Óscar. Antes bastaba con gestionar, que además da "ver todas",
+  // así que un supervisor codificaba de rebote (script 28).
+  const [codifica, setCodifica] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [codigos, setCodigos] = useState<Record<number, string>>({})
   const [ocupado, setOcupado] = useState(false)
@@ -67,6 +70,7 @@ export default function SolicitudDetailScreen() {
       setSol(c.Data ?? null)
       setLineas(l.Data ?? [])
       setGestiona(!!c.Data?.PuedeGestionar)
+      setCodifica(!!c.Data?.PuedeCodificar)
     } catch (e: any) {
       showToast('error', 'Error', e?.message || 'No se pudo cargar la solicitud')
     } finally { setCargando(false) }
@@ -169,7 +173,7 @@ export default function SolicitudDetailScreen() {
                   <Text fontSize="$3" fontWeight="800" color="$text">{l.CodigoAX}</Text>
                   {l.BarcodeOk === false && <TriangleAlert size={14} color="#ea580c" />}
                 </XStack>
-              ) : gestiona && l.Estado === 'SOLICITADO' ? (
+              ) : codifica && l.Estado === 'SOLICITADO' ? (
                 <XStack gap="$2" alignItems="center">
                   <Input
                     flex={1}
