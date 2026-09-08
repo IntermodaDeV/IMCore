@@ -57,6 +57,10 @@ export interface ISalidaFactura extends ISalidaFacturaCabecera {
 export interface ISalidaFacturaAvance {
   TotalLineas: number
   LineasRevisadas: number
+  // Cuántas líneas CAMBIARON de estado. Solo lo llena el botón de validar toda la
+  // factura; al marcar una línea viene en 0. Puede ser menor que el total: las que
+  // ya estaban contadas no se vuelven a tocar.
+  LineasAfectadas: number
 }
 
 // Resultado de confirmar la salida.

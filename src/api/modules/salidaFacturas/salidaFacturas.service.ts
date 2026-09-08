@@ -36,6 +36,15 @@ export const salidaFacturasService = {
       { Revisado: revisado },
     ),
 
+  // Valida (o desvalida) TODA la factura de un golpe. UNA llamada: una factura de
+  // 371 líneas con marcarLinea serían 371 peticiones desde el teléfono. El
+  // servidor NO pisa lo que ya estaba contado y devuelve cuántas líneas cambiaron.
+  marcarTodas: (invoiceId: string, revisado: boolean) =>
+    httpClient.post<ExecutionResponse<ISalidaFacturaAvance>, { Revisado: boolean }>(
+      `${schema}/Factura/${encodeURIComponent(invoiceId)}/MarcarTodas`,
+      { Revisado: revisado },
+    ),
+
   // Confirma la salida. El servidor rechaza si falta algún artículo por revisar
   // o si la factura ya salió.
   completar: (invoiceId: string) =>

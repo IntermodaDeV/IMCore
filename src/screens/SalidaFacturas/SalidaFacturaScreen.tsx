@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react'
-import { BackHandler, ScrollView as RNScrollView } from 'react-native'
+import { Alert, BackHandler, ScrollView as RNScrollView } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { useDrawerStatus } from '@react-navigation/drawer'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
-import { ArrowLeft, ScanBarcode, RotateCw, Search, CheckCircle2 } from 'lucide-react-native'
+import { ArrowLeft, ScanBarcode, RotateCw, Search, CheckCircle2, ListChecks, Undo2 } from 'lucide-react-native'
 
 import KeyboardAwareForm from '../../components/commons/KeyboardAwareForm'
 import AppInput from '../../components/commons/AppInput'
@@ -41,6 +41,7 @@ export default function SalidaFacturaScreen() {
   const [error, setError] = useState<string | null>(null)
   const [factura, setFactura] = useState<ISalidaFactura | null>(null)
   const [confirmando, setConfirmando] = useState(false)
+  const [marcandoTodo, setMarcandoTodo] = useState(false)
   const [salida, setSalida] = useState<{ invoiceId: string; fecha: string | null } | null>(null)
 
   // ── Búsqueda ──────────────────────────────────────────────────────────────
@@ -161,6 +162,69 @@ export default function SalidaFacturaScreen() {
   const toggleGrupo = (g: GrupoArticulo) => {
     const todos = g.lineas.every(l => l.Revisado)
     marcar(g.lineas.map(l => l.LineNum), !todos)
+  }
+
+  // ── Validar toda la factura ───────────────────────────────────────────────
+  // Hay facturas del CD de cientos de artículos (la más grande medida: 371
+  // líneas) y marcarlas grupo por grupo no es trabajo de puerta.
+  //
+  // Va en UNA llamada y NO en un bucle de marcarLinea: 371 líneas serían 371
+  // peticiones desde el teléfono. El servidor lo hace en un solo UPDATE y no
+  // pisa la hora ni el nombre de lo que el guardia ya había contado.
+  //
+  // ⚠ Es un candado menos: la factura puede salir sin que nadie haya contado.
+  // Por eso pregunta antes, dice cuántos artículos son, y queda a nombre de
+  // quien apretó el botón.
+  const marcarTodo = async (valor: boolean) => {
+    if (!factura?.InvoiceId) return
+    const invoiceId = factura.InvoiceId
+    setMarcandoTodo(true)
+    try {
+      const res = await salidaFacturasService.marcarTodas(invoiceId, valor)
+      if (!res.Success) throw new Error(res.ErrorMessage || 'No se pudo validar la factura')
+      // Se pone el estado local en lo pedido en vez de recargar la factura: en
+      // una de 371 líneas ese viaje de vuelta se siente.
+      setFactura(f => (f ? { ...f, Items: f.Items.map(i => ({ ...i, Revisado: valor })) } : f))
+      const n = res.Data?.LineasAfectadas ?? 0
+      showToast(
+        'success',
+        valor ? 'Factura validada' : 'Artículos desmarcados',
+        `${fmtCantidad(n)} ${n === 1 ? 'artículo' : 'artículos'}`,
+      )
+    } catch (e: any) {
+      showToast('error', 'No se guardó', e?.message || 'No se pudo validar la factura')
+      // Si otro puesto la cerró mientras tanto, esta pantalla está vieja.
+      buscar(invoiceId)
+    } finally {
+      setMarcandoTodo(false)
+    }
+  }
+
+  const pedirValidarTodo = () => {
+    const faltan = avance.total - avance.revisados
+    const piezas = avance.piezas - avance.piezasRevisadas
+    Alert.alert(
+      'Validar toda la factura',
+      `Se van a marcar como revisados los ${faltan} ${faltan === 1 ? 'artículo' : 'artículos'} que faltan `
+      + `(${fmtCantidad(piezas)} piezas), sin contarlos uno por uno.\n\n`
+      + 'Queda registrado a tu nombre con la hora de ahora. Lo que ya contaste conserva su propia hora.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: `Validar los ${faltan}`, onPress: () => marcarTodo(true) },
+      ],
+    )
+  }
+
+  const pedirDesmarcarTodo = () => {
+    Alert.alert(
+      'Desmarcar todo',
+      `Se van a desmarcar los ${avance.revisados} artículos ya revisados de la factura ${factura?.InvoiceId}.\n\n`
+      + 'Habrá que volver a marcarlos para poder confirmar la salida.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Desmarcar todo', style: 'destructive', onPress: () => marcarTodo(false) },
+      ],
+    )
   }
 
   // ── Confirmar salida ──────────────────────────────────────────────────────
@@ -359,6 +423,33 @@ export default function SalidaFacturaScreen() {
                 <View height={8} borderRadius={4} width={`${avance.pct}%`}
                   backgroundColor={avance.completo ? '#22C55E' : ACCENT} />
               </View>
+
+              {/* Validar todo vive ACÁ ARRIBA, en la tarjeta que se ve al escanear.
+                  En una factura de cientos de artículos cualquier cosa al fondo
+                  está a varias pantallas de scroll — y así queda lejos del botón
+                  verde, que es el que deja salir el camión. */}
+              {!avance.completo && avance.total > 0 && (
+                <View onPress={marcandoTodo ? undefined : pedirValidarTodo}
+                  pressStyle={{ opacity: 0.85 }} opacity={marcandoTodo ? 0.5 : 1} marginTop="$2"
+                  borderWidth={1} borderColor={ACCENT} borderRadius="$4" height={46}
+                  flexDirection="row" alignItems="center" justifyContent="center" gap="$2">
+                  {marcandoTodo ? <Spinner color={ACCENT} /> : <ListChecks size={18} color={ACCENT} />}
+                  <Text color={ACCENT} fontWeight="800" fontSize="$3">
+                    {marcandoTodo
+                      ? 'Validando…'
+                      : `Validar toda la factura (${avance.total - avance.revisados})`}
+                  </Text>
+                </View>
+              )}
+
+              {avance.revisados > 0 && (
+                <View onPress={marcandoTodo ? undefined : pedirDesmarcarTodo} pressStyle={{ opacity: 0.6 }}
+                  alignSelf="center" flexDirection="row" alignItems="center" gap="$1.5"
+                  paddingVertical="$1.5" hitSlop={8}>
+                  <Undo2 size={14} color={theme.textMuted?.val} />
+                  <Text fontSize="$2" color="$textMuted" fontWeight="700">Desmarcar todo</Text>
+                </View>
+              )}
             </YStack>
 
             {/* Artículos por artículo + color, tallas como columnas */}
