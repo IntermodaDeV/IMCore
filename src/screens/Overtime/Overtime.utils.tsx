@@ -2,7 +2,41 @@ import React from 'react'
 import { YStack, XStack, Text, View, useTheme } from 'tamagui'
 import dayjs from 'dayjs'
 
-import { IOvertimeConcept } from '../../api/modules/overtime/overtime.types'
+import {
+  IOvertimeConcept,
+  IOvertimeRequestDetail,
+} from '../../api/modules/overtime/overtime.types'
+
+/**
+ * ¿Alguna entidad ya firmó este renglón?
+ *
+ * Se dice "firma" y no "aprobación" a propósito: un rechazo también cierra el
+ * renglón, y las dos cosas lo dejan fuera de la edición.
+ *
+ * Vive acá porque lo usan el listado —para decidir si ofrece editar— y el
+ * formulario —para saber qué filas no se pueden tocar—. Con una copia en cada
+ * lado, la pantalla podría ofrecer editar algo que el formulario después trata
+ * como bloqueado.
+ */
+export const tieneFirma = (item: IOvertimeRequestDetail): boolean =>
+  Object.entries(item?.DynamicColumns ?? {})
+    .filter(([k]) => k.startsWith('Status_'))
+    .some(([, v]) => ['Aprobado', 'Rechazado'].includes(String(v ?? '').trim()))
+
+/**
+ * Cómo quedó el renglón, para poder decir POR QUÉ está bloqueado.
+ *
+ * Vacío = nadie firmó todavía.
+ */
+export const etiquetaFirma = (item: IOvertimeRequestDetail): string => {
+  const estados = Object.entries(item?.DynamicColumns ?? {})
+    .filter(([k]) => k.startsWith('Status_'))
+    .map(([, v]) => String(v ?? '').trim())
+
+  if (estados.includes('Rechazado')) return 'Rechazado'
+  if (estados.includes('Aprobado')) return 'Aprobado'
+  return ''
+}
 
 // Formato y piezas compartidas por las dos bandejas de horas extra: la de
 // solicitudes y la de revisión de la diferencia. Viven acá porque las dos
