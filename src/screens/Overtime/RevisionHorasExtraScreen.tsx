@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet, TextInput } from 'react-native'
 import dayjs from 'dayjs'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
-import { CalendarDays, Check, CheckSquare, ChevronDown, Info, MessageSquareWarning, Square, TrendingDown, TrendingUp, X } from 'lucide-react-native'
+import { CalendarDays, Check, MessageSquareWarning, TrendingDown, TrendingUp, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -17,7 +17,6 @@ import SkeletonList from '../../components/Skeletons/SkeletonList'
 import SearchInput from '../../components/commons/SearchInput'
 import AppSelect from '../../components/commons/AppSelect'
 import AppInput from '../../components/commons/AppInput'
-import ConfirmDialog from '../../components/commons/ConfirmDialog'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
 import { overtimeService } from '../../api/modules/overtime/overtime.service'
 import {
@@ -27,13 +26,11 @@ import {
   IUserEntity,
 } from '../../api/modules/overtime/overtime.types'
 import {
-  DistribucionHoras,
   fmtFecha,
   fmtFechaHora,
   fmtHora,
   fmtHoras,
   nombreConCodigo,
-  parseConceptos,
 } from './Overtime.utils'
 
 // Bandeja de autorización de la DIFERENCIA (segundo flujo).
@@ -52,10 +49,11 @@ import {
 // El tercero es el que suele ser cierto: el empleado marcó a las 22:15 pero se
 // fue a las 21:30.
 //
-//   Primera entidad — aprueba: vale el horario que revisó (sin revisar uno, el
-//                     marcaje). rechaza: se pagan las horas solicitadas.
-//   Segunda entidad — aprueba: confirma ese horario.
-//                     rechaza: lo descarta y valen las del marcaje.
+// La acción es RESOLVER, no aprobar o rechazar: cualquier etapa que firme
+// determina el horario —cualquiera de los tres, o uno escrito a mano— y no
+// reconocer la diferencia es una de las salidas de ese cuadro. Rechazar quiere
+// decir lo mismo en todas: se pagan las horas solicitadas y la revisión se
+// cierra.
 //
 // La segunda solo interviene cuando la primera RECONOCE bastantes más horas de
 // las que se habían solicitado —no cuando el marcaje trae mucha diferencia—,
@@ -63,8 +61,13 @@ import {
 // decir cuánto de eso es cierto. Cuántas horas de más se toleran lo dice
 // Tolerancia_Segunda_Firma, que llega del backend.
 //
-// Por eso la tarjeta muestra los grupos enfrentados: la decisión es elegir
-// entre ellos, y sin ver ambos no hay con qué decidir.
+// Por eso la tarjeta muestra los horarios enfrentados: la decisión es elegir
+// entre ellos, y sin verlos no hay con qué decidir.
+//
+// Y una tarjeta por EMPLEADO, para todas las entidades. Se agrupaban por
+// solicitud cuando la última firma era un sí/no sobre el lote entero; ahora
+// hay que determinar a qué hora se fue cada persona, y eso no se puede tomar
+// de a montón.
 //
 // El dato vive en InterfazPayWeb, lo publica IMCoreProxy y lo reenvía IMCoreApi
 // (api/Overtime/ReviewsToAuth) ya con JWT.
@@ -108,8 +111,12 @@ const puedeAutorizar = (item: IOvertimeReviewToAuth, nombreEntidad: string): boo
 const horasSiFirma = (r: IOvertimeReviewToAuth, primera: boolean): number =>
   (primera ? r.Worked_Overtime_Hours : r.Real_Overtime_Hours ?? r.Worked_Overtime_Hours) ?? 0
 
-const horasSiRechaza = (r: IOvertimeReviewToAuth, primera: boolean): number =>
-  (primera ? r.Requested_Overtime_Hours : r.Worked_Overtime_Hours) ?? 0
+/**
+ * Rechazar quiere decir lo mismo en todas las etapas: no se reconoce nada más
+ * que lo que ya se había autorizado. No vale el reloj, que nadie aprobó.
+ */
+const horasSiRechaza = (r: IOvertimeReviewToAuth): number =>
+  r.Requested_Overtime_Hours ?? 0
 
 /**
  * Qué horas quedan aplicadas si se resuelve el lote de esta forma.
@@ -123,15 +130,16 @@ const horasDelLote = (
   primera: boolean,
 ): number =>
   revisiones.reduce(
-    (acc, r) => acc + (aprobar ? horasSiFirma(r, primera) : horasSiRechaza(r, primera)),
+    (acc, r) => acc + (aprobar ? horasSiFirma(r, primera) : horasSiRechaza(r)),
     0,
   )
 
-// ── El horario real, para revisarlo desde el teléfono ───────────────────────
+// ── El horario real, para determinarlo desde el teléfono ────────────────────
 //
-// Acá no se escribe una hora: se ajusta de a cuartos de hora sobre la que ya
-// viene del marcaje. Escribir 'HH:mm' en un teclado numérico, con el teclado
-// tapando media pantalla, es la forma más incómoda de decir 'media hora menos'.
+// Se escriben las dos horas, igual que en la web: los dos puntos se ponen
+// solos, así que en el teclado numérico solo hay que teclear cuatro dígitos.
+// Y las cuatro alternativas de arriba llenan los campos con un toque, que es
+// lo que resuelve la mayoría de los casos sin escribir nada.
 
 /** Minutos desde medianoche de un datetime. */
 const minutosDe = (iso: string | null | undefined): number | null => {
@@ -146,29 +154,103 @@ const etiquetaMinutos = (minutos: number): string => {
 }
 
 /**
- * Horas entre el inicio de la hora extra y una hora de salida.
+ * 'HH:mm' escrito a minutos, o null si todavía no es una hora.
+ *
+ * Se valida el TEXTO y no se guarda un booleano aparte: mientras se escribe
+ * hay estados intermedios ('2', '21:') que no son una hora, y con una bandera
+ * suelta el total seguía mostrando el valor anterior como si fuera bueno.
+ */
+const minutosDeTexto = (texto: string): number | null => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(texto ?? '').trim())
+  if (!m) return null
+
+  const h = Number(m[1])
+  const min = Number(m[2])
+  if (h > 23 || min > 59) return null
+
+  return h * 60 + min
+}
+
+/**
+ * Horas entre dos horas del día.
  *
  * Igual es CERO y no un día entero: significa 'solo trabajó su jornada', que es
  * una resolución válida. Solo se envuelve cuando el fin es anterior, que es la
  * forma de decir que terminó al día siguiente.
  */
-const horasHasta = (inicio: string | null, minutosFin: number): number => {
-  const desde = minutosDe(inicio)
-  if (desde === null) return 0
-
-  let minutos = minutosFin - desde
+const horasEntre = (minutosInicio: number, minutosFin: number): number => {
+  let minutos = minutosFin - minutosInicio
   if (minutos < 0) minutos += 1440
 
   return +(minutos / 60).toFixed(2)
 }
 
+/** Los dos puntos se ponen solos: en un teclado numérico el ':' no está a mano. */
+const formatearHora = (texto: string): string => {
+  const digitos = texto.replace(/\D/g, '').slice(0, 4)
+  return digitos.length > 2 ? `${digitos.slice(0, 2)}:${digitos.slice(2)}` : digitos
+}
+
 /**
- * 'HH:mm' al datetime del día de la revisión, corriendo un día cuando cruza la
- * medianoche.
+ * El nombre corto de una entidad, para nombrar la etapa anterior.
  *
- * El día de más no es cosmético: el reparto por bandas se calcula sobre el
- * rango, y sin él una salida a las 00:30 se leería como un rango negativo.
+ * Las columnas dinámicas llegan como `Status_<NombreSinEspacios>`, así que del
+ * nombre solo sobrevive el pegote. Se deshace por los cambios de minúscula a
+ * mayúscula y se descarta la primera palabra, que es el verbo del flujo
+ * —'Autoriza', 'Revisa'— y se repite en todas sin distinguir ninguna:
+ *
+ *   'AutorizaJefe' → 'Jefe'   ·   'AutorizaGerente' → 'Gerente'
+ *
+ * Es el mismo criterio que usa la web, para que la misma etapa no se llame de
+ * dos formas según desde dónde se mire.
  */
+const etiquetaEntidad = (nombre: string): string => {
+  const palabras = String(nombre ?? '')
+    // El corte va entre una minúscula (o dígito) y la mayúscula que sigue; así
+    // 'RRHH' no se parte en cuatro.
+    .replace(/([a-zà-öø-ÿ0-9])([A-ZÀ-ÖØ-Þ])/g, '$1 $2')
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (palabras.length <= 1) return palabras[0] ?? ''
+
+  return palabras.slice(1).join(' ')
+}
+
+/** Las columnas de estado de la fila, en el orden del flujo. */
+const clavesEstado = (item: IOvertimeReviewToAuth): string[] =>
+  Object.keys(item?.DynamicColumns ?? {}).filter(k => k.startsWith('Status_'))
+
+/**
+ * Cómo se llama la etapa que firma DESPUÉS de esta.
+ *
+ * Solo se usa para avisar que el horario queda a la espera de alguien; que
+ * exista o no ese alguien lo decide `escala`.
+ */
+const etapaSiguienteLabel = (item: IOvertimeReviewToAuth, nombreEntidad: string): string => {
+  const claves = clavesEstado(item)
+  const propia = claves.indexOf(`Status_${String(nombreEntidad ?? '').replace(/\s+/g, '')}`)
+
+  if (propia < 0 || propia >= claves.length - 1) return 'la siguiente etapa'
+
+  return etiquetaEntidad(claves[propia + 1].replace(/^Status_/, ''))
+}
+
+/**
+ * Cómo se llama la etapa que firmó ANTES de esta, para nombrar su horario.
+ *
+ * Sale del ORDEN de las columnas `Status_` de la fila, que es el del flujo:
+ * es el mismo dato con el que la web arma su etiqueta.
+ */
+const etapaAnteriorLabel = (item: IOvertimeReviewToAuth, nombreEntidad: string): string => {
+  const claves = clavesEstado(item)
+  const propia = claves.indexOf(`Status_${String(nombreEntidad ?? '').replace(/\s+/g, '')}`)
+
+  if (propia <= 0) return 'Ya revisado'
+
+  return etiquetaEntidad(claves[propia - 1].replace(/^Status_/, ''))
+}
+
 /**
  * ¿Reconocer estas horas obliga a la firma de la siguiente etapa?
  *
@@ -182,60 +264,17 @@ const horasHasta = (inicio: string | null, minutosFin: number): number => {
  * Acá es solo el aviso; quien decide de verdad es el backend, con este mismo
  * umbral, que viaja en la fila justamente para no tener dos copias.
  */
-const escala = (r: IOvertimeReviewToAuth, horas: number): boolean =>
+const escala = (r: IOvertimeReviewToAuth, horas: number, hayEtapaSiguiente: boolean): boolean =>
+  hayEtapaSiguiente &&
   horas - (r.Requested_Overtime_Hours ?? 0) > (r.Tolerancia_Segunda_Firma ?? 0)
 
 /**
- * Con qué queda el empleado si se aprueba, dicho con todas las letras.
+ * La hora de fin como fecha completa, para mandarla al backend.
  *
- * No es lo mismo en las dos etapas ni con o sin horario revisado, y el botón
- * dice 'Aprobar' en los cuatro casos: si la consecuencia no está escrita acá,
- * no está en ningún lado.
+ * Si la hora elegida es ANTERIOR al inicio de la hora extra, la jornada cruzó
+ * la medianoche y el fin es del día siguiente: sin eso, quedarse hasta la 1am
+ * se guardaría como haberse ido 20 horas antes de entrar.
  */
-const mensajeAprobacion = (
-  revisiones: IOvertimeReviewToAuth[],
-  primera: boolean,
-  revisado: IReviewRealHours[],
-): string => {
-  if (revisiones.length > 1) {
-    const queda = fmtHoras(horasDelLote(revisiones, true, primera))
-    const pierde = fmtHoras(horasDelLote(revisiones, false, primera))
-
-    return primera
-      ? `A ${revisiones.length} empleados se les reconocerán las horas del MARCAJE: ` +
-        `${queda} en lugar de las ${pierde} solicitadas.`
-      : `A ${revisiones.length} empleados se les confirmará el horario REVISADO: ` +
-        `${queda} en lugar de las ${pierde} del marcaje.`
-  }
-
-  const r = revisiones[0]
-  const quien = nombreConCodigo(r.Employee_Name, r.Employee_Code)
-
-  // El horario que se acaba de revisar manda sobre lo que traía la fila.
-  const horasRevisadas = revisado.length > 0
-    ? revisado[0].Real_Overtime_Hours
-    : primera ? null : r.Real_Overtime_Hours
-
-  if (horasRevisadas !== null && horasRevisadas !== undefined) {
-    return primera
-      ? `Se le reconocerán ${fmtHoras(horasRevisadas)} a ${quien}, ` +
-        `en lugar de las ${fmtHoras(r.Requested_Overtime_Hours)} solicitadas.`
-      : `Se confirmarán las ${fmtHoras(horasRevisadas)} que se revisaron para ${quien}, ` +
-        `en lugar de las ${fmtHoras(r.Worked_Overtime_Hours)} del marcaje.`
-  }
-
-  // Sin marcaje, aprobar significa reconocer CERO. Decir 'se le reconocerán —
-  // del marcaje' dejaba la consecuencia a la imaginación, y es la que importa:
-  // se le quitan las horas.
-  if (r.Worked_Overtime_Hours === null || r.Worked_Overtime_Hours === undefined) {
-    return `${quien} no marcó, así que no se le reconocerá ninguna hora extra: ` +
-      `pierde las ${fmtHoras(r.Requested_Overtime_Hours)} solicitadas.`
-  }
-
-  return `Se le reconocerán ${fmtHoras(r.Worked_Overtime_Hours)} del marcaje a ${quien}, ` +
-    `en lugar de las ${fmtHoras(r.Requested_Overtime_Hours)} solicitadas.`
-}
-
 const fechaConHora = (
   fecha: string | null,
   inicio: string | null,
@@ -257,36 +296,6 @@ const etiquetaDiferencia = (diff: number | null | undefined) => {
   return `${diff > 0 ? '+' : '-'}${fmtHoras(Math.abs(diff))}`
 }
 
-/**
- * Una solicitud con las diferencias que le quedan pendientes.
- *
- * La bandeja llega revisión por revisión —un empleado cada una— porque eso es
- * lo que se firma. Para la última entidad eso no alcanza: lo que decide es
- * cuánto se mueve LA SOLICITUD, y con los empleados sueltos hay que sumarlos
- * de cabeza.
- */
-interface GrupoRevision {
-  requestId: number
-  correlativo: string
-  fecha: string | null
-  solicitante: string
-  revisiones: IOvertimeReviewToAuth[]
-  horasSolicitadas: number
-  horasMarcaje: number
-  /**
-   * Lo que quedaria reconocido: el horario que reviso la primera entidad, o el
-   * marcaje si todavia no lo reviso nadie.
-   *
-   * Va aparte de horasMarcaje porque para la segunda entidad ya no son lo
-   * mismo, y la tarjeta tiene que mostrar hacia donde se mueve LA DECISION que
-   * esa persona esta por firmar.
-   */
-  horasAReconocer: number
-  /** Lo que esas horas ya cuestan, y lo que costarían al aprobar. */
-  costoActual: number | null
-  costoSiAprueba: number | null
-}
-
 export default function RevisionHorasExtraScreen() {
   const { defaultCompany } = useAuth()
   const loader = useLoader()
@@ -306,12 +315,12 @@ export default function RevisionHorasExtraScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
 
-  // Decisión en curso. Aprobar se confirma y ya; rechazar pide el motivo, que
-  // el procedimiento exige.
-  // Aprobar y rechazar trabajan sobre una LISTA: una tarjeta suelta es un lote
-  // de uno. Así el confirm, el envío y el mensaje son un solo camino en vez de
-  // dos que hay que mantener parejos.
-  const [aprobando, setAprobando] = useState<IOvertimeReviewToAuth[] | null>(null)
+  // Decisión en curso. Resolver abre el cuadro del horario; no reconocer la
+  // diferencia pide el motivo, que el procedimiento exige.
+  //
+  // El envío sigue trabajando sobre una LISTA aunque acá siempre sea de uno:
+  // es el mismo contrato del backend, y con una firma distinta habría que
+  // mantener dos caminos parejos para nada.
 
   // Impacto de la decisión sobre el presupuesto. Solo llega con contenido en
   // la última etapa del flujo y con el acceso 'CostoHE'.
@@ -320,27 +329,19 @@ export default function RevisionHorasExtraScreen() {
   // Impacto de TODA la bandeja, no del lote que se está por firmar. Es lo que
   // permite poner el costo en cada tarjeta antes de abrir nada.
   const [impactoBandeja, setImpactoBandeja] = useState<IOvertimeReviewImpact[]>([])
-  // Solicitudes desplegadas. Arrancan cerradas: la tarjeta cerrada ya dice
-  // cuántos empleados, cuántas horas y cuánto se mueve, que es con lo que se
-  // decide; el detalle es para cuando algo no cuadra.
-  const [expandidas, setExpandidas] = useState<Set<number>>(new Set())
-  const [rechazando, setRechazando] = useState<IOvertimeReviewToAuth[] | null>(null)
 
   // Revisión del horario real, antes del confirm. Solo aparece para la primera
   // entidad y sobre una revisión sola: en lote no hay un horario por empleado.
   const [revisando, setRevisando] = useState<IOvertimeReviewToAuth | null>(null)
-  const [minutosReales, setMinutosReales] = useState(0)
-  // Lo que se está tecleando. Va aparte de los minutos porque mientras se
-  // escribe hay estados intermedios que todavía no son una hora ('2', '21:')
-  // y no pueden pisar el valor bueno.
-  const [horaTexto, setHoraTexto] = useState('')
-  const [horaValida, setHoraValida] = useState(true)
-  // El horario ya revisado que va a viajar con la firma. Se guarda aparte de
-  // `revisando` porque ese modal se cierra al pasar al confirm.
-  const [horarioReal, setHorarioReal] = useState<IReviewRealHours[]>([])
 
-  // Ids marcados para resolver en lote.
-  const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set())
+  // El horario que se está determinando, tal como se escribe. Los dos se
+  // pueden editar —igual que en la web—: quien revisa a veces corrige también
+  // la hora de entrada.
+  const [horaIni, setHoraIni] = useState('')
+  const [horaFin, setHoraFin] = useState('')
+
+  // El comentario del cuadro. Es opcional para resolver y obligatorio para
+  // rechazar, como en la web: un solo campo para las dos salidas.
   const [motivo, setMotivo] = useState('')
   const [motivoError, setMotivoError] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -452,12 +453,6 @@ export default function RevisionHorasExtraScreen() {
       setFiltered(filas)
       pedirImpactoBandeja(filas)
 
-      // Lo que ya no está en la bandeja no se puede seguir teniendo marcado.
-      setSeleccionados(prev => {
-        const vigentes = new Set(filas.map(r => r.Id))
-        const quedan = new Set([...prev].filter(id => vigentes.has(id)))
-        return quedan.size === prev.size ? prev : quedan
-      })
     } catch (err) {
       setError(handleError(err))
     } finally {
@@ -514,10 +509,6 @@ export default function RevisionHorasExtraScreen() {
         setData(quitar)
         setFiltered(quitar)
 
-        setSeleccionados(prev => new Set([...prev].filter(id => !resueltas.has(id))))
-        setAprobando(null)
-        setRechazando(null)
-        setHorarioReal([])
         setMotivo('')
 
         // Las horas que quedaron salen del horario que se acaba de revisar
@@ -531,9 +522,7 @@ export default function RevisionHorasExtraScreen() {
           aprobar ? 'Diferencia aprobada' : 'Diferencia rechazada',
           aprobar
             ? `Se reconocen ${fmtHoras(horasFirmadas)}`
-            : esPrimeraEntidad
-              ? `Se pagan ${fmtHoras(horasDelLote(revisiones, false, true))} solicitadas`
-              : `Valen ${fmtHoras(horasDelLote(revisiones, false, false))} del marcaje`,
+            : `Se pagan ${fmtHoras(horasDelLote(revisiones, false, esPrimeraEntidad))} solicitadas`,
           3500,
           'top',
         )
@@ -584,35 +573,28 @@ export default function RevisionHorasExtraScreen() {
   )
 
   /**
-   * Abre la decisión de aprobar.
+   * Abre el cuadro donde se resuelve una diferencia.
    *
-   * La primera entidad pasa antes por revisar el horario, y solo cuando es UNA
-   * revisión: en lote son varios empleados y cada uno se fue a una hora
-   * distinta, así que ahí aprobar sigue queriendo decir 'vale el marcaje'.
-   *
-   * El confirm se muestra ya y el impacto llega después.
+   * Siempre de a una, en cualquier etapa: resolver es determinar a qué hora se
+   * fue ESE empleado, y eso no se puede hacer para varios a la vez.
    */
-  const abrirAprobacion = useCallback(
-    (revisiones: IOvertimeReviewToAuth[]) => {
-      if (esPrimeraEntidad && revisiones.length === 1) {
-        const r = revisiones[0]
+  const abrirResolucion = useCallback((r: IOvertimeReviewToAuth) => {
+    // Arranca en lo que dejó la etapa anterior si ya pasó por una —para eso
+    // subió la revisión, y aceptarlo tiene que ser un toque—; si no, en el
+    // marcaje, que es lo más probable que sea correcto; y si tampoco marcó,
+    // en lo solicitado.
+    const ini = minutosDe(r.Real_Start_Time) ?? minutosDe(r.Start_Time) ?? 0
+    const fin = minutosDe(r.Real_End_Time)
+             ?? minutosDe(r.Clock_Out)
+             ?? minutosDe(r.End_Time)
+             ?? ini
 
-        // Arranca en el marcaje: lo más probable es que sea correcto, y
-        // confirmarlo tiene que ser un toque. Sin marcaje, en lo solicitado.
-        const inicial = minutosDe(r.Clock_Out) ?? minutosDe(r.End_Time) ?? 0
-        setMinutosReales(inicial)
-        setHoraTexto(etiquetaMinutos(inicial))
-        setHoraValida(true)
-        setRevisando(r)
-        return
-      }
-
-      setHorarioReal([])
-      setAprobando(revisiones)
-      pedirImpacto(revisiones)
-    },
-    [esPrimeraEntidad, pedirImpacto],
-  )
+    setHoraIni(etiquetaMinutos(ini))
+    setHoraFin(etiquetaMinutos(fin))
+    setMotivo('')
+    setMotivoError('')
+    setRevisando(r)
+  }, [])
 
   /**
    * Pasa del horario revisado al confirm.
@@ -621,99 +603,80 @@ export default function RevisionHorasExtraScreen() {
    * hora no es firmar, y meter las dos cosas en un solo paso haría que ajustar
    * un cuarto de hora quedara a un toque de aplicar la decisión.
    */
+  // El horario escrito, en minutos. null mientras no sea una hora.
+  const minIni = minutosDeTexto(horaIni)
+  const minFin = minutosDeTexto(horaFin)
+
+  /** Las horas que se van a reconocer, o null si el horario está a medias. */
+  const horasElegidas = minIni === null || minFin === null
+    ? null
+    : horasEntre(minIni, minFin)
+
+  /** El horario escrito, listo para el backend. */
+  const horarioPayload = useCallback((): IReviewRealHours[] | null => {
+    if (!revisando || minIni === null || minFin === null || horasElegidas === null) return null
+
+    const inicio = fechaConHora(revisando.Date, null, minIni)
+    // El fin se corre un día cuando es anterior al inicio: así quedarse hasta
+    // la 1am no se guarda como haberse ido 20 horas antes de entrar.
+    const fin = fechaConHora(revisando.Date, etiquetaMinutos(minIni), minFin)
+    if (!inicio || !fin) return null
+
+    return [{
+      Reviews_Id: revisando.Id,
+      Real_Start_Time: inicio,
+      Real_End_Time: fin,
+      Real_Overtime_Hours: horasElegidas,
+    }]
+  }, [revisando, minIni, minFin, horasElegidas])
+
   /**
-   * Poner una hora concreta, desde los atajos.
+   * Resolver: se reconoce el horario que está escrito.
    *
-   * Mueve el valor y el texto juntos: si solo moviera los minutos, el campo
-   * seguiría mostrando lo anterior.
+   * Todo en el MISMO cuadro, como en la web. El confirm que había encima no
+   * agregaba nada —repetía las mismas tarjetas de arriba— y era un toque de
+   * más para volver a leer lo mismo.
    */
-  const fijarHora = useCallback((minutos: number) => {
-    setMinutosReales(minutos)
-    setHoraTexto(etiquetaMinutos(minutos))
-    setHoraValida(true)
-  }, [])
-
-  /** Correr la hora de a cuartos, para el ajuste fino. */
-  const ajustarHora = useCallback((delta: number) => {
-    setMinutosReales(m => {
-      // Dos días de tope: una hora extra que cruza la medianoche sigue siendo
-      // del mismo día de trabajo, pero más allá de eso ya no hay nada que
-      // corregir, solo un botón que se quedó apretado.
-      const nuevo = Math.min(2 * 1440 - 15, Math.max(0, m + delta))
-      setHoraTexto(etiquetaMinutos(nuevo))
-      return nuevo
-    })
-    setHoraValida(true)
-  }, [])
-
-  /**
-   * Escribir la hora.
-   *
-   * Se aceptan solo dígitos y los dos puntos se ponen solos: en un teclado
-   * numérico el ':' no está a mano, y pedirlo convertiría 'escribir la hora' en
-   * cambiar de teclado dos veces.
-   */
-  const escribirHora = useCallback((texto: string) => {
-    const digitos = texto.replace(/\D/g, '').slice(0, 4)
-    const conFormato = digitos.length > 2
-      ? `${digitos.slice(0, 2)}:${digitos.slice(2)}`
-      : digitos
-
-    setHoraTexto(conFormato)
-
-    // Mientras falten dígitos no es un error todavía: es alguien escribiendo.
-    // Solo se marca en rojo lo que ya está completo y no es una hora.
-    if (digitos.length < 4) {
-      setHoraValida(true)
-      return
-    }
-
-    const h = Number(digitos.slice(0, 2))
-    const m = Number(digitos.slice(2))
-
-    if (h > 23 || m > 59) {
-      setHoraValida(false)
-      return
-    }
-
-    setHoraValida(true)
-    setMinutosReales(h * 60 + m)
-  }, [])
-
   const confirmarHorario = useCallback(() => {
+    const payload = horarioPayload()
+    if (!revisando || !payload) return
+
+    const revision = revisando
+    setRevisando(null)
+    enviarDecision([revision], true, motivo.trim(), payload)
+  }, [revisando, horarioPayload, motivo, enviarDecision])
+
+  /**
+   * Rechazar: no se reconoce la diferencia, se pagan las horas solicitadas.
+   *
+   * Sale del mismo cuadro y con el mismo campo de comentario, que acá sí es
+   * obligatorio: el procedimiento pide al menos 10 caracteres, y decirlo antes
+   * evita que el error viaje hasta la base y vuelva.
+   */
+  const confirmarRechazo = useCallback(() => {
     if (!revisando) return
 
-    const fin = fechaConHora(revisando.Date, revisando.Start_Time, minutosReales)
-    if (!fin) return
-
-    const payload: IReviewRealHours[] = [{
-      Reviews_Id: revisando.Id,
-      // El inicio no se discute: es el fin de la jornada. Va igual para que el
-      // contrato no dependa de un valor implícito del otro lado.
-      Real_Start_Time: revisando.Start_Time,
-      Real_End_Time: fin,
-      Real_Overtime_Hours: horasHasta(revisando.Start_Time, minutosReales),
-    }]
-
-    setHorarioReal(payload)
-    setAprobando([revisando])
-    setRevisando(null)
-    pedirImpacto([revisando], payload)
-  }, [revisando, minutosReales, pedirImpacto])
-
-  const confirmarRechazo = useCallback(() => {
-    if (!rechazando || rechazando.length === 0) return
-
-    // El SP lo exige y pide al menos 10 caracteres: mejor decirlo acá que dejar
-    // que el error viaje hasta la base y vuelva.
     const texto = motivo.trim()
     if (texto.length < 10) {
       setMotivoError('Indica el motivo del rechazo (al menos 10 caracteres)')
       return
     }
 
-    enviarDecision(rechazando, false, texto)
-  }, [rechazando, motivo, enviarDecision])
+    const revision = revisando
+    setRevisando(null)
+    enviarDecision([revision], false, texto)
+  }, [revisando, motivo, enviarDecision])
+
+  // El impacto se pide cuando la mano se detiene, no en cada tecla: es una
+  // consulta, y escribir una hora dispararía una por dígito.
+  useEffect(() => {
+    const payload = horarioPayload()
+    if (!payload || !revisando) { setImpacto([]); return }
+
+    const t = setTimeout(() => pedirImpacto([revisando], payload), 450)
+
+    return () => clearTimeout(t)
+  }, [revisando, horarioPayload, pedirImpacto])
 
   useEffect(() => {
     loadEntidades()
@@ -823,90 +786,6 @@ export default function RevisionHorasExtraScreen() {
     return mapa
   }, [impactoBandeja])
 
-  /** La bandeja vista por solicitud, en el orden en que ya venía. */
-  const grupos = useMemo<GrupoRevision[]>(() => {
-    const porId = new Map<number, GrupoRevision>()
-
-    filtered.forEach(r => {
-      let g = porId.get(r.Request_Id)
-
-      if (!g) {
-        g = {
-          requestId: r.Request_Id,
-          correlativo: r.Correlative,
-          fecha: r.Date,
-          solicitante: r.Solicitante || r.Sent_To_Review_By,
-          revisiones: [],
-          horasSolicitadas: 0,
-          horasMarcaje: 0,
-          horasAReconocer: 0,
-          costoActual: null,
-          costoSiAprueba: null,
-        }
-        porId.set(r.Request_Id, g)
-      }
-
-      g.revisiones.push(r)
-      g.horasSolicitadas += r.Requested_Overtime_Hours ?? 0
-      g.horasMarcaje += r.Worked_Overtime_Hours ?? 0
-      g.horasAReconocer += r.Real_Overtime_Hours ?? r.Worked_Overtime_Hours ?? 0
-
-      const c = costoPorRevision.get(r.Id)
-      if (c) {
-        g.costoActual = (g.costoActual ?? 0) + c.actual
-        g.costoSiAprueba = (g.costoSiAprueba ?? 0) + c.siAprueba
-      }
-    })
-
-    return [...porId.values()]
-  }, [filtered, costoPorRevision])
-
-  const alternarGrupo = useCallback((requestId: number) => {
-    setExpandidas(prev => {
-      const copia = new Set(prev)
-      if (copia.has(requestId)) copia.delete(requestId)
-      else copia.add(requestId)
-      return copia
-    })
-  }, [])
-
-  const alternarSeleccion = useCallback((id: number) => {
-    setSeleccionados(prev => {
-      const copia = new Set(prev)
-      if (copia.has(id)) copia.delete(id)
-      else copia.add(id)
-      return copia
-    })
-  }, [])
-
-  /**
-   * Lo marcado que ADEMÁS se puede firmar, que es lo único que se manda.
-   *
-   * Se recorre `data` y no lo filtrado: si el buscador dejó una tarjeta fuera
-   * de la vista, sigue contando —está marcada— pero se resuelve contra la
-   * lista real de la bandeja.
-   */
-  const seleccionValida = useMemo(
-    () => data.filter(r => seleccionados.has(r.Id) && puedeAutorizar(r, nombreEntidad)),
-    [data, seleccionados, nombreEntidad],
-  )
-
-  // Marcadas que quedan fuera del envío, para que el conteo no sorprenda.
-  const bloqueadas = seleccionados.size - seleccionValida.length
-
-  const seleccionarTodas = useCallback(() => {
-    // Solo las visibles y firmables: "todas" sobre una lista filtrada tiene que
-    // significar las que se están viendo.
-    const marcables = filtered.filter(r => puedeAutorizar(r, nombreEntidad)).map(r => r.Id)
-    const todasMarcadas = marcables.length > 0 && marcables.every(id => seleccionados.has(id))
-
-    setSeleccionados(prev => {
-      const copia = new Set(prev)
-      marcables.forEach(id => (todasMarcadas ? copia.delete(id) : copia.add(id)))
-      return copia
-    })
-  }, [filtered, nombreEntidad, seleccionados])
-
   if (loading) return <SkeletonList />
   if (error) return <ErrorState title={error.title} message={error.message} onRetry={loadData} />
 
@@ -932,6 +811,7 @@ export default function RevisionHorasExtraScreen() {
           />
         )}
 
+
         <SearchInput
           data={data}
           searchKeys={['Employee_Name', 'Employee_Code', 'Correlative', 'Sent_To_Review_By', 'Comment']}
@@ -939,83 +819,11 @@ export default function RevisionHorasExtraScreen() {
           placeholder="Buscar por empleado, correlativo o quien la envió"
         />
 
-        {/* Barra de lote. Muestra las horas que quedarían aplicadas CON CADA
-            decisión, no una sola cifra: acá aprobar y rechazar no son sí o no,
-            son dos totales distintos —cuáles depende de la etapa— y sin ver
-            ambos no hay con qué decidir. */}
-        {seleccionados.size > 0 && (
-          <XStack
-            alignItems="center"
-            gap="$2"
-            paddingHorizontal="$3"
-            paddingVertical="$2"
-            borderRadius={12}
-            backgroundColor="$primaryOpacity2"
-            borderWidth={1}
-            borderColor="$primary"
-          >
-            <YStack flex={1} minWidth={0}>
-              <Text fontSize={13} fontWeight="700" color="$text">
-                {seleccionValida.length} seleccionada(s)
-              </Text>
-              <Text fontSize={11} color="$textMuted" numberOfLines={1}>
-                {fmtHoras(horasDelLote(seleccionValida, false, esPrimeraEntidad))} →{' '}
-                {fmtHoras(horasDelLote(seleccionValida, true, esPrimeraEntidad))}
-                {bloqueadas > 0 ? ` · ${bloqueadas} sin acción` : ''}
-              </Text>
-            </YStack>
-
-            <Button
-              height={36} borderRadius={10} paddingHorizontal="$3"
-              backgroundColor="$backgroundSurface"
-              borderWidth={1} borderColor="$border"
-              pressStyle={{ opacity: 0.7 }}
-              disabled={seleccionValida.length === 0}
-              onPress={() => {
-                setMotivo('')
-                setMotivoError('')
-                setRechazando(seleccionValida)
-              }}
-            >
-              <X size={16} color={theme.error?.val as string} />
-            </Button>
-
-            <Button
-              height={36} borderRadius={10} paddingHorizontal="$3"
-              backgroundColor="$success"
-              pressStyle={{ opacity: 0.85 }}
-              disabled={seleccionValida.length === 0}
-              onPress={() => abrirAprobacion(seleccionValida)}
-            >
-              <XStack alignItems="center" gap="$1.5">
-                <Check size={16} color="white" />
-                <Text fontSize={13} fontWeight="700" color="white">
-                  Aprobar
-                </Text>
-              </XStack>
-            </Button>
-          </XStack>
-        )}
-
-        {/* Marcar o desmarcar lo que se está viendo, y cuánto hay */}
+        {/* Cuánto hay. Sin 'seleccionar todas': en este flujo no hay revisión
+            masiva —cada empleado tiene su propio horario que determinar— y la
+            casilla prometía un lote que no existe. */}
         {data.length > 0 && (
-          <XStack alignItems="center" justifyContent="space-between" gap="$2" paddingVertical="$1">
-            {filtered.length > 0 ? (
-              <XStack
-                alignItems="center"
-                gap="$2"
-                pressStyle={{ opacity: 0.6 }}
-                onPress={seleccionarTodas}
-              >
-                <CheckSquare size={15} color={theme.textMuted?.val as string} />
-                <Text fontSize={12} color="$textMuted">
-                  {seleccionados.size > 0 ? 'Quitar selección' : 'Seleccionar todas'}
-                </Text>
-              </XStack>
-            ) : (
-              <View />
-            )}
-
+          <XStack alignItems="center" justifyContent="flex-end" gap="$2" paddingVertical="$1">
             <Text fontSize={11} color="$textMuted" numberOfLines={1}>
               {resumen.texto}
             </Text>
@@ -1026,10 +834,11 @@ export default function RevisionHorasExtraScreen() {
       {/* La lista se monta siempre, incluso vacía, para que el gesto de
           recargar exista también cuando no hay nada pendiente. */}
       <FlatList
-        // Para la última entidad la unidad de decisión es la SOLICITUD; para
-        // las anteriores sigue siendo la diferencia de su gente.
-        data={(esUltimaEntidad ? grupos : filtered) as any[]}
-        keyExtractor={(item: any) => String(esUltimaEntidad ? item.requestId : item.Id)}
+        // Una tarjeta por EMPLEADO, para todas las entidades. Acá la decisión
+        // es qué horario se le reconoce a cada uno, y eso no se puede tomar
+        // por solicitud.
+        data={filtered}
+        keyExtractor={item => String(item.Id)}
         contentContainerStyle={
           filtered.length === 0
             ? { flexGrow: 1 }
@@ -1056,65 +865,28 @@ export default function RevisionHorasExtraScreen() {
             />
           )
         }
-        renderItem={({ item }: any) =>
-          esUltimaEntidad ? (
-            <RevisionGrupoCard
-              grupo={item}
-              abierta={expandidas.has(item.requestId)}
-              veCosto={veCosto}
-              seleccionados={seleccionados}
-              esFirmable={r => puedeAutorizar(r, nombreEntidad)}
-              costoDe={r => costoPorRevision.get(r.Id) ?? null}
-              onAlternar={() => alternarGrupo(item.requestId)}
-              onSeleccionar={id => alternarSeleccion(id)}
-              onAprobar={revisiones => abrirAprobacion(revisiones)}
-              onRechazar={revisiones => {
-                setMotivo('')
-                setMotivoError('')
-                setRechazando(revisiones)
-              }}
-            />
-          ) : (
-            <RevisionCard
-              item={item}
-              seleccionada={seleccionados.has(item.Id)}
-              firmable={puedeAutorizar(item, nombreEntidad)}
-              onSeleccionar={() => alternarSeleccion(item.Id)}
-              onAprobar={() => abrirAprobacion([item])}
-              onRechazar={() => {
-                setMotivo('')
-                setMotivoError('')
-                setRechazando([item])
-              }}
-            />
-          )
-        }
+        renderItem={({ item }) => (
+          <RevisionCard
+            item={item}
+            firmable={puedeAutorizar(item, nombreEntidad)}
+            veCosto={veCosto}
+            costo={costoPorRevision.get(item.Id) ?? null}
+            onResolver={() => abrirResolucion(item)}
+          />
+        )}
       />
 
     </View>
 
-      {/* Aprobar: el confirm dice explícitamente qué horas quedan, porque es lo
-          que cambia y no se deduce del botón. */}
-      <ConfirmDialog
-        open={!!aprobando}
-        onOpenChange={abierto => { if (!abierto) { setAprobando(null); setImpacto([]); setHorarioReal([]) } }}
-        title="Aprobar diferencia"
-        message={!aprobando ? '' : mensajeAprobacion(aprobando, esPrimeraEntidad, horarioReal)}
-        confirmLabel={aprobando && aprobando.length > 1 ? `Aprobar ${aprobando.length}` : 'Aprobar'}
-        confirmColor="#22C55E"
-        loading={enviando}
-        onConfirm={() => aprobando && enviarDecision(aprobando, true, '', horarioReal)}
-        onCancel={() => { setAprobando(null); setImpacto([]); setHorarioReal([]) }}
-        extra={impacto.length > 0 ? <ImpactoRevision filas={impacto} aprueba /> : undefined}
-      />
+      {/* El cuadro donde se resuelve una diferencia: se elige el horario y se
+          firma. Es el mismo de la web, sección por sección —quién, las cuatro
+          alternativas, el horario que queda, los avisos, qué hace cada botón,
+          el comentario y el presupuesto—: la misma decisión no puede verse de
+          dos formas según desde dónde se tome.
 
-      {/* Revisar el horario real, antes de aprobar.
-          Solo la primera entidad y de a una: ver más abajo abrirAprobacion.
-
-          No se escribe una hora: se ajusta de a cuartos sobre la que ya trae el
-          marcaje. Escribir 'HH:mm' en un teclado numérico, con el teclado
-          tapando media pantalla, es la forma más incómoda de decir 'media hora
-          menos'. */}
+          Tres salidas y no dos: Resolver reconoce el horario escrito, Rechazar
+          no reconoce nada más que lo solicitado —y exige el motivo—, Cancelar
+          no hace nada. */}
       <Modal
         visible={!!revisando}
         transparent
@@ -1124,18 +896,28 @@ export default function RevisionHorasExtraScreen() {
       >
         <ScrollView
           style={styles.backdrop}
-          contentContainerStyle={styles.backdropContent}
+          contentContainerStyle={[styles.backdropContent, { paddingBottom: 24 + keyboardHeight }]}
           keyboardShouldPersistTaps="handled"
         >
           {revisando && (
             <View style={[styles.modalCard, { backgroundColor: theme.backgroundElevated?.val as string }]}>
+
+              {/* De quién es la hora que se está por decidir. El nombre va con
+                  su propio peso y no metido en una línea de datos: es lo
+                  primero que hay que reconocer al abrir el cuadro, sobre todo
+                  cuando se resuelven varias seguidas. Y con el solicitante,
+                  que es a quien hay que preguntarle si algo no cuadra. */}
               <XStack justifyContent="space-between" alignItems="flex-start" gap="$3">
                 <YStack flex={1} minWidth={0}>
-                  <Text fontSize={17} fontWeight="700" color="$text">
-                    Horas reales
+                  <Text fontSize={12} fontWeight="700" color="$textMuted" marginBottom={2}>
+                    Resolver diferencia
                   </Text>
-                  <Text fontSize={12} color="$textMuted" numberOfLines={2}>
+                  <Text fontSize={15} fontWeight="800" color="$text" numberOfLines={2}>
                     {nombreConCodigo(revisando.Employee_Name, revisando.Employee_Code)}
+                  </Text>
+                  <Text fontSize={11} color="$textMuted" numberOfLines={2}>
+                    {revisando.Correlative} · {fmtFecha(revisando.Date)} · solicitó{' '}
+                    {nombreConCodigo(revisando.Solicitante) || '—'}
                   </Text>
                 </YStack>
 
@@ -1148,200 +930,118 @@ export default function RevisionHorasExtraScreen() {
                 </View>
               </XStack>
 
-              {/* Los dos referentes, para poder compararlos sin salir */}
-              <XStack gap="$2" marginTop="$3">
-                <YStack
-                  flex={1} minWidth={0} borderRadius={10} padding="$2.5"
-                  borderWidth={1} borderColor="$border" backgroundColor="$backgroundSurface"
-                >
-                  <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-                    SOLICITADO
-                  </Text>
-                  <Text fontSize={14} fontWeight="700" color="$text" numberOfLines={1}>
-                    {fmtHora(revisando.Start_Time)} — {fmtHora(revisando.End_Time)}
-                  </Text>
-                  <Text fontSize={11} color="$textMuted">
-                    {fmtHoras(revisando.Requested_Overtime_Hours)}
-                  </Text>
-                </YStack>
+              {/* Las alternativas. Tocar una carga sus horas abajo; ninguna
+                  firma por su cuenta, para que elegir mal no cueste una
+                  decisión. */}
+              <OpcionesHorario
+                item={revisando}
+                etiquetaRevisado={etapaAnteriorLabel(revisando, nombreEntidad)}
+                onElegir={(ini, fin) => { setHoraIni(ini); setHoraFin(fin) }}
+              />
 
-                <YStack
-                  flex={1} minWidth={0} borderRadius={10} padding="$2.5"
-                  borderWidth={1} borderColor="$border" backgroundColor="$backgroundSurface"
-                >
-                  <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-                    MARCAJE
+              {/* Lo que va a quedar. Se toma de arriba o se escribe. */}
+              <XStack gap="$2" alignItems="flex-end" marginTop="$2">
+                <CampoHora label="Inicio" valor={horaIni} valido={minIni !== null} onCambio={setHoraIni} />
+                <CampoHora label="Fin" valor={horaFin} valido={minFin !== null} onCambio={setHoraFin} />
+
+                <YStack minWidth={72} alignItems="flex-end">
+                  <Text fontSize={9} fontWeight="700" color="#166534" letterSpacing={0.3}>
+                    SE PAGAN
                   </Text>
-                  <Text fontSize={14} fontWeight="700" color="$text" numberOfLines={1}>
-                    {revisando.Clock_Out ? fmtHora(revisando.Clock_Out) : 'Sin marcaje'}
-                  </Text>
-                  <Text fontSize={11} color="$textMuted">
-                    {revisando.Worked_Overtime_Hours === null || revisando.Worked_Overtime_Hours === undefined
-                      ? '—'
-                      : fmtHoras(revisando.Worked_Overtime_Hours)}
+                  <Text fontSize={16} fontWeight="800" color="$text">
+                    {horasElegidas === null ? '—' : fmtHoras(horasElegidas)}
                   </Text>
                 </YStack>
               </XStack>
 
-              {/* La hora que se está determinando */}
-              <YStack
-                marginTop="$3" borderRadius={12} padding="$3" gap="$2"
-                borderWidth={1} borderColor="$border"
-              >
-                <YStack gap={2}>
-                  <Text fontSize={11} fontWeight="700" color="$textMuted" letterSpacing={0.3}>
-                    ¿A QUÉ HORA SE FUE REALMENTE?
+              {/* Los avisos. Se recalculan con lo que se escribe: si salieran
+                  fijos, dirían lo contrario en cuanto se ajuste el horario. */}
+              <YStack gap={2} paddingTop={4}>
+                {horasElegidas === null && (
+                  <Text fontSize={11} fontWeight="600" color="$error">
+                    Escribí las horas en formato HH:mm.
                   </Text>
-                  <Text fontSize={11} color="$textMuted" lineHeight={15}>
-                    Es lo que se le va a pagar. Escribí la hora o tomá una de las de abajo.
-                  </Text>
-                </YStack>
-
-                {/* La hora se ESCRIBE, y los botones de a cuartos quedan para el
-                    ajuste fino. Corregir 22:15 a 21:30 son dos toques
-                    escribiendo y seis empujando de a quince. */}
-                <XStack alignItems="center" gap="$2">
-                  <Button
-                    width={44} height={52} borderRadius={10}
-                    backgroundColor="$backgroundSurface"
-                    borderWidth={1} borderColor="$border"
-                    pressStyle={{ opacity: 0.7 }}
-                    onPress={() => ajustarHora(-15)}
-                  >
-                    <Text fontSize={22} fontWeight="800" color="$text">−</Text>
-                  </Button>
-
-                  <YStack
-                    flex={1} minWidth={0} height={52} borderRadius={10}
-                    borderWidth={1}
-                    borderColor={horaValida ? '$border' : '$error'}
-                    backgroundColor="$backgroundSurface"
-                    alignItems="center" justifyContent="center"
-                  >
-                    <TextInput
-                      value={horaTexto}
-                      onChangeText={escribirHora}
-                      onBlur={() => setHoraTexto(etiquetaMinutos(minutosReales))}
-                      keyboardType="number-pad"
-                      maxLength={5}
-                      placeholder="HH:mm"
-                      placeholderTextColor={theme.textMuted?.val as string}
-                      selectTextOnFocus
-                      style={{
-                        width: '100%',
-                        textAlign: 'center',
-                        fontSize: 28,
-                        fontWeight: '800',
-                        letterSpacing: 1,
-                        color: (horaValida ? theme.text?.val : theme.error?.val) as string,
-                        padding: 0,
-                      }}
-                    />
-                  </YStack>
-
-                  <Button
-                    width={44} height={52} borderRadius={10}
-                    backgroundColor="$backgroundSurface"
-                    borderWidth={1} borderColor="$border"
-                    pressStyle={{ opacity: 0.7 }}
-                    onPress={() => ajustarHora(15)}
-                  >
-                    <Text fontSize={22} fontWeight="800" color="$text">+</Text>
-                  </Button>
-                </XStack>
-
-                {/* El resultado de lo que se acaba de escribir. Es la
-                    consecuencia y no un adorno: sin esto hay que hacer la resta
-                    de cabeza para saber cuántas horas se están reconociendo. */}
-                <XStack
-                  alignItems="center" justifyContent="space-between" gap="$2"
-                  borderRadius={9} paddingHorizontal="$2.5" paddingVertical="$2"
-                  backgroundColor="$backgroundSurface"
-                >
-                  <Text fontSize={12} color="$textSecondary" numberOfLines={1}>
-                    Desde {fmtHora(revisando.Start_Time)} hasta {etiquetaMinutos(minutosReales)}
-                  </Text>
-                  <Text fontSize={15} fontWeight="800" color="$text">
-                    {fmtHoras(horasHasta(revisando.Start_Time, minutosReales))}
-                  </Text>
-                </XStack>
-
-                {/* Los tres valores de siempre, a un toque: quedarse con lo
-                    pedido, con el reloj, o no reconocer hora extra. El borde
-                    marca cuál está puesto. */}
-                <XStack gap="$2">
-                  {revisando.End_Time && (
-                    <Button
-                      flex={1} height={36} borderRadius={9}
-                      backgroundColor="$backgroundSurface"
-                      borderWidth={1}
-                      borderColor={minutosReales === minutosDe(revisando.End_Time) ? '$primary' : '$border'}
-                      pressStyle={{ opacity: 0.7 }}
-                      onPress={() => fijarHora(minutosDe(revisando.End_Time) ?? 0)}
-                    >
-                      <Text fontSize={11} fontWeight="700" color="$textSecondary" numberOfLines={1}>
-                        Solicitado
-                      </Text>
-                    </Button>
-                  )}
-
-                  {revisando.Clock_Out && (
-                    <Button
-                      flex={1} height={36} borderRadius={9}
-                      backgroundColor="$backgroundSurface"
-                      borderWidth={1}
-                      borderColor={minutosReales === minutosDe(revisando.Clock_Out) ? '$primary' : '$border'}
-                      pressStyle={{ opacity: 0.7 }}
-                      onPress={() => fijarHora(minutosDe(revisando.Clock_Out) ?? 0)}
-                    >
-                      <Text fontSize={11} fontWeight="700" color="$textSecondary" numberOfLines={1}>
-                        Marcaje
-                      </Text>
-                    </Button>
-                  )}
-
-                  {/* Trabajó su jornada y nada más: cero horas extra. Los dos
-                      extremos caen en el inicio, que es como se dice cero en
-                      este modelo. */}
-                  <Button
-                    flex={1} height={36} borderRadius={9}
-                    backgroundColor="$backgroundSurface"
-                    borderWidth={1}
-                    borderColor={minutosReales === minutosDe(revisando.Start_Time) ? '$primary' : '$border'}
-                    pressStyle={{ opacity: 0.7 }}
-                    onPress={() => fijarHora(minutosDe(revisando.Start_Time) ?? 0)}
-                  >
-                    <Text fontSize={11} fontWeight="700" color="$textSecondary" numberOfLines={1}>
-                      Sin extra
-                    </Text>
-                  </Button>
-                </XStack>
+                )}
 
                 {/* Reconocer más de lo que dice el reloj se puede, pero no en
                     silencio: es lo que después hay que poder explicar. */}
-                {revisando.Clock_Out &&
-                  horasHasta(revisando.Start_Time, minutosReales) >
-                    (revisando.Worked_Overtime_Hours ?? 0) + 0.001 && (
+                {horasElegidas !== null && !!revisando.Clock_Out &&
+                  horasElegidas > (revisando.Worked_Overtime_Hours ?? 0) + 0.001 && (
                   <Text fontSize={11} color="#B45309">
                     Es más de lo que dice el reloj.
                   </Text>
                 )}
 
-                {/* Que la firma cierre o no la revisión depende de la hora que
-                    se está eligiendo, así que el aviso se recalcula con cada
-                    toque: si saliera fijo, diría lo contrario en cuanto se
-                    ajuste el horario. */}
-                {escala(revisando, horasHasta(revisando.Start_Time, minutosReales)) && (
+                {horasElegidas !== null && escala(revisando, horasElegidas, !esUltimaEntidad) && (
                   <Text fontSize={11} color="#B45309" lineHeight={15}>
-                    Son más de {fmtHoras(revisando.Tolerancia_Segunda_Firma)} sobre lo solicitado:
-                    va a necesitar también la firma de la siguiente etapa.
+                    Más de {fmtHoras(revisando.Tolerancia_Segunda_Firma)} sobre lo solicitado:
+                    queda a la espera de {etapaSiguienteLabel(revisando, nombreEntidad)}.
                   </Text>
                 )}
               </YStack>
 
-              <XStack gap="$3" marginTop={16}>
+              {/* Qué hace cada botón. Las tres salidas cambian cosas distintas
+                  y ninguna se deduce de su nombre. */}
+              <YStack
+                marginTop="$2" padding="$2" borderRadius={8} gap={2}
+                borderWidth={1} borderColor="#E2E8F0" backgroundColor="#F8FAFC"
+              >
+                <Text fontSize={11} lineHeight={16} color="#475569">
+                  <Text fontSize={11} fontWeight="800" color="#166534">Resolver</Text>
+                  {' · se le reconocen las horas de arriba.'}
+                </Text>
+                <Text fontSize={11} lineHeight={16} color="#475569">
+                  <Text fontSize={11} fontWeight="800" color="#B91C1C">Rechazar</Text>
+                  {' · no se reconoce la diferencia: se le pagan las '}
+                  <Text fontSize={11} fontWeight="800" color="#475569">
+                    {fmtHoras(revisando.Requested_Overtime_Hours)}
+                  </Text>
+                  {` solicitadas (${fmtHora(revisando.Start_Time)} — ${fmtHora(revisando.End_Time)}) y la revisión se cierra.`}
+                </Text>
+                <Text fontSize={11} lineHeight={16} color="#475569">
+                  <Text fontSize={11} fontWeight="800" color="#475569">Cancelar</Text>
+                  {' · no cambia nada, la revisión queda pendiente.'}
+                </Text>
+              </YStack>
+
+              {/* Un solo campo para las dos salidas: opcional al resolver,
+                  obligatorio al rechazar. */}
+              <YStack marginTop="$2">
+                <AppInput
+                  label="Comentario"
+                  multiline
+                  minLines={2}
+                  placeholder="Obligatorio si rechaza"
+                  value={motivo}
+                  onChangeText={(v: string) => { setMotivo(v); setMotivoError('') }}
+                  error={motivoError}
+                  style={{ height: 64 }}
+                />
+              </YStack>
+
+              {/* El presupuesto, para quien tenga el acceso. Solo el total:
+                  con el desglose por área el cuadro se volvía un informe y la
+                  hora —que es la decisión— quedaba abajo del pliegue. */}
+              {impacto.length > 0 && <ImpactoResolver filas={impacto} />}
+
+              {/* Rechazar va aparte y en secundario porque es la excepción: lo
+                  normal es tomar uno de los horarios de arriba. */}
+              <Button
+                height={34} borderRadius={9} marginTop="$3"
+                backgroundColor="$backgroundSurface"
+                borderWidth={1} borderColor="#FECACA"
+                pressStyle={{ opacity: 0.7 }}
+                disabled={enviando}
+                onPress={confirmarRechazo}
+              >
+                <Text fontSize={12} fontWeight="700" color="$error">
+                  Rechazar · pagar lo solicitado
+                </Text>
+              </Button>
+
+              <XStack gap="$2" marginTop="$2">
                 <Button
-                  flex={1} height={44} borderRadius={10}
+                  flex={1} height={40} borderRadius={10}
                   backgroundColor="$backgroundSurface"
                   borderWidth={1} borderColor="$border"
                   pressStyle={{ opacity: 0.7 }}
@@ -1350,109 +1050,19 @@ export default function RevisionHorasExtraScreen() {
                   <Text color="$text" fontWeight="600">Cancelar</Text>
                 </Button>
                 <Button
-                  flex={1} height={44} borderRadius={10}
-                  backgroundColor={horaValida ? '$success' : '$border'}
+                  flex={1} height={40} borderRadius={10}
+                  backgroundColor={horasElegidas === null ? '$border' : '$primary'}
                   pressStyle={{ opacity: 0.85 }}
-                  disabled={!horaValida}
+                  disabled={horasElegidas === null || enviando}
                   onPress={confirmarHorario}
                 >
-                  <Text color={horaValida ? 'white' : '$textMuted'} fontWeight="700">Continuar</Text>
+                  <Text color={horasElegidas === null ? '$textMuted' : 'white'} fontWeight="700">
+                    Resolver
+                  </Text>
                 </Button>
               </XStack>
             </View>
           )}
-        </ScrollView>
-      </Modal>
-
-      {/* Rechazar: el motivo es obligatorio, así que no alcanza un confirm */}
-      <Modal
-        visible={!!rechazando}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setRechazando(null)}
-      >
-        <ScrollView
-          style={styles.backdrop}
-          contentContainerStyle={[styles.backdropContent, { paddingBottom: 24 + keyboardHeight }]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={[styles.modalCard, { backgroundColor: theme.backgroundElevated?.val as string }]}>
-            <XStack justifyContent="space-between" alignItems="flex-start" gap="$3">
-              <YStack flex={1}>
-                <Text fontSize={17} fontWeight="700" color="$text" marginBottom="$1">
-                  Rechazar diferencia
-                </Text>
-                <Text fontSize={13} color="$textMuted" marginBottom="$3">
-                  {!rechazando
-                    ? ''
-                    : esPrimeraEntidad
-                      // Rechazar en la primera etapa es no reconocer nada más
-                      // que lo pedido, y cierra el flujo.
-                      ? rechazando.length === 1
-                        ? `Se le pagarán las ${fmtHoras(rechazando[0].Requested_Overtime_Hours)} solicitadas. Indica por qué.`
-                        : `A ${rechazando.length} empleados se les pagarán solo las horas SOLICITADAS: ` +
-                          `${fmtHoras(horasDelLote(rechazando, false, true))} en lugar de las ` +
-                          `${fmtHoras(horasDelLote(rechazando, true, true))} del marcaje. Indica por qué.`
-                      // En una etapa posterior no se rechaza la solicitud sino
-                      // la REVISIÓN de la primera entidad: lo que queda en pie
-                      // es el reloj.
-                      : rechazando.length === 1
-                        ? `No se aceptará el horario revisado: valdrán las ` +
-                          `${fmtHoras(rechazando[0].Worked_Overtime_Hours)} del marcaje. Indica por qué.`
-                        : `A ${rechazando.length} empleados no se les aceptará el horario revisado: ` +
-                          `valdrán ${fmtHoras(horasDelLote(rechazando, false, false))} del marcaje en lugar de las ` +
-                          `${fmtHoras(horasDelLote(rechazando, true, false))} revisadas. Indica por qué.`}
-                </Text>
-              </YStack>
-
-              <View
-                padding="$2"
-                marginTop={-8}
-                marginRight={-8}
-                borderRadius={999}
-                pressStyle={{ opacity: 0.6 }}
-                onPress={() => setRechazando(null)}
-              >
-                <X size={20} color={theme.textMuted?.val as string} />
-              </View>
-            </XStack>
-
-            <AppInput
-              label="Motivo"
-              multiline
-              minLines={4}
-              placeholder="Ej: El marcaje no corresponde a trabajo autorizado..."
-              value={motivo}
-              onChangeText={(v: string) => { setMotivo(v); setMotivoError('') }}
-              error={motivoError}
-              style={{ height: 140 }}
-              autoFocus
-            />
-
-            <XStack gap="$3" marginTop={16}>
-              <Button
-                flex={1} height={44} borderRadius={10}
-                backgroundColor="$backgroundSurface"
-                borderWidth={1} borderColor="$border"
-                pressStyle={{ opacity: 0.7 }}
-                onPress={() => setRechazando(null)}
-              >
-                <Text color="$text" fontWeight="600">Cancelar</Text>
-              </Button>
-              <Button
-                flex={1} height={44} borderRadius={10}
-                backgroundColor="$error"
-                pressStyle={{ opacity: 0.8 }}
-                disabled={enviando}
-                onPress={confirmarRechazo}
-              >
-                <Text color="white" fontWeight="700">
-                  {rechazando && rechazando.length > 1 ? `Rechazar ${rechazando.length}` : 'Rechazar'}
-                </Text>
-              </Button>
-            </XStack>
-          </View>
         </ScrollView>
       </Modal>
     </>
@@ -1462,23 +1072,26 @@ export default function RevisionHorasExtraScreen() {
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
   backdropContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingVertical: 24 },
-  modalCard: { borderRadius: 16, padding: 20 },
+  modalCard: { borderRadius: 16, padding: 16 },
 })
 
 /**
- * Uno de los dos grupos de horas que se están comparando.
+ * Uno de los horarios que se están comparando.
  *
- * Van con el mismo formato y el mismo alto para que se puedan leer en paralelo:
- * la decisión es elegir entre ellos, y cualquier asimetría visual empuja a
- * mirar uno más que el otro.
+ * Los tres van con el mismo formato y el mismo alto para que se puedan leer en
+ * paralelo: la decisión es elegir entre ellos, y cualquier asimetría visual
+ * empuja a mirar uno más que el otro.
+ *
+ * Sin el reparto por banda: cuánto cae en 25% y cuánto en 50% no cambia qué
+ * horario es el correcto —eso se decide por la hora— y llenaba la tarjeta de
+ * números que había que saltarse para llegar a la decisión.
  */
-function GrupoHoras({
+function Horario({
   titulo,
   color,
   inicio,
   fin,
   total,
-  conceptos,
   sinDato,
 }: {
   titulo: string
@@ -1486,489 +1099,363 @@ function GrupoHoras({
   inicio: string | null
   fin: string | null
   total: number | null
-  conceptos: ReturnType<typeof parseConceptos>
   sinDato?: boolean
 }) {
   return (
     <YStack
       flex={1}
-      gap="$2"
-      padding="$2.5"
-      borderRadius={10}
+      minWidth={0}
+      gap={1}
+      paddingHorizontal="$2"
+      paddingVertical={6}
+      borderRadius={8}
       borderWidth={1}
       borderColor="$border"
       style={{ backgroundColor: `${color}14` }}
     >
-      <Text fontSize={10} fontWeight="800" letterSpacing={0.4} style={{ color }}>
+      <Text fontSize={9} fontWeight="800" letterSpacing={0.3} style={{ color }} numberOfLines={1}>
         {titulo.toUpperCase()}
       </Text>
 
-      <Text fontSize={13} fontWeight="600" color="$text">
-        {sinDato ? 'Sin marcaje' : `${fmtHora(inicio)} — ${fmtHora(fin)}`}
+      <Text fontSize={11} color="$textSecondary" numberOfLines={1}>
+        {sinDato ? 'sin marcaje' : `${fmtHora(inicio)}—${fmtHora(fin)}`}
       </Text>
 
-      <Text fontSize={18} fontWeight="800" color="$text">
+      <Text fontSize={14} fontWeight="800" color="$text" numberOfLines={1}>
         {sinDato ? '—' : fmtHoras(total)}
       </Text>
-
-      <DistribucionHoras conceptos={conceptos} compacta />
     </YStack>
   )
 }
 
 /**
- * Una solicitud con las diferencias que le quedan pendientes.
+ * Las cuatro alternativas de horario, en una rejilla de dos por dos.
  *
- * Cerrada dice lo que hace falta para decidir: cuántos empleados, cómo se
- * mueven las horas y —con el acceso— cuánto se mueve la plata. Abierta muestra
- * renglón por renglón, porque la decisión también puede ser parcial y para eso
- * hay que poder mirar a cada uno.
+ * Todas del mismo tamaño y con el mismo formato: son alternativas, y una más
+ * grande que otra sugiere una recomendación que el sistema no tiene por qué
+ * hacer. La de la etapa anterior solo aparece cuando existe.
  *
- * El salto en dinero se muestra con su signo: reconocer el marcaje puede
- * costar más o menos que lo solicitado, y esa dirección es la mitad de la
- * decisión.
+ * Tocar una NO firma: carga su hora en el campo de abajo, que es donde se
+ * puede ajustar. Así elegir mal no cuesta una decisión.
  */
-function RevisionGrupoCard({
-  grupo,
-  abierta,
-  veCosto,
-  seleccionados,
-  esFirmable,
-  costoDe,
-  onAlternar,
-  onSeleccionar,
-  onAprobar,
-  onRechazar,
+function OpcionesHorario({
+  item,
+  etiquetaRevisado,
+  onElegir,
 }: {
-  grupo: GrupoRevision
-  abierta?: boolean
-  /** El usuario tiene el acceso para ver montos. */
-  veCosto: boolean
-  seleccionados: Set<number>
-  esFirmable: (r: IOvertimeReviewToAuth) => boolean
-  costoDe: (r: IOvertimeReviewToAuth) => { actual: number; siAprueba: number } | null
-  onAlternar: () => void
-  onSeleccionar: (id: number) => void
-  onAprobar: (revisiones: IOvertimeReviewToAuth[]) => void
-  onRechazar: (revisiones: IOvertimeReviewToAuth[]) => void
+  item: IOvertimeReviewToAuth
+  /** Cómo se llama la etapa que dejó el horario revisado. */
+  etiquetaRevisado: string
+  onElegir: (inicio: string, fin: string) => void
 }) {
-  const theme = useTheme()
-  const firmables = grupo.revisiones.filter(esFirmable)
+  const iniPedido = etiquetaMinutos(minutosDe(item.Start_Time) ?? 0)
 
-  const delta = (grupo.costoSiAprueba ?? 0) - (grupo.costoActual ?? 0)
-  const hayCosto = veCosto && grupo.costoActual !== null
+  const hhmm = (iso: string | null | undefined): string => {
+    const m = minutosDe(iso)
+    return m === null ? '' : etiquetaMinutos(m)
+  }
+
+  const opciones = [
+    item.End_Time && {
+      titulo: 'Solicitado',
+      color: '#2563EB',
+      inicio: iniPedido,
+      fin: hhmm(item.End_Time),
+      total: fmtHoras(item.Requested_Overtime_Hours),
+    },
+    item.Clock_Out && {
+      titulo: 'Marcaje',
+      color: '#D97706',
+      inicio: iniPedido,
+      fin: hhmm(item.Clock_Out),
+      total: item.Worked_Overtime_Hours === null || item.Worked_Overtime_Hours === undefined
+        ? 'Sin marcaje'
+        : fmtHoras(item.Worked_Overtime_Hours),
+    },
+    item.Real_End_Time && {
+      titulo: etiquetaRevisado,
+      color: '#16A34A',
+      inicio: hhmm(item.Real_Start_Time) || iniPedido,
+      fin: hhmm(item.Real_End_Time),
+      total: fmtHoras(item.Real_Overtime_Hours),
+    },
+    {
+      titulo: 'Sin extra',
+      color: '#475569',
+      inicio: iniPedido,
+      fin: iniPedido,
+      total: '0h',
+    },
+  ].filter(Boolean) as {
+    titulo: string
+    color: string
+    inicio: string
+    fin: string
+    total: string
+  }[]
 
   return (
-    <Card
-      backgroundColor="$backgroundElevated"
-      borderRadius={14}
-      padding="$3"
-      borderWidth={1}
-      borderColor="$border"
-    >
-      <YStack gap="$2.5">
-
-        {/* Encabezado: toda la tarjeta abre y cierra, no un ícono chiquito */}
-        <XStack alignItems="flex-start" gap="$2" pressStyle={{ opacity: 0.7 }} onPress={onAlternar}>
-          <YStack flex={1} gap="$1">
-            <XStack alignItems="center" gap="$2">
-              <Text fontSize={15} fontWeight="700" color="$text">
-                {grupo.correlativo}
-              </Text>
-              <XStack
-                paddingHorizontal={8}
-                paddingVertical={3}
-                borderRadius={20}
-                alignItems="center"
-                gap="$1"
-                backgroundColor="$backgroundSurface"
-              >
-                <CalendarDays size={11} color={theme.textMuted?.val as string} />
-                <Text fontSize={11} fontWeight="600" color="$textSecondary">
-                  {fmtFecha(grupo.fecha)}
-                </Text>
-              </XStack>
-            </XStack>
-          </YStack>
-
-          <YStack alignItems="flex-end" gap={2}>
-            {/* De dónde a dónde se mueven las horas: es la decisión entera */}
-            <Text fontSize={14} fontWeight="800" color="$text">
-              {fmtHoras(grupo.horasSolicitadas)} → {fmtHoras(grupo.horasAReconocer)}
-            </Text>
-            {hayCosto && (
-              <Text
-                fontSize={13}
-                fontWeight="700"
-                color={Math.abs(delta) < 0.005 ? '$textMuted' : delta > 0 ? '#B45309' : '#166534'}
-              >
-                {Math.abs(delta) < 0.005
-                  ? 'sin cambio'
-                  : `${delta > 0 ? '+' : '−'}${fmtDinero(Math.abs(delta))}`}
-              </Text>
-            )}
-            <Text fontSize={10} color="$textMuted">
-              {grupo.revisiones.length} empleado{grupo.revisiones.length === 1 ? '' : 's'}
-            </Text>
-          </YStack>
-
-          <View rotate={abierta ? '180deg' : '0deg'} paddingTop={2}>
-            <ChevronDown size={18} color={theme.textMuted?.val as string} />
-          </View>
-        </XStack>
-
-        {/* Los empleados */}
-        {abierta && (
-          <YStack gap="$2" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
-            {grupo.revisiones.map(r => {
-              const firmable = esFirmable(r)
-              const costo = costoDe(r)
-              const saltoFila = costo ? costo.siAprueba - costo.actual : 0
-
-              return (
-                <YStack
-                  key={r.Id}
-                  backgroundColor={seleccionados.has(r.Id) ? '$primaryOpacity2' : '$backgroundSurface'}
-                  borderRadius={10}
-                  padding="$2.5"
-                  gap="$1.5"
-                >
-                  <XStack alignItems="flex-start" gap="$2">
-                    {firmable && (
-                      <View hitSlop={12} paddingTop={2} pressStyle={{ opacity: 0.6 }} onPress={() => onSeleccionar(r.Id)}>
-                        {seleccionados.has(r.Id) ? (
-                          <CheckSquare size={18} color={theme.primary?.val as string} />
-                        ) : (
-                          <Square size={18} color={theme.textMuted?.val as string} />
-                        )}
-                      </View>
-                    )}
-
-                    <YStack flex={1} gap={2}>
-                      <Text fontSize={13} fontWeight="600" color="$text" numberOfLines={2}>
-                        {nombreConCodigo(r.Employee_Name, r.Employee_Code)}
-                      </Text>
-                      <Text fontSize={11} color="$textMuted">
-                        {fmtHoras(r.Requested_Overtime_Hours)} solicitadas · {fmtHoras(r.Worked_Overtime_Hours)} de marcaje
-                      </Text>
-
-                      {/* El horario que reviso la primera entidad. Solo existe
-                          una vez que esa firma paso, asi que en su propia
-                          bandeja esta linea no aparece. */}
-                      {!!r.Real_End_Time && (
-                        <Text fontSize={11} fontWeight="700" color="$success" numberOfLines={1}>
-                          Revisado: se fue {fmtHora(r.Real_End_Time)} · {fmtHoras(r.Real_Overtime_Hours)}
-                        </Text>
-                      )}
-                    </YStack>
-
-                    <YStack alignItems="flex-end" gap={2}>
-                      <Text fontSize={14} fontWeight="700" color="$text">
-                        {fmtHoras(r.Real_Overtime_Hours ?? r.Worked_Overtime_Hours)}
-                      </Text>
-                      {veCosto && costo && (
-                        <Text
-                          fontSize={11}
-                          fontWeight="600"
-                          color={Math.abs(saltoFila) < 0.005 ? '$textMuted' : saltoFila > 0 ? '#B45309' : '#166534'}
-                        >
-                          {Math.abs(saltoFila) < 0.005
-                            ? 'sin cambio'
-                            : `${saltoFila > 0 ? '+' : '−'}${fmtDinero(Math.abs(saltoFila))}`}
-                        </Text>
-                      )}
-                    </YStack>
-                  </XStack>
-
-                  {/* Los DOS montos, no solo el salto: uno dice lo que ya se
-                      había aprobado y el otro lo que pide la revisión. Con el
-                      salto solo no se sabe sobre qué base está calculado, y es
-                      justamente lo que hay que poder auditar. */}
-                  {veCosto && costo && (
-                    <XStack gap="$2">
-                      <YStack flex={1} gap={1}>
-                        <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-                          YA APROBADO
-                        </Text>
-                        <Text fontSize={12} fontWeight="700" color="$textSecondary">
-                          {fmtDinero(costo.actual)}
-                        </Text>
-                      </YStack>
-
-                      <YStack flex={1} gap={1}>
-                        <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-                          PIDE LA REVISIÓN
-                        </Text>
-                        <Text fontSize={12} fontWeight="800" color="$text">
-                          {fmtDinero(costo.siAprueba)}
-                        </Text>
-                      </YStack>
-                    </XStack>
-                  )}
-
-                  {/* Por qué la mandaron a revisar */}
-                  {!!r.Comment && (
-                    <Text fontSize={11} color="$textSecondary" lineHeight={15}>
-                      {r.Comment}
-                    </Text>
-                  )}
-
-                  {/* Chicos y alineados a la derecha, no dos barras a lo
-                      ancho: la decisión de la solicitud entera vive al pie de
-                      la tarjeta, y estos son la excepción —resolver a uno
-                      aparte—. Con el mismo peso visual competían con ella. */}
-                  {firmable && (
-                    <XStack gap="$2" justifyContent="flex-end" paddingTop={2}>
-                      <Button
-                        height={28} borderRadius={8} paddingHorizontal="$2.5"
-                        backgroundColor="$backgroundElevated"
-                        borderWidth={1} borderColor="$border"
-                        pressStyle={{ opacity: 0.7 }}
-                        onPress={() => onRechazar([r])}
-                      >
-                        <XStack alignItems="center" gap="$1">
-                          <X size={12} color={theme.error?.val as string} />
-                          <Text fontSize={11} fontWeight="700" color="$error">Rechazar</Text>
-                        </XStack>
-                      </Button>
-
-                      <Button
-                        height={28} borderRadius={8} paddingHorizontal="$2.5"
-                        backgroundColor="$success"
-                        pressStyle={{ opacity: 0.85 }}
-                        onPress={() => onAprobar([r])}
-                      >
-                        <XStack alignItems="center" gap="$1">
-                          <Check size={12} color="white" />
-                          <Text fontSize={11} fontWeight="700" color="white">Aprobar</Text>
-                        </XStack>
-                      </Button>
-                    </XStack>
-                  )}
-                </YStack>
-              )
-            })}
-          </YStack>
-        )}
-
-        {/* La solicitud entera. Visible abierta o cerrada: es la decisión más
-            frecuente y no debería exigir desplegar primero. */}
-        {firmables.length > 0 && (
-          <XStack gap="$2" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
-            <Button
-              flex={1} height={40} borderRadius={10}
-              backgroundColor="$backgroundSurface"
-              borderWidth={1} borderColor="$border"
-              pressStyle={{ opacity: 0.7 }}
-              onPress={() => onRechazar(firmables)}
-            >
-              <XStack alignItems="center" gap="$2">
-                <X size={15} color={theme.error?.val as string} />
-                <Text fontSize={13} fontWeight="700" color="$error">
-                  {firmables.length > 1 ? 'Rechazar todo' : 'Rechazar'}
-                </Text>
-              </XStack>
-            </Button>
-
-            <Button
-              flex={1} height={40} borderRadius={10}
-              backgroundColor="$success"
-              pressStyle={{ opacity: 0.85 }}
-              onPress={() => onAprobar(firmables)}
-            >
-              <XStack alignItems="center" gap="$2">
-                <Check size={15} color="white" />
-                <Text fontSize={13} fontWeight="700" color="white">
-                  {firmables.length > 1 ? 'Aprobar todo' : 'Aprobar'}
-                </Text>
-              </XStack>
-            </Button>
-          </XStack>
-        )}
-      </YStack>
-    </Card>
+    <XStack flexWrap="wrap" gap={6} marginTop="$3">
+      {opciones.map(o => (
+        <YStack
+          key={o.titulo}
+          width="48.5%"
+          gap={1}
+          paddingHorizontal="$2"
+          paddingVertical={6}
+          borderRadius={8}
+          borderWidth={1}
+          borderColor={`${o.color}33`}
+          style={{ backgroundColor: `${o.color}0F` }}
+          pressStyle={{ opacity: 0.6 }}
+          onPress={() => onElegir(o.inicio, o.fin)}
+        >
+          <Text
+            fontSize={9} fontWeight="700" letterSpacing={0.4}
+            textTransform="uppercase" style={{ color: o.color }} numberOfLines={1}
+          >
+            {o.titulo}
+          </Text>
+          <Text fontSize={13} fontWeight="700" color="#1F2937" numberOfLines={1}>
+            {o.inicio} — {o.fin}
+          </Text>
+          <Text fontSize={10} color="#64748B" numberOfLines={1}>
+            {o.total}
+          </Text>
+        </YStack>
+      ))}
+    </XStack>
   )
 }
 
-function RevisionCard({
-  item,
-  seleccionada,
-  firmable = true,
-  onSeleccionar,
-  onAprobar,
-  onRechazar,
+/**
+ * Un campo de hora, igual a los de la web.
+ *
+ * Los dos puntos se ponen solos: en un teclado numérico el ':' no está a mano,
+ * y pedirlo convertiría 'escribir la hora' en un acertijo.
+ */
+function CampoHora({
+  label,
+  valor,
+  valido,
+  onCambio,
 }: {
-  item: IOvertimeReviewToAuth
-  /** Marcada para resolver en lote. */
-  seleccionada?: boolean
-  /** A esta entidad todavía le toca firmarla. */
-  firmable?: boolean
-  onSeleccionar: () => void
-  onAprobar: () => void
-  onRechazar: () => void
+  label: string
+  valor: string
+  valido: boolean
+  onCambio: (texto: string) => void
 }) {
   const theme = useTheme()
 
-  const solicitados = useMemo(
-    () => parseConceptos(item.Requested_Concepts_Json),
-    [item.Requested_Concepts_Json],
+  return (
+    <YStack flex={1} minWidth={0} gap={2}>
+      <Text fontSize={10} color="#64748B">{label}</Text>
+      <YStack
+        height={36} borderRadius={6} borderWidth={1}
+        borderColor={valido ? '#CBD5E1' : (theme.error?.val as string)}
+        backgroundColor="#FFFFFF" justifyContent="center"
+      >
+        <TextInput
+          value={valor}
+          onChangeText={t => onCambio(formatearHora(t))}
+          keyboardType="number-pad"
+          maxLength={5}
+          placeholder="HH:mm"
+          placeholderTextColor="#94A3B8"
+          selectTextOnFocus
+          style={{
+            width: '100%',
+            textAlign: 'center',
+            fontSize: 14,
+            fontWeight: '700',
+            color: (valido ? '#1F2937' : theme.error?.val) as string,
+            padding: 0,
+          }}
+        />
+      </YStack>
+    </YStack>
   )
-  const trabajados = useMemo(
-    () => parseConceptos(item.Worked_Concepts_Json),
-    [item.Worked_Concepts_Json],
-  )
+}
+
+/**
+ * Una diferencia esperando que esta entidad le determine el horario.
+ *
+ * Una por EMPLEADO y para todas las entidades, incluida la última. Se
+ * agrupaban por solicitud cuando la firma era un sí/no sobre el lote entero;
+ * ahora la decisión es a qué hora se fue cada persona, y eso no se puede
+ * tomar de a montón.
+ *
+ * Lleva lo que hace falta para decidir y nada más: quién es y de dónde, los
+ * horarios en juego, la diferencia, quién la mandó y por qué. Lo que costaba
+ * solo aparece para quien tiene el acceso.
+ */
+function RevisionCard({
+  item,
+  firmable = true,
+  veCosto,
+  costo,
+  onResolver,
+}: {
+  item: IOvertimeReviewToAuth
+  /** A esta entidad todavía le toca firmarla. */
+  firmable?: boolean
+  /** El usuario tiene el acceso para ver montos. */
+  veCosto?: boolean
+  /** Lo que ya cuesta y lo que costaría con el horario revisado. */
+  costo?: { actual: number; siAprueba: number } | null
+  onResolver: () => void
+}) {
+  const theme = useTheme()
 
   const sinMarcaje = item.Worked_Overtime_Hours === null || item.Worked_Overtime_Hours === undefined
   const colorDiff = colorDiferencia(item.Hours_Difference, theme)
   const IconoDiff = (item.Hours_Difference ?? 0) < 0 ? TrendingDown : TrendingUp
 
+  // El horario que dejó la etapa anterior. Solo existe si ya pasó por una, y
+  // cuando existe es la propuesta sobre la que se está firmando.
+  const hayRevisado = item.Real_End_Time !== null && item.Real_End_Time !== undefined
+
+  const delta = (costo?.siAprueba ?? 0) - (costo?.actual ?? 0)
+  const hayCosto = !!veCosto && !!costo
+
   return (
     <Card
-      backgroundColor={seleccionada ? '$primaryOpacity2' : '$backgroundElevated'}
-      borderRadius={14}
-      padding="$3"
-      borderWidth={seleccionada ? 2 : 1}
-      borderColor={seleccionada ? '$primary' : '$border'}
+      backgroundColor="$backgroundElevated"
+      borderRadius={12}
+      padding="$2.5"
+      borderWidth={1}
+      borderColor="$border"
     >
-      <YStack gap="$3">
-        {/* Quién y cuándo */}
+      <YStack gap="$2">
+        {/* Quién es, de dónde y de cuándo. Los tres en dos renglones: son
+            identificación, no decisión. */}
         <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
-          {/* Casilla de selección. Solo en las que esta entidad puede firmar:
-              marcar una que después se descarta en silencio es peor que no
-              poder marcarla. */}
-          {firmable && (
-            <View
-              paddingTop={2}
-              paddingRight="$1"
-              hitSlop={12}
-              pressStyle={{ opacity: 0.6 }}
-              onPress={onSeleccionar}
-            >
-              {seleccionada ? (
-                <CheckSquare size={20} color={theme.primary?.val as string} />
-              ) : (
-                <Square size={20} color={theme.textMuted?.val as string} />
-              )}
-            </View>
-          )}
-
-          <YStack flex={1} gap="$1">
-            <Text fontSize={15} fontWeight="700" color="$text" numberOfLines={2}>
+          <YStack flex={1} minWidth={0}>
+            <Text fontSize={14} fontWeight="700" color="$text" numberOfLines={1}>
               {nombreConCodigo(item.Employee_Name, item.Employee_Code)}
             </Text>
-            {!!item.Departamento && (
-              <Text fontSize={12} color="$textMuted" numberOfLines={1}>
-                {item.Departamento}
-              </Text>
-            )}
+            <Text fontSize={11} color="$textMuted" numberOfLines={1}>
+              {[item.Departamento, item.Posicion].filter(Boolean).join(' · ') || 'Sin área'}
+            </Text>
           </YStack>
 
           <XStack
-            paddingHorizontal={8}
-            paddingVertical={3}
-            borderRadius={20}
+            paddingHorizontal={7}
+            paddingVertical={2}
+            borderRadius={16}
             alignItems="center"
-            gap="$1"
+            gap={4}
             backgroundColor="$backgroundSurface"
           >
-            <CalendarDays size={11} color={theme.textMuted?.val as string} />
-            <Text fontSize={11} fontWeight="600" color="$textSecondary">
+            <CalendarDays size={10} color={theme.textMuted?.val as string} />
+            <Text fontSize={10} fontWeight="600" color="$textSecondary">
               {fmtFecha(item.Date)}
             </Text>
           </XStack>
         </XStack>
 
-        {/* Los dos referentes de la decisión, enfrentados */}
-        <XStack gap="$2" alignItems="stretch">
-          <GrupoHoras
+        {/* Los horarios en juego, enfrentados. El tercero solo cuando existe. */}
+        <XStack gap={6} alignItems="stretch">
+          <Horario
             titulo="Solicitado"
             color="#3B82F6"
             inicio={item.Start_Time}
             fin={item.End_Time}
             total={item.Requested_Overtime_Hours}
-            conceptos={solicitados}
           />
-          <GrupoHoras
+          <Horario
             titulo="Marcaje"
             color="#F59E0B"
             inicio={item.Clock_In}
             fin={item.Clock_Out}
             total={item.Worked_Overtime_Hours}
-            conceptos={trabajados}
             sinDato={sinMarcaje}
           />
+          {hayRevisado && (
+            <Horario
+              titulo="Revisado"
+              color="#16A34A"
+              inicio={item.Real_Start_Time ?? item.Start_Time}
+              fin={item.Real_End_Time}
+              total={item.Real_Overtime_Hours}
+            />
+          )}
         </XStack>
 
-        {/* La diferencia: el número sobre el que se decide */}
+        {/* La diferencia y —con el acceso— lo que mueve, en un solo renglón. */}
         <XStack
           justifyContent="space-between"
           alignItems="center"
-          paddingHorizontal="$3"
-          paddingVertical="$2"
-          borderRadius={10}
+          paddingHorizontal="$2.5"
+          paddingVertical={6}
+          borderRadius={8}
           backgroundColor="$backgroundSurface"
+          gap="$2"
         >
-          <XStack alignItems="center" gap="$2">
-            <IconoDiff size={15} color={colorDiff} />
-            <Text fontSize={12} fontWeight="700" color="$textSecondary">
+          <XStack alignItems="center" gap={5} minWidth={0}>
+            <IconoDiff size={13} color={colorDiff} />
+            <Text fontSize={11} fontWeight="700" color="$textSecondary">
               Diferencia
             </Text>
-          </XStack>
-          <Text fontSize={18} fontWeight="800" style={{ color: colorDiff }}>
-            {etiquetaDiferencia(item.Hours_Difference)}
-          </Text>
-        </XStack>
-
-        {/* Por qué llegó acá: sin esto la decisión se toma a ciegas */}
-        <YStack gap="$1" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
-          <XStack alignItems="center" gap="$2">
-            <MessageSquareWarning size={13} color={theme.textMuted?.val as string} />
-            <Text fontSize={11} color="$textMuted" flex={1} numberOfLines={1}>
-              {nombreConCodigo(item.Sent_To_Review_By)} · {fmtFechaHora(item.Sent_To_Review_Date)}
+            <Text fontSize={14} fontWeight="800" style={{ color: colorDiff }}>
+              {etiquetaDiferencia(item.Hours_Difference)}
             </Text>
           </XStack>
 
-          <Text fontSize={12} color="$textSecondary">
-            {item.Comment || 'Sin justificación registrada.'}
-          </Text>
+          {hayCosto && (
+            <Text fontSize={11} fontWeight="700" color="$textSecondary" numberOfLines={1}>
+              {fmtDinero(costo!.actual)}
+              {Math.abs(delta) > 0.005 && (
+                <Text fontSize={11} fontWeight="800" color={delta > 0 ? '#B45309' : '#166534'}>
+                  {` → ${fmtDinero(costo!.siAprueba)}`}
+                </Text>
+              )}
+            </Text>
+          )}
+        </XStack>
 
-          <XStack justifyContent="space-between" alignItems="center" gap="$2" marginTop="$1">
-            <Text fontSize={11} color="$textMuted" numberOfLines={1} flex={1}>
+        {/* Por qué llegó acá: sin esto la decisión se toma a ciegas. El
+            correlativo y quién solicitó van juntos —son la solicitud de la que
+            salió— y el motivo al lado, que es del renglón. */}
+        <YStack gap={3} borderTopWidth={1} borderTopColor="$border" paddingTop={6}>
+          <XStack justifyContent="space-between" alignItems="center" gap="$2">
+            <Text fontSize={10} color="$textMuted" numberOfLines={1} flex={1}>
+              {item.Correlative} · solicitó {nombreConCodigo(item.Solicitante)}
+            </Text>
+            <Text fontSize={10} color="$textMuted" numberOfLines={1}>
               {item.Category_Name || 'Sin motivo'}
             </Text>
-            <Text fontSize={11} fontWeight="600" color="$textMuted">
-              {item.Correlative}
+          </XStack>
+
+          <XStack alignItems="center" gap={5}>
+            <MessageSquareWarning size={11} color={theme.textMuted?.val as string} />
+            <Text fontSize={10} color="$textMuted" flex={1} numberOfLines={1}>
+              a revisión por {nombreConCodigo(item.Sent_To_Review_By)} · {fmtFechaHora(item.Sent_To_Review_Date)}
             </Text>
           </XStack>
+
+          <Text fontSize={11} color="$textSecondary">
+            {item.Comment || 'Sin justificación registrada.'}
+          </Text>
         </YStack>
 
-        {/* La decisión, al pie: después de todo lo que hay que leer para tomarla */}
-        <XStack gap="$2">
+        {/* UNA sola acción, y no 'aprobar / rechazar'. Quien firma no dice sí o
+            no: elige a qué hora se fue el empleado entre los horarios de
+            arriba —o escribe otra—, y no reconocer nada es una de las salidas
+            de ese cuadro, no la mitad de la decisión. */}
+        {firmable && (
           <Button
-            flex={1} height={40} borderRadius={10}
-            backgroundColor="$backgroundSurface"
-            borderWidth={1} borderColor="$border"
-            pressStyle={{ opacity: 0.7 }}
-            onPress={onRechazar}
-          >
-            <XStack alignItems="center" gap="$2">
-              <X size={15} color={theme.error?.val as string} />
-              <Text fontSize={13} fontWeight="700" color="$error">Rechazar</Text>
-            </XStack>
-          </Button>
-
-          <Button
-            flex={1} height={40} borderRadius={10}
-            backgroundColor="$success"
+            height={36} borderRadius={9}
+            backgroundColor="$primary"
             pressStyle={{ opacity: 0.85 }}
-            onPress={onAprobar}
+            onPress={onResolver}
           >
-            <XStack alignItems="center" gap="$2">
-              <Check size={15} color="white" />
-              <Text fontSize={13} fontWeight="700" color="white">Aprobar</Text>
+            <XStack alignItems="center" gap={6}>
+              <Check size={14} color="white" />
+              <Text fontSize={12} fontWeight="700" color="white">Resolver</Text>
             </XStack>
           </Button>
-        </XStack>
+        )}
       </YStack>
     </Card>
   )
@@ -1976,114 +1463,57 @@ function RevisionCard({
 
 
 /**
- * Qué le pasa al presupuesto según lo que se firme.
+ * Qué le pasa al presupuesto si se resuelve con la hora que está puesta.
  *
- * Mientras la revisión está abierta el presupuesto YA tiene contadas las horas
- * solicitadas: el detalle se costea por lo pedido hasta que alguien resuelve la
- * diferencia. Por eso rechazar no lo mueve —no es que no cueste, es que ya está
- * contado— y aprobar lo mueve en (marcaje − solicitado).
+ * Tres números y ninguno más: cuánto hay, cuánto cuesta esto y con cuánto se
+ * queda. El desglose por área contestaba una pregunta que nadie hace mientras
+ * decide a qué hora se fue un empleado.
  *
- * Se muestran los dos números aunque solo uno vaya a pasar: el salto entre
- * ellos ES la decisión, y con uno solo no hay contra qué compararlo.
+ * Solo llega con contenido cuando la firma RESUELVE la revisión y el usuario
+ * tiene el acceso a montos: las dos condiciones las decide el backend.
  */
-function ImpactoRevision({ filas, aprueba }: { filas: IOvertimeReviewImpact[]; aprueba: boolean }) {
+function ImpactoResolver({ filas }: { filas: IOvertimeReviewImpact[] }) {
   const total = filas.find(r => r.Es_Total)
-  const areas = filas.filter(r => !r.Es_Total)
+  if (!total) return null
 
-  return (
-    <YStack gap="$2" width="100%">
-      {total && <TotalRevision fila={total} aprueba={aprueba} />}
-
-      {areas.map(r => {
-        const actual = r.Costo_Actual ?? 0
-        const siAprueba = r.Costo_Si_Aprueba ?? 0
-        const delta = siAprueba - actual
-
-        return (
-          <YStack
-            key={r.Area_Codigo}
-            width="100%"
-            backgroundColor="$backgroundSurface"
-            borderRadius={10}
-            padding="$2.5"
-            gap="$1.5"
-          >
-            <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
-              <YStack flex={1} minWidth={0}>
-                <Text fontSize={12} fontWeight="700" color="$text" numberOfLines={1}>
-                  {r.Area_Nombre || r.Area_Codigo}
-                </Text>
-                <Text fontSize={10} color="$textMuted">
-                  {fmtHoras(r.Horas_Solicitadas)} solicitadas · {fmtHoras(r.Horas_A_Reconocer)} a reconocer
-                </Text>
-              </YStack>
-
-              {aprueba && Math.abs(delta) > 0.005 ? (
-                <Text fontSize={13} fontWeight="800" color={delta > 0 ? '#B45309' : '#166534'}>
-                  {delta > 0 ? '+' : '−'}{fmtDinero(Math.abs(delta))}
-                </Text>
-              ) : (
-                <Text fontSize={11} color="$textMuted">sin cambio</Text>
-              )}
-            </XStack>
-
-            <XStack justifyContent="space-between" gap="$2">
-              <Text fontSize={11} color="$textMuted">Ya contado</Text>
-              <Text fontSize={12} fontWeight="600" color="$textSecondary">{fmtDinero(actual)}</Text>
-            </XStack>
-            <XStack justifyContent="space-between" gap="$2">
-              <Text fontSize={11} color="$textMuted">Si se aprueba</Text>
-              <Text fontSize={12} fontWeight="700" color="$text">{fmtDinero(siAprueba)}</Text>
-            </XStack>
-          </YStack>
-        )
-      })}
-    </YStack>
-  )
-}
-
-/** El presupuesto completo del que firma, en el escenario que corresponda. */
-function TotalRevision({ fila, aprueba }: { fila: IOvertimeReviewImpact; aprueba: boolean }) {
-  const presupuesto = fila.Presupuesto ?? 0
-  const despues = (aprueba ? fila.Consumido_Si_Aprueba : fila.Consumido_Si_Rechaza) ?? 0
-  const disponible = presupuesto - despues
-  const excedido = disponible < 0
+  const presupuesto = total.Presupuesto ?? 0
+  const despues = total.Consumido_Si_Aprueba ?? 0
+  const cuesta = despues - (total.Consumido ?? 0)
+  const queda = presupuesto - despues
+  const excedido = queda < 0
 
   return (
     <YStack
-      width="100%"
-      backgroundColor={excedido ? '#FEF2F2' : '#F0FDF4'}
-      borderWidth={1}
-      borderColor={excedido ? '#FECACA' : '#BBF7D0'}
+      marginTop="$2"
       borderRadius={10}
       padding="$2.5"
-      gap="$1.5"
+      gap={4}
+      borderWidth={1}
+      borderColor={excedido ? '#FECACA' : '#E2E8F0'}
+      backgroundColor={excedido ? '#FEF2F2' : '#F8FAFC'}
     >
-      <XStack justifyContent="space-between" alignItems="center" gap="$2">
-        <Text fontSize={10} fontWeight="700" color={excedido ? '#991B1B' : '#166534'} letterSpacing={0.4}>
-          TU PRESUPUESTO
-        </Text>
-        <Text fontSize={11} fontWeight="700" color={excedido ? '#991B1B' : '#166534'}>
-          {excedido ? `Excedido en ${fmtDinero(Math.abs(disponible))}` : `Quedarían ${fmtDinero(disponible)}`}
-        </Text>
-      </XStack>
-
-      <XStack gap="$2">
-        {[
-          { label: 'ASIGNADO', valor: fila.Presupuesto, fuerte: false },
-          { label: 'GASTADO HOY', valor: fila.Consumido, fuerte: false },
-          { label: aprueba ? 'SI APRUEBAS' : 'SI RECHAZAS', valor: despues, fuerte: true },
-        ].map(c => (
-          <YStack key={c.label} flex={1} gap={1}>
-            <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-              {c.label}
-            </Text>
-            <Text fontSize={c.fuerte ? 15 : 13} fontWeight={c.fuerte ? '800' : '700'} color="$text">
-              {fmtDinero(c.valor)}
-            </Text>
-          </YStack>
-        ))}
-      </XStack>
+      {[
+        { label: 'Presupuesto de la semana', valor: fmtDinero(presupuesto), fuerte: false },
+        { label: 'Cuesta resolver esto', valor: fmtDinero(cuesta), fuerte: false },
+        {
+          label: excedido ? 'Se excede en' : 'Quedarían',
+          valor: fmtDinero(Math.abs(queda)),
+          fuerte: true,
+        },
+      ].map(l => (
+        <XStack key={l.label} justifyContent="space-between" alignItems="center" gap="$2">
+          <Text fontSize={11} color={excedido && l.fuerte ? '#991B1B' : '#64748B'}>
+            {l.label}
+          </Text>
+          <Text
+            fontSize={l.fuerte ? 14 : 12}
+            fontWeight={l.fuerte ? '800' : '600'}
+            color={excedido && l.fuerte ? '#991B1B' : '#1F2937'}
+          >
+            {l.valor}
+          </Text>
+        </XStack>
+      ))}
     </YStack>
   )
 }
