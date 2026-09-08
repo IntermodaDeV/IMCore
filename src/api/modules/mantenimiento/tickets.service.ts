@@ -24,6 +24,7 @@ import {
   IPausaMotivo,
   IPausaDetalle,
   ICumplimientoValidacion,
+  IObjetoSugerencia,
 } from './tickets.types'
 import { MantenimientoPeriodo } from '../sharepoint/mantenimiento.types'
 
@@ -110,6 +111,12 @@ export const ticketsService = {
   // Bitácora de acciones (línea de tiempo).
   getEventos: (id: number) =>
     httpClient.get<ExecutionResponse<ITicketEvento[]>>(`${schema}/Eventos`, { id }),
+
+  // Detalles ya usados que coincidan con lo tecleado, para no reescribir el mismo
+  // trabajo de diez formas distintas. Si falla, el campo sigue siendo texto libre:
+  // esto nunca debe impedir crear un ticket.
+  getObjetoSugerencias: (busqueda?: string, top = 15) =>
+    httpClient.get<ExecutionResponse<IObjetoSugerencia[]>>(`${schema}/ObjetoSugerencias`, { busqueda, top }),
 
   // Resumen por período (KPIs + desglose por mecánico). desde/hasta en ISO.
   getResumen: (desde: string, hasta: string) =>
