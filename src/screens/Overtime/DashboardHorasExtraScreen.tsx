@@ -677,6 +677,18 @@ function GastoPorDia({
   const maxCosto = dias.reduce((m, d) => Math.max(m, Number(d.Costo ?? 0)), 0)
 
   /**
+   * El día cuyo desglose se está mirando.
+   *
+   * Arranca en null y cae al día MÁS CARO, que es el que motiva la pregunta
+   * "¿quién gastó esto?". Se guarda el índice y no el día para no quedar
+   * apuntando a un objeto viejo cuando cambia la semana.
+   */
+  const [diaSel, setDiaSel] = useState<number | null>(null)
+
+  const indiceMayor = dias.findIndex(d => Number(d.Costo ?? 0) === maxCosto && maxCosto > 0)
+  const dia = dias[diaSel ?? indiceMayor] ?? null
+
+  /**
    * Tope del eje, un 20% por encima del día más caro.
    *
    * Sin esto la librería hace que la barra más alta llegue justo al techo del
@@ -760,7 +772,65 @@ function GastoPorDia({
           xAxisColor="#E2E8F0"
           rulesColor="#E2E8F0"
           rulesType="dashed"
+          // Tocar una barra cambia el desglose de abajo. El índice apunta a
+          // `dias` porque las barras se construyen desde ahí y en ese orden.
+          onPress={(_item: any, index: number) => {
+            if (Number(dias[index]?.Costo ?? 0) > 0) setDiaSel(index)
+          }}
         />
+      )}
+
+      {/* Quién puso el gasto de ese día.
+          El gráfico dice CUÁNTO y cuándo; esto dice dónde mirar. Los tres
+          niveles van juntos y no anidados: el departamento que más gasta no
+          siempre está dentro de la unidad que más gasta, y presentarlos como
+          jerarquía sería afirmar algo que no siempre se cumple. */}
+      {maxCosto > 0 && dia && (
+        <YStack gap="$1.5" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
+          <XStack alignItems="baseline" gap="$2">
+            <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4} flex={1}>
+              MAYOR GASTO DEL DÍA
+            </Text>
+            <Text fontSize={11} fontWeight="700" color="$text">
+              {diaCorto(dia.Fecha)} {fechaCorta(dia.Fecha)}
+            </Text>
+          </XStack>
+
+          {Number(dia.Costo ?? 0) === 0 ? (
+            <Text fontSize={11} color="$textMuted">
+              Ese día no tuvo horas extra aprobadas.
+            </Text>
+          ) : (
+            [
+              { nivel: 'Unidad', nombre: dia.Top_Unidad, costo: dia.Top_Unidad_Costo },
+              { nivel: 'Departamento', nombre: dia.Top_Departamento, costo: dia.Top_Departamento_Costo },
+              { nivel: 'Centro de costos', nombre: dia.Top_Centro, costo: dia.Top_Centro_Costo },
+            ]
+              .filter(f => !!f.nombre)
+              .map(f => (
+                <XStack key={f.nivel} alignItems="center" gap="$2">
+                  <Text fontSize={10} color="$textMuted" width={92}>
+                    {f.nivel}
+                  </Text>
+                  <Text fontSize={11} color="$text" numberOfLines={1} flex={1}>
+                    {f.nombre}
+                  </Text>
+                  <Text fontSize={11} fontWeight="700" color="$text">
+                    {fmtDinero(f.costo)}
+                  </Text>
+                  {/* Cuánto del día explica ese aportante: sin el porcentaje,
+                      un monto grande no se distingue de 'fue el único'. */}
+                  <Text fontSize={9} color="$textMuted" width={30} textAlign="right">
+                    {Math.round((Number(f.costo ?? 0) / Number(dia.Costo || 1)) * 100)}%
+                  </Text>
+                </XStack>
+              ))
+          )}
+
+          <Text fontSize={9} color="$textMuted">
+            Tocá una barra para ver otro día.
+          </Text>
+        </YStack>
       )}
     </YStack>
   )

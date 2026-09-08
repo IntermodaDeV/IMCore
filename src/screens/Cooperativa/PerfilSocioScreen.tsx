@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { YStack, XStack, Text, Button, ScrollView, View, Spinner } from 'tamagui'
 import {
   Handshake, UserCog, CalendarDays, IdCard, Mail, Phone, MapPin,
-  Building2, AlertCircle, Clock, XCircle, MessageSquare, RotateCcw, BadgeCheck,
+  Building2, AlertCircle, BadgeCheck,
   FilePlus2, PiggyBank, Info,
 } from 'lucide-react-native'
 import { cooperativaService } from '../../api/modules/cooperativa/cooperativa.service'
@@ -20,6 +20,7 @@ import { ExecutionResponse } from '../../api/modules/response.type'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useKeyboardHeight } from '../../hooks/useKeyboardInset'
 import AppInput from '../../components/commons/AppInput'
+import ConfirmDialog from '../../components/commons/ConfirmDialog'
 import { handleError } from '../../utils/errorHandler'
 import { useShowToast } from '../../utils/useShowToast'
 import SkeletonForm from '../../components/Skeletons/SkeletonForm'
@@ -30,13 +31,14 @@ import { shadows } from '../../theme/shadows'
 /**
  * Perfil de afiliación a la cooperativa (ruta 'self').
  *
- * Cuatro estados, resueltos por api/CooInter/EstadoAfiliacion:
- *  1. Aprobada      -> la ficha del socio manda. Sin encabezado ni bloque de
- *                      estado: el estado queda como un chip junto al nombre
- *  2. Pendiente     -> se muestra el estado, sin acción
- *  3. Rechazada     -> el motivo y el botón "Volver a solicitar"
- *  4. Sin solicitud -> si aplica, sus datos y "Quiero ser socio"; si no, el
- *                      motivo que devolvió el procedimiento de planilla
+ * Dos estados, resueltos por api/CooInter/EstadoAfiliacion:
+ *  1. Ya es socio  -> la ficha del socio manda. Sin encabezado ni bloque de
+ *                     estado: el estado queda como un chip junto al nombre
+ *  2. Todavía no   -> si aplica, sus datos, el aporte y "Quiero ser socio"; si
+ *                     no, el motivo que devolvió el procedimiento de planilla
+ *
+ * Antes habia dos estados mas, "pendiente" y "rechazada", de cuando la
+ * afiliacion pasaba por aprobacion. Ya no: se afilia en el acto.
  *
  * No manda códigos ni datos del empleado: los resuelve el servidor desde el
  * token. Ver cooperativa.service.ts.
@@ -99,15 +101,15 @@ function Dato({
   valor: string | null
 }) {
   return (
-    <XStack gap="$3" alignItems="flex-start">
+    <XStack gap="$2" alignItems="flex-start">
       <View marginTop={2}>
-        <Icono size={16} color="#94A3B8" />
+        <Icono size={13} color="#94A3B8" />
       </View>
-      <YStack flex={1} gap="$1">
-        <Text fontSize={12} color="$textMuted" fontWeight="600">
+      <YStack flex={1} gap="$0.5">
+        <Text fontSize={10} color="$textMuted" fontWeight="600">
           {etiqueta}
         </Text>
-        <Text fontSize={15} color="$text">
+        <Text fontSize={13} color="$text" lineHeight={17}>
           {valor && valor.trim() ? valor : '-'}
         </Text>
       </YStack>
@@ -131,34 +133,59 @@ function FichaDatos({
 }) {
   return (
     <YStack
-      gap="$4"
-      padding="$4"
+      gap="$2.5"
+      padding="$3"
       borderRadius="$4"
       backgroundColor="$backgroundElevated"
       borderWidth={1}
       borderColor="$border"
       {...shadows.sm}
     >
-      <YStack gap="$2">
+      <YStack gap="$1.5">
         <XStack gap="$2" alignItems="center">
-          <UserCog size={18} color="#94A3B8" />
-          <Text fontSize={17} fontWeight="700" color="$text" flex={1}>
+          <UserCog size={15} color="#94A3B8" />
+          <Text fontSize={15} fontWeight="700" color="$text" flex={1}>
             {nombreCompleto(datos) || 'Empleado'}
           </Text>
         </XStack>
         {chip}
       </YStack>
 
-      <Dato icono={IdCard} etiqueta="Identidad" valor={datos.NIT} />
-      <Dato icono={IdCard} etiqueta="Código de personal" valor={datos.Codigo} />
-      <Dato icono={CalendarDays} etiqueta="Fecha de nacimiento" valor={formatFecha(datos.FechaNacimiento)} />
-      <Dato icono={CalendarDays} etiqueta="Fecha de ingreso" valor={formatFecha(datos.FechaIngreso)} />
-      <Dato
-        icono={Building2}
-        etiqueta="Tipo de planilla"
-        valor={TIPO_PLANILLA[datos.TipoPlanilla ?? ''] ?? datos.TipoPlanilla}
-      />
-      <Dato icono={Phone} etiqueta="Teléfono" valor={datos.Telefono1} />
+      {/* De dos en dos: son datos cortos y en una sola columna la ficha se
+          comia la pantalla antes de que apareciera el campo del aporte. */}
+      <XStack gap="$2">
+        <View flex={1}>
+          <Dato icono={IdCard} etiqueta="Identidad" valor={datos.NIT} />
+        </View>
+        <View flex={1}>
+          <Dato icono={IdCard} etiqueta="Código" valor={datos.Codigo} />
+        </View>
+      </XStack>
+
+      <XStack gap="$2">
+        <View flex={1}>
+          <Dato icono={CalendarDays} etiqueta="Nacimiento" valor={formatFecha(datos.FechaNacimiento)} />
+        </View>
+        <View flex={1}>
+          <Dato icono={CalendarDays} etiqueta="Ingreso" valor={formatFecha(datos.FechaIngreso)} />
+        </View>
+      </XStack>
+
+      <XStack gap="$2">
+        <View flex={1}>
+          <Dato
+            icono={Building2}
+            etiqueta="Planilla"
+            valor={TIPO_PLANILLA[datos.TipoPlanilla ?? ''] ?? datos.TipoPlanilla}
+          />
+        </View>
+        <View flex={1}>
+          <Dato icono={Phone} etiqueta="Teléfono" valor={datos.Telefono1} />
+        </View>
+      </XStack>
+
+      {/* Estos dos se quedan a todo el ancho: en media columna se partirian en
+          tres o cuatro lineas y ocuparian mas, no menos. */}
       <Dato icono={Mail} etiqueta="Correo" valor={datos.Correo} />
       <Dato icono={MapPin} etiqueta="Dirección" valor={datos.Direccion} />
     </YStack>
@@ -176,6 +203,10 @@ export default function PerfilSocioScreen() {
   // aprobarse pasa a su cuenta y se le empieza a descontar de planilla.
   const [aporte, setAporte] = useState('')
   const [errorAporte, setErrorAporte] = useState('')
+
+  // El confirm se abre solo si el monto ya paso la validacion: no tiene sentido
+  // hacerle confirmar algo que el servidor va a rechazar.
+  const [confirmando, setConfirmando] = useState(false)
 
   // En Android con edge-to-edge, adjustResize no achica la ventana, asi que el
   // KeyboardAvoidingView por si solo no alcanza: se reserva el alto del teclado
@@ -223,9 +254,10 @@ export default function PerfilSocioScreen() {
         setEstado({
           Empleado: null,
           Solicitud: null,
-          Motivo: response?.ErrorMessage || 'No se pudo consultar tu afiliación.',
+          Motivo: response?.ErrorMessage || 'No se pudo consultar su afiliación.',
           PuedeSolicitar: false,
           LimitesAporte: null,
+          BloqueoSolicitud: null,
         })
       }
     } catch (err) {
@@ -236,6 +268,7 @@ export default function PerfilSocioScreen() {
         Motivo: error.message,
         PuedeSolicitar: false,
         LimitesAporte: null,
+        BloqueoSolicitud: null,
       })
     }
   }, [])
@@ -259,8 +292,16 @@ export default function PerfilSocioScreen() {
     setRefreshing(false)
   }
 
-  const solicitar = async () => {
+  /**
+   * Valida el monto y abre el confirm. NO manda nada.
+   *
+   * La afiliacion ya no pasa por aprobacion: al confirmar queda hecha y le
+   * empiezan a descontar de planilla. Un toque accidental no deberia alcanzar
+   * para eso.
+   */
+  const pedirConfirmacion = () => {
     const monto = Number(aporte)
+
     if (!aporte.trim() || isNaN(monto) || monto <= 0) {
       setErrorAporte('Escribí cuánto querés aportar')
       return
@@ -272,19 +313,34 @@ export default function PerfilSocioScreen() {
     }
 
     setErrorAporte('')
+    setConfirmando(true)
+  }
+
+  const solicitar = async () => {
+    // El monto ya se validó en pedirConfirmacion; acá solo se reusa.
+    const monto = Number(aporte)
+
+    setConfirmando(false)
     setEnviando(true)
     try {
       const response = await cooperativaService.crearSolicitudSocio(monto)
 
       if (!response?.Success) {
-        showToast('error', 'Error', response?.ErrorMessage || 'No se pudo enviar tu solicitud', 5000, 'top')
-        // Puede haber fallado porque el estado cambió (ya se afilió, o ya tenía
-        // una solicitud). Se relee para mostrar lo que corresponde.
+        showToast('error', 'Error', response?.ErrorMessage || 'No se pudo completar su afiliación', 6000, 'top')
+        // Puede haber fallado porque el estado cambió (ya se afilió entre que
+        // abrió la pantalla y presionó). Se relee para mostrar lo que
+        // corresponde.
         await consultar()
         return
       }
 
-      showToast('success', 'Solicitud enviada', response.SuccessMessage || '', 4000, 'top')
+      showToast('success', 'Ya sos socio', response.SuccessMessage || '', 4000, 'top')
+
+      // El procedimiento le acabo de asignar el menu del socio. Sin este aviso
+      // el drawer sigue con la lista vieja y tendria que cerrar sesion para ver
+      // su pantalla de solicitudes.
+      requestMenuRefresh()
+
       await consultar()
     } catch (err) {
       const error = handleError(err)
@@ -305,12 +361,15 @@ export default function PerfilSocioScreen() {
   const solicitud = estado?.Solicitud ?? null
   const empleado = estado?.Empleado ?? null
   const aprobada = solicitud?.Status_Code === ESTADO_SOLICITUD.APROBADO
-  const rechazada = solicitud?.Status_Code === ESTADO_SOLICITUD.RECHAZADO
-  const pendiente = !!solicitud && !aprobada && !rechazada
-  // Tras un rechazo puede corregir y volver a mandarla: la API devuelve el
-  // empleado justamente para eso.
-  const puedeSolicitar = !!empleado && (!solicitud || rechazada)
+
+  // Puede afiliarse cualquiera que sea elegible y no lo sea todavia.
+  //
+  // Se mira `aprobada` y no `!solicitud`: pueden quedar filas viejas en PEND de
+  // cuando habia aprobacion, y esas ya no significan nada. Si bloquearan, esas
+  // personas no podrian afiliarse nunca — nadie va a resolverlas.
+  const puedeSolicitar = !!empleado && !aprobada
   const limites: ILimitesAporte | null = estado?.LimitesAporte ?? null
+  const bloqueo = estado?.BloqueoSolicitud ?? null
 
   // Como se le va a descontar. Sin planilla reconocida se dice en general: es
   // preferible a afirmar una frecuencia que puede no ser la suya.
@@ -330,17 +389,17 @@ export default function PerfilSocioScreen() {
    */
   const renderCampoAporte = () => (
     <YStack
-      gap="$3"
-      padding="$4"
+      gap="$2.5"
+      padding="$3"
       borderRadius="$4"
       backgroundColor="$backgroundSurface"
       borderWidth={1}
       borderColor="$border"
     >
-      <XStack gap="$2.5" alignItems="center">
-        <PiggyBank size={18} color="#22C55E" />
-        <Text fontSize={14} fontWeight="700" color="$text">
-          Tu aporte
+      <XStack gap="$2" alignItems="center">
+        <PiggyBank size={15} color="#22C55E" />
+        <Text fontSize={13} fontWeight="700" color="$text">
+          Su aporte
         </Text>
       </XStack>
 
@@ -357,19 +416,19 @@ export default function PerfilSocioScreen() {
       />
 
       {!!limites && (
-        <Text fontSize={12} color="$textMuted">
+        <Text fontSize={11} color="$textMuted">
           Entre {fmtMoneda(limites.Minimo)} y {fmtMoneda(limites.Maximo)}
         </Text>
       )}
 
       {/* Lo que de verdad tiene que entender antes de aceptar: que este monto
           le sale del sueldo, y cada cuanto. */}
-      <XStack gap="$2.5" alignItems="flex-start">
-        <View marginTop={2}>
-          <Info size={15} color="#F59E0B" />
+      <XStack gap="$2" alignItems="flex-start">
+        <View marginTop={1}>
+          <Info size={13} color="#F59E0B" />
         </View>
-        <Text fontSize={13} color="$textMuted" flex={1} lineHeight={19}>
-          Este monto se te va a deducir {cadaPago}, y se ahorra en tu cuenta de
+        <Text fontSize={12} color="$textMuted" flex={1} lineHeight={17}>
+          Este monto se le va a deducir {cadaPago}, y se ahorra en su cuenta de
           la cooperativa.
         </Text>
       </XStack>
@@ -386,7 +445,7 @@ export default function PerfilSocioScreen() {
       <ScrollView
         flex={1}
         backgroundColor="$backgroundPage"
-        contentContainerStyle={{ padding: 16, paddingBottom: 32, gap: 16 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 24, gap: 10 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <FichaDatos
@@ -403,8 +462,8 @@ export default function PerfilSocioScreen() {
               // token de opacidad para success.
               backgroundColor="rgba(34, 197, 94, 0.12)"
             >
-              <BadgeCheck size={13} color="#22C55E" />
-              <Text fontSize={12} fontWeight="600" color="$success">
+              <BadgeCheck size={12} color="#22C55E" />
+              <Text fontSize={11} fontWeight="600" color="$success">
                 {/* Sin fecha = socio de antes de este modulo: se afilio fuera
                     del sistema y nadie registro cuando. Decir "Socio desde -"
                     seria peor que no decir la fecha. */}
@@ -421,11 +480,11 @@ export default function PerfilSocioScreen() {
         <Button
           backgroundColor="$primary"
           color="#FFFFFF"
-          height={50}
+          height={44}
           borderRadius="$4"
           fontWeight="600"
-          fontSize={16}
-          icon={<FilePlus2 size={20} color="#FFFFFF" />}
+          fontSize={14}
+          icon={<FilePlus2 size={17} color="#FFFFFF" />}
           pressStyle={{ opacity: 0.85 }}
           onPress={() => navigation.navigate('RequestCoo' as never)}
         >
@@ -445,112 +504,66 @@ export default function PerfilSocioScreen() {
       backgroundColor="$backgroundPage"
       // El alto del teclado se suma al padding para que el campo del aporte se
       // pueda subir por encima de el en vez de quedar tapado.
-      contentContainerStyle={{ padding: 16, paddingBottom: 32 + bottomPad, gap: 16 }}
+      contentContainerStyle={{ padding: 12, paddingBottom: 24 + bottomPad, gap: 10 }}
       keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       {/* Encabezado */}
-      <YStack gap="$2" alignItems="center" paddingVertical="$3">
+      <YStack gap="$1.5" alignItems="center" paddingVertical="$1.5">
         <View
-          width={64}
-          height={64}
-          borderRadius={32}
-          backgroundColor={rechazada ? '$error' : '$primary'}
+          width={48}
+          height={48}
+          borderRadius={24}
+          backgroundColor="$primary"
           alignItems="center"
           justifyContent="center"
         >
-          {rechazada
-            ? <XCircle size={30} color="#FFFFFF" />
-            : pendiente
-              ? <Clock size={30} color="#FFFFFF" />
-              : <Handshake size={30} color="#FFFFFF" />}
+          <Handshake size={22} color="#FFFFFF" />
         </View>
 
-        <Text fontSize={20} fontWeight="700" color="$text" textAlign="center">
-          {rechazada
-            ? 'Solicitud rechazada'
-            : pendiente
-              ? 'Solicitud en revisión'
-              : empleado
-                ? 'Podés afiliarte'
-                : 'Afiliación'}
+        <Text fontSize={17} fontWeight="700" color="$text" textAlign="center">
+          {empleado ? 'Afiliate aquí' : 'Afiliación'}
         </Text>
 
-        <Text fontSize={14} color="$textMuted" textAlign="center" lineHeight={20}>
-          {rechazada
-            ? 'Podés corregir lo que te indicaron y volver a enviarla.'
-            : pendiente
-              ? 'Estamos revisando tu solicitud. Te avisamos en cuanto se apruebe.'
-              : empleado
-                ? 'Revisá que tus datos estén correctos antes de continuar.'
-                : 'Estado de tu afiliación a la cooperativa.'}
+        <Text fontSize={12} color="$textMuted" textAlign="center" lineHeight={17}>
+          {empleado
+            ? 'Revise sus datos y elija su aporte. Quedará afiliado al confirmar.'
+            : 'Estado de su afiliación a la cooperativa.'}
         </Text>
       </YStack>
 
-      {solicitud ? (
+
+      {empleado ? (
         <>
-          {/* Estado de la solicitud */}
-          <YStack
-            gap="$3"
-            padding="$4"
-            borderRadius="$4"
-            backgroundColor="$backgroundSurface"
-            borderWidth={1}
-            borderColor="$border"
-          >
-            <XStack gap="$3" alignItems="center">
-              {rechazada
-                ? <XCircle size={20} color="#EF4444" />
-                : <Clock size={20} color="#f59e0b" />}
-              <YStack flex={1} gap="$1">
-                <Text fontSize={15} fontWeight="700" color="$text">
-                  {solicitud.Status_Name || solicitud.Status_Code}
-                </Text>
-                {!!solicitud.Status_Description && (
-                  <Text fontSize={13} color="$textMuted" lineHeight={18}>
-                    {solicitud.Status_Description}
-                  </Text>
-                )}
-              </YStack>
-            </XStack>
+          <FichaDatos datos={empleado} />
 
-            <XStack gap="$2" alignItems="center">
-              <CalendarDays size={14} color="#94A3B8" />
-              <Text fontSize={13} color="$textMuted">
-                Solicitada el {formatFecha(solicitud.Creation_Date)}
+          {/* Bloqueado: en vez del campo del aporte y el botón, el motivo. Se
+              le dice por qué y qué le falta — un botón ausente sin explicación
+              se lee como que la app está rota. */}
+          {bloqueo ? (
+            <YStack
+              gap="$2"
+              padding="$3"
+              borderRadius="$4"
+              backgroundColor="$backgroundSurface"
+              borderWidth={1}
+              borderColor="$border"
+            >
+              <XStack alignItems="center" gap="$2">
+                <Info size={15} color="#F59E0B" />
+                <Text fontSize={13} fontWeight="700" color="$text">
+                  Todavía no podés afiliarte
+                </Text>
+              </XStack>
+              <Text fontSize={12} color="$textMuted" lineHeight={17}>
+                {bloqueo}
               </Text>
-            </XStack>
+            </YStack>
+          ) : (
+            renderCampoAporte()
+          )}
 
-            {/* Motivo del rechazo: es lo que tiene que corregir. */}
-            {!!solicitud.Rejection_Reason && (
-              <YStack
-                gap="$2"
-                padding="$3"
-                borderRadius="$3"
-                backgroundColor="$backgroundElevated"
-                borderWidth={1}
-                borderColor="$border"
-              >
-                <XStack gap="$2" alignItems="center">
-                  <MessageSquare size={14} color="#94A3B8" />
-                  <Text fontSize={12} fontWeight="600" color="$textMuted">
-                    Motivo
-                  </Text>
-                </XStack>
-                <Text fontSize={14} color="$text" lineHeight={20}>
-                  {solicitud.Rejection_Reason}
-                </Text>
-              </YStack>
-            )}
-          </YStack>
-
-          {/* Datos con los que quedó guardada */}
-          <FichaDatos datos={solicitud} />
-
-          {/* Rechazada: puede corregir y volver a mandarla. */}
-          {puedeSolicitar && renderCampoAporte()}
-
-          {puedeSolicitar && (
+          {!bloqueo && (
             <Button
               backgroundColor="$primary"
               color="#FFFFFF"
@@ -559,55 +572,75 @@ export default function PerfilSocioScreen() {
               fontWeight="600"
               fontSize={16}
               disabled={enviando}
-              icon={enviando ? <Spinner color="#FFFFFF" /> : <RotateCcw size={20} color="#FFFFFF" />}
+              icon={enviando ? <Spinner color="#FFFFFF" /> : <Handshake size={17} color="#FFFFFF" />}
               pressStyle={{ opacity: 0.85 }}
-              onPress={solicitar}
+              onPress={pedirConfirmacion}
             >
-              {enviando ? 'Enviando...' : 'Volver a solicitar'}
+              {enviando ? 'Afiliando...' : 'Quiero ser socio'}
             </Button>
           )}
-        </>
-      ) : empleado ? (
-        <>
-          <FichaDatos datos={empleado} />
-
-          {renderCampoAporte()}
-
-          <Button
-            backgroundColor="$primary"
-            color="#FFFFFF"
-            height={50}
-            borderRadius="$4"
-            fontWeight="600"
-            fontSize={16}
-            disabled={enviando}
-            icon={enviando ? <Spinner color="#FFFFFF" /> : <Handshake size={20} color="#FFFFFF" />}
-            pressStyle={{ opacity: 0.85 }}
-            onPress={solicitar}
-          >
-            {enviando ? 'Enviando...' : 'Quiero ser socio'}
-          </Button>
         </>
       ) : (
         /* No aplica: se muestra el motivo que dio el procedimiento */
         <YStack
-          gap="$3"
-          padding="$4"
+          gap="$2.5"
+          padding="$3"
           borderRadius="$4"
           backgroundColor="$backgroundSurface"
           borderWidth={1}
           borderColor="$border"
           alignItems="center"
         >
-          <AlertCircle size={28} color="#94A3B8" />
-          <Text fontSize={15} color="$text" textAlign="center" lineHeight={21}>
+          <AlertCircle size={24} color="#94A3B8" />
+          <Text fontSize={13} color="$text" textAlign="center" lineHeight={18}>
             {estado?.Motivo || 'No se encontró información de afiliación.'}
           </Text>
-          <Text fontSize={13} color="$textMuted" textAlign="center">
+          <Text fontSize={11} color="$textMuted" textAlign="center">
             Deslizá hacia abajo para volver a consultar.
           </Text>
         </YStack>
       )}
+
+      {/* Confirmacion antes de afiliar.
+          Sin aprobacion de por medio, este dialogo es el ultimo punto donde
+          puede echarse atras: al aceptar queda socio y empieza el descuento. */}
+      <ConfirmDialog
+        open={confirmando}
+        onOpenChange={setConfirmando}
+        title="¿Confirma su afiliación?"
+        message="Va a quedar afiliado a la cooperativa de inmediato."
+        confirmLabel="Sí, afiliarme"
+        confirmColor="#22C55E"
+        loading={enviando}
+        onConfirm={solicitar}
+        onCancel={() => setConfirmando(false)}
+        extra={
+          <YStack
+            gap="$2"
+            padding="$3"
+            borderRadius="$3"
+            backgroundColor="$backgroundSurface"
+            borderWidth={1}
+            borderColor="$border"
+          >
+            <XStack alignItems="center">
+              <Text fontSize={13} color="$textMuted" flex={1}>
+                Su aporte
+              </Text>
+              {/* El monto es el dato que tiene que revisar antes de aceptar, asi
+                  que se muestra con el mismo peso que el titulo. */}
+              <Text fontSize={17} fontWeight="700" color="$text">
+                {fmtMoneda(Number(aporte))}
+              </Text>
+            </XStack>
+
+            <Text fontSize={12} color="$textMuted" lineHeight={17}>
+              Se le va a deducir {cadaPago} y se ahorra en su cuenta de la
+              cooperativa.
+            </Text>
+          </YStack>
+        }
+      />
     </ScrollView>
     </KeyboardAvoidingView>
   )
