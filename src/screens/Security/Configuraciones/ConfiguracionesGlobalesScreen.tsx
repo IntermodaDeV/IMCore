@@ -156,6 +156,67 @@ const CONFIG_META: Record<
   }
 > = {
   'Mtto.UnTicketPorMaquina': { label: 'Un ticket por máquina', kind: 'bool' },
+  // Los estados en los que el acceso "Editar solicitud enviada" permite tocar
+  // una solicitud. SOLICITADO no está en la lista porque siempre está permitido:
+  // es el piso que evita que desmarcar todo deje a todos sin poder corregir nada.
+  'Repuestos.EstadosEdicionSolicitud': {
+    label: 'Estados en los que se puede editar o anular una solicitud de repuestos',
+    kind: 'multi',
+    // Acá las casillas no tienen renglón de nota (el web sí), así que la
+    // aclaración va dentro de la etiqueta: quien configura esto necesita saber
+    // qué implica cada estado, no solo su nombre.
+    opciones: [
+      { value: 'SOLICITADO', label: 'Solicitado (siempre permitido)' },
+      { value: 'ENVIADO', label: 'Con Datos Maestros (aún no existe en AX)' },
+      { value: 'CREADO', label: 'Creado en AX (ya lo crearon)' },
+      { value: 'EN_SOLICITUD_COMPRA', label: 'En solicitud de compra' },
+      { value: 'EN_ORDEN_COMPRA', label: 'En orden de compra (ya se pidió al proveedor)' },
+      { value: 'INGRESADO', label: 'Ingresado a bodega' },
+    ],
+  },
+  'Repuestos.SeguimientoAXMinutos': {
+    label: 'Seguimiento de solicitudes en AX, cada',
+    kind: 'number',
+    unidad: 'min',
+    min: 0,
+    max: 1440,
+    ayudaRango: '0 apaga el seguimiento automático',
+  },
+  // Cada cuánto se rehace la foto del último precio de compra de AX, que es el
+  // respaldo del costo cuando AX tiene la pieza valuada en un centavo. El barrido de
+  // AX dura ~80 s, así que no tiene sentido bajarlo mucho: los precios de compra no
+  // cambian varias veces al día.
+  'Repuestos.PrecioCompraAXHoras': {
+    label: 'Refrescar precios de compra de AX, cada',
+    kind: 'number',
+    unidad: 'h',
+    min: 0,
+    max: 168,
+    ayudaRango: '0 apaga el refresco automático',
+  },
+  // El cierre de inventario de AX corrige, semanas después, el costo con que se
+  // posteó cada salida. Sin este refresco el costo por máquina se queda con el
+  // número provisional, y siempre para abajo.
+  'Repuestos.CostoLiquidadoHoras': {
+    label: 'Traer el costo liquidado de AX, cada',
+    kind: 'number',
+    unidad: 'h',
+    min: 0,
+    max: 168,
+    ayudaRango: '0 apaga la corrección automática',
+  },
+  'Repuestos.CorreoDatosMaestros': {
+    label: 'Correos de Datos Maestros (solicitudes de repuestos)',
+    kind: 'texto',
+  },
+  'Repuestos.CorreoDatosMaestrosCopia': {
+    label: 'Correos en copia del envío a Datos Maestros',
+    kind: 'texto',
+  },
+  'Repuestos.EstructuraCodigoDefault': {
+    label: 'Estructura por defecto del código de repuestos',
+    kind: 'texto',
+  },
   'Repuestos.DimensionCentroCosto': {
     label: 'Dimensión de AX que es el centro de costo',
     kind: 'texto',

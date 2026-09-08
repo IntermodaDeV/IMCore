@@ -81,6 +81,32 @@ export default function NewTicketScreen() {
   const [modelo, setModelo] = useState<string | undefined>()
   const [numero, setNumero] = useState(edit?.NumeroMaquina ?? '')
   const [objeto, setObjeto] = useState(edit?.Objeto ?? '')
+
+  // Sugerencias del detalle. El campo es texto libre y sin esto el mismo trabajo se
+  // escribe de muchas formas ("Habilitar/Avilitar/Avitar maquina"): mostrando lo que
+  // ya escribieron los demás, se reusa en vez de inventar.
+  //
+  // Se piden desde 2 letras y con 350 ms de espera para no consultar en cada tecla.
+  // Si la consulta falla se deja la lista vacía a propósito: el campo sigue siendo
+  // texto libre y esto NUNCA debe estorbar para crear un ticket.
+  const [sugerencias, setSugerencias] = useState<string[]>([])
+  const [objetoFocus, setObjetoFocus] = useState(false)
+
+  useEffect(() => {
+    const q = objeto.trim()
+    if (q.length < 2) { setSugerencias([]); return }
+    let vivo = true
+    const t = setTimeout(async () => {
+      try {
+        const res = await ticketsService.getObjetoSugerencias(q, 8)
+        if (!vivo) return
+        // Se descarta lo que ya es exactamente igual a lo tecleado: sugerir lo que
+        // la persona acaba de escribir no aporta y ocupa la lista.
+        setSugerencias((res.Data ?? []).map(x => x.Objeto).filter(x => x.toLowerCase() !== q.toLowerCase()))
+      } catch { if (vivo) setSugerencias([]) }
+    }, 350)
+    return () => { vivo = false; clearTimeout(t) }
+  }, [objeto])
   const [tipoParoId, setTipoParoId] = useState<number | undefined>(edit?.TipoParo_Id ?? undefined)
   const [prioridadId, setPrioridadId] = useState<number | undefined>(edit?.Prioridad_Id ?? undefined)
   const [idOperador, setIdOperador] = useState(edit?.IdOperador != null ? String(edit.IdOperador) : '')
@@ -372,7 +398,27 @@ export default function NewTicketScreen() {
                 <Input height={50} borderWidth={1} borderColor="$border"
                   borderRadius={8} backgroundColor="$backgroundElevated" paddingHorizontal="$3" fontSize="$5" color="$text"
                   placeholder="Ej. Lámpara de pasillo, Aire acondicionado…" placeholderTextColor={theme.textMuted?.val}
-                  value={objeto} onChangeText={setObjeto} />
+                  value={objeto} onChangeText={setObjeto}
+                  onFocus={() => setObjetoFocus(true)}
+                  // El blur se atrasa para que alcance a registrarse el toque en una
+                  // sugerencia: sin esto la lista se cierra antes del onPress.
+                  onBlur={() => setTimeout(() => setObjetoFocus(false), 150)} />
+
+                {objetoFocus && sugerencias.length > 0 && (
+                  <YStack marginTop="$2" gap="$1">
+                    <Text fontSize="$1" color="$textMuted">
+                      Ya se usó antes — tocá para reusar y que no queden nombres distintos:
+                    </Text>
+                    {sugerencias.map(sug => (
+                      <View key={sug} onPress={() => { setObjeto(sug); setObjetoFocus(false) }}
+                        pressStyle={{ opacity: 0.6 }}
+                        backgroundColor="$backgroundElevated" borderWidth={1} borderColor="$border"
+                        borderRadius={8} paddingVertical="$2" paddingHorizontal="$3">
+                        <Text fontSize="$3" color="$text">{sug}</Text>
+                      </View>
+                    ))}
+                  </YStack>
+                )}
               </Field>
             </>
           )}

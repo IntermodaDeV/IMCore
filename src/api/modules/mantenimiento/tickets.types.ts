@@ -323,3 +323,12 @@ export interface ICumplimientoValidacion {
   PromMinValidacion: number | null
   PlazoHoras: number | null
 }
+
+// Un detalle ya usado, para sugerirlo al capturar el "que reparar" de un ticket de
+// area. Veces ordena la lista: lo que mas se repite es lo que mas probablemente se
+// esta escribiendo otra vez.
+export interface IObjetoSugerencia {
+  Objeto: string
+  Veces: number
+}
+

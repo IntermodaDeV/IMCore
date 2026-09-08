@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Dimensions,
   Keyboard,
@@ -31,10 +31,17 @@ import {
  *
  * ── POR QUÉ ES DROP-IN ─────────────────────────────────────────────────────
  * El campo enfocado se obtiene con `TextInput.State.currentlyFocusedInput()`,
- * así que NO hay que tocar los inputs: basta envolver el formulario. Para
- * precisión extra (cambiar de campo con el teclado YA abierto, donde
- * keyboardDidShow no vuelve a disparar) se puede pasar `onFocus={subirCampo}`
- * usando el helper `useSubirCampo()`.
+ * así que NO hay que tocar los inputs: basta envolver el formulario.
+ *
+ * ── EL CASO QUE NO CUBRE SOLO: SALTAR DE CAMPO ─────────────────────────────
+ * Con el teclado YA abierto, tocar otro campo NO vuelve a disparar
+ * keyboardDidShow, así que el form no se mueve y el campo nuevo puede quedar
+ * debajo del teclado. Para eso está `useSubirCampo()`: devuelve una función
+ * para pasarle a `onFocus` de cada input. Es OPCIONAL y no rompe nada — fuera
+ * de un KeyboardAwareForm no hace nada.
+ *
+ *     const subirCampo = useSubirCampo()
+ *     <Input onFocus={subirCampo} … />
  *
  * Se llegó a este patrón después de perder bastante tiempo probando variantes
  * de KeyboardAvoidingView; está validado en el form de Usuarios.
@@ -53,6 +60,28 @@ type Props = {
 /** Margen entre el campo y el borde del teclado, para que no quede pegado. */
 const HOLGURA = 24
 
+// Formularios montados, en orden de montaje. El último es el que está a la
+// vista (en un stack, la pantalla de encima se monta después).
+//
+// NO se usa un Context a propósito: la pantalla llama a useSubirCampo() en su
+// cuerpo, pero renderiza el <KeyboardAwareForm> DENTRO de su propio JSX, así que
+// queda POR ENCIMA del proveedor y recibiría siempre el valor por defecto. Con
+// un registro a nivel de módulo el hook funciona se llame donde se llame, que es
+// lo que promete ser "drop-in".
+const formulariosMontados: Array<() => void> = []
+
+/**
+ * Función para el `onFocus` de un input: sube el campo por encima del teclado
+ * cuando el teclado YA está abierto (saltar de un campo a otro). Cuando el
+ * teclado se abre por primera vez lo resuelve el propio formulario.
+ *
+ * Sin ningún KeyboardAwareForm montado no hace nada.
+ */
+export const useSubirCampo = () =>
+  useCallback(() => {
+    formulariosMontados[formulariosMontados.length - 1]?.()
+  }, [])
+
 export default function KeyboardAwareForm({
   children,
   extraBottom = 24,
@@ -63,6 +92,9 @@ export default function KeyboardAwareForm({
   const [kbHeight, setKbHeight] = useState(0)
   const scrollRef = useRef<RNScrollView>(null)
   const scrollY = useRef(0)
+  // Último borde superior conocido del teclado. Se guarda para poder subir un
+  // campo que se enfoca con el teclado ya abierto, cuando no hay evento nuevo.
+  const bordeTeclado = useRef(0)
 
   // Sube el campo enfocado lo justo para que quede sobre el teclado.
   const subirCampoEnfocado = (bordeTeclado: number) => {
@@ -92,12 +124,32 @@ export default function KeyboardAwareForm({
       setKbHeight(alto)
       // screenY = borde superior del teclado. Si no viene, se deriva del alto.
       const borde = e.endCoordinates?.screenY ?? Dimensions.get('window').height - alto
+      bordeTeclado.current = borde
       subirCampoEnfocado(borde)
     })
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0))
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKbHeight(0)
+      bordeTeclado.current = 0
+    })
     return () => {
       showSub.remove()
       hideSub.remove()
+    }
+  }, [])
+
+  // Con el teclado cerrado no hay nada que hacer: al abrirse, keyboardDidShow
+  // se encarga. Con el teclado abierto es el único camino, porque ese evento ya
+  // no vuelve a dispararse.
+  const subirCampo = useRef(() => {
+    if (bordeTeclado.current > 0) subirCampoEnfocado(bordeTeclado.current)
+  })
+
+  useEffect(() => {
+    const fn = subirCampo.current
+    formulariosMontados.push(fn)
+    return () => {
+      const i = formulariosMontados.indexOf(fn)
+      if (i >= 0) formulariosMontados.splice(i, 1)
     }
   }, [])
 

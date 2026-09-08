@@ -1,4 +1,4 @@
-import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins } from 'lucide-react-native'
+import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck } from 'lucide-react-native'
 import type { NotificationCategory } from '../api/modules/notifications/notifications.service'
 
 /**
@@ -67,6 +67,12 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
     Icon: Scale,
     color: '#B45309',
     bg: 'rgba(245,158,11,0.12)',
+  },
+  repuesto_ingresado: {
+    label: 'Repuesto en bodega',
+    Icon: PackageCheck,
+    color: '#15803D',
+    bg: 'rgba(34,197,94,0.12)',
   },
   horas_extra_revision_resultado: {
     label: 'Revisión de horas resuelta',

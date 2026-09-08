@@ -29,6 +29,15 @@ export interface ILinea {
   Ticket_Id: number | null
   TicketCodigo: string | null
   Costo: number | null   // costo unitario congelado (solo diarios posteados)
+
+  // De dónde salió el costo cuando NO es el congelado: 'PROMEDIO' es la valuación de
+  // AX y 'ULTIMA_COMPRA' el respaldo, que entra cuando AX tiene la pieza valuada en un
+  // centavo (le pasa al 43% del catálogo).
+  CostoFuente?: string | null
+  // AX valúa la pieza muy lejos de lo que se paga por ella. El número NO se corrige
+  // —es lo que AX tiene en libros—; se marca para que no se dé por bueno.
+  CostoSospechoso?: boolean
+  PrecioUltimaCompra?: number | null
   // REPUESTO va contra un ticket; SUMINISTRO contra un centro de costo, que lo
   // trae el articulo desde AX (lo resuelve el servidor, no la app).
   Tipo: 'REPUESTO' | 'SUMINISTRO'
