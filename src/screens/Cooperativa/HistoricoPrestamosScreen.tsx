@@ -4,12 +4,13 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { YStack, XStack, Text, ScrollView, View, styled } from 'tamagui'
 import {
-  ArrowLeft, CalendarDays, CheckCircle2, Clock, Coins, Wallet, TriangleAlert,
+  ArrowLeft, CalendarDays, CheckCircle2, XCircle, Coins, Wallet, TriangleAlert,
   RefreshCcw,
 } from 'lucide-react-native'
 
 import { cooperativaService } from '../../api/modules/cooperativa/cooperativa.service'
 import { IPrestamoResumen } from '../../api/modules/cooperativa/cooperativa.types'
+import { securityService } from '../../api/modules/security/security.service'
 import SkeletonForm from '../../components/Skeletons/SkeletonForm'
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { handleError } from '../../utils/errorHandler'
@@ -28,6 +29,17 @@ import { shadows } from '../../theme/shadows'
  */
 
 const ArrowLeftStyled = styled(ArrowLeft, { color: '$text' })
+
+/**
+ * El acceso que habilita el refinanciamiento.
+ *
+ * Es un INTERRUPTOR GLOBAL, no un permiso por usuario: lo único que se mira es
+ * su Status_Id. Activo, el botón "Refinanciar" aparece a todos los socios;
+ * inactivo, no aparece a nadie.
+ *
+ * Por eso se lee de Security.Access y no de los accesos asignados al usuario.
+ */
+const ACCESO_REFINANCIAR = 'RefinanciarPrestamo'
 
 type NavParams = {
   detallePrestamo: { solicitudId?: number; prestamoId?: number }
@@ -85,10 +97,13 @@ function TarjetaPrestamo({
   p,
   onVerDetalle,
   onRefinanciar,
+  refiHabilitado,
 }: {
   p: IPrestamoResumen
   onVerDetalle: () => void
   onRefinanciar: () => void
+  /** El interruptor global. Apagado, el botón de refinanciar no existe. */
+  refiHabilitado: boolean
 }) {
   return (
     <YStack
@@ -116,17 +131,20 @@ function TarjetaPrestamo({
           paddingHorizontal="$2"
           paddingVertical={2}
           borderRadius="$10"
+          // Vigente en VERDE y cancelado en ROJO, el mismo idioma de color que
+          // los estados de "Mis solicitudes": verde es lo que está en curso y
+          // al día, rojo lo que ya se cerró.
           backgroundColor={
-            p.Cancelado ? 'rgba(34, 197, 94, 0.12)' : 'rgba(245, 158, 11, 0.12)'
+            p.Cancelado ? 'rgba(239, 68, 68, 0.12)' : 'rgba(34, 197, 94, 0.12)'
           }
         >
           {p.Cancelado
-            ? <CheckCircle2 size={11} color="#22C55E" />
-            : <Clock size={11} color="#f59e0b" />}
+            ? <XCircle size={11} color="#EF4444" />
+            : <CheckCircle2 size={11} color="#22C55E" />}
           <Text
             fontSize={10}
             fontWeight="600"
-            color={p.Cancelado ? '$success' : '$warning'}
+            color={p.Cancelado ? '$error' : '$success'}
           >
             {p.Cancelado ? 'Cancelado' : 'Vigente'}
           </Text>
@@ -134,7 +152,7 @@ function TarjetaPrestamo({
       </XStack>
 
       {/* Lo que debe hoy. En el cancelado no va: un saldo en cero no dice
-          nada que el sello verde no diga mejor. */}
+          nada que el chip de estado no diga mejor. */}
       {!p.Cancelado && (
         <YStack
           gap="$2"
@@ -180,7 +198,10 @@ function TarjetaPrestamo({
             <View
               height={4}
               borderRadius={2}
-              backgroundColor={p.Cancelado ? '#22C55E' : '#FF551A'}
+              // Sigue al chip: verde mientras está vigente, rojo cuando se
+              // cerró. Una barra verde bajo un chip rojo se leería como que
+              // los dos dicen cosas distintas del mismo préstamo.
+              backgroundColor={p.Cancelado ? '#EF4444' : '#22C55E'}
               width={`${Math.round((p.CuotasPagadas / p.CuotasTotal) * 100)}%`}
             />
           </View>
@@ -224,7 +245,7 @@ function TarjetaPrestamo({
 
           Va relleno y no en contorno como el de arriba: es la acción que
           resuelve lo que el socio vino a hacer cuando no lo dejan pedir otro. */}
-      {!p.Cancelado && (p.SaldoPendiente ?? 0) > 0 && (
+      {refiHabilitado && !p.Cancelado && (p.SaldoPendiente ?? 0) > 0 && (
         <XStack
           alignItems="center"
           justifyContent="center"
@@ -253,6 +274,12 @@ export default function HistoricoPrestamosScreen() {
   const [refrescando, setRefrescando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Si el refinanciamiento está habilitado. Arranca en false: mientras no se
+  // confirme que el acceso está activo, el botón no se muestra. Al revés
+  // — arrancar en true — lo dejaría aparecer por un instante en cada carga
+  // aunque estuviera apagado.
+  const [refiHabilitado, setRefiHabilitado] = useState(false)
+
   usePageHeader({
     left: (
       <View onPress={() => navigation.goBack()} hitSlop={8} pressStyle={{ opacity: 0.6 }}>
@@ -267,6 +294,22 @@ export default function HistoricoPrestamosScreen() {
   })
 
   const consultar = useCallback(async () => {
+    // El interruptor del refinanciamiento, por separado y sin cortar nada: si
+    // esta consulta falla, la lista de préstamos se muestra igual y lo único
+    // que pasa es que el botón no sale. Es preferible a dejar la pantalla en
+    // blanco por una bandera.
+    try {
+      const accesos = await securityService.getAccess()
+
+      setRefiHabilitado(
+        (accesos?.Data ?? []).some(
+          a => a.KeyVar === ACCESO_REFINANCIAR && a.Status_Id === 1,
+        ),
+      )
+    } catch {
+      setRefiHabilitado(false)
+    }
+
     try {
       const response = await cooperativaService.getPrestamosCliente()
 
@@ -371,26 +414,20 @@ export default function HistoricoPrestamosScreen() {
               p={p}
               onVerDetalle={() => verDetalle(p.PrestamoId)}
               onRefinanciar={() => refinanciar(p.PrestamoId)}
+              refiHabilitado={refiHabilitado}
             />
           ))}
 
-          {/* El separador solo cuando hay de los dos: con una sola lista es un
-              título que no separa nada. */}
-          {pagados.length > 0 && vigentes.length > 0 && (
-            <XStack alignItems="center" gap="$1.5" paddingTop="$1.5">
-              <CheckCircle2 size={11} color="#94A3B8" />
-              <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-                YA CANCELADOS
-              </Text>
-            </XStack>
-          )}
-
+          {/* Sin separador: cada tarjeta ya dice "Cancelado" en su chip, así
+              que el título repetía lo que la lista mostraba sola. El orden
+              — vigentes primero — se mantiene. */}
           {pagados.map(p => (
             <TarjetaPrestamo
               key={p.PrestamoId}
               p={p}
               onVerDetalle={() => verDetalle(p.PrestamoId)}
               onRefinanciar={() => refinanciar(p.PrestamoId)}
+              refiHabilitado={refiHabilitado}
             />
           ))}
         </>

@@ -695,11 +695,13 @@ export default function MisSolicitudesScreen() {
                   borderColor="$border"
                 >
                   {s.PrestamoCancelado ? (
-                    // Terminó de pagarlo. Es una buena noticia y merece leerse
-                    // como tal, no como un saldo en cero.
+                    // Ya se cerró. En ROJO, igual que el chip de "Mis
+                    // préstamos": es la misma etiqueta sobre el mismo
+                    // préstamo, y en dos colores distintos parecería que
+                    // hablan de dos cosas.
                     <XStack alignItems="center" gap="$2">
-                      <CheckCircle2 size={15} color="#22C55E" />
-                      <Text fontSize={14} fontWeight="700" color="$success">
+                      <XCircle size={15} color="#EF4444" />
+                      <Text fontSize={14} fontWeight="700" color="$error">
                         Préstamo cancelado
                       </Text>
                     </XStack>

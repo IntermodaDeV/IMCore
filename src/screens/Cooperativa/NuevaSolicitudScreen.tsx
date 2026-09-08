@@ -306,6 +306,9 @@ export default function NuevaSolicitudScreen() {
     if (!tipoId) e.tipo = 'Elegí el tipo de solicitud'
     if (!plazoId) e.plazo = 'Elegí el plazo'
 
+    // Se pide el motivo. Es lo que lee quien aprueba para decidir.
+    if (!descripcion.trim()) e.descripcion = 'Contá para qué necesitás el préstamo'
+
     if (refi) {
       // Vacío vale y es cero: refinanciar solo para estirar el plazo — bajar
       // la cuota alargando los pagos — es un caso real. Lo que no se acepta es
@@ -562,14 +565,26 @@ export default function NuevaSolicitudScreen() {
               </YStack>
             )}
 
+            {/* Obligatoria. Es lo único de la solicitud que dice PARA QUÉ, y
+                quien aprueba decide con eso: un monto y un plazo solos no
+                distinguen un préstamo para una emergencia médica de uno para
+                un antojo.
+
+                La exigencia vive solo acá: el servidor la sigue aceptando
+                vacía, así que las solicitudes viejas sin descripción se
+                muestran y se editan igual. */}
             <AppInput
               label="Descripción"
               value={descripcion}
-              onChangeText={setDescripcion}
+              onChangeText={(v: string) => {
+                setDescripcion(v)
+                setErrores(p => ({ ...p, descripcion: '' }))
+              }}
               multiline
               minLines={3}
               placeholder="Para qué necesitás el préstamo"
               style={{ height: 100 }}
+              error={errores.descripcion}
             />
 
             {/* Las deducciones dependen del tipo: un adelanto del 13.º no
