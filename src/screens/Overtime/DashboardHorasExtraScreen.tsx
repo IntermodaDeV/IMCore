@@ -530,7 +530,10 @@ export default function DashboardHorasExtraScreen() {
   }
 
   return (
-    <YStack flex={1}>
+    // El gris va en la PANTALLA y no solo en la banda: si el área que desliza
+    // se quedara blanca, las tarjetas —que también son blancas— seguirían sin
+    // borde y el gris de arriba se leería como un encabezado suelto.
+    <YStack flex={1} backgroundColor="$backgroundSurface">
       {/* ── LOS DOS CONTROLES, FIJOS ────────────────────────────────────
           Van FUERA del ScrollView, así que no se van con el desliz. Son los
           dos datos que dicen qué se está mirando —qué semana y qué sección— y
@@ -542,9 +545,26 @@ export default function DashboardHorasExtraScreen() {
           comparten— y por eso va arriba del selector y no dentro de ninguna.
 
           No hay superposición ni z-index: esto y el ScrollView son dos filas
-          de una columna, no una capa sobre la otra. Por eso tampoco necesita
-          fondo propio. */}
-      <YStack paddingHorizontal={12} paddingTop={12} gap={12}>
+          de una columna, no una capa sobre la otra.
+
+          FONDO GRIS Y UNA LÍNEA ABAJO, y esto sí hace falta. En el tema claro
+          `background` y `backgroundElevated` son los DOS blancos, así que la
+          banda fija y las tarjetas quedaban del mismo color y lo único que las
+          separaba era la sombra: al deslizar, las tarjetas parecían pasar por
+          arriba de nada y se perdía dónde terminaba lo fijo.
+
+          Con el gris de `backgroundSurface` la banda es otra superficie —en el
+          tema oscuro también, porque ahí las tarjetas son más claras que ese
+          gris— y con eso alcanza: se probó además con una línea abajo y sobraba,
+          porque el gris ya separa y la línea quedaba como un subrayado suelto a
+          media pantalla. */}
+      <YStack
+        paddingHorizontal={12}
+        paddingTop={12}
+        paddingBottom={12}
+        gap={12}
+        backgroundColor="$backgroundSurface"
+      >
         {semanas.length > 0 && (
           <SelectorSemana
             semanas={semanas}
@@ -556,8 +576,10 @@ export default function DashboardHorasExtraScreen() {
         <SelectorSeccion activo={seccion} onCambiar={cambiarSeccion} />
       </YStack>
 
+      {/* El área que desliza lleva el MISMO gris que la banda: así las
+          tarjetas blancas son lo único que resalta en la pantalla. */}
       <ScrollView
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
         contentContainerStyle={{ padding: 12, paddingBottom: 32, gap: 12 }}
         refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} />}
       >
@@ -926,26 +948,7 @@ function TarjetaPresupuesto({
                 )}
               />
 
-              {/* Leyenda: color, qué es y cuánto. Trae los montos de los dos
-                  gajos, incluido el que quedó sin etiqueta por ser chico. */}
-              <YStack width="100%" gap="$1.5">
-                <RenglonLeyenda
-                  color={excedido ? COLOR_EXCEDIDO : COLOR_GASTADO}
-                  etiqueta="Gastado"
-                  monto={fmtDinero(gastado)}
-                />
-                <RenglonLeyenda
-                  color={COLOR_DISPONIBLE}
-                  etiqueta={excedido ? 'Sin margen' : 'Disponible'}
-                  monto={fmtDinero(Math.max(0, disponible))}
-                />
-              </YStack>
 
-              <Text fontSize={9} color="$textMuted" textAlign="center" lineHeight={13}>
-                Solo cuenta lo aprobado por todas las entidades:{' '}
-                {data?.Total_Solicitudes ?? 0} solicitud(es) de{' '}
-                {data?.Total_Empleados ?? 0} empleado(s).
-              </Text>
             </YStack>
           )}
         </>
@@ -3576,11 +3579,6 @@ function TarjetaSolicitantes({
           <Text fontSize={12} fontWeight="800" color="$text" numberOfLines={1}>
             Horas extra por solicitante
           </Text>
-          {!cargando && ordenados.length > 0 && (
-            <Text fontSize={9} color="$textMuted" numberOfLines={1}>
-              {nombreCorto(ordenados[0].Solicitante)} pide el {fmtPct(parteMayor)}
-            </Text>
-          )}
         </YStack>
 
         <XStack alignItems="center" gap="$1.5" flexShrink={0}>
@@ -4220,9 +4218,17 @@ function TarjetaTopPorDia({
         const resto = Math.max(0, delDia - suyas)
 
         return {
-          // El día arriba y el nombre abajo: Chart-style de dos renglones, así
-          // el nombre se lee sin tocar la columna.
-          label: `${diaCorto(d.Fecha)} ${fechaCorta(d.Fecha)}\n${
+          // El día arriba y el nombre abajo, en dos renglones, así el nombre se
+          // lee sin tocar la columna.
+          //
+          // SOLO EL DÍA, sin la fecha: el segundo renglón ya se lo lleva el
+          // nombre, y con tres datos por columna —día, fecha y persona— la
+          // etiqueta pedía más ancho del que la columna tiene y el nombre
+          // terminaba recortado, que es justamente el dato.
+          //
+          // Los otros dos gráficos por día sí llevan la fecha: ahí el segundo
+          // renglón está libre.
+          label: `${diaCorto(d.Fecha)}\n${
             suyas > 0 ? nombreCorto(d.Employee_Name) : 'Sin horas'
           }`,
           // ACÁ ESTABA EL CRASH: un día sin horas trae los dos tramos en
@@ -4456,7 +4462,11 @@ function TarjetaArea({ fila }: { fila: IOvertimeTopEmployee }) {
 
       {/* Su parte del área. Sobre 100 y no sobre el área más grande: la
           pregunta es qué parte de SU área es esa persona. */}
-      <View height={4} borderRadius={999} backgroundColor="$textDisabled" opacity={0.35}>
+      {/* El riel SIN `opacity`. La opacidad de una vista se hereda a sus hijos,
+          así que el 0.35 que tenía acá se le aplicaba también a la barra de
+          adentro y el naranja salía lavado. El gris del riel sale del token
+          —`textDisabled` ya es un gris claro— y no de rebajar el negro. */}
+      <View height={4} borderRadius={999} backgroundColor="$textDisabled">
         <View
           height={4}
           borderRadius={999}
@@ -4627,8 +4637,12 @@ function RenglonEmpleado({
 
       {/* Riel en `$textDisabled` y NO en `$backgroundHover`: este tema no
           define ese token y se resolvía a transparente, así que la barra
-          quedaba sin nada contra qué compararse. */}
-      <View height={6} borderRadius={999} backgroundColor="$textDisabled" opacity={0.35}>
+          quedaba sin nada contra qué compararse.
+
+          Y SIN `opacity`: la opacidad de una vista se hereda a sus hijos, así
+          que el 0.35 que tenía acá se le aplicaba también a la barra de adentro
+          y el color salía lavado. El gris sale del token, que ya es claro. */}
+      <View height={6} borderRadius={999} backgroundColor="$textDisabled">
         <View
           height={6}
           borderRadius={999}
