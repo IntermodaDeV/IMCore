@@ -113,7 +113,15 @@ const formatAntiguedad = (meses: number | null | undefined): string => {
  */
 type Refinanciamiento = {
   prestamoId: number
-  /** Lo que arrastra el préstamo nuevo. */
+  /**
+   * Lo que arrastra el préstamo nuevo: el capital pendiente MÁS el interés de
+   * la próxima cuota que se debe.
+   *
+   * No es lo mismo que "le queda debiendo" del histórico, que es solo capital.
+   * El interés se suma porque al cerrar el préstamo se cobra el periodo
+   * corriente: si quedara afuera, no lo paga en el viejo — que se cierra — ni
+   * en el nuevo, que arranca de cero.
+   */
   saldo: number
   montoAnterior: number | null
   fecha: string | null
@@ -202,7 +210,11 @@ export default function NuevaSolicitudScreen() {
           if (p) {
             setRefi({
               prestamoId: p.PrestamoId,
-              saldo: p.SaldoPendiente ?? 0,
+              // MontoRefinanciamiento y NO SaldoPendiente: es lo que de verdad
+              // se traslada. El servidor recalcula este mismo número al
+              // aprobar, así que si acá se mostrara el capital solo, la suma
+              // de la pantalla no coincidiría con el préstamo creado.
+              saldo: p.MontoRefinanciamiento ?? 0,
               montoAnterior: p.Monto,
               fecha: p.FechaPrestamo,
               cuotasPagadas: p.CuotasPagadas,
@@ -443,7 +455,7 @@ export default function NuevaSolicitudScreen() {
 
                 <Text fontSize={13} color="$textMuted" lineHeight={19}>
                   Su préstamo actual se cancela y se abre uno nuevo con lo que
-                  todavía debe, más lo que pida de más.
+                  todavía debe y lo que pida de más.
                 </Text>
 
                 <YStack
@@ -456,7 +468,12 @@ export default function NuevaSolicitudScreen() {
                 >
                   <XStack alignItems="center" gap="$2">
                     <Wallet size={13} color="#94A3B8" />
-                    <Text fontSize={13} color="$textMuted" flex={1}>Debe actualmente</Text>
+                    {/* "Se traslada" y no "debe actualmente": este monto lleva
+                        el interés de la próxima cuota, que todavía no se
+                        devengó. Llamarlo lo que debe hoy sería inexacto, y
+                        además no cuadraría con el "le queda debiendo" del
+                        histórico, que es solo capital. */}
+                    <Text fontSize={13} color="$textMuted" flex={1}>Se traslada</Text>
                     <Text fontSize={15} fontWeight="700" color="$text">
                       {formatMonto(refi.saldo)}
                     </Text>
@@ -488,7 +505,7 @@ export default function NuevaSolicitudScreen() {
 
             {/* Antes del formulario: es lo que se mira para decidir cuánto
                 pedir. Arranca cerrado, acá es contexto y no el objetivo. */}
-            {!!estadoCuenta && <EstadoCuentaCard datos={estadoCuenta} />}
+            {/* {!!estadoCuenta && <EstadoCuentaCard datos={estadoCuenta} />} */}
 
             <AppSelect
               label="Tipo de solicitud"
@@ -539,7 +556,7 @@ export default function NuevaSolicitudScreen() {
                 borderColor="$border"
               >
                 <XStack alignItems="center" gap="$2">
-                  <Text fontSize={13} color="$textMuted" flex={1}>Lo que ya debe</Text>
+                  <Text fontSize={13} color="$textMuted" flex={1}>Deuda que se traslada</Text>
                   <Text fontSize={13} color="$text">{formatMonto(refi.saldo)}</Text>
                 </XStack>
                 <XStack alignItems="center" gap="$2">
@@ -663,7 +680,7 @@ export default function NuevaSolicitudScreen() {
                     : editando
                       ? 'Guardar cambios'
                       : refi
-                        ? 'Enviar refinanciamiento'
+                        ? 'Enviar'
                         : 'Enviar solicitud'}
                 </Text>
               </Button>

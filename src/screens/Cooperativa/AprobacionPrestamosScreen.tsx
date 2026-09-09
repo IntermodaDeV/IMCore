@@ -549,8 +549,11 @@ export function DesgloseRefinanciamiento({ s }: { s: ISolicitudPrestamo }) {
         </Text>
       </XStack>
 
+      {/* Capital pendiente MÁS el interés de la próxima cuota. Va junto en una
+          línea y no desglosado: quien aprueba decide sobre el dinero nuevo, y
+          el arrastre le interesa como un solo número. */}
       <XStack alignItems="center" gap="$2">
-        <Text fontSize={12} color="$textMuted" flex={1}>Deuda que arrastra</Text>
+        <Text fontSize={12} color="$textMuted" flex={1}>Deuda que se traslada</Text>
         <Text fontSize={13} color="$text" fontWeight="600">{formatMonto(saldo)}</Text>
       </XStack>
 

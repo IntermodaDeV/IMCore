@@ -563,8 +563,18 @@ export type IPrestamoResumen = {
   TipoPlazo: number | null
   /** El pago periódico, tomado del plan y no de Prestamo.Cuota. */
   Cuota: number | null
-  /** Lo que debe hoy. */
+  /** Lo que debe hoy: el CAPITAL pendiente. */
   SaldoPendiente: number | null
+  /**
+   * Lo que se trasladaría si refinancia: el capital pendiente más el interés
+   * de la próxima cuota que se debe.
+   *
+   * Va aparte de SaldoPendiente porque son dos cosas distintas y la pantalla
+   * muestra las dos. Ese interés todavía no se devengó — solo se cobra si
+   * refinancia ahora — así que incluirlo en SaldoPendiente diría que debe más
+   * de lo que debe.
+   */
+  MontoRefinanciamiento: number | null
   /** Cuánto le van a descontar en el próximo pago. */
   ProximaCuota: number | null
   /** Cuándo cae ese pago. */
