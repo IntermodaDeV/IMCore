@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet } from 'react-native'
 import dayjs from 'dayjs'
-import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
+import { YStack, XStack, Text, Card, View, Button, Spinner, useTheme } from 'tamagui'
 import { Briefcase, CalendarDays, Check, CheckSquare, ChevronDown, Clock, MessageSquare, Square, UserRound, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
@@ -196,6 +196,18 @@ export default function SolicitudesHorasExtraScreen() {
    * nada. No había forma de distinguirlos.
    */
   const [errorImpacto, setErrorImpacto] = useState('')
+
+  /**
+   * El impacto se está consultando.
+   *
+   * El confirm se abre YA y el impacto llega después —esperarlo dejaría el
+   * toque sin respuesta— pero mientras no llega hay que decirlo. Sin esto, el
+   * cuadro se veía sin el bloque del presupuesto, exactamente igual que cuando
+   * el usuario no tiene acceso al costo o la etapa no compromete dinero: se
+   * podía firmar creyendo que no había nada que mirar, y el bloque aparecía
+   * medio segundo después, cuando el dedo ya iba al botón.
+   */
+  const [cargandoImpacto, setCargandoImpacto] = useState(false)
   // Solicitudes desplegadas. Arrancan cerradas: la tarjeta cerrada ya dice
   // cuántos empleados, cuántas horas y cuánto cuesta, que es con lo que se
   // decide; el detalle es para cuando algo no cuadra.
@@ -237,6 +249,23 @@ export default function SolicitudesHorasExtraScreen() {
   }, [companyCode])
 
   /**
+   * La entidad con la que se está firmando es la ÚLTIMA del flujo.
+   *
+   * Sale de la entidad seleccionada y no del impacto: el impacto es una
+   * consulta aparte que puede tardar o fallar, y con la agrupación colgando de
+   * ella la bandeja se dibujaba plana y ya no se reacomodaba. Cómo está armado
+   * el flujo es algo que se sabe apenas se eligen las entidades.
+   *
+   * Va acá arriba porque las dos consultas del impacto la miran ANTES de
+   * pedir: hasta la última firma no se compromete presupuesto, así que para las
+   * etapas anteriores esa consulta no tiene nada que contestar.
+   */
+  const esUltimaEntidad = useMemo(
+    () => entidades.find(e => String(e.Id) === entidad)?.Es_Ultima === true,
+    [entidades, entidad],
+  )
+
+  /**
    * Costo de cada renglón de la bandeja, para poder mostrarlo en la lista.
    *
    * El procedimiento devuelve el desglose por EMPLEADO, no por renglón, así
@@ -251,7 +280,12 @@ export default function SolicitudesHorasExtraScreen() {
    */
   const pedirImpactoBandeja = useCallback(
     async (filas: IOvertimeRequestDetail[]) => {
-      if (!companyCode || !entidad || filas.length === 0) {
+      // NO SE PIDE en las etapas anteriores a la última. El procedimiento es el
+      // más caro del módulo —lee el presupuesto de un servidor vinculado y
+      // resuelve el salario de todos los empleados de la semana— y para una
+      // etapa que no compromete dinero devuelve las columnas de monto en NULL:
+      // trabajo completo para un resultado que la pantalla no puede mostrar.
+      if (!companyCode || !entidad || filas.length === 0 || !esUltimaEntidad) {
         setImpactoBandeja([])
         return
       }
@@ -279,7 +313,7 @@ export default function SolicitudesHorasExtraScreen() {
         setErrorImpacto(handleError(err).message)
       }
     },
-    [companyCode, entidad],
+    [companyCode, entidad, esUltimaEntidad],
   )
 
   const loadData = useCallback(async (silent = false) => {
@@ -388,6 +422,27 @@ export default function SolicitudesHorasExtraScreen() {
   )
 
   /**
+   * El usuario puede ver MONTOS.
+   *
+   * Sale del impacto de la bandeja porque el acceso 'CostoHE' lo resuelve la
+   * base: la pantalla no tiene la lista de accesos, y pedirla aparte sería otra
+   * consulta para saber algo que ya viene en esta.
+   */
+  const veCosto = useMemo(
+    () => impactoBandeja.some(r => r.Es_Ultima_Entidad && r.Ve_Costo),
+    [impactoBandeja],
+  )
+
+  /**
+   * Tiene sentido consultar el impacto sobre el presupuesto.
+   *
+   * Son las MISMAS dos condiciones con las que se filtra el resultado: que sea
+   * la última firma y que el usuario pueda ver montos. Si alguna no se cumple,
+   * el bloque no se va a mostrar pase lo que pase.
+   */
+  const puedePedirImpacto = esUltimaEntidad && veCosto
+
+  /**
    * Pide el impacto sobre el presupuesto de lo que se está por aprobar.
    *
    * De mejor esfuerzo: si falla, el confirm sale sin el bloque. Es información
@@ -397,7 +452,16 @@ export default function SolicitudesHorasExtraScreen() {
   const pedirImpacto = useCallback(
     async (detalles: IOvertimeRequestDetail[]) => {
       setImpacto([])
+      setErrorImpacto('')
       if (!companyCode || !entidad || detalles.length === 0) return
+
+      // Sin esto se veía el 'consultando tu presupuesto' de una consulta cuyo
+      // resultado se iba a descartar. `veCosto` sale de la consulta de la
+      // bandeja, que ya respondió cuando se cargó la lista: acá no cuesta nada
+      // saberlo.
+      if (!puedePedirImpacto) return
+
+      setCargandoImpacto(true)
 
       try {
         const res = await overtimeService.getApprovalImpact(
@@ -420,9 +484,11 @@ export default function SolicitudesHorasExtraScreen() {
       } catch (err) {
         setImpacto([])
         setErrorImpacto(handleError(err).message)
+      } finally {
+        setCargandoImpacto(false)
       }
     },
-    [companyCode, entidad],
+    [companyCode, entidad, puedePedirImpacto],
   )
 
   /** Abrir el confirm de aprobar: se muestra ya y el impacto llega después. */
@@ -505,16 +571,6 @@ export default function SolicitudesHorasExtraScreen() {
    * ella la bandeja se dibujaba plana y ya no se reacomodaba. Cómo está armado
    * el flujo es algo que se sabe apenas se eligen las entidades.
    */
-  const esUltimaEntidad = useMemo(
-    () => entidades.find(e => String(e.Id) === entidad)?.Es_Ultima === true,
-    [entidades, entidad],
-  )
-
-  const veCosto = useMemo(
-    () => impactoBandeja.some(r => r.Es_Ultima_Entidad && r.Ve_Costo),
-    [impactoBandeja],
-  )
-
   /** Tarifa por hora de cada empleado, deducida del impacto. */
   const tarifaPorEmpleado = useMemo(() => {
     const mapa = new Map<string, number>()
@@ -890,20 +946,25 @@ export default function SolicitudesHorasExtraScreen() {
     </View>
       <ConfirmDialog
         open={!!aprobando}
-        onOpenChange={abierto => { if (!abierto) { setAprobando(null); setImpacto([]); setErrorImpacto('') } }}
+        onOpenChange={abierto => { if (!abierto) { setAprobando(null); setImpacto([]); setErrorImpacto(''); setCargandoImpacto(false) } }}
         title="Aprobar horas extra"
         message={aprobando ? `¿Aprobar ${resumenLote(aprobando)}?` : ''}
         confirmLabel={aprobando && aprobando.length > 1 ? `Aprobar ${aprobando.length}` : 'Aprobar'}
         confirmColor="#22C55E"
         loading={enviando}
         onConfirm={() => aprobando && enviarDecision(aprobando, true, '')}
-        onCancel={() => { setAprobando(null); setImpacto([]); setErrorImpacto('') }}
+        onCancel={() => { setAprobando(null); setImpacto([]); setErrorImpacto(''); setCargandoImpacto(false) }}
         // Con impacto se pinta el bloque; si la consulta falló se dice, para
         // no firmar creyendo que el presupuesto está bien solo porque no
         // apareció nada. Lo demás —sin acceso al costo, etapa que no
         // compromete dinero— sigue sin mostrar nada, que es lo correcto.
         extra={
-          impacto.length > 0 ? (
+          // El orden importa: primero 'estoy buscando', después el resultado.
+          // Al revés, el bloque de error alcanzaba a parpadear entre una
+          // consulta y la siguiente.
+          cargandoImpacto ? (
+            <ImpactoCargando />
+          ) : impacto.length > 0 ? (
             <ImpactoPresupuesto filas={impacto} />
           ) : errorImpacto ? (
             <XStack
@@ -1041,6 +1102,54 @@ const fmtDinero = (valor: number | null | undefined): string =>
  * Solo llega acá con el acceso 'CostoHE' y con la entidad gerencial: el filtro
  * está en la consulta, así que si no corresponde el bloque ni se pide.
  */
+/**
+ * El presupuesto se está consultando.
+ *
+ * Con la FORMA del bloque que viene —tres renglones, el último grande— y no un
+ * spinner suelto: así el cuadro ya tiene el alto que va a tener y el botón de
+ * aprobar no se corre hacia abajo cuando llegan los números. Un botón que se
+ * mueve justo cuando el dedo baja es como se firma lo que no se quería firmar.
+ *
+ * Y dice QUÉ está esperando. 'Cargando…' no alcanza: lo que importa es que hay
+ * un dato del presupuesto en camino y conviene esperarlo antes de firmar.
+ */
+function ImpactoCargando() {
+  return (
+    <YStack
+      width="100%"
+      backgroundColor="$backgroundSurface"
+      borderWidth={1}
+      borderColor="$border"
+      borderRadius={10}
+      padding="$3"
+      gap="$2"
+    >
+      <XStack alignItems="center" gap="$2">
+        <Spinner size="small" color="$textMuted" />
+        <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
+          CONSULTANDO TU PRESUPUESTO
+        </Text>
+      </XStack>
+
+      {/* Los tres renglones del bloque real, en gris. */}
+      {[0, 1].map(i => (
+        <XStack key={i} justifyContent="space-between" alignItems="center" gap="$2">
+          <View height={9} width={i === 0 ? '35%' : '45%'} borderRadius={3} backgroundColor="$textDisabled" />
+          <View height={11} width="25%" borderRadius={3} backgroundColor="$textDisabled" />
+        </XStack>
+      ))}
+
+      <XStack
+        justifyContent="space-between" alignItems="center" gap="$2"
+        borderTopWidth={1} borderTopColor="$border" paddingTop="$2"
+      >
+        <View height={10} width="30%" borderRadius={3} backgroundColor="$textDisabled" />
+        <View height={16} width="35%" borderRadius={3} backgroundColor="$textDisabled" />
+      </XStack>
+    </YStack>
+  )
+}
+
 function ImpactoPresupuesto({ filas }: { filas: IOvertimeApprovalImpact[] }) {
   const total = filas.find(r => r.Es_Total)
   if (!total) return null
@@ -1080,7 +1189,7 @@ function ImpactoPresupuesto({ filas }: { filas: IOvertimeApprovalImpact[] }) {
         borderTopWidth={1} borderTopColor={excedido ? '#FECACA' : '#BBF7D0'} paddingTop="$2"
       >
         <Text fontSize={12} fontWeight="700" color={excedido ? '#991B1B' : '#166534'}>
-          {excedido ? 'Excedido en' : 'Te quedarían'}
+          {excedido ? 'Excedido en' : 'Le quedarían'}
         </Text>
         <Text fontSize={20} fontWeight="800" color={excedido ? '#991B1B' : '#166534'}>
           {fmtDinero(Math.abs(despues))}

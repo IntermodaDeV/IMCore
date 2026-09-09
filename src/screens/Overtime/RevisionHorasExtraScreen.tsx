@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet, TextInput } from 'react-native'
 import dayjs from 'dayjs'
-import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
+import { YStack, XStack, Text, Card, View, Button, Spinner, useTheme } from 'tamagui'
 import { CalendarDays, Check, MessageSquareWarning, TrendingDown, TrendingUp, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
@@ -326,6 +326,17 @@ export default function RevisionHorasExtraScreen() {
   // la última etapa del flujo y con el acceso 'CostoHE'.
   const [impacto, setImpacto] = useState<IOvertimeReviewImpact[]>([])
 
+  /**
+   * El impacto se esta consultando.
+   *
+   * El cuadro se abre YA y el impacto llega despues —esperarlo dejaria el toque
+   * sin respuesta— pero mientras no llega hay que decirlo. Sin esto, el cuadro
+   * se veia sin el bloque del presupuesto, igual que cuando el usuario no tiene
+   * acceso al costo o la firma todavia no resuelve nada: se podia firmar
+   * creyendo que no habia nada que mirar.
+   */
+  const [cargandoImpacto, setCargandoImpacto] = useState(false)
+
   // Impacto de TODA la bandeja, no del lote que se está por firmar. Es lo que
   // permite poner el costo en cada tarjeta antes de abrir nada.
   const [impactoBandeja, setImpactoBandeja] = useState<IOvertimeReviewImpact[]>([])
@@ -392,11 +403,49 @@ export default function RevisionHorasExtraScreen() {
   }, [companyCode])
 
   /**
-   * Trae la bandeja de la entidad activa.
+   * ¿Le toca la ÚLTIMA firma?
    *
-   * `silent` es el modo del gesto de recargar: sin loader a pantalla completa
-   * ni esqueleto, solo el indicador propio de la lista.
+   * Es la que resuelve la revisión y compromete el dinero. Sale de la entidad
+   * seleccionada y no del impacto: el impacto es una consulta aparte que puede
+   * tardar o fallar, y con la agrupación colgando de ella la bandeja se
+   * dibujaba plana y ya no se reacomodaba. Cómo está armado el flujo es algo
+   * que se sabe apenas se eligen las entidades.
+   *
+   * Va acá arriba porque las dos consultas del impacto la miran ANTES de pedir:
+   * en las etapas anteriores esa consulta no tiene nada que contestar.
    */
+  const esUltimaEntidad = useMemo(
+    () => entidades.find(e => String(e.Id) === entidad)?.Es_Ultima === true,
+    [entidades, entidad],
+  )
+
+  /**
+   * El usuario puede ver MONTOS.
+   *
+   * Sale del impacto de la bandeja porque el acceso 'CostoHE' lo resuelve la
+   * base: la pantalla no tiene la lista de accesos, y pedirla aparte sería otra
+   * consulta para saber algo que ya viene en esta.
+   */
+  const veCosto = useMemo(
+    () => impactoBandeja.some(r => r.Es_Ultima_Entidad && r.Ve_Costo),
+    [impactoBandeja],
+  )
+
+  /**
+   * Tiene sentido consultar el impacto sobre el presupuesto.
+   *
+   * Son las MISMAS dos condiciones con las que se filtra el resultado: que la
+   * firma resuelva la revisión y que el usuario pueda ver montos. Si alguna no
+   * se cumple, el bloque no se va a mostrar pase lo que pase.
+   *
+   * Vive en una sola bandera porque la miran DOS lugares —el efecto que
+   * enciende el indicador de carga y la consulta misma— y tenerla repetida fue
+   * exactamente el error: el efecto encendía el 'consultando el presupuesto' y
+   * la consulta salía antes de apagarlo, así que el mensaje quedaba para
+   * siempre en las etapas que no son la última.
+   */
+  const puedePedirImpacto = esUltimaEntidad && veCosto
+
   /**
    * Costo de cada revisión de la bandeja, para poder mostrarlo en la lista.
    *
@@ -408,7 +457,11 @@ export default function RevisionHorasExtraScreen() {
    */
   const pedirImpactoBandeja = useCallback(
     async (filas: IOvertimeReviewToAuth[]) => {
-      if (!companyCode || !entidad || filas.length === 0) {
+      // NO SE PIDE en las etapas anteriores a la última. El procedimiento es el
+      // más caro del módulo y para una etapa que no resuelve la revisión
+      // devuelve las columnas de monto en NULL: trabajo completo para un
+      // resultado que la pantalla no puede mostrar.
+      if (!companyCode || !entidad || filas.length === 0 || !esUltimaEntidad) {
         setImpactoBandeja([])
         return
       }
@@ -424,9 +477,15 @@ export default function RevisionHorasExtraScreen() {
         setImpactoBandeja([])
       }
     },
-    [companyCode, entidad],
+    [companyCode, entidad, esUltimaEntidad],
   )
 
+  /**
+   * Trae la bandeja de la entidad activa.
+   *
+   * `silent` es el modo del gesto de recargar: sin loader a pantalla completa
+   * ni esqueleto, solo el indicador propio de la lista.
+   */
   const loadData = useCallback(async (silent = false) => {
     if (!companyCode || !entidad) {
       setData([])
@@ -547,6 +606,10 @@ export default function RevisionHorasExtraScreen() {
       setImpacto([])
       if (!companyCode || !entidad || revisiones.length === 0) return
 
+      if (!puedePedirImpacto) return
+
+      setCargandoImpacto(true)
+
       try {
         const res = await overtimeService.getReviewImpact(
           companyCode,
@@ -567,9 +630,11 @@ export default function RevisionHorasExtraScreen() {
         setImpacto(filas)
       } catch {
         setImpacto([])
+      } finally {
+        setCargandoImpacto(false)
       }
     },
-    [companyCode, entidad],
+    [companyCode, entidad, puedePedirImpacto],
   )
 
   /**
@@ -671,12 +736,28 @@ export default function RevisionHorasExtraScreen() {
   // consulta, y escribir una hora dispararía una por dígito.
   useEffect(() => {
     const payload = horarioPayload()
-    if (!payload || !revisando) { setImpacto([]); return }
+
+    // La MISMA condición que la consulta, y acá está la razón de que sea una
+    // sola bandera: este efecto encendía el indicador antes de llamar, y la
+    // consulta salía por su guarda sin llegar al `finally` que lo apaga. En las
+    // etapas que no son la última el 'consultando el presupuesto' quedaba
+    // puesto para siempre, esperando algo que nunca se pidió.
+    if (!payload || !revisando || !puedePedirImpacto) {
+      setImpacto([])
+      setCargandoImpacto(false)
+      return
+    }
+
+    // El indicador se enciende YA, no cuando arranca la consulta. Los 450 ms de
+    // espera son parte del tiempo que el usuario percibe, y durante ellos el
+    // número que está en pantalla ya no corresponde al horario que acaba de
+    // escribir: dejarlo a la vista sin avisar es peor que taparlo.
+    setCargandoImpacto(true)
 
     const t = setTimeout(() => pedirImpacto([revisando], payload), 450)
 
     return () => clearTimeout(t)
-  }, [revisando, horarioPayload, pedirImpacto])
+  }, [revisando, horarioPayload, pedirImpacto, puedePedirImpacto])
 
   useEffect(() => {
     loadEntidades()
@@ -728,32 +809,6 @@ export default function RevisionHorasExtraScreen() {
 
     return { empleados, texto }
   }, [filtered, data])
-
-  /**
-   * ¿Le toca la última firma?
-   *
-   * Es la que compromete el dinero, y donde agrupar por solicitud cambia algo:
-   * las etapas anteriores ven una cola corta de su propia gente. Lo resuelve el
-   * procedimiento del impacto, así que no hace falta reconocer a la entidad por
-   * su nombre —que cambiaría con cualquier renombre en AdmSys.
-   */
-  /**
-   * ¿Le toca la última firma?
-   *
-   * Sale de la entidad seleccionada y no del impacto: el impacto es una
-   * consulta aparte que puede tardar o fallar, y con la agrupación colgando de
-   * ella la bandeja se dibujaba plana y ya no se reacomodaba. Cómo está armado
-   * el flujo es algo que se sabe apenas se eligen las entidades.
-   */
-  const esUltimaEntidad = useMemo(
-    () => entidades.find(e => String(e.Id) === entidad)?.Es_Ultima === true,
-    [entidades, entidad],
-  )
-
-  const veCosto = useMemo(
-    () => impactoBandeja.some(r => r.Es_Ultima_Entidad && r.Ve_Costo),
-    [impactoBandeja],
-  )
 
   /**
    * Costo de cada revisión, por Id.
@@ -1022,7 +1077,14 @@ export default function RevisionHorasExtraScreen() {
               {/* El presupuesto, para quien tenga el acceso. Solo el total:
                   con el desglose por área el cuadro se volvía un informe y la
                   hora —que es la decisión— quedaba abajo del pliegue. */}
-              {impacto.length > 0 && <ImpactoResolver filas={impacto} />}
+              {/* Primero 'estoy buscando' y después el resultado: el bloque
+                  dice que hay un dato del presupuesto en camino, así que no se
+                  firma creyendo que no había nada que mirar. */}
+              {cargandoImpacto ? (
+                <ImpactoResolverCargando />
+              ) : impacto.length > 0 ? (
+                <ImpactoResolver filas={impacto} />
+              ) : null}
 
               {/* Rechazar va aparte y en secundario porque es la excepción: lo
                   normal es tomar uno de los horarios de arriba. */}
@@ -1472,6 +1534,42 @@ function RevisionCard({
  * Solo llega con contenido cuando la firma RESUELVE la revisión y el usuario
  * tiene el acceso a montos: las dos condiciones las decide el backend.
  */
+/**
+ * El presupuesto se está consultando.
+ *
+ * Con la FORMA del bloque que viene —tres renglones— y no un spinner suelto:
+ * así el cuadro ya tiene su alto y los botones de abajo no se corren cuando
+ * llegan los números. Un botón que se mueve justo cuando el dedo baja es como
+ * se firma lo que no se quería firmar.
+ */
+function ImpactoResolverCargando() {
+  return (
+    <YStack
+      marginTop="$2"
+      borderRadius={10}
+      padding="$2.5"
+      gap={6}
+      borderWidth={1}
+      borderColor="#E2E8F0"
+      backgroundColor="#F8FAFC"
+    >
+      <XStack alignItems="center" gap="$2">
+        <Spinner size="small" color="#94A3B8" />
+        <Text fontSize={10} fontWeight="700" color="#64748B" letterSpacing={0.4}>
+          CONSULTANDO EL PRESUPUESTO
+        </Text>
+      </XStack>
+
+      {[0, 1, 2].map(i => (
+        <XStack key={i} justifyContent="space-between" alignItems="center" gap="$2">
+          <View height={8} width={i === 2 ? '30%' : '45%'} borderRadius={3} backgroundColor="#CBD5E1" />
+          <View height={i === 2 ? 13 : 9} width="25%" borderRadius={3} backgroundColor="#CBD5E1" />
+        </XStack>
+      ))}
+    </YStack>
+  )
+}
+
 function ImpactoResolver({ filas }: { filas: IOvertimeReviewImpact[] }) {
   const total = filas.find(r => r.Es_Total)
   if (!total) return null
