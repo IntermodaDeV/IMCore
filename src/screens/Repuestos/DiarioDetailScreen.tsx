@@ -16,6 +16,12 @@ import { ACCENT, Field, ScannerModal, puedeDespachar, situacionTicket, SITUACION
 
 const ERR = '#ef4444'
 const GREEN = '#16a34a'   // ticket disponible para despachar
+
+// Un código de ticket (MTTO-AAAA-NNNNNN) NO es un código de barras de artículo. El
+// lector dispara contra el campo que tenga el foco, así que el QR del ticket cae a
+// veces en Ubicación o en Código de barras; mandarlo a AX solo daba un rechazo
+// confuso, y en modo suministro no había ni campo de ticket donde escanearlo.
+const ES_CODIGO_TICKET = /^MTTO-\d{4}-\d{1,10}$/i
 const WARN  = '#f59e0b'   // el ambar que ya usa el resto de la app para 'ojo con esto'
 
 type ActiveTicket = { Id: number; CodigoTicket: string; Area?: string | null; Operacion?: string | null; Estado?: string | null }
@@ -163,6 +169,11 @@ export default function DiarioDetailScreen() {
       return false
     }
     setTicket({ Id: t.Id, CodigoTicket: t.CodigoTicket, Area: t.Area, Operacion: t.Operacion, Estado: t.Estado })
+    // Escanear un ticket SIEMPRE devuelve a modo repuesto. Sin esto, el chip de
+    // suministro quedaba pegado: Óscar escaneaba el ticket, la app lo ignoraba
+    // —en ese modo ni se dibuja el campo— y los repuestos siguientes entraban
+    // como suministro y SIN ticket, a un centro de costo en vez de a la máquina.
+    setModo('REPUESTO')
     // Ticket nuevo → limpiar ubicación y código de barras (empezar de cero). Sin toast
     // de éxito: el borde verde de la tarjeta indica que está disponible para despachar.
     setUbicacion('')
@@ -212,9 +223,29 @@ export default function DiarioDetailScreen() {
     return () => clearTimeout(t)
   }, [manual, ticket, resolviendo, resolverTicket, teclado])
 
+  // Escanear el ticket funciona SIEMPRE, caiga donde caiga. Es lo que Óscar espera
+  // ("solo cuando escaneo el otro ticket ya cambia") y sin esto el código se quedaba
+  // en un campo de texto: en Ubicación viajaba como ubicación, y en Código de barras
+  // AX lo rechazaba sin decir por qué.
+  useEffect(() => {
+    const cand = [barcode, ubicacion].map(v => v.replace(/[\r\n]/g, '').trim()).find(v => ES_CODIGO_TICKET.test(v))
+    if (!cand || resolviendo) return
+    const t = setTimeout(() => {
+      if (ES_CODIGO_TICKET.test(barcode.trim())) setBarcode('')
+      if (ES_CODIGO_TICKET.test(ubicacion.trim())) setUbicacion('')
+      resolverTicket(cand)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [barcode, ubicacion, resolviendo, resolverTicket])
+
   // ── Agregar repuesto (línea) al ticket activo ────────────────────────────────
   const agregarRepuesto = useCallback(async (codigoBarras?: string) => {
     const bc = (codigoBarras ?? barcode).trim()
+    if (ES_CODIGO_TICKET.test(bc)) {
+      setBarcode('')
+      resolverTicket(bc)
+      return
+    }
     const esSuministro = modo === 'SUMINISTRO'
     if (!esSuministro && !ticket) { showToast('warning', 'Escanea un ticket', 'Primero escanea el QR del ticket'); return }
     if (!bc) { showToast('warning', 'Falta el código', 'Escanea o escribe el código de barras'); return }
@@ -256,7 +287,7 @@ export default function DiarioDetailScreen() {
     } finally {
       setAgregando(false)
     }
-  }, [ticket, modo, barcode, cantidad, ubicacion, almacen, almacenDiario, journalId, cargarLineas, showToast])
+  }, [ticket, modo, barcode, cantidad, ubicacion, almacen, almacenDiario, journalId, cargarLineas, showToast, resolverTicket])
 
   // Encadenado del lector (teclado suprimido, el ENTER no dispara onSubmitEditing):
   // al terminar la ráfaga de la UBICACIÓN saltamos el foco al código de barras.
@@ -415,10 +446,13 @@ export default function DiarioDetailScreen() {
               onPress={() => { setModo('SUMINISTRO'); setTicket(null); setManual('') }} />
           </XStack>
 
-          {/* Ticket activo (solo en modo repuesto) */}
-          {modo === 'REPUESTO' && (
+          {/* El ticket se ofrece en LOS DOS modos: en suministro es la salida para
+              volver a repuestos. Antes solo existía en modo repuesto, así que quien
+              se quedaba en suministro no tenía dónde escanear y no se enteraba. */}
           <YStack marginBottom="$3" gap="$1.5">
-            <Text fontSize="$2" fontWeight="700" color="$text">Ticket de mantenimiento</Text>
+            <Text fontSize="$2" fontWeight="700" color="$text">
+              {modo === 'SUMINISTRO' ? 'Escanea un ticket para volver a repuestos' : 'Ticket de mantenimiento'}
+            </Text>
             {ticket ? (
               <View borderWidth={1.5} borderColor={GREEN} borderRadius={12} backgroundColor="rgba(34,197,94,0.06)"
                 padding="$3" gap="$1" {...shadows.sm}>
@@ -473,7 +507,6 @@ export default function DiarioDetailScreen() {
               </YStack>
             )}
           </YStack>
-          )}
 
           {/* En suministros el destino lo pone AX: el centro de costo viene del artículo. */}
           {modo === 'SUMINISTRO' && (
