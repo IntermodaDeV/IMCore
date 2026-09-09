@@ -1,11 +1,15 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
+  ISalidaCD,
+  ISalidaCDFiltros,
+  ISalidaCDHistorial,
   ISalidaFactura,
   ISalidaFacturaAvance,
   ISalidaFacturaFiltros,
   ISalidaFacturaHistorial,
   ISalidaFacturaResultado,
+  TipoSalidaCD,
 } from './salidaFacturas.types'
 
 // Consume api/SalidaFacturas. baseUrl (API_URL) ya incluye /api/, por eso las
@@ -59,5 +63,61 @@ export const salidaFacturasService = {
       factura: filtros.factura || undefined,
       cliente: filtros.cliente || undefined,
       fecha: filtros.fecha || undefined,
+    }),
+
+  // ── Salida del CD: la MISMA pantalla para facturas y diarios ──────────────
+  //
+  // Se manda el código tal cual y el SERVIDOR decide si era factura o diario.
+  // Las escrituras sí necesitan el tipo, y lo saben porque el escaneo lo trajo.
+
+  escanearCD: (codigo: string) =>
+    httpClient.get<ExecutionResponse<ISalidaCD>>(
+      `${schema}/Escanear/${encodeURIComponent(codigo)}`,
+      undefined,
+      { timeoutMs: ESCANEO_TIMEOUT },
+    ),
+
+  marcarLineaCD: (tipo: TipoSalidaCD, codigo: string, lineNum: number, revisado: boolean) =>
+    httpClient.post<ExecutionResponse<ISalidaFacturaAvance>, { Revisado: boolean }>(
+      `${schema}/${tipo === 'DIARIO' ? 'Diario' : 'Factura'}/${encodeURIComponent(codigo)}/Linea/${lineNum}`,
+      { Revisado: revisado },
+    ),
+
+  marcarTodasCD: (tipo: TipoSalidaCD, codigo: string, revisado: boolean) =>
+    httpClient.post<ExecutionResponse<ISalidaFacturaAvance>, { Revisado: boolean }>(
+      `${schema}/${tipo === 'DIARIO' ? 'Diario' : 'Factura'}/${encodeURIComponent(codigo)}/MarcarTodas`,
+      { Revisado: revisado },
+    ),
+
+  completarCD: (tipo: TipoSalidaCD, codigo: string) =>
+    httpClient.post<ExecutionResponse<ISalidaFacturaResultado>, {}>(
+      `${schema}/${tipo === 'DIARIO' ? 'Diario' : 'Factura'}/${encodeURIComponent(codigo)}/Completar`,
+      {},
+    ),
+
+  // Descartar lo que se abrió por error. NO borra: queda DESCARTADA con el
+  // motivo, que el servidor EXIGE. Se puede reabrir sin perder lo contado.
+  descartar: (tipo: TipoSalidaCD, codigo: string, motivo: string) =>
+    httpClient.post<ExecutionResponse<ISalidaFacturaResultado>, { Motivo: string }>(
+      `${schema}/${tipo}/${encodeURIComponent(codigo)}/Descartar`,
+      { Motivo: motivo },
+    ),
+
+  reabrir: (tipo: TipoSalidaCD, codigo: string) =>
+    httpClient.post<ExecutionResponse<ISalidaFacturaResultado>, {}>(
+      `${schema}/${tipo}/${encodeURIComponent(codigo)}/Reabrir`,
+      {},
+    ),
+
+  // Historial unificado: facturas y diarios, con el tope aplicado en el SERVIDOR
+  // sobre el conjunto ya ordenado.
+  historialCD: (filtros: ISalidaCDFiltros = {}) =>
+    httpClient.get<ExecutionResponse<ISalidaCDHistorial[]>>(`${schema}/HistorialCD`, {
+      tipo: filtros.tipo || undefined,
+      codigo: filtros.codigo || undefined,
+      cliente: filtros.cliente || undefined,
+      estado: filtros.estado || undefined,
+      fecha: filtros.fecha || undefined,
+      top: filtros.top ?? undefined,
     }),
 }

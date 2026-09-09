@@ -186,14 +186,27 @@ export function Aviso({
 }
 
 /** Badge de estado de la factura. */
+/**
+ * El estado de la revisión.
+ *
+ * ⚠ Antes esto era `completada ? 'Salió' : 'En revisión'`, o sea que CUALQUIER
+ * estado que no fuera COMPLETADA se pintaba «En revisión» en verde. Cuando
+ * apareció DESCARTADA, un descarte se veía como algo pendiente —justo lo
+ * contrario— y encima en el color de «va bien». Ahora los estados se nombran, y
+ * lo que no se reconozca se muestra TAL CUAL en gris: si mañana aparece otro,
+ * se va a ver que es otro en vez de disfrazarse del que más se parece.
+ */
 export function EstadoBadge({ estado }: { estado?: string | null }) {
-  const completada = (estado ?? '').toUpperCase() === 'COMPLETADA'
+  const e = (estado ?? '').toUpperCase()
+  const { texto, color, fondo } =
+    e === 'COMPLETADA' ? { texto: 'Salió', color: '#6b7280', fondo: 'rgba(107,114,128,0.15)' }
+    : e === 'EN_REVISION' ? { texto: 'En revisión', color: '#16a34a', fondo: 'rgba(34,197,94,0.15)' }
+    : e === 'DESCARTADA' ? { texto: 'Descartada', color: '#dc2626', fondo: 'rgba(220,38,38,0.15)' }
+    : { texto: estado || '—', color: '#6b7280', fondo: 'rgba(107,114,128,0.15)' }
+
   return (
-    <View borderRadius={6} paddingHorizontal="$2" paddingVertical={2}
-      backgroundColor={completada ? 'rgba(107,114,128,0.15)' : 'rgba(34,197,94,0.15)'}>
-      <Text fontSize="$1" fontWeight="800" color={completada ? '#6b7280' : '#16a34a'}>
-        {completada ? 'Salió' : 'En revisión'}
-      </Text>
+    <View borderRadius={6} paddingHorizontal="$2" paddingVertical={2} backgroundColor={fondo}>
+      <Text fontSize="$1" fontWeight="800" color={color}>{texto}</Text>
     </View>
   )
 }

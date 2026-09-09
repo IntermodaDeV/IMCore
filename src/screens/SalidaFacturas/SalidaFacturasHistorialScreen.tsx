@@ -10,16 +10,22 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { useShowToast } from '../../utils/useShowToast'
 import { shadows } from '../../theme/shadows'
 import { salidaFacturasService } from '../../api/modules/salidaFacturas/salidaFacturas.service'
-import { ISalidaFacturaHistorial } from '../../api/modules/salidaFacturas/salidaFacturas.types'
+import { ISalidaCDHistorial } from '../../api/modules/salidaFacturas/salidaFacturas.types'
 import { ACCENT, EstadoBadge, fmtCantidad, fmtFechaHora } from './components'
 
 /**
- * Historial del Control de Salida: qué facturas se revisaron, cuáles ya salieron
- * y quién las atendió. Sirve para dos preguntas de la puerta —«¿esta factura ya
- * salió?» y «¿quién la revisó?»— y para ver las que quedaron a medias.
+ * Historial del Control de Salida del CD: qué se revisó, qué ya salió y quién lo
+ * atendió. Trae las DOS cosas que salen por esa puerta —facturas y diarios de
+ * inventario— en un solo listado, porque son la misma revisión.
  *
- * El servidor devuelve las 200 más recientes; los filtros bajan a la BD (no se
- * filtra en el teléfono) para que buscar una factura vieja sí la encuentre.
+ * Sirve para dos preguntas de la puerta —«¿esto ya salió?» y «¿quién lo
+ * revisó?»— y para ver lo que quedó a medias.
+ *
+ * El servidor devuelve los 200 movimientos más recientes YA ORDENADOS entre los
+ * dos tipos (el tope se aplica en SQL sobre el conjunto, no 200 de cada uno: así
+ * no desaparecen las facturas cuando hay muchos diarios seguidos). Los filtros
+ * bajan a la BD —no se filtra en el teléfono— para que buscar algo viejo sí lo
+ * encuentre.
  */
 export default function SalidaFacturasHistorialScreen() {
   usePageHeader({
@@ -29,25 +35,25 @@ export default function SalidaFacturasHistorialScreen() {
   const theme = useTheme()
   const { showToast } = useShowToast()
 
-  const [factura, setFactura] = useState('')
+  const [codigo, setCodigo] = useState('')
   const [cliente, setCliente] = useState('')
   const [fecha, setFecha] = useState<string | null>(null)
 
-  const [filas, setFilas] = useState<ISalidaFacturaHistorial[]>([])
+  const [filas, setFilas] = useState<ISalidaCDHistorial[]>([])
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
 
   // Los filtros se leen por ref, no por dependencia del callback: si `cargar`
   // cambiara de identidad con cada tecla, el useFocusEffect se volvería a
   // disparar y habría una consulta por letra escrita.
-  const filtrosRef = useRef({ factura: '', cliente: '', fecha: null as string | null })
-  filtrosRef.current = { factura, cliente, fecha }
+  const filtrosRef = useRef({ codigo: '', cliente: '', fecha: null as string | null })
+  filtrosRef.current = { codigo, cliente, fecha }
 
-  const cargar = useCallback(async (filtros?: { factura?: string; cliente?: string; fecha?: string | null }) => {
+  const cargar = useCallback(async (filtros?: { codigo?: string; cliente?: string; fecha?: string | null }) => {
     const f = filtros ?? filtrosRef.current
     try {
-      const res = await salidaFacturasService.historial({
-        factura: f.factura?.trim() || undefined,
+      const res = await salidaFacturasService.historialCD({
+        codigo: f.codigo?.trim() || undefined,
         cliente: f.cliente?.trim() || undefined,
         fecha: f.fecha || undefined,
       })
@@ -66,20 +72,24 @@ export default function SalidaFacturasHistorialScreen() {
   const buscar = () => { setCargando(true); cargar() }
 
   const limpiar = () => {
-    setFactura(''); setCliente(''); setFecha(null)
+    setCodigo(''); setCliente(''); setFecha(null)
     setCargando(true)
-    cargar({ factura: '', cliente: '', fecha: null })
+    cargar({ codigo: '', cliente: '', fecha: null })
   }
 
-  const hayFiltros = !!(factura.trim() || cliente.trim() || fecha)
+  const hayFiltros = !!(codigo.trim() || cliente.trim() || fecha)
 
   const resumen = useMemo(() => ({
     total: filas.length,
     salidas: filas.filter(f => (f.Estado ?? '').toUpperCase() === 'COMPLETADA').length,
+    diarios: filas.filter(f => f.Tipo === 'DIARIO').length,
   }), [filas])
 
-  const renderItem = ({ item }: { item: ISalidaFacturaHistorial }) => {
-    const completada = (item.Estado ?? '').toUpperCase() === 'COMPLETADA'
+  const renderItem = ({ item }: { item: ISalidaCDHistorial }) => {
+    const estado = (item.Estado ?? '').toUpperCase()
+    const completada = estado === 'COMPLETADA'
+    const descartada = estado === 'DESCARTADA'
+    const diario = item.Tipo === 'DIARIO'
     // El nombre del guardia va guardado en el registro (no se resuelve al leer:
     // el historial vive en IMDesarrollos y Security.Users en IMCore, otro servidor).
     const guardia = completada ? item.GuardiaSalida : item.GuardiaInicio
@@ -87,12 +97,31 @@ export default function SalidaFacturasHistorialScreen() {
       <YStack backgroundColor="$backgroundElevated" borderRadius="$4" borderWidth={1} borderColor="$border"
         padding="$3.5" marginBottom="$3" gap="$1.5" {...shadows.sm}>
         <XStack alignItems="center" gap="$2" flexWrap="wrap">
-          <FileText size={18} color={ACCENT} />
-          <Text fontSize="$5" fontWeight="900" color="$text">{item.InvoiceId}</Text>
+          {diario ? <ClipboardList size={18} color={ACCENT} /> : <FileText size={18} color={ACCENT} />}
+          <Text fontSize="$5" fontWeight="900" color="$text">{item.Codigo}</Text>
+          <View borderRadius={6} paddingHorizontal="$2" paddingVertical={2}
+            backgroundColor={diario ? 'rgba(147,51,234,0.15)' : 'rgba(59,130,246,0.15)'}>
+            <Text fontSize="$1" fontWeight="800" color={diario ? '#9333ea' : '#3b82f6'}>
+              {diario ? 'DIARIO' : 'FACTURA'}
+            </Text>
+          </View>
           <EstadoBadge estado={item.Estado} />
         </XStack>
 
-        <Text fontSize="$3" color="$text" numberOfLines={2}>{item.Cliente || 'Sin cliente'}</Text>
+        <Text fontSize="$3" color="$text" numberOfLines={2}>
+          {(diario ? item.Descripcion : item.Cliente) || (diario ? 'Sin descripción' : 'Sin cliente')}
+        </Text>
+
+        {/* En un diario, el TIPO es el dato que dice si lo revisado corresponde:
+            por eso va a la vista y no escondido. */}
+        {diario && (!!item.TipoDiario || !!item.CategoriaNombre) && (
+          <Text fontSize="$1" color="$textMuted">
+            {[item.TipoDiario, item.CategoriaNombre].filter(Boolean).join(' · ')}
+            {item.AlmacenOrigen
+              ? ` · ${item.AlmacenOrigen}${item.AlmacenDestino ? ` → ${item.AlmacenDestino}` : ''}`
+              : ''}
+          </Text>
+        )}
 
         <XStack gap="$3" flexWrap="wrap">
           <Text fontSize="$2" color="$textMuted">
@@ -107,9 +136,16 @@ export default function SalidaFacturasHistorialScreen() {
         <Text fontSize="$1" color="$textMuted">
           {completada
             ? `Salió ${fmtFechaHora(item.FechaSalida)}`
-            : `En revisión desde ${fmtFechaHora(item.FechaInicio)}`}
-          {guardia ? ` · ${guardia}` : ''}
+            : descartada
+              ? `Descartada ${fmtFechaHora(item.FechaDescarte)}`
+              : `En revisión desde ${fmtFechaHora(item.FechaInicio)}`}
+          {guardia && !descartada ? ` · ${guardia}` : ''}
+          {descartada && item.GuardiaDescarte ? ` · ${item.GuardiaDescarte}` : ''}
         </Text>
+
+        {descartada && !!item.MotivoDescarte && (
+          <Text fontSize="$1" color="$textMuted">Motivo: {item.MotivoDescarte}</Text>
+        )}
       </YStack>
     )
   }
@@ -120,8 +156,8 @@ export default function SalidaFacturasHistorialScreen() {
       <YStack paddingHorizontal={16} paddingTop={12} gap="$2" width="100%" maxWidth={1000} alignSelf="center">
         <XStack gap="$2">
           <View flex={1}>
-            <AppInput label="Factura" value={factura} onChangeText={setFactura}
-              autoCapitalize="none" returnKeyType="search" onSubmitEditing={buscar} />
+            <AppInput label="Factura o diario" value={codigo} onChangeText={setCodigo}
+              autoCapitalize="characters" autoCorrect={false} returnKeyType="search" onSubmitEditing={buscar} />
           </View>
           <View flex={1}>
             <AppInput label="Cliente" value={cliente} onChangeText={setCliente}
@@ -150,7 +186,8 @@ export default function SalidaFacturasHistorialScreen() {
 
         {!cargando && filas.length > 0 && (
           <Text fontSize="$2" color="$textMuted">
-            {resumen.total} {resumen.total === 1 ? 'factura' : 'facturas'} · {resumen.salidas} ya salieron
+            {resumen.total} {resumen.total === 1 ? 'movimiento' : 'movimientos'} · {resumen.salidas} ya salieron
+            {resumen.diarios > 0 ? ` · ${resumen.diarios} ${resumen.diarios === 1 ? 'diario' : 'diarios'}` : ''}
           </Text>
         )}
       </YStack>
@@ -163,7 +200,7 @@ export default function SalidaFacturasHistorialScreen() {
       ) : (
         <FlatList
           data={filas}
-          keyExtractor={f => `${f.DataAreaId}-${f.InvoiceId}`}
+          keyExtractor={f => `${f.Tipo}-${f.DataAreaId}-${f.Codigo}`}
           renderItem={renderItem}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40, width: '100%', maxWidth: 1000, alignSelf: 'center' }}
           refreshControl={
@@ -175,8 +212,8 @@ export default function SalidaFacturasHistorialScreen() {
               <ClipboardList size={48} color={theme.textMuted?.val} />
               <Text color="$textMuted" textAlign="center">
                 {hayFiltros
-                  ? 'Ninguna factura coincide con la búsqueda.'
-                  : 'Todavía no se ha revisado ninguna factura.'}
+                  ? 'Nada coincide con la búsqueda.'
+                  : 'Todavía no se ha revisado nada en el control de salida.'}
               </Text>
             </YStack>
           }
