@@ -9,6 +9,19 @@ import {
   IOvertimeApprovalImpact,
   IOvertimeReviewImpact,
   IOvertimeBudgetDashboard,
+  IOvertimeBudgetTotals,
+  IOvertimeBudgetRow,
+  IOvertimeDayTotal,
+  IOvertimeMealAreaRow,
+  IOvertimeMealBudget,
+  IOvertimeMealDay,
+  IOvertimeMealWeek,
+  IOvertimeTopEmployee,
+  IOvertimeTopEmployeeDay,
+  IOvertimeTopRequester,
+  IOvertimeMealEmployee,
+  IOvertimeWeekRange,
+  IOvertimeWeekTotal,
   IOvertimeBudgetEmployee,
   IOvertimeEmployee,
   IOvertimeEmployeeWithRequest,
@@ -285,6 +298,185 @@ export const overtimeService = {
    * pestañas y pedirlos por separado dejaría cada una mirando un momento
    * distinto del mismo período.
    */
+  /**
+   * Solo los totales del periodo: lo que dibuja la dona del presupuesto.
+   *
+   * Va aparte de getBudgetDashboard a proposito. Ese sobre trae los tres cortes
+   * y cuesta cinco ejecuciones del procedimiento mas caro del modulo; la dona
+   * necesita una. Cada tarjeta del tablero pide lo suyo y se refresca sola.
+   */
+  getBudgetTotals: (companyCode: string, startDate?: string, finalDate?: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeBudgetTotals>>(`${schema}/BudgetTotals`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * El presupuesto por area de UN corte.
+   *
+   * La pantalla dibuja un corte a la vez, asi que traer los tres seria pagar
+   * tres ejecuciones del procedimiento para mostrar una. Cambiar de pastilla
+   * pide el que se necesita.
+   */
+  getBudgetAreas: (
+    companyCode: string,
+    level: string,
+    startDate?: string,
+    finalDate?: string,
+  ) =>
+    httpClient.get<ExecutionResponse<IOvertimeBudgetRow[]>>(`${schema}/BudgetAreas`, {
+      companyCode,
+      level,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * El gasto dia por dia del periodo, con el mayor aportante de cada dia.
+   *
+   * Solo vienen los dias CON movimiento: la pantalla conoce el rango de la
+   * semana y dibuja el hueco.
+   */
+  getBudgetDays: (companyCode: string, startDate?: string, finalDate?: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeDayTotal[]>>(`${schema}/BudgetDays`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * El comparativo por semana: cuanto se gasto en cada una de las que se pasan.
+   *
+   * Va por POST y no por GET porque el cuerpo es una lista de rangos: en la
+   * query string tendria que ir como JSON codificado, que es peor de leer y de
+   * depurar. Es una lectura: no cambia nada.
+   */
+  getBudgetWeeks: (companyCode: string, weeks: IOvertimeWeekRange[]) =>
+    httpClient.post<ExecutionResponse<IOvertimeWeekTotal[]>, IOvertimeWeekRange[]>(
+      `${schema}/BudgetWeeks?companyCode=${encodeURIComponent(companyCode)}`,
+      weeks,
+    ),
+
+  /**
+   * El presupuesto de ALIMENTACION del periodo y cuanto lleva gastado.
+   *
+   * Otra bolsa del mismo cubo: TipoCuenta 'ALIMENTACION'. Lo gastado son las
+   * raciones otorgadas por el valor de la racion, que vive en la configuracion
+   * del modulo del lado del servidor.
+   */
+  getMealBudget: (companyCode: string, startDate?: string, finalDate?: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeMealBudget>>(`${schema}/MealBudget`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * El reparto de ALIMENTACION por area, de UN corte.
+   *
+   * Paralelo de getBudgetAreas sobre la otra bolsa, y por la misma razon pide
+   * un corte a la vez: la pantalla dibuja uno.
+   */
+  getMealAreas: (
+    companyCode: string,
+    level: string,
+    startDate?: string,
+    finalDate?: string,
+  ) =>
+    httpClient.get<ExecutionResponse<IOvertimeMealAreaRow[]>>(`${schema}/MealAreas`, {
+      companyCode,
+      level,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * Quienes recibieron alimentacion en un rango.
+   *
+   * Sirve para un dia y para una semana: lo unico que cambia son las fechas. El
+   * area es OPCIONAL; omitirla trae todas las del alcance.
+   */
+  getMealEmployees: (
+    companyCode: string,
+    startDate?: string,
+    finalDate?: string,
+    code?: string,
+    level?: string,
+  ) =>
+    httpClient.get<ExecutionResponse<IOvertimeMealEmployee[]>>(`${schema}/MealEmployees`, {
+      companyCode,
+      startDate,
+      finalDate,
+      code: code || undefined,
+      level,
+    }),
+
+  /** Las raciones de alimentacion de cada dia del periodo. */
+  getMealDays: (companyCode: string, startDate?: string, finalDate?: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeMealDay[]>>(`${schema}/MealDays`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * El comparativo de ALIMENTACION por semana.
+   *
+   * Por POST y no por GET por lo mismo que getBudgetWeeks: el cuerpo es una
+   * lista de rangos. Es una lectura: no cambia nada.
+   */
+  getMealWeeks: (companyCode: string, weeks: IOvertimeWeekRange[]) =>
+    httpClient.post<ExecutionResponse<IOvertimeMealWeek[]>, IOvertimeWeekRange[]>(
+      `${schema}/MealWeeks?companyCode=${encodeURIComponent(companyCode)}`,
+      weeks,
+    ),
+
+  /**
+   * Los solicitantes con mas horas extra aprobadas del periodo.
+   *
+   * Vienen de mas a menos horas y vienen TODOS: la pantalla decide cuantos
+   * dibuja.
+   */
+  getTopRequesters: (companyCode: string, startDate?: string, finalDate?: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeTopRequester[]>>(`${schema}/TopRequesters`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * El empleado con mas horas extra de cada area del corte pedido.
+   *
+   * Solo las areas CON horas: donde nadie se quedo no hay a quien senalar. Es
+   * distinto del tablero de presupuesto, donde un area sin gasto si es
+   * informacion porque tiene presupuesto asignado.
+   */
+  getTopEmployeeByArea: (
+    companyCode: string,
+    level: string,
+    startDate?: string,
+    finalDate?: string,
+  ) =>
+    httpClient.get<ExecutionResponse<IOvertimeTopEmployee[]>>(`${schema}/TopEmployeeByArea`, {
+      companyCode,
+      level,
+      startDate,
+      finalDate,
+    }),
+
+  /**
+   * El empleado con mas horas extra de cada dia del periodo.
+   *
+   * Vuelven TODOS los dias del rango, con movimiento o sin el: un dia vacio es
+   * informacion. Esos llegan con el empleado en blanco.
+   */
+  getTopEmployeeByDay: (companyCode: string, startDate?: string, finalDate?: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeTopEmployeeDay[]>>(
+      `${schema}/TopEmployeeByDay`,
+      { companyCode, startDate, finalDate },
+    ),
+
   getBudgetDashboard: (companyCode: string, startDate?: string, finalDate?: string) =>
     httpClient.get<ExecutionResponse<IOvertimeBudgetDashboard>>(`${schema}/BudgetDashboard`, {
       companyCode,
@@ -300,14 +492,24 @@ export const overtimeService = {
    */
   getBudgetEmployees: (
     companyCode: string,
-    code: string,
+    /**
+     * Codigo del area. OMITIRLO = todas las del alcance del usuario, que es lo
+     * que pide el desglose de un DIA: ahi la gente viene de varias areas y el
+     * corte es la fecha.
+     */
+    code: string | undefined,
     level: string,
     startDate?: string,
     finalDate?: string,
   ) =>
     httpClient.get<ExecutionResponse<IOvertimeBudgetEmployee[]>>(`${schema}/BudgetEmployees`, {
       companyCode,
-      code,
+      // Vacia se manda como `undefined` y el parametro desaparece de la URL, en
+      // lugar de viajar como `code=`. No es lo mismo: con el parametro presente
+      // y vacio, el enlazador de .NET lo convierte a null y una firma no
+      // anulable lo rechaza con 'The code field is required' antes de llegar al
+      // controlador. Sin el parametro, el valor por omision entra limpio.
+      code: code || undefined,
       level,
       startDate,
       finalDate,

@@ -349,6 +349,268 @@ export interface IOvertimeBudgetRow {
  * puede ser cuatro días parejos o un martes desbocado, y solo lo segundo es un
  * problema que se puede ir a mirar.
  */
+/**
+ * El presupuesto de ALIMENTACION del periodo y cuanto lleva gastado.
+ *
+ * El presupuesto viene en dinero, del mismo renglon del cubo que el de horas
+ * extra pero con TipoCuenta 'ALIMENTACION'. Lo otorgado se cuenta en RACIONES
+ * —una por revision con la casilla marcada— y el puente entre las dos unidades
+ * es Valor_Alimentacion.
+ *
+ * Llegan las dos unidades y no solo el dinero: 'llevamos 42 raciones' es lo que
+ * se puede ir a contrastar con el comedor, y 'L 1,470' es lo que se compara
+ * contra el presupuesto.
+ */
+export interface IOvertimeMealBudget {
+  /** Cuanto cuesta una racion. Sale de la configuracion del modulo. */
+  Valor_Alimentacion: number
+
+  Presupuesto: number
+
+  /** Cuantas alimentaciones se otorgaron en el periodo. */
+  Raciones: number
+
+  /** A cuanta gente distinta. Menor o igual que Raciones. */
+  Empleados: number
+
+  /** Raciones por el valor de la racion. */
+  Costo: number
+
+  Disponible: number
+
+  /** Cero cuando no hay presupuesto: se distingue mirando Presupuesto. */
+  Porcentaje_Consumido: number
+
+  Sin_Areas_Configuradas: boolean
+}
+
+/**
+ * Una fila del reparto de ALIMENTACION por area.
+ *
+ * Paralelo de IOvertimeBudgetRow sobre la otra bolsa. Lo otorgado se cuenta en
+ * RACIONES y el costo sale de multiplicarlas por el valor de la racion, asi que
+ * no hay horas ni reparto por banda: la misma forma con menos columnas.
+ */
+export interface IOvertimeMealAreaRow {
+  Nivel: string
+  Codigo: string
+  Nombre: string
+
+  /** Cuantas alimentaciones se otorgaron en el area. */
+  Raciones: number
+  Empleados: number
+
+  /** Raciones por el valor de la racion. */
+  Costo: number
+
+  Presupuesto: number
+  Disponible: number
+  Porcentaje_Consumido: number
+}
+
+/**
+ * Una racion otorgada: quien, que dia y con que horario.
+ *
+ * UNA FILA POR RACION y no por empleado: alguien que recibio alimentacion tres
+ * dias distintos son tres raciones, y en el detalle hay que poder ver cuales.
+ *
+ * El horario va incluido porque es lo que EXPLICA la racion: sin el, el renglon
+ * dice quien pero no por que.
+ */
+export interface IOvertimeMealEmployee {
+  Employee_Code: string
+  Employee_Name: string
+  Posicion: string
+  Centro_Costos: string
+  Correlative: string
+
+  Fecha: string
+
+  Inicio: string | null
+  Fin: string | null
+
+  /** Lo que cuesta esta racion. */
+  Costo: number
+}
+
+/**
+ * Las raciones de alimentacion de UN dia del periodo.
+ *
+ * Paralelo de IOvertimeDayTotal sobre la otra bolsa. No trae presupuesto del
+ * dia: el del cubo es SEMANAL, y repartirlo entre siete seria inventar un
+ * numero que nadie asigno.
+ */
+export interface IOvertimeMealDay {
+  Fecha: string
+
+  Raciones: number
+  Empleados: number
+
+  /** Raciones por el valor de la racion. */
+  Costo: number
+
+  /** Null los dias sin raciones: no hay a quien senalar. */
+  Top_Centro: string | null
+  Top_Centro_Raciones: number | null
+}
+
+/**
+ * Una semana del comparativo de ALIMENTACION.
+ *
+ * Paralelo de IOvertimeWeekTotal sobre la otra bolsa.
+ *
+ * OJO: el valor de la racion es UNO y viaja por parametro, asi que todas las
+ * semanas quedan costeadas al precio de HOY. Es lo que se quiere para comparar
+ * —la misma vara para todas— pero si el precio cambio en el medio, los montos
+ * de las semanas viejas no son los que se pagaron.
+ */
+export interface IOvertimeMealWeek {
+  Inicio: string
+  Fin: string
+
+  Raciones: number
+  Empleados: number
+
+  Costo: number
+  Presupuesto: number
+
+  Top_Centro: string | null
+  Top_Centro_Raciones: number | null
+}
+
+/**
+ * El empleado con MAS horas extra de un dia.
+ *
+ * La misma pregunta que IOvertimeTopEmployee con otro agrupador: la fecha en
+ * lugar del area. Contesta algo que el corte por area no puede: un pico del
+ * martes se explica mirando quien lo puso, y esa persona puede estar repartida
+ * en varias areas.
+ *
+ * Los dias SIN horas llegan igual, con el empleado en blanco y las horas en
+ * cero: un dia vacio es informacion, y sin el la semana cambiaria de forma
+ * segun que dias tuvieron movimiento.
+ */
+export interface IOvertimeTopEmployeeDay {
+  Fecha: string
+
+  Employee_Code: string
+  Employee_Name: string
+  Posicion: string
+  Centro_Costos: string
+
+  /** Horas de esa persona ese dia. */
+  Horas: number
+
+  /** Horas de TODO el dia. */
+  Horas_Dia: number
+
+  /** Que parte del dia es de esa persona, en porcentaje. */
+  Parte: number
+
+  Solicitudes: number
+
+  /** Cuanta gente con horas tuvo el dia. */
+  Empleados_Dia: number
+}
+
+/**
+ * El empleado con MAS horas extra de un area.
+ *
+ * Trae las horas de esa persona Y las del area completa, porque la lectura son
+ * las dos juntas: doce horas de un empleado sobre un total de catorce dice algo
+ * muy distinto que doce sobre doscientas. Parte es esa relacion ya calculada.
+ */
+export interface IOvertimeTopEmployee {
+  Nivel: string
+  Codigo: string
+  Nombre: string
+
+  Employee_Code: string
+  Employee_Name: string
+  Posicion: string
+
+  /** Horas de esa persona. */
+  Horas: number
+
+  /** Horas del area completa. */
+  Horas_Area: number
+
+  /** Que parte del area es de esa persona, en porcentaje. */
+  Parte: number
+
+  Solicitudes: number
+
+  /** Cuanta gente con horas tiene el area. */
+  Empleados_Area: number
+}
+
+/**
+ * Un solicitante y las horas extra que se le aprueban.
+ *
+ * El resto de la pestana mira al empleado que HACE las horas; esto mira al que
+ * las PIDE. Son dos preguntas distintas: un supervisor puede concentrar la
+ * mitad de las horas extra repartidas entre veinte personas, y en el corte por
+ * empleado eso no se ve por ningun lado.
+ *
+ * General, sin corte por area: el solicitante no cuelga de un centro de costos,
+ * cuelga de las solicitudes que hizo, y esas pueden ser de varias areas.
+ */
+export interface IOvertimeTopRequester {
+  /** El usuario que creo la solicitud, que es la llave. */
+  Create_By: string
+
+  /** Su nombre de empleado, que es la etiqueta. */
+  Solicitante: string
+
+  Horas: number
+
+  /** Horas de TODOS los solicitantes del periodo. */
+  Horas_Total: number
+
+  /** Que parte del total es suya, en porcentaje. */
+  Parte: number
+
+  Solicitudes: number
+
+  /** Entre cuanta gente reparte esas horas. */
+  Empleados: number
+}
+
+/**
+ * Un rango de semana, como lo manda la pantalla.
+ *
+ * Las semanas viajan desde el cliente porque el calendario de planilla ya esta
+ * cargado ahi para el filtro, y no es una division por siete dias:
+ * recalcularlo en la base seria una segunda definicion del mismo calendario.
+ */
+export interface IOvertimeWeekRange {
+  Inicio: string
+  Fin: string
+}
+
+/**
+ * Una semana del comparativo: cuanto se gasto en ella.
+ *
+ * El total de una semana no dice si es mucho; lo dice al lado de las que la
+ * precedieron. Trae el presupuesto de esa semana y el centro de costos que mas
+ * gasto, para que la comparacion no sea solo de montos sueltos.
+ */
+export interface IOvertimeWeekTotal {
+  Inicio: string
+  Fin: string
+
+  Empleados: number
+  Solicitudes: number
+
+  Horas: number
+  Costo: number
+  Presupuesto: number
+
+  /** Null en las semanas sin gasto: no hay a quien senalar. */
+  Top_Centro: string | null
+  Top_Centro_Costo: number | null
+}
+
 export interface IOvertimeDayTotal {
   Fecha: string
   Empleados: number
@@ -369,6 +631,40 @@ export interface IOvertimeDayTotal {
   Top_Departamento_Costo: number | null
   Top_Centro: string | null
   Top_Centro_Costo: number | null
+}
+
+/**
+ * Solo los totales del tablero: lo que necesita la dona del presupuesto.
+ *
+ * Existe para no traer los tres cortes cuando lo unico que se va a dibujar es
+ * el total. El sobre completo —IOvertimeBudgetDashboard— ejecuta el
+ * procedimiento del presupuesto TRES veces, una por nivel, mas los conceptos y
+ * los dias, y cada una de esas ejecuciones resuelve por dentro el salario de
+ * todos los empleados del periodo. Para refrescar una dona eso es cinco veces
+ * mas trabajo del necesario.
+ *
+ * Se totaliza sobre CENTROS DE COSTO porque el presupuesto se define en la hoja
+ * del arbol: es el unico corte donde cada lempira aparece una sola vez.
+ */
+export interface IOvertimeBudgetTotals {
+  Total_Horas: number
+  Total_Costo: number
+  Total_Presupuesto: number
+  Total_Disponible: number
+  Total_Porcentaje_Consumido: number
+
+  Total_Empleados: number
+  Total_Solicitudes: number
+
+  /** Las horas del periodo abiertas por banda de recargo. */
+  Conceptos: IOvertimeConceptTotal[]
+
+  /**
+   * Cero filas en el corte por centro de costos con areas configuradas es
+   * imposible: siempre sale al menos la fila del presupuesto. Por eso vacio se
+   * puede leer como falta de parametro y no como falta de movimiento.
+   */
+  Sin_Areas_Configuradas: boolean
 }
 
 export interface IOvertimeBudgetDashboard {

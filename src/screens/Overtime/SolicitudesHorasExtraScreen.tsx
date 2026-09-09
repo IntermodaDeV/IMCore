@@ -841,7 +841,7 @@ export default function SolicitudesHorasExtraScreen() {
             // pero de otros días.
             <EmptyState
               title="Sin pendientes ese día"
-              message='No hay nada que firmar de ese día. Tocá "Todos" para ver el resto.'
+              message='No hay nada que firmar de ese día. Toque "Todos" para ver el resto.'
             />
           ) : (
             <EmptyState

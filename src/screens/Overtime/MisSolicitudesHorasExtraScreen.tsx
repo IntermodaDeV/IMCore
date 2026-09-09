@@ -617,14 +617,14 @@ export default function MisSolicitudesHorasExtraScreen() {
             ) : semanas.length === 0 ? (
               <EmptyState
                 title="Sin calendario de semanas"
-                message="No se pudo cargar el calendario de planilla, así que no hay semana que consultar. Deslizá hacia abajo para reintentar."
+                message="No se pudo cargar el calendario de planilla, así que no hay semana que consultar. Deslice hacia abajo para reintentar."
               />
             ) : (
               <EmptyState
                 title={dia ? 'Sin solicitudes ese día' : 'Sin solicitudes esta semana'}
                 message={
                   dia
-                    ? 'No pediste horas extra ese día. Tocá "Semana" para ver todos los días.'
+                    ? 'No pidió horas extra ese día. Toque "Semana" para ver todos los días.'
                     : 'Todavía no has pedido horas extra en esta semana.'
                 }
               />
