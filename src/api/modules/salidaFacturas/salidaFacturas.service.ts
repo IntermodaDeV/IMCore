@@ -109,6 +109,16 @@ export const salidaFacturasService = {
       {},
     ),
 
+  // Detalle de SOLO LECTURA, para consultar en el historial lo que llevaba una
+  // factura o un diario. NO es el endpoint de escaneo: ese daria de alta el
+  // registro si no existiera, y en algo ya salido devuelve el bloqueo SIN las
+  // lineas, que es justo lo que aca se quiere ver.
+  detalleCD: (codigo: string, tipo?: TipoSalidaCD) =>
+    httpClient.get<ExecutionResponse<ISalidaCD>>(
+      `${schema}/Detalle/${encodeURIComponent(codigo)}`,
+      { tipo: tipo || undefined },
+    ),
+
   // Historial unificado: facturas y diarios, con el tope aplicado en el SERVIDOR
   // sobre el conjunto ya ordenado.
   historialCD: (filtros: ISalidaCDFiltros = {}) =>
@@ -118,6 +128,8 @@ export const salidaFacturasService = {
       cliente: filtros.cliente || undefined,
       estado: filtros.estado || undefined,
       fecha: filtros.fecha || undefined,
+      desde: filtros.desde || undefined,
+      hasta: filtros.hasta || undefined,
       top: filtros.top ?? undefined,
     }),
 }
