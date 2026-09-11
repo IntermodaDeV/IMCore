@@ -1,11 +1,14 @@
 import React, { useRef, useState } from 'react'
 import { Modal, StyleSheet, Platform, PermissionsAndroid } from 'react-native'
-import { Text, XStack, YStack, View } from 'tamagui'
-import { X } from 'lucide-react-native'
+import { Text, XStack, YStack, View, Spinner, ScrollView } from 'tamagui'
+import { X, TriangleAlert } from 'lucide-react-native'
+import { ILineaBloqueada } from '../../api/modules/repuestos/repuestos.types'
 import { Camera } from 'react-native-camera-kit'
 
 // Color de acento del módulo (primary de la app).
 export const ACCENT = '#FF551A'
+// El ámbar de 'ojo con esto' que ya usa el resto de la app.
+export const WARN = '#f59e0b'
 
 // Qué situaciones del ticket admiten despacho ya NO está horneado: lo gobierna la
 // configuración global 'Mtto.EstadosDespachoRepuestos', que el SP_Linea_Insertar
@@ -174,3 +177,142 @@ export type { Periodo } from '../../utils/periodo'
 // es de donde venia esta funcion, nunca llegaban a esa magnitud.
 export const fmtL = (n: number) =>
   `L ${(n || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+/** Por qué AX va a rechazar esta línea. Son DOS problemas distintos y se explican
+ *  distinto: probándolo con datos reales salieron los dos en el mismo diario. */
+export function motivoBloqueo(b: ILineaBloqueada): 'SIN_COSTO' | 'SIN_EXISTENCIA' {
+  // Hay piezas en bodega suficientes, pero AX no sabe costearlas: es el caso de la
+  // factura de compra sin registrar.
+  return b.Fisico >= b.Pide ? 'SIN_COSTO' : 'SIN_EXISTENCIA'
+}
+
+/**
+ * Lo que AX va a rechazar al postear, explicado en cristiano.
+ *
+ * POR QUÉ EXISTE: AX cancela el diario ENTERO por una sola línea mala y devuelve un
+ * párrafo suyo —«el precio de coste sólo se conoce para 0.00 en existencias»— que no
+ * dice qué línea es. Óscar posteaba 41 líneas, fallaba por la 4, y no había forma de
+ * saber cuál sin leer el mensaje de AX con lupa.
+ *
+ * Se dice la pieza, la cantidad, y a quién hay que ir a buscar (la orden y el
+ * proveedor), porque «no se puede» sin eso no le sirve a nadie.
+ */
+export function BloqueadasModal({
+  open,
+  bloqueadas,
+  totalLineas,
+  trabajando,
+  colores,
+  onApartar,
+  onEsperar,
+}: {
+  open: boolean
+  bloqueadas: ILineaBloqueada[]
+  totalLineas: number
+  trabajando: boolean
+  /** ⚠ Los colores VIENEN DE AFUERA a propósito: dentro de un `Modal` de React Native
+   *  el contenido se monta en otra raíz y los tokens de Tamagui NO se resuelven — el
+   *  texto salía en el color del tema claro sobre un panel oscuro, ilegible. Es la
+   *  misma razón por la que `ScannerModal` escribe sus colores a mano. */
+  colores: { panel: string; texto: string; suave: string; tenue: string; borde: string }
+  onApartar: () => void
+  onEsperar: () => void
+}) {
+  const n = bloqueadas.length
+  const quedan = Math.max(0, totalLineas - n)
+  return (
+    <Modal visible={open} animationType="slide" transparent onRequestClose={onEsperar}>
+      <View flex={1} backgroundColor="rgba(0,0,0,0.6)" justifyContent="flex-end">
+        <YStack backgroundColor={colores.panel} borderTopLeftRadius={20} borderTopRightRadius={20}
+          paddingHorizontal="$4" paddingTop="$4" paddingBottom={40} gap="$3" maxHeight="88%">
+
+          <XStack alignItems="center" gap="$2">
+            <TriangleAlert size={22} color={WARN} />
+            <Text fontSize="$6" fontWeight="800" flex={1} color={colores.texto}>
+              {n === 1 ? 'AX va a rechazar una línea' : `AX va a rechazar ${n} líneas`}
+            </Text>
+          </XStack>
+
+          <Text fontSize="$3" lineHeight={20} color={colores.suave}>
+            Si posteas así, AX cancela el diario <Text fontWeight="800" color={colores.texto}>completo</Text>,
+            no solo{n === 1 ? ' esa línea' : ' esas líneas'}.
+          </Text>
+
+          {/* Se encoge para caber, en vez de un alto fijo: con dos tarjetas el alto
+              fijo cortaba la segunda a media frase y no se veía que hubiera más. */}
+          <ScrollView flexShrink={1}>
+            <YStack gap="$2">
+              {bloqueadas.map(b => (
+                <YStack key={b.LineNum} borderWidth={1} borderColor={WARN} borderRadius={12}
+                  padding="$3" gap="$1" backgroundColor="rgba(245,158,11,0.08)">
+                  <XStack justifyContent="space-between" alignItems="center">
+                    <Text fontSize="$2" fontWeight="800" color={WARN}>Línea {b.LineNum}</Text>
+                    <Text fontSize="$2" color={colores.tenue}>pide {b.Pide}</Text>
+                  </XStack>
+                  <Text fontSize="$4" fontWeight="700" color={colores.texto}>{b.Descripcion || b.ItemId}</Text>
+                  <Text fontSize="$2" color={colores.tenue} fontFamily="$mono">{b.ItemId}</Text>
+                  {motivoBloqueo(b) === 'SIN_COSTO' ? (
+                    <>
+                      <Text fontSize="$2" color={colores.suave} lineHeight={18}>
+                        Hay {b.Fisico} en bodega, pero AX no sabe cuánto {b.Fisico === 1 ? 'vale' : 'valen'}:
+                        con costo registrado tiene {b.Valuadas}. Casi siempre es que no han
+                        registrado la factura de compra.
+                      </Text>
+                      {!!b.PurchId && (
+                        <Text fontSize="$2" color={colores.suave} lineHeight={18}>
+                          Falta facturar la orden <Text fontWeight="800" color={colores.texto}>{b.PurchId}</Text>
+                          {!!b.ProveedorNombre && ` · ${b.ProveedorNombre}`}
+                        </Text>
+                      )}
+                    </>
+                  ) : (
+                    <Text fontSize="$2" color={colores.suave} lineHeight={18}>
+                      {b.Fisico <= 0
+                        ? 'AX no tiene existencia de esta pieza en el almacén.'
+                        : `En el almacén hay ${b.Fisico} y el diario pide ${b.Pide}.`}
+                    </Text>
+                  )}
+                </YStack>
+              ))}
+            </YStack>
+          </ScrollView>
+
+          {trabajando ? (
+            <XStack alignItems="center" justifyContent="center" gap="$2" paddingVertical="$3">
+              <Spinner color={ACCENT} />
+              <Text fontSize="$3" color={colores.texto}>Apartando…</Text>
+            </XStack>
+          ) : (
+            <YStack gap="$2">
+              {quedan <= 0 && (
+                <Text fontSize="$2" color={colores.suave} textAlign="center" paddingBottom="$1">
+                  No queda ninguna línea que sí se pueda postear.
+                </Text>
+              )}
+              {quedan > 0 && (
+                <View onPress={onApartar} pressStyle={{ opacity: 0.85 }} backgroundColor={ACCENT}
+                  borderRadius={12} paddingVertical="$3.5" alignItems="center">
+                  <Text color="#fff" fontWeight="800" fontSize="$4">
+                    Postear las otras {quedan}
+                  </Text>
+                  <Text color="#fff" opacity={0.9} fontSize="$1" marginTop={2}>
+                    {n === 1 ? 'la pieza pasa' : 'las piezas pasan'} a un diario aparte
+                  </Text>
+                </View>
+              )}
+              <View onPress={onEsperar} pressStyle={{ opacity: 0.7 }} borderWidth={1}
+                borderColor={colores.borde} borderRadius={12} paddingVertical="$3.5" alignItems="center">
+                <Text fontWeight="700" fontSize="$4" color={colores.texto}>
+                  {quedan > 0 ? 'Esperar' : 'Entendido'}
+                </Text>
+                <Text color={colores.tenue} fontSize="$1" marginTop={2}>
+                  no se postea nada, el diario queda como está
+                </Text>
+              </View>
+            </YStack>
+          )}
+        </YStack>
+      </View>
+    </Modal>
+  )
+}

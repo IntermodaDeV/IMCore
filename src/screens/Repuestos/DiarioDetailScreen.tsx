@@ -7,12 +7,12 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useShowToast } from '../../utils/useShowToast'
 import { repuestosService } from '../../api/modules/repuestos/repuestos.service'
-import { ILinea } from '../../api/modules/repuestos/repuestos.types'
+import { ILinea, ILineaBloqueada } from '../../api/modules/repuestos/repuestos.types'
 import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
 import { configuracionService } from '../../api/modules/configuracion/configuracion.service'
 import { ITicket } from '../../api/modules/mantenimiento/tickets.types'
 import { shadows } from '../../theme/shadows'
-import { ACCENT, Field, ScannerModal, puedeDespachar, situacionTicket, SITUACIONES_DESPACHO_DEFAULT, fmtFechaHora, ts } from './components'
+import { ACCENT, BloqueadasModal, Field, ScannerModal, puedeDespachar, situacionTicket, SITUACIONES_DESPACHO_DEFAULT, fmtFechaHora, ts } from './components'
 
 const ERR = '#ef4444'
 const GREEN = '#16a34a'   // ticket disponible para despachar
@@ -71,6 +71,10 @@ export default function DiarioDetailScreen() {
 
   const [scanMode, setScanMode] = useState<ScanMode>(null)
   const [posteando, setPosteando] = useState(false)
+  // Chequeo previo contra AX: qué líneas va a rechazar por no tener costo registrado.
+  const [validando, setValidando] = useState(false)
+  const [bloqueadas, setBloqueadas] = useState<ILineaBloqueada[]>([])
+  const [moviendo, setMoviendo] = useState(false)
   // Campo con teclado manual habilitado (null = modo láser, teclado suprimido).
   const [teclado, setTeclado] = useState<null | 'ticket' | 'ubicacion' | 'barcode'>(null)
 
@@ -319,8 +323,28 @@ export default function DiarioDetailScreen() {
   }
 
   // ── Postear ──────────────────────────────────────────────────────────────────
-  const confirmarPostear = () => {
+  //
+  // Antes de postear se le pregunta a AX qué líneas va a rechazar. No es un lujo: AX
+  // cancela el diario ENTERO por una sola línea sin costo y su mensaje no dice cuál
+  // es. Preguntando primero se puede nombrar la pieza, decir por qué, y ofrecer
+  // apartarla en vez de dejar a Óscar con 41 líneas sin postear.
+  const confirmarPostear = async () => {
     if (lineas.length === 0) { showToast('warning', 'Diario vacío', 'Agrega al menos una línea antes de postear'); return }
+
+    setValidando(true)
+    let malas: ILineaBloqueada[] = []
+    try {
+      const res = await repuestosService.validarPosteo(journalId)
+      malas = res.Data ?? []
+    } catch {
+      // El chequeo es una AYUDA: si falla, no se le tranca el posteo. Si de verdad
+      // estaba bloqueado, AX lo va a rechazar igual que siempre.
+    } finally {
+      setValidando(false)
+    }
+
+    if (malas.length > 0) { setBloqueadas(malas); return }
+
     Alert.alert(
       'Postear diario',
       `Se ejecutará la rebaja en AX de ${lineas.length} ${lineas.length === 1 ? 'línea' : 'líneas'}. Esta acción no se puede deshacer. ¿Continuar?`,
@@ -330,6 +354,38 @@ export default function DiarioDetailScreen() {
       ],
     )
   }
+
+  // «Postear las otras»: las bloqueadas se mueven a un diario nuevo que queda ABIERTO
+  // esperando la factura, y recién entonces se postea este. Si alguna no se pudo
+  // apartar NO se postea: seguiría adentro y AX volvería a rechazar todo.
+  const apartarYPostear = async () => {
+    setMoviendo(true)
+    try {
+      const res = await repuestosService.moverBloqueadas(journalId, bloqueadas.map(b => b.LineNum))
+      const d = res.Data
+      if (!d?.Ok) {
+        setMoviendo(false)
+        setBloqueadas([])
+        Alert.alert(
+          'No se pudo apartar todo',
+          (d?.NoSeMovieron?.join('\n\n') || d?.Error || res.ErrorMessage || 'AX no confirmó.') +
+          '\n\nEl diario quedó sin postear.',
+        )
+        await cargarLineas()
+        return
+      }
+      setBloqueadas([])
+      setMoviendo(false)
+      showToast('success', 'Piezas apartadas', `Quedaron en ${d.NuevoJournalId}, pendientes en AX`, 5000)
+      await cargarLineas()
+      await postear()
+    } catch (e: any) {
+      setMoviendo(false)
+      setBloqueadas([])
+      showToast('error', 'Error', e?.message || 'No se pudieron apartar las piezas')
+    }
+  }
+
   const postear = async () => {
     setPosteando(true)
     try {
@@ -735,15 +791,35 @@ export default function DiarioDetailScreen() {
       {!cerrado && (
         <View position="absolute" left={0} right={0} bottom={0} paddingHorizontal={16} paddingTop={10} paddingBottom={20}
           backgroundColor="$background" borderTopWidth={1} borderTopColor="$border">
-          <View onPress={posteando ? undefined : confirmarPostear} pressStyle={{ opacity: 0.85 }}
-            opacity={posteando || lineas.length === 0 ? 0.6 : 1}
+          <View onPress={posteando || validando ? undefined : confirmarPostear} pressStyle={{ opacity: 0.85 }}
+            opacity={posteando || validando || lineas.length === 0 ? 0.6 : 1}
             backgroundColor={ACCENT} borderRadius="$4" height={46}
             alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
-            {posteando ? <Spinner color="#fff" /> : <Upload size={18} color="#fff" />}
-            <Text color="#fff" fontWeight="800" fontSize="$3">{posteando ? 'Posteando…' : 'Postear diario'}</Text>
+            {posteando || validando ? <Spinner color="#fff" /> : <Upload size={18} color="#fff" />}
+            <Text color="#fff" fontWeight="800" fontSize="$3">
+              {validando ? 'Revisando en AX…' : posteando ? 'Posteando…' : 'Postear diario'}
+            </Text>
           </View>
         </View>
       )}
+
+      <BloqueadasModal
+        open={bloqueadas.length > 0}
+        bloqueadas={bloqueadas}
+        totalLineas={lineas.length}
+        trabajando={moviendo}
+        // Los colores se resuelven ACÁ, donde el tema sí existe: dentro del Modal de
+        // React Native los tokens de Tamagui no se resuelven.
+        colores={{
+          panel:  theme.backgroundElevated?.val ?? '#1D232D',
+          texto:  theme.text?.val ?? '#F8FAFC',
+          suave:  theme.textSecondary?.val ?? '#CBD5E1',
+          tenue:  theme.textMuted?.val ?? '#94A3B8',
+          borde:  theme.border?.val ?? '#334155',
+        }}
+        onApartar={apartarYPostear}
+        onEsperar={() => setBloqueadas([])}
+      />
 
       <ScannerModal
         open={scanMode !== null}
