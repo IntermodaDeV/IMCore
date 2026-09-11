@@ -162,6 +162,8 @@ export interface ILineaBloqueada {
 export interface IMoverBloqueadas {
   Ok: boolean
   NuevoJournalId?: string | null
+  /** true = se movieron a un diario que ya existía; false = se creó uno. */
+  Reusado: boolean
   Movidas: number[]
   /** Las que NO se pudieron apartar: el diario original sigue sin poder postearse. */
   NoSeMovieron: string[]

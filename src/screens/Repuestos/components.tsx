@@ -203,6 +203,9 @@ export function BloqueadasModal({
   totalLineas,
   trabajando,
   colores,
+  destino,
+  opcionesDestino,
+  onDestino,
   onApartar,
   onEsperar,
 }: {
@@ -210,6 +213,10 @@ export function BloqueadasModal({
   bloqueadas: ILineaBloqueada[]
   totalLineas: number
   trabajando: boolean
+  /** '' = crear un diario nuevo. */
+  destino: string
+  opcionesDestino: { id: string; etiqueta: string }[]
+  onDestino: (v: string) => void
   /** ⚠ Los colores VIENEN DE AFUERA a propósito: dentro de un `Modal` de React Native
    *  el contenido se monta en otra raíz y los tokens de Tamagui NO se resuelven — el
    *  texto salía en el color del tema claro sobre un panel oscuro, ilegible. Es la
@@ -277,6 +284,40 @@ export function BloqueadasModal({
             </YStack>
           </ScrollView>
 
+          {/* A DÓNDE van. No se adivina: quien despacha suele tener varios diarios
+              abiertos —el del día, el de pendientes, alguno viejo que quedó suelto— y
+              mandar la pieza trabada al que está usando hoy solo traslada el problema al
+              siguiente posteo.
+              Va como LISTA y no como desplegable: son dos o tres opciones, y en el
+              teléfono verlas todas es un toque en vez de tres. */}
+          {quedan > 0 && !trabajando && (
+            <YStack gap="$1.5">
+              <Text fontSize="$2" fontWeight="700" color={colores.texto}>
+                {n === 1 ? 'Mover la línea trabada a' : 'Mover las líneas trabadas a'}
+              </Text>
+              {[{ id: '', etiqueta: 'Un diario nuevo' }, ...opcionesDestino].map(o => {
+                const sel = destino === o.id
+                return (
+                  <View key={o.id || 'nuevo'} onPress={() => onDestino(o.id)}
+                    pressStyle={{ opacity: 0.7 }} borderWidth={1}
+                    borderColor={sel ? ACCENT : colores.borde} borderRadius={10}
+                    paddingVertical="$2.5" paddingHorizontal="$3"
+                    backgroundColor={sel ? 'rgba(255,85,26,0.10)' : 'transparent'}>
+                    <Text fontSize="$2" fontWeight={sel ? '800' : '500'}
+                      color={sel ? ACCENT : colores.suave}>
+                      {sel ? '● ' : '○ '}{o.etiqueta}
+                    </Text>
+                  </View>
+                )
+              })}
+              {opcionesDestino.length === 0 && (
+                <Text fontSize="$1" color={colores.tenue}>
+                  No tenés otro diario abierto, así que se creará uno.
+                </Text>
+              )}
+            </YStack>
+          )}
+
           {trabajando ? (
             <XStack alignItems="center" justifyContent="center" gap="$2" paddingVertical="$3">
               <Spinner color={ACCENT} />
@@ -296,7 +337,8 @@ export function BloqueadasModal({
                     Postear las otras {quedan}
                   </Text>
                   <Text color="#fff" opacity={0.9} fontSize="$1" marginTop={2}>
-                    {n === 1 ? 'la pieza pasa' : 'las piezas pasan'} a un diario aparte
+                    {n === 1 ? 'la pieza pasa' : 'las piezas pasan'}{' '}
+                    {destino ? `a ${destino}` : 'a un diario nuevo'}
                   </Text>
                 </View>
               )}

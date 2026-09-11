@@ -81,11 +81,26 @@ export const repuestosService = {
       { timeoutMs: AX_TIMEOUT },
     ),
 
-  // Aparta las líneas bloqueadas en un diario NUEVO para poder postear el resto.
-  moverBloqueadas: (journalId: string, lineNums: number[], company = 'IMHN') =>
-    httpClient.post<ExecutionResponse<IMoverBloqueadas>, { LineNums: number[] }>(
+  // Diarios ABIERTOS a los que se pueden mover las líneas trabadas. Sin filtro de
+  // fecha: los hay de hace semanas, y filtrarlos los escondería justo cuando sirven.
+  diariosAbiertos: (excluir: string) =>
+    httpClient.get<ExecutionResponse<IDiario[]>>(
+      `${schema}/Diarios/Abiertos`, { excluir }, { timeoutMs: READ_TIMEOUT },
+    ),
+
+  // Aparta las líneas bloqueadas. `destino` vacío = crear un diario nuevo.
+  moverBloqueadas: (
+    journalId: string,
+    lineNums: number[],
+    destino?: string | null,
+    company = 'IMHN',
+  ) =>
+    httpClient.post<
+      ExecutionResponse<IMoverBloqueadas>,
+      { LineNums: number[]; DestinoJournalId?: string | null }
+    >(
       `${schema}/Diarios/${encodeURIComponent(journalId)}/MoverBloqueadas?company=${company}`,
-      { LineNums: lineNums },
+      { LineNums: lineNums, DestinoJournalId: destino || null },
       { timeoutMs: AX_TIMEOUT },
     ),
 

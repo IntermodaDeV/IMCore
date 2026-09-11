@@ -75,6 +75,9 @@ export default function DiarioDetailScreen() {
   const [validando, setValidando] = useState(false)
   const [bloqueadas, setBloqueadas] = useState<ILineaBloqueada[]>([])
   const [moviendo, setMoviendo] = useState(false)
+  // A dónde mandar las trabadas. '' = crear un diario nuevo.
+  const [destino, setDestino] = useState('')
+  const [abiertos, setAbiertos] = useState<{ id: string; etiqueta: string }[]>([])
   // Campo con teclado manual habilitado (null = modo láser, teclado suprimido).
   const [teclado, setTeclado] = useState<null | 'ticket' | 'ubicacion' | 'barcode'>(null)
 
@@ -343,7 +346,20 @@ export default function DiarioDetailScreen() {
       setValidando(false)
     }
 
-    if (malas.length > 0) { setBloqueadas(malas); return }
+    if (malas.length > 0) {
+      setBloqueadas(malas)
+      setDestino('')
+      // Los abiertos solo se piden cuando hay algo trabado: en el 99% de los posteos
+      // no hace falta la consulta.
+      try {
+        const res = await repuestosService.diariosAbiertos(journalId)
+        setAbiertos((res.Data ?? []).map(d => ({
+          id: d.JournalId,
+          etiqueta: `${d.JournalId} · ${d.Descripcion || 'sin descripción'} · ${d.NumeroLineas} línea(s)`,
+        })))
+      } catch { setAbiertos([]) }
+      return
+    }
 
     Alert.alert(
       'Postear diario',
@@ -361,7 +377,8 @@ export default function DiarioDetailScreen() {
   const apartarYPostear = async () => {
     setMoviendo(true)
     try {
-      const res = await repuestosService.moverBloqueadas(journalId, bloqueadas.map(b => b.LineNum))
+      const res = await repuestosService.moverBloqueadas(
+        journalId, bloqueadas.map(b => b.LineNum), destino || null)
       const d = res.Data
       if (!d?.Ok) {
         setMoviendo(false)
@@ -376,7 +393,10 @@ export default function DiarioDetailScreen() {
       }
       setBloqueadas([])
       setMoviendo(false)
-      showToast('success', 'Piezas apartadas', `Quedaron en ${d.NuevoJournalId}, pendientes en AX`, 5000)
+      showToast('success', 'Piezas apartadas',
+        d.Reusado
+          ? `Se movieron a ${d.NuevoJournalId}, que ya estaba abierto`
+          : `Quedaron en el diario nuevo ${d.NuevoJournalId}`, 5000)
       await cargarLineas()
       await postear()
     } catch (e: any) {
@@ -817,8 +837,11 @@ export default function DiarioDetailScreen() {
           tenue:  theme.textMuted?.val ?? '#94A3B8',
           borde:  theme.border?.val ?? '#334155',
         }}
+        destino={destino}
+        opcionesDestino={abiertos}
+        onDestino={setDestino}
         onApartar={apartarYPostear}
-        onEsperar={() => setBloqueadas([])}
+        onEsperar={() => { setBloqueadas([]); setDestino('') }}
       />
 
       <ScannerModal
