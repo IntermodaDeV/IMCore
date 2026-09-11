@@ -131,3 +131,41 @@ export interface IConsumoItem {
   SinCosto: number
   Destinos: number
 }
+
+/**
+ * Una línea que AX va a RECHAZAR al postear porque la pieza está en bodega pero sin
+ * costo registrado.
+ *
+ * `Fisico` mayor que cero y `Valuadas` en cero es el caso típico: la orden de compra
+ * se recibió pero contabilidad no ha registrado la factura, así que AX ve la pieza
+ * pero no sabe cuánto vale y se niega a descargarla. AX cancela el diario ENTERO por
+ * una sola línea así, y su mensaje no dice cuál es — de ahí este chequeo previo.
+ */
+export interface ILineaBloqueada {
+  LineNum: number
+  ItemId: string
+  Descripcion: string
+  /** Lo que el diario quiere descargar, en positivo. */
+  Pide: number
+  /** Lo que hay en bodega. */
+  Fisico: number
+  /** Lo que AX sabe costear. Si es menor que Pide, rechaza. */
+  Valuadas: number
+  /** Orden de compra recibida y sin facturar, si se encontró. */
+  PurchId?: string | null
+  Proveedor?: string | null
+  ProveedorNombre?: string | null
+  SinFacturar: number
+}
+
+/** Resultado de apartar las bloqueadas en un diario nuevo. */
+export interface IMoverBloqueadas {
+  Ok: boolean
+  NuevoJournalId?: string | null
+  /** true = se movieron a un diario que ya existía; false = se creó uno. */
+  Reusado: boolean
+  Movidas: number[]
+  /** Las que NO se pudieron apartar: el diario original sigue sin poder postearse. */
+  NoSeMovieron: string[]
+  Error?: string | null
+}

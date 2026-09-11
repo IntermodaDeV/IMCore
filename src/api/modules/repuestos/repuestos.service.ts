@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { IDiario, ILinea, IAxResult, ICrearDiario, IAgregarLinea, ICosto, ICostoPorTicket, ISuministroPorCentroCosto, IRepuestoPorActivo, IConsumoItem } from './repuestos.types'
+import { IDiario, ILinea, IAxResult, ICrearDiario, IAgregarLinea, ICosto, ICostoPorTicket, ISuministroPorCentroCosto, IRepuestoPorActivo, IConsumoItem, ILineaBloqueada, IMoverBloqueadas } from './repuestos.types'
 
 // Consume los endpoints de api/Repuestos. baseUrl (API_URL) ya incluye /api/,
 // por eso las rutas van como 'Repuestos/...'. Todo requiere sesión (JWT).
@@ -68,6 +68,39 @@ export const repuestosService = {
     httpClient.delete<ExecutionResponse<IAxResult>>(
       `${schema}/Diarios/${encodeURIComponent(journalId)}/Lineas`,
       { itemId, lineNum, company },
+      { timeoutMs: AX_TIMEOUT },
+    ),
+
+  // Qué líneas va a rechazar AX al postear. Lista vacía = adelante. NO postea.
+  // Cruza el catálogo de AX, así que tarda unos segundos; por eso va con el timeout
+  // de escritura y no con el de lectura.
+  validarPosteo: (journalId: string, company = 'IMHN') =>
+    httpClient.get<ExecutionResponse<ILineaBloqueada[]>>(
+      `${schema}/Diarios/${encodeURIComponent(journalId)}/ValidarPosteo`,
+      { company },
+      { timeoutMs: AX_TIMEOUT },
+    ),
+
+  // Diarios ABIERTOS a los que se pueden mover las líneas trabadas. Sin filtro de
+  // fecha: los hay de hace semanas, y filtrarlos los escondería justo cuando sirven.
+  diariosAbiertos: (excluir: string) =>
+    httpClient.get<ExecutionResponse<IDiario[]>>(
+      `${schema}/Diarios/Abiertos`, { excluir }, { timeoutMs: READ_TIMEOUT },
+    ),
+
+  // Aparta las líneas bloqueadas. `destino` vacío = crear un diario nuevo.
+  moverBloqueadas: (
+    journalId: string,
+    lineNums: number[],
+    destino?: string | null,
+    company = 'IMHN',
+  ) =>
+    httpClient.post<
+      ExecutionResponse<IMoverBloqueadas>,
+      { LineNums: number[]; DestinoJournalId?: string | null }
+    >(
+      `${schema}/Diarios/${encodeURIComponent(journalId)}/MoverBloqueadas?company=${company}`,
+      { LineNums: lineNums, DestinoJournalId: destino || null },
       { timeoutMs: AX_TIMEOUT },
     ),
 

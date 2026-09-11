@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react'
-import { Modal, StyleSheet, Platform, PermissionsAndroid } from 'react-native'
+import { Modal, ScrollView as RNScrollView, StyleSheet, Platform, PermissionsAndroid } from 'react-native'
 import { Text, XStack, YStack, View } from 'tamagui'
+import { shadows } from '../../theme/shadows'
 import { X } from 'lucide-react-native'
 import { Camera } from 'react-native-camera-kit'
 
-import { ISalidaFacturaLinea } from '../../api/modules/salidaFacturas/salidaFacturas.types'
+import { ISalidaCDLinea } from '../../api/modules/salidaFacturas/salidaFacturas.types'
 
 // Color de acento del módulo (primary de la app).
 export const ACCENT = '#FF551A'
@@ -49,10 +50,10 @@ export type GrupoArticulo = {
   itemId: string | null
   color: string | null
   descripcion: string | null
-  lineas: ISalidaFacturaLinea[]
+  lineas: ISalidaCDLinea[]
 }
 
-export function agruparItems(items: ISalidaFacturaLinea[]): GrupoArticulo[] {
+export function agruparItems(items: ISalidaCDLinea[]): GrupoArticulo[] {
   const grupos: GrupoArticulo[] = []
   const porClave = new Map<string, GrupoArticulo>()
 
@@ -70,7 +71,7 @@ export function agruparItems(items: ISalidaFacturaLinea[]): GrupoArticulo[] {
 }
 
 // Piezas de un grupo (valor absoluto: una nota de crédito no resta piezas a contar).
-export const piezasDe = (lineas: ISalidaFacturaLinea[]): number =>
+export const piezasDe = (lineas: ISalidaCDLinea[]): number =>
   lineas.reduce((s, l) => s + Math.abs(l.Cantidad || 0), 0)
 
 // ── Escáner ─────────────────────────────────────────────────────────────────
@@ -207,6 +208,156 @@ export function EstadoBadge({ estado }: { estado?: string | null }) {
   return (
     <View borderRadius={6} paddingHorizontal="$2" paddingVertical={2} backgroundColor={fondo}>
       <Text fontSize="$1" fontWeight="800" color={color}>{texto}</Text>
+    </View>
+  )
+}
+
+/* ══ LA MATRIZ TALLA × CANTIDAD ══════════════════════════════════════════════
+   Vive acá y no en la pantalla del guardia porque la usan LAS DOS: la de la
+   puerta (interactiva) y el detalle del historial (solo consulta). Es la misma
+   decisión que en el web: si se separaran, la vista de supervisión y la de la
+   puerta dejarían de coincidir, y entonces el supervisor no estaría revisando
+   lo que el guardia vio.
+
+   Sin `onToggleLinea` es de SOLO LECTURA, y ahí las celdas van compactas: en el
+   historial interesa que quepan más artículos, no que sean objetivos de dedo.
+
+   Medidas calculadas para que el caso COMÚN quepa sin scroll. En un iPhone de
+   393 pt, descontando el padding de la página y de la tarjeta quedan ~337 pt:
+   64 (etiqueta) + 4x52 (tallas) + 6 (separación) + 52 (total) = 330. O sea que
+   hasta 4 tallas entran completas; de 5 en adelante la fila scrollea. */
+const ANCHO_CELDA = 52
+const ANCHO_ETIQUETA = 64
+/* Separación entre las tallas que scrollean y la columna TOTAL fija. Sin ella,
+   una talla cortada al borde se lee pegada al total: "6 | 21" parecían dos
+   totales en vez de una cantidad a medio ver. */
+const SEP_TOTAL = 6
+
+/**
+ * Tarjeta de un artículo + color, con una columna por talla.
+ *
+ * Las columnas de talla scrollean en horizontal (un artículo puede traer 8 o 10
+ * tallas y en un teléfono no caben), pero la etiqueta de la izquierda y la
+ * columna Total quedan fijas: son las dos referencias que hay que ver siempre.
+ * Las dos filas van DENTRO del mismo scroll para que talla y cantidad no se
+ * desalineen.
+ */
+export function GrupoCard({
+  grupo,
+  onToggleLinea,
+  onToggleGrupo,
+}: {
+  grupo: GrupoArticulo
+  onToggleLinea?: (l: ISalidaCDLinea) => void
+  onToggleGrupo?: (g: GrupoArticulo) => void
+}) {
+  const total = piezasDe(grupo.lineas)
+  const todos = grupo.lineas.every(l => l.Revisado)
+  const interactivo = !!onToggleLinea
+  const alto = interactivo ? 44 : 34
+  /* Varias líneas del mismo artículo SIN talla se pintaban como columnas "-"
+     todas iguales, sin forma de distinguir cuál es cuál: pasa en los diarios de
+     tela, que no traen talla. Se numeran solo en ese caso, para no cambiarle el
+     rótulo a las facturas, que sí la traen. */
+  const numerar = grupo.lineas.length > 1 && grupo.lineas.every(l => !l.Talla)
+
+  return (
+    <YStack backgroundColor="$backgroundElevated" borderRadius="$4" borderWidth={1}
+      borderColor={todos ? 'rgba(34,197,94,0.55)' : '$border'} padding="$3" gap="$2" {...shadows.sm}>
+      <Text fontSize={interactivo ? '$4' : '$3'} fontWeight="800" color="$text">
+        {grupo.descripcion || 'Sin descripción'}
+      </Text>
+      <XStack gap="$3" flexWrap="wrap">
+        <Text fontSize="$2" color="$textMuted">Color: <Text fontWeight="700" color="$text">{grupo.color || '-'}</Text></Text>
+        <Text fontSize="$2" color="$textMuted">Código: <Text fontWeight="700" color="$text">{grupo.itemId || '-'}</Text></Text>
+      </XStack>
+
+      <XStack>
+        {/* Etiquetas fijas */}
+        <YStack width={ANCHO_ETIQUETA}>
+          <Celda ancho={ANCHO_ETIQUETA} alto={alto}>
+            <Text fontSize="$1" fontWeight="800" color="$textMuted">TALLA</Text>
+          </Celda>
+          <Celda ancho={ANCHO_ETIQUETA} alto={alto}>
+            <Text fontSize="$1" fontWeight="800" color="$textMuted">CANT.</Text>
+          </Celda>
+        </YStack>
+
+        {/* Tallas (scroll horizontal, las dos filas juntas) */}
+        <RNScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+          <YStack>
+            <XStack>
+              {grupo.lineas.map((l, idx) => (
+                <Celda key={`t-${l.LineNum}`} ancho={ANCHO_CELDA} alto={alto}>
+                  <Text fontSize="$2" fontWeight="700" color="$textSecondary">
+                    {l.Talla || (numerar ? `#${idx + 1}` : '-')}
+                  </Text>
+                </Celda>
+              ))}
+            </XStack>
+            <XStack>
+              {grupo.lineas.map(l => (
+                <Celda key={`c-${l.LineNum}`} ancho={ANCHO_CELDA} alto={alto}
+                  onPress={onToggleLinea ? () => onToggleLinea(l) : undefined}
+                  revisado={l.Revisado}>
+                  <Text fontSize={interactivo ? '$4' : '$3'} fontWeight="900" color={l.Revisado ? '#fff' : '$text'}>
+                    {fmtCantidad(l.Cantidad)}
+                  </Text>
+                </Celda>
+              ))}
+            </XStack>
+          </YStack>
+        </RNScrollView>
+
+        {/* Total fijo: en modo interactivo, tocar acá marca todas las tallas */}
+        <YStack width={ANCHO_CELDA} marginLeft={SEP_TOTAL}>
+          <Celda ancho={ANCHO_CELDA} alto={alto}>
+            <Text fontSize="$1" fontWeight="800" color="$textMuted">TOTAL</Text>
+          </Celda>
+          <Celda ancho={ANCHO_CELDA} alto={alto}
+            onPress={onToggleGrupo ? () => onToggleGrupo(grupo) : undefined} revisado={todos}>
+            <Text fontSize={interactivo ? '$4' : '$3'} fontWeight="900" color={todos ? '#fff' : '$text'}>
+              {fmtCantidad(total)}
+            </Text>
+          </Celda>
+        </YStack>
+      </XStack>
+    </YStack>
+  )
+}
+
+/** Celda de la matriz talla/cantidad. Con onPress se vuelve el check del guardia. */
+function Celda({
+  ancho,
+  alto = 44,
+  children,
+  onPress,
+  revisado,
+}: {
+  ancho: number
+  alto?: number
+  children: React.ReactNode
+  onPress?: () => void
+  revisado?: boolean
+}) {
+  return (
+    <View
+      width={ancho}
+      // flexShrink=0 es imprescindible: sin esto, cuando las tallas no caben en el
+      // ancho de la pantalla NO scrollean — se aplastan. Con 4 tallas la última
+      // quedaba encimada contra la columna TOTAL. Tamagui trae flexShrink=1 por
+      // omisión, y un ancho fijo no lo evita.
+      flexShrink={0}
+      height={alto}
+      alignItems="center"
+      justifyContent="center"
+      borderWidth={1}
+      borderColor={revisado ? '#22C55E' : '$border'}
+      backgroundColor={revisado ? '#22C55E' : 'transparent'}
+      onPress={onPress}
+      pressStyle={onPress ? { opacity: 0.7 } : undefined}
+    >
+      {children}
     </View>
   )
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react'
-import { Alert, BackHandler, ScrollView as RNScrollView } from 'react-native'
+import { Alert, BackHandler } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { useDrawerStatus } from '@react-navigation/drawer'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
@@ -13,7 +13,7 @@ import { shadows } from '../../theme/shadows'
 import { salidaFacturasService } from '../../api/modules/salidaFacturas/salidaFacturas.service'
 import { ISalidaCD, ISalidaCDLinea } from '../../api/modules/salidaFacturas/salidaFacturas.types'
 import {
-  ACCENT, Aviso, GrupoArticulo, ScannerModal, agruparItems,
+  ACCENT, Aviso, GrupoArticulo, GrupoCard, ScannerModal, agruparItems,
   fmtCantidad, fmtFecha, fmtFechaHora, piezasDe,
 } from './components'
 
@@ -655,131 +655,6 @@ function BotonOtra({ onPress, texto = 'Escanear otra' }: { onPress: () => void; 
       flexDirection="row" alignItems="center" justifyContent="center" gap="$2">
       <ScanBarcode size={18} color={ACCENT} />
       <Text color={ACCENT} fontWeight="800" fontSize="$3">{texto}</Text>
-    </View>
-  )
-}
-
-/* Medidas calculadas para que el caso COMÚN quepa sin scroll. En un iPhone de
-   393 pt, descontando el padding de la página y de la tarjeta quedan ~337 pt:
-   64 (etiqueta) + 4x52 (tallas) + 6 (separación) + 52 (total) = 330. O sea que
-   hasta 4 tallas entran completas; de 5 en adelante la fila scrollea. */
-const ANCHO_CELDA = 52
-const ANCHO_ETIQUETA = 64
-/* Separación entre las tallas que scrollean y la columna TOTAL fija. Sin ella,
-   una talla cortada al borde se lee pegada al total: "6 | 21" parecían dos
-   totales en vez de una cantidad a medio ver. */
-const SEP_TOTAL = 6
-
-/**
- * Tarjeta de un artículo + color, con una columna por talla.
- *
- * Las columnas de talla scrollean en horizontal (un artículo puede traer 8 o 10
- * tallas y en un teléfono no caben), pero la etiqueta de la izquierda y la
- * columna Total quedan fijas: son las dos referencias que el guardia necesita
- * ver siempre. Las dos filas van DENTRO del mismo scroll para que talla y
- * cantidad no se desalineen.
- */
-function GrupoCard({
-  grupo,
-  onToggleLinea,
-  onToggleGrupo,
-}: {
-  grupo: GrupoArticulo
-  onToggleLinea: (l: ISalidaCDLinea) => void
-  onToggleGrupo: (g: GrupoArticulo) => void
-}) {
-  const total = piezasDe(grupo.lineas)
-  const todos = grupo.lineas.every(l => l.Revisado)
-
-  return (
-    <YStack backgroundColor="$backgroundElevated" borderRadius="$4" borderWidth={1}
-      borderColor={todos ? 'rgba(34,197,94,0.55)' : '$border'} padding="$3" gap="$2" {...shadows.sm}>
-      <Text fontSize="$4" fontWeight="800" color="$text">{grupo.descripcion || 'Sin descripción'}</Text>
-      <XStack gap="$3" flexWrap="wrap">
-        <Text fontSize="$2" color="$textMuted">Color: <Text fontWeight="700" color="$text">{grupo.color || '-'}</Text></Text>
-        <Text fontSize="$2" color="$textMuted">Código: <Text fontWeight="700" color="$text">{grupo.itemId || '-'}</Text></Text>
-      </XStack>
-
-      <XStack>
-        {/* Etiquetas fijas */}
-        <YStack width={ANCHO_ETIQUETA}>
-          <Celda ancho={ANCHO_ETIQUETA}>
-            <Text fontSize="$1" fontWeight="800" color="$textMuted">TALLA</Text>
-          </Celda>
-          <Celda ancho={ANCHO_ETIQUETA}>
-            <Text fontSize="$1" fontWeight="800" color="$textMuted">CANT.</Text>
-          </Celda>
-        </YStack>
-
-        {/* Tallas (scroll horizontal, las dos filas juntas) */}
-        <RNScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-          <YStack>
-            <XStack>
-              {grupo.lineas.map(l => (
-                <Celda key={`t-${l.LineNum}`} ancho={ANCHO_CELDA}>
-                  <Text fontSize="$2" fontWeight="700" color="$textSecondary">{l.Talla || '-'}</Text>
-                </Celda>
-              ))}
-            </XStack>
-            <XStack>
-              {grupo.lineas.map(l => (
-                <Celda key={`c-${l.LineNum}`} ancho={ANCHO_CELDA} onPress={() => onToggleLinea(l)}
-                  revisado={l.Revisado}>
-                  <Text fontSize="$4" fontWeight="900" color={l.Revisado ? '#fff' : '$text'}>
-                    {fmtCantidad(l.Cantidad)}
-                  </Text>
-                </Celda>
-              ))}
-            </XStack>
-          </YStack>
-        </RNScrollView>
-
-        {/* Total fijo: toca aquí para marcar todas las tallas del artículo */}
-        <YStack width={ANCHO_CELDA} marginLeft={SEP_TOTAL}>
-          <Celda ancho={ANCHO_CELDA}>
-            <Text fontSize="$1" fontWeight="800" color="$textMuted">TOTAL</Text>
-          </Celda>
-          <Celda ancho={ANCHO_CELDA} onPress={() => onToggleGrupo(grupo)} revisado={todos}>
-            <Text fontSize="$4" fontWeight="900" color={todos ? '#fff' : '$text'}>
-              {fmtCantidad(total)}
-            </Text>
-          </Celda>
-        </YStack>
-      </XStack>
-    </YStack>
-  )
-}
-
-/** Celda de la matriz talla/cantidad. Con onPress se vuelve el check del guardia. */
-function Celda({
-  ancho,
-  children,
-  onPress,
-  revisado,
-}: {
-  ancho: number
-  children: React.ReactNode
-  onPress?: () => void
-  revisado?: boolean
-}) {
-  return (
-    <View
-      width={ancho}
-      // flexShrink=0 es imprescindible: sin esto, cuando las tallas no caben en el
-      // ancho de la pantalla NO scrollean — se aplastan. Con 4 tallas la última
-      // quedaba encimada contra la columna TOTAL. Tamagui trae flexShrink=1 por
-      // omisión, y un ancho fijo no lo evita.
-      flexShrink={0}
-      height={44}
-      alignItems="center"
-      justifyContent="center"
-      borderWidth={1}
-      borderColor={revisado ? '#22C55E' : '$border'}
-      backgroundColor={revisado ? '#22C55E' : 'transparent'}
-      onPress={onPress}
-      pressStyle={onPress ? { opacity: 0.7 } : undefined}
-    >
-      {children}
     </View>
   )
 }

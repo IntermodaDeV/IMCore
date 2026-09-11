@@ -190,6 +190,10 @@ export interface ISalidaCDFiltros {
   codigo?: string
   cliente?: string
   estado?: string
+  // Un dia puntual (contra la fecha de inicio O la de salida).
   fecha?: string
+  // O un rango, que es lo que usan los atajos de «ultimos 7 dias».
+  desde?: string
+  hasta?: string
   top?: number
 }
