@@ -40,6 +40,21 @@ export type RootStackParamList = {
  */
 const ACCESO_USUARIO_COOPERATIVA = 'userCooperativa'
 
+/**
+ * Acceso que habilita ADMINISTRAR usuarios: crearlos, editarlos, cambiarles la
+ * contraseña y manejar sus códigos externos.
+ *
+ * Existe para poder abrir esta pantalla a RRHH sin darles los usuarios ya
+ * creados. Con el acceso de cooperativa pueden dar de alta socios — que es a lo
+ * que vienen — y sin este no pueden tocar a nadie más.
+ *
+ * >>> ES SOLO DE PANTALLA <<<
+ * Los endpoints de usuarios NO lo exigen, a diferencia de 'userCooperativa',
+ * que la API sí revalida. Esconde los botones; no cierra la puerta. El día que
+ * esto tenga que ser una defensa de verdad, va en la API.
+ */
+const ACCESO_GESTION_USUARIOS = 'manageUsers'
+
 /** ¿El usuario tiene ese acceso? El campo Access viene como lista separada por comas. */
 const tieneAcceso = (access: string | null | undefined, key: string) =>
   (access ?? '').split(',').map(s => s.trim()).includes(key)
@@ -75,6 +90,7 @@ export default function UsersScreen() {
   const { user, companyId } = useAuth()
 
   const puedeCrearCooperativa = tieneAcceso(user?.Access, ACCESO_USUARIO_COOPERATIVA)
+  const puedeGestionar = tieneAcceso(user?.Access, ACCESO_GESTION_USUARIOS)
   const { showToast } = useShowToast()
 
   const canForceLogout = (user?.Access ?? '').split(',').map(s => s.trim()).includes('logoutUser')
@@ -188,9 +204,11 @@ export default function UsersScreen() {
             </View>
           )}
 
-          <View onPress={() => openForm()}  >
-            <PlusStyled size={18}  />
-          </View>
+          {puedeGestionar && (
+            <View onPress={() => openForm()}  >
+              <PlusStyled size={18}  />
+            </View>
+          )}
         </XStack>
       )
   })
@@ -473,17 +491,25 @@ export default function UsersScreen() {
 
                         {/* ACCIONES */}
                         <YStack alignItems="flex-end" gap="$2">
-                          {/* Badge status */}
+                          {/* Badge status.
+                              Sin el acceso el badge SIGUE ahí — dice si el
+                              usuario está activo, y eso es información, no una
+                              acción — pero deja de responder al toque: es lo
+                              único que abre el diálogo de activar/desactivar.
+                              Se le quita también el pressStyle, para que no
+                              parezca que se puede tocar. */}
                           <View
                             borderRadius={999}
                             backgroundColor={isActive ? '#22c55e' : '#ef4444'}
                             paddingHorizontal={8}
                             paddingVertical={2}
-                            pressStyle={{ opacity: 0.7 }}
-                            onPress={() => {
-                              setSelectedItem(item)
-                              setDialogOpen(true)
-                            }}
+                            pressStyle={puedeGestionar ? { opacity: 0.7 } : undefined}
+                            onPress={puedeGestionar
+                              ? () => {
+                                setSelectedItem(item)
+                                setDialogOpen(true)
+                              }
+                              : undefined}
                           >
                             <Text fontSize={10} color="white" fontWeight="700">
                               {isActive ? 'Activo' : 'Inactivo'}
@@ -493,37 +519,41 @@ export default function UsersScreen() {
                           {/* Iconos de acción — solo si está activo */}
                           {isActive && (
                             <XStack gap="$2" alignItems="center">
-                              <View
-                                width={28}
-                                height={28}
-                                borderRadius={10}
-                                // borderWidth={1}
-                                borderColor="$border"
-                                backgroundColor="$backgroundSurface"
-                                alignItems="center"
-                                justifyContent="center"
-                                hitSlop={6}
-                                pressStyle={{ opacity: 0.7, scale: 0.95, backgroundColor: '$backgroundElevated' }}
-                                onPress={() => openForm(item?.Id)}
-                              >
-                                <Pencil size={15} color={theme.primary?.val} />
-                              </View>
+                              {puedeGestionar && (
+                                <View
+                                  width={28}
+                                  height={28}
+                                  borderRadius={10}
+                                  // borderWidth={1}
+                                  borderColor="$border"
+                                  backgroundColor="$backgroundSurface"
+                                  alignItems="center"
+                                  justifyContent="center"
+                                  hitSlop={6}
+                                  pressStyle={{ opacity: 0.7, scale: 0.95, backgroundColor: '$backgroundElevated' }}
+                                  onPress={() => openForm(item?.Id)}
+                                >
+                                  <Pencil size={15} color={theme.primary?.val} />
+                                </View>
+                              )}
 
-                              <View
-                                width={28}
-                                height={28}
-                                borderRadius={10}
-                                // borderWidth={1}
-                                borderColor="$border"
-                                backgroundColor="$backgroundSurface"
-                                alignItems="center"
-                                justifyContent="center"
-                                hitSlop={6}
-                                pressStyle={{ opacity: 0.7, scale: 0.95, backgroundColor: '$backgroundElevated' }}
-                                onPress={() => getInfoDialog(item)}
-                              >
-                                <KeyRound size={15} color={theme.primary?.val} />
-                              </View>
+                              {puedeGestionar && (
+                                <View
+                                  width={28}
+                                  height={28}
+                                  borderRadius={10}
+                                  // borderWidth={1}
+                                  borderColor="$border"
+                                  backgroundColor="$backgroundSurface"
+                                  alignItems="center"
+                                  justifyContent="center"
+                                  hitSlop={6}
+                                  pressStyle={{ opacity: 0.7, scale: 0.95, backgroundColor: '$backgroundElevated' }}
+                                  onPress={() => getInfoDialog(item)}
+                                >
+                                  <KeyRound size={15} color={theme.primary?.val} />
+                                </View>
+                              )}
 
                               {canForceLogout && (
                                 <View
@@ -577,25 +607,28 @@ export default function UsersScreen() {
                               }
                             </XStack>
 
-                            {/* Botón agregar */}
-                            <View
-                              width={22}
-                              height={22}
-                              borderRadius={8}
-                              backgroundColor="rgba(255,85,26,0.12)"
-                              justifyContent="center"
-                              alignItems="center"
-                              pressStyle={{ opacity: 0.6 }}
-                              onPress={() => {
-                                setSelectedUserForCode(item)
-                                setEditingCode(null)
-                                setNewKeyVar('')
-                                setNewExternalCode('')
-                                setExternalCodeDialog(true)
-                              }}
-                            >
-                              <Plus size={14} color="#FF551A" />
-                            </View>
+                            {/* Botón agregar. Sin el acceso la lista se sigue
+                                viendo: lo que se esconde es poder tocarla. */}
+                            {puedeGestionar && (
+                              <View
+                                width={22}
+                                height={22}
+                                borderRadius={8}
+                                backgroundColor="rgba(255,85,26,0.12)"
+                                justifyContent="center"
+                                alignItems="center"
+                                pressStyle={{ opacity: 0.6 }}
+                                onPress={() => {
+                                  setSelectedUserForCode(item)
+                                  setEditingCode(null)
+                                  setNewKeyVar('')
+                                  setNewExternalCode('')
+                                  setExternalCodeDialog(true)
+                                }}
+                              >
+                                <Plus size={14} color="#FF551A" />
+                              </View>
+                            )}
                           </XStack>
 
                           {/* Lista de códigos expandida */}
@@ -642,8 +675,9 @@ export default function UsersScreen() {
                                     {externalCode ? String(externalCode) : 'Sin asignar'}
                                   </Text>
 
-                                  {/* Acciones por fila — solo si no es IMCore */}
-                                  {keyVar !== 'IMCore' && (
+                                  {/* Acciones por fila — solo si no es IMCore, y
+                                      solo para quien administra usuarios */}
+                                  {keyVar !== 'IMCore' && puedeGestionar && (
                                     <XStack gap="$2">
                                       <View
                                         pressStyle={{ opacity: 0.6 }}
