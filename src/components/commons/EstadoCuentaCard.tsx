@@ -139,30 +139,49 @@ export default function EstadoCuentaCard({
             </Text>
           </XStack>
 
+          {/* Los dos totales de la fila son cosas DISTINTAS, y por eso cada uno
+              lleva su propia leyenda.
+
+              Antes el renglón entero decía "Saldo neto", y eso hacía leer el
+              total de la izquierda como si también fuera un saldo — o sea, como
+              si el ahorro y la deuda se estuvieran sumando. No es así:
+
+                columna CUOTA   se SUMA: es lo que le descuentan de cada pago
+                                entre el aporte y la cuota del préstamo.
+                columna SALDO   se RESTA: lo que tiene menos lo que debe. La
+                                resta la hace el SP (SaldoCuentas - SaldoPrestamos). */}
           <XStack
-            alignItems="center"
+            alignItems="flex-start"
             gap="$2"
             paddingTop="$2.5"
             borderTopWidth={1}
             borderTopColor="$border"
           >
             <Text fontSize={13} fontWeight="600" color="$text" flex={1}>
-              Saldo neto
+              Totales
             </Text>
-            {/* Debajo de la columna de cuotas, su total: lo que se le va de
-                cada pago entre ahorro y préstamos. */}
-            <Text fontSize={13} fontWeight="700" color="$text" width={82} textAlign="right">
-              {fmtMoneda((datos.CuotaAhorro ?? 0) + (datos.CuotaPrestamo ?? 0))}
-            </Text>
-            <Text
-              fontSize={16}
-              fontWeight="700"
-              color={datos.SaldoNeto < 0 ? '$error' : '$success'}
-              width={96}
-              textAlign="right"
-            >
-              {fmtMoneda(datos.SaldoNeto)}
-            </Text>
+
+            <YStack width={82} alignItems="flex-end">
+              <Text fontSize={13} fontWeight="700" color="$text">
+                {fmtMoneda((datos.CuotaAhorro ?? 0) + (datos.CuotaPrestamo ?? 0))}
+              </Text>
+              <Text fontSize={9} color="$textMuted">
+                por período
+              </Text>
+            </YStack>
+
+            <YStack width={96} alignItems="flex-end">
+              <Text
+                fontSize={16}
+                fontWeight="700"
+                color={datos.SaldoNeto < 0 ? '$error' : '$success'}
+              >
+                {fmtMoneda(datos.SaldoNeto)}
+              </Text>
+              <Text fontSize={9} color="$textMuted">
+                saldo neto
+              </Text>
+            </YStack>
           </XStack>
         </YStack>
       )}
