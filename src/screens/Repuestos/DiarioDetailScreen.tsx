@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, ScrollView, TextInput, Keyboard } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, Input, useTheme } from 'tamagui'
-import { ArrowLeft, ScanLine, QrCode, Plus, Trash2, Upload, Package, Ticket, RotateCcw, TriangleAlert, RefreshCw, Search, X, Keyboard as KeyboardIcon } from 'lucide-react-native'
+import { ArrowLeft, ScanLine, QrCode, Plus, Trash2, Upload, Package, Ticket, RotateCcw, TriangleAlert, RefreshCw, Search, X, Building2, Keyboard as KeyboardIcon } from 'lucide-react-native'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -12,7 +12,7 @@ import { ticketsService } from '../../api/modules/mantenimiento/tickets.service'
 import { configuracionService } from '../../api/modules/configuracion/configuracion.service'
 import { ITicket } from '../../api/modules/mantenimiento/tickets.types'
 import { shadows } from '../../theme/shadows'
-import { ACCENT, BloqueadasModal, Field, ScannerModal, puedeDespachar, situacionTicket, SITUACIONES_DESPACHO_DEFAULT, fmtFechaHora, ts } from './components'
+import { ACCENT, BloqueadasModal, CentroCostoModal, Field, ScannerModal, puedeDespachar, situacionTicket, SITUACIONES_DESPACHO_DEFAULT, fmtFechaHora, ts } from './components'
 
 const ERR = '#ef4444'
 const GREEN = '#16a34a'   // ticket disponible para despachar
@@ -77,6 +77,11 @@ export default function DiarioDetailScreen() {
   const [moviendo, setMoviendo] = useState(false)
   // A dónde mandar las trabadas. '' = crear un diario nuevo.
   const [destino, setDestino] = useState('')
+  // Corregir el centro de costo de una línea ya escaneada.
+  const [editandoCC, setEditandoCC] = useState<ILinea | null>(null)
+  const [centros, setCentros] = useState<{ valor: string; etiqueta: string; usados: number }[]>([])
+  const [cargandoCC, setCargandoCC] = useState(false)
+  const [guardandoCC, setGuardandoCC] = useState(false)
   const [abiertos, setAbiertos] = useState<{ id: string; etiqueta: string }[]>([])
   // Campo con teclado manual habilitado (null = modo láser, teclado suprimido).
   const [teclado, setTeclado] = useState<null | 'ticket' | 'ubicacion' | 'barcode'>(null)
@@ -323,6 +328,41 @@ export default function DiarioDetailScreen() {
     } catch (e: any) {
       showToast('error', 'Error', e?.message || 'No se pudo eliminar')
     }
+  }
+
+  // ── Centro de costo de una línea ──────────────────────────────────────────────
+  // La lista se pide al ABRIR y no al cargar la pantalla: cruza el catálogo de AX
+  // (~3 s) y la mayoría de los despachos no corrige ninguna.
+  const abrirCentroCosto = async (l: ILinea) => {
+    setEditandoCC(l)
+    if (centros.length > 0) return
+    setCargandoCC(true)
+    try {
+      const res = await repuestosService.centrosCosto()
+      setCentros((res.Data ?? []).map(c => ({
+        valor: c.Valor,
+        etiqueta: c.Nombre ? `${c.Valor} · ${c.Nombre}` : c.Valor,
+        usados: Number(c.ItemId) || 0,
+      })))
+    } catch { setCentros([]) }
+    finally { setCargandoCC(false) }
+  }
+
+  const guardarCentroCosto = async (valor: string) => {
+    if (!editandoCC) return
+    setGuardandoCC(true)
+    try {
+      const res = await repuestosService.cambiarCentroCosto(journalId, editandoCC.LineNum, valor)
+      if (res.Success && res.Data?.Ok) {
+        showToast('success', 'Centro de costo actualizado', editandoCC.ItemId)
+        setEditandoCC(null)
+        await cargarLineas()
+      } else {
+        showToast('error', 'No se cambió', res.Data?.Error || res.ErrorMessage || 'AX rechazó el cambio', 6000)
+      }
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo cambiar')
+    } finally { setGuardandoCC(false) }
   }
 
   // ── Postear ──────────────────────────────────────────────────────────────────
@@ -793,9 +833,17 @@ export default function DiarioDetailScreen() {
                         {!!l.Fecha && <Text fontSize="$1" color="$textMuted" marginTop="$1">{fmtFechaHora(l.Fecha)}</Text>}
                       </YStack>
                       {!cerrado && (
-                        <View onPress={() => confirmarBorrar(l)} pressStyle={{ opacity: 0.6 }} hitSlop={8} padding="$1">
-                          <Trash2 size={18} color={ERR} />
-                        </View>
+                        <XStack gap="$2" alignItems="center">
+                          {/* Corregir a dónde se le carga la salida. Se ofrece en TODA
+                              línea, no solo en suministros: en repuestos es raro pero
+                              posible, y esconderlo obligaría a borrar y reescanear. */}
+                          <View onPress={() => abrirCentroCosto(l)} pressStyle={{ opacity: 0.6 }} hitSlop={8} padding="$1">
+                            <Building2 size={18} color={theme.textMuted?.val} />
+                          </View>
+                          <View onPress={() => confirmarBorrar(l)} pressStyle={{ opacity: 0.6 }} hitSlop={8} padding="$1">
+                            <Trash2 size={18} color={ERR} />
+                          </View>
+                        </XStack>
                       )}
                     </XStack>
                   </View>
@@ -822,6 +870,23 @@ export default function DiarioDetailScreen() {
           </View>
         </View>
       )}
+
+      <CentroCostoModal
+        open={editandoCC != null}
+        linea={editandoCC}
+        opciones={centros}
+        cargando={cargandoCC}
+        guardando={guardandoCC}
+        colores={{
+          panel:  theme.backgroundElevated?.val ?? '#1D232D',
+          texto:  theme.text?.val ?? '#F8FAFC',
+          suave:  theme.textSecondary?.val ?? '#CBD5E1',
+          tenue:  theme.textMuted?.val ?? '#94A3B8',
+          borde:  theme.border?.val ?? '#334155',
+        }}
+        onGuardar={guardarCentroCosto}
+        onCerrar={() => setEditandoCC(null)}
+      />
 
       <BloqueadasModal
         open={bloqueadas.length > 0}

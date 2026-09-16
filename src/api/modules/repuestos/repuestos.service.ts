@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { IDiario, ILinea, IAxResult, ICrearDiario, IAgregarLinea, ICosto, ICostoPorTicket, ISuministroPorCentroCosto, IRepuestoPorActivo, IConsumoItem, ILineaBloqueada, IMoverBloqueadas } from './repuestos.types'
+import { IDiario, ILinea, IAxResult, ICrearDiario, IAgregarLinea, ICosto, ICostoPorTicket, ISuministroPorCentroCosto, IRepuestoPorActivo, IConsumoItem, ILineaBloqueada, IMoverBloqueadas, ICentroCosto } from './repuestos.types'
 
 // Consume los endpoints de api/Repuestos. baseUrl (API_URL) ya incluye /api/,
 // por eso las rutas van como 'Repuestos/...'. Todo requiere sesión (JWT).
@@ -106,6 +106,20 @@ export const repuestosService = {
 
   // Postea el diario (ejecuta la rebaja en AX). Cuerpo vacío {} para garantizar
   // Content-Length (IIS lo exige en POST sin body).
+  // Centros de costo vigentes en AX, para poder corregir el de una línea.
+  centrosCosto: (company = 'IMHN') =>
+    httpClient.get<ExecutionResponse<ICentroCosto[]>>(
+      `${schema}/CentrosCosto`, { company }, { timeoutMs: AX_TIMEOUT },
+    ),
+
+  // Cambia el centro de costo de UNA línea. Solo con el diario abierto; vacío lo quita.
+  cambiarCentroCosto: (journalId: string, lineNum: number, centroCosto: string, company = 'IMHN') =>
+    httpClient.patch<ExecutionResponse<IAxResult>, { CentroCosto: string }>(
+      `${schema}/Diarios/${encodeURIComponent(journalId)}/Lineas/${lineNum}/CentroCosto?company=${company}`,
+      { CentroCosto: centroCosto },
+      { timeoutMs: AX_TIMEOUT },
+    ),
+
   postear: (journalId: string, company = 'IMHN') =>
     httpClient.post<ExecutionResponse<IAxResult>, {}>(
       `${schema}/Diarios/${encodeURIComponent(journalId)}/Postear?company=${company}`,

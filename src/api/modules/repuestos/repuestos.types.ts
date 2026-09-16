@@ -169,3 +169,13 @@ export interface IMoverBloqueadas {
   NoSeMovieron: string[]
   Error?: string | null
 }
+
+/** Un centro de costo vigente en AX. `Nombre` puede venir vacío (depende de qué
+ *  tablas de AX ve la conexión); ahí queda el código, que igual identifica. */
+export interface ICentroCosto {
+  Dimension: string
+  Valor: string
+  Nombre: string
+  /** Cuántos artículos lo usan. Sirve para poner primero los habituales. */
+  ItemId: string
+}
