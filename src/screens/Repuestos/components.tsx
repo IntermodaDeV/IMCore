@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react'
 import { Modal, StyleSheet, Platform, PermissionsAndroid } from 'react-native'
-import { Text, XStack, YStack, View, Spinner, ScrollView } from 'tamagui'
-import { X, TriangleAlert } from 'lucide-react-native'
+import { Text, XStack, YStack, View, Spinner, ScrollView, Input } from 'tamagui'
+import { X, TriangleAlert, Search } from 'lucide-react-native'
 import { ILineaBloqueada } from '../../api/modules/repuestos/repuestos.types'
 import { Camera } from 'react-native-camera-kit'
 
@@ -353,6 +353,146 @@ export function BloqueadasModal({
               </View>
             </YStack>
           )}
+        </YStack>
+      </View>
+    </Modal>
+  )
+}
+
+/**
+ * Cambiar el centro de costo de una línea ya escaneada.
+ *
+ * El artículo trae uno por defecto desde AX y casi siempre está bien, pero la salida
+ * a veces va a otro lado —pasa sobre todo con suministros—. Antes la única salida era
+ * borrar la línea y volver a escanearla.
+ *
+ * Se corrige DESPUÉS de escanear y no al escanear: quien despacha pasa 40 piezas de
+ * corrido, y meter un paso por pieza le rompe el ritmo a lo que hace rápido y en
+ * volumen. Acá revisa al final y toca solo las que hagan falta.
+ */
+export function CentroCostoModal({
+  open,
+  linea,
+  opciones,
+  cargando,
+  guardando,
+  colores,
+  onGuardar,
+  onCerrar,
+}: {
+  open: boolean
+  linea: { ItemId: string; Descripcion: string; CentroCosto?: string | null; CentroCostoNombre?: string | null } | null
+  opciones: { valor: string; etiqueta: string; usados: number }[]
+  cargando: boolean
+  guardando: boolean
+  colores: { panel: string; texto: string; suave: string; tenue: string; borde: string }
+  onGuardar: (valor: string) => void
+  onCerrar: () => void
+}) {
+  const [sel, setSel] = useState('')
+  const [busca, setBusca] = useState('')
+  React.useEffect(() => { if (open) { setSel(linea?.CentroCosto ?? ''); setBusca('') } }, [open, linea])
+
+  // Los que YA usan los repuestos van primero: son 19 de 169, y sin eso lo habitual
+  // queda enterrado bajo ciento cincuenta que nadie usa.
+  const lista = React.useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    const filtra = (o: { valor: string; etiqueta: string }) =>
+      !q || o.valor.toLowerCase().includes(q) || o.etiqueta.toLowerCase().includes(q)
+    const usa = opciones.filter(o => o.usados > 0).filter(filtra)
+    const resto = opciones.filter(o => o.usados <= 0).filter(filtra)
+    return { usa, resto }
+  }, [opciones, busca])
+
+  const Fila = ({ o }: { o: { valor: string; etiqueta: string } }) => {
+    const activo = sel === o.valor
+    return (
+      <View onPress={() => setSel(o.valor)} pressStyle={{ opacity: 0.7 }} borderWidth={1}
+        borderColor={activo ? ACCENT : colores.borde} borderRadius={10}
+        paddingVertical="$2.5" paddingHorizontal="$3"
+        backgroundColor={activo ? 'rgba(255,85,26,0.10)' : 'transparent'}>
+        <Text fontSize="$2" fontWeight={activo ? '800' : '500'} color={activo ? ACCENT : colores.suave}>
+          {activo ? '● ' : '○ '}{o.etiqueta}
+        </Text>
+      </View>
+    )
+  }
+
+  return (
+    <Modal visible={open} animationType="slide" transparent onRequestClose={onCerrar}>
+      <View flex={1} backgroundColor="rgba(0,0,0,0.6)" justifyContent="flex-end">
+        <YStack backgroundColor={colores.panel} borderTopLeftRadius={20} borderTopRightRadius={20}
+          paddingHorizontal="$4" paddingTop="$4" paddingBottom={40} gap="$3" maxHeight="88%">
+
+          <Text fontSize="$6" fontWeight="800" color={colores.texto}>Centro de costo</Text>
+          {!!linea && (
+            <YStack gap={2}>
+              <Text fontSize="$3" fontWeight="700" color={colores.texto}>{linea.Descripcion || linea.ItemId}</Text>
+              <Text fontSize="$2" color={colores.tenue} fontFamily="$mono">{linea.ItemId}</Text>
+              <Text fontSize="$2" color={colores.suave}>
+                Ahora: {linea.CentroCostoNombre || linea.CentroCosto || 'sin centro de costo'}
+              </Text>
+            </YStack>
+          )}
+
+          {cargando ? (
+            <XStack alignItems="center" gap="$2" paddingVertical="$4" justifyContent="center">
+              <Spinner color={ACCENT} />
+              <Text fontSize="$3" color={colores.texto}>Leyendo AX…</Text>
+            </XStack>
+          ) : opciones.length === 0 ? (
+            <Text fontSize="$2" color={colores.suave} paddingVertical="$3">
+              AX no devolvió la lista de centros de costo, así que no se puede cambiar
+              ahora. Intentá de nuevo en un momento.
+            </Text>
+          ) : (
+            <>
+              <XStack alignItems="center" gap="$2" borderWidth={1} borderColor={colores.borde}
+                borderRadius={8} paddingHorizontal="$3" height={42}>
+                <Search size={16} color={colores.tenue} />
+                {/* `placeholderTextColor` espera un token del tema y acá viene un color
+                    resuelto: dentro de un Modal de React Native los tokens no se resuelven
+                    (ver BloqueadasModal), así que el color llega hecho y hay que decírselo. */}
+                <Input flex={1} unstyled height="100%" fontSize="$3" color={colores.texto as any}
+                  autoCapitalize="characters" placeholder="Buscar centro de costo…"
+                  placeholderTextColor={colores.tenue as any} value={busca} onChangeText={setBusca} />
+              </XStack>
+
+              <ScrollView flexShrink={1}>
+                <YStack gap="$1.5">
+                  {lista.usa.length > 0 && (
+                    <Text fontSize="$1" color={colores.tenue} marginTop="$1">Los que usan los repuestos</Text>
+                  )}
+                  {lista.usa.map(o => <Fila key={o.valor} o={o} />)}
+                  {lista.resto.length > 0 && (
+                    <Text fontSize="$1" color={colores.tenue} marginTop="$2">Otros de AX</Text>
+                  )}
+                  {lista.resto.map(o => <Fila key={o.valor} o={o} />)}
+                </YStack>
+              </ScrollView>
+            </>
+          )}
+
+          <YStack gap="$2">
+            {guardando ? (
+              <XStack alignItems="center" justifyContent="center" gap="$2" paddingVertical="$3">
+                <Spinner color={ACCENT} />
+                <Text fontSize="$3" color={colores.texto}>Guardando…</Text>
+              </XStack>
+            ) : (
+              <>
+                <View onPress={() => onGuardar(sel)} pressStyle={{ opacity: 0.85 }}
+                  opacity={sel === (linea?.CentroCosto ?? '') ? 0.5 : 1}
+                  backgroundColor={ACCENT} borderRadius={12} paddingVertical="$3.5" alignItems="center">
+                  <Text color="#fff" fontWeight="800" fontSize="$4">Guardar</Text>
+                </View>
+                <View onPress={onCerrar} pressStyle={{ opacity: 0.7 }} borderWidth={1}
+                  borderColor={colores.borde} borderRadius={12} paddingVertical="$3.5" alignItems="center">
+                  <Text fontWeight="700" fontSize="$4" color={colores.texto}>Cancelar</Text>
+                </View>
+              </>
+            )}
+          </YStack>
         </YStack>
       </View>
     </Modal>
