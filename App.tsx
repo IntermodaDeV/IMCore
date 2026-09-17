@@ -30,6 +30,7 @@ import SessionExpiredScreen from './src/navigation/SessionExpiredScreen'
 import SessionClosedByAdminScreen from './src/navigation/SessionClosedByAdminScreen'
 import FirstPasswordChangeScreen from './src/screens/Auth/FirstPasswordChangeScreen'
 import RegisterScreen from './src/screens/Auth/RegistroScreen'
+import ErrorBoundary from './src/components/commons/ErrorBoundary'
 
 function Root() {
   const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired, sessionClosedByAdmin, mustChangePassword } = useAuth()
@@ -250,6 +251,9 @@ function Root() {
 
 export default function App() {
   return (
+    // Envuelve TODO (incluidos los providers): si algo lanza durante el render,
+    // se ve el error en pantalla en lugar de una pantalla en blanco muda.
+    <ErrorBoundary>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
@@ -263,5 +267,6 @@ export default function App() {
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </ErrorBoundary>
   )
 }

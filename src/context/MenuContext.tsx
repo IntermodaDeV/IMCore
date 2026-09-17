@@ -37,7 +37,13 @@ export const MenuProvider = ({ children }: { children: React.ReactNode }) => {
       }
     }
 
-    loadMenu()
+    // Red de seguridad: si la lectura se cuelga (almacenamiento bloqueado, datos
+    // protegidos con el equipo recién encendido), la app no se puede quedar
+    // esperando para siempre. Pasado el tope arranca con lo que haya en memoria.
+    const tope = setTimeout(() => setLoading(false), 5000)
+    loadMenu().finally(() => clearTimeout(tope))
+
+    return () => clearTimeout(tope)
   }, [])
 
   const refreshMenu = async (userCode: string) => {
