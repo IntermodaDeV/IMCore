@@ -93,7 +93,7 @@ export default function HistorialPasesScreen() {
         <View paddingHorizontal="$4">
           <SearchInput
             data={pases}
-            searchKeys={['EmpleadoNombre', 'EmpleadoCode', 'CodAlterno', 'Departamento', 'Estado', 'Categoria']}
+            searchKeys={['EmpleadoNombre', 'EmpleadoCode', 'CodAlterno', 'Departamento', 'Estado', 'Categoria', 'CategoryName']}
             onResults={setFiltered}
             placeholder="Buscar por empleado, código, estado…"
           />
@@ -170,6 +170,12 @@ export default function HistorialPasesScreen() {
                     </XStack>
 
                     <YStack gap="$0.5" paddingLeft={50}>
+                      {/* El motivo es lo que hace útil al historial para
+                          planilla: sin él no se puede contestar "¿cuántas
+                          horas de IHSS hubo este mes?". */}
+                      {!!p.CategoryName && (
+                        <Text fontSize={11} color="$text">Motivo: {p.CategoryName}</Text>
+                      )}
                       <Text fontSize={11} color="$textMuted">
                         {textoCarnet(p)}{p.EmpleadoCode ? ` · planilla ${p.EmpleadoCode}` : ''}
                       </Text>

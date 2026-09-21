@@ -17,6 +17,24 @@ export interface IPaseCategoria {
   Modified_By?: string
 }
 
+/**
+ * Un MOTIVO del permiso (AdmSys.CategoriasPermiso): por qué se pide.
+ *
+ * No es lo mismo que `IPaseCategoria`, que es qué movimiento hace la persona.
+ * Son dos preguntas distintas sobre el mismo permiso:
+ *
+ *   Categoria_Id  ->  qué va a hacer   (sale / entra / sale y vuelve)
+ *   CategoryId    ->  por qué lo hace  (IHSS, cita médica, trámite…)
+ *
+ * De cada motivo cuelga un concepto de nómina, que es lo que después decide si
+ * el tiempo se descuenta, se paga o se justifica.
+ */
+export interface ICategoriaPermiso {
+  Id: number
+  Description: string
+  Cod_ConceptoPR?: string | null
+}
+
 export interface IEmpleado {
   EmpleadoCode: string
   CodAlterno?: string | null
@@ -44,6 +62,8 @@ export interface IAprobador {
 export interface ICrearPase {
   EmpleadoCode: string
   Categoria_Id: number
+  /** El motivo. Sin él el servidor usa el 1 ('Ausencia justificada'). */
+  CategoryId?: number
   FechaPase: string // YYYY-MM-DD
   /** Horas previstas, "HH:mm". Obligatorias según la secuencia de la categoría. */
   HoraSalida?: string | null
@@ -78,6 +98,12 @@ export interface IPase {
   Categoria_Id?: number
   Categoria?: string
   Tipo?: string // E | S
+  /**
+   * El motivo del permiso. NULL en los permisos anteriores al campo: no se
+   * registró, no es que sean 'Ausencia justificada'.
+   */
+  CategoryId?: number | null
+  CategoryName?: string | null
   JefeCode?: string | null
   JefeNombre?: string | null
   AprobadorUser?: string | null
@@ -201,6 +227,9 @@ export interface IPaseTablero {
   cod_Departamento?: string | null
   Categoria?: string
   Tipo?: string
+  /** El motivo del permiso. NULL en los anteriores al campo. */
+  CategoryId?: number | null
+  CategoryName?: string | null
   AprobadorUser?: string | null
   AprobadorNombre?: string | null
   Estado_Id?: number

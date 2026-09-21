@@ -5,6 +5,7 @@ import {
   IAprobarLote,
   IAprobarLoteResult,
   IAprobarPase,
+  ICategoriaPermiso,
   ICrearPase,
   IEmpleado,
   IPase,
@@ -27,6 +28,15 @@ export const pasesService = {
 
   changeStatusCategoria: (data: IPaseCategoria) =>
     httpClient.put<ExecutionResponse<any>, IPaseCategoria>(`${schema}/Categorias`, data),
+
+  /**
+   * Los MOTIVOS: por qué se pide el permiso. Ojo, no son las "Categorias" de
+   * arriba —esas son qué movimiento hace la persona—. Vienen alfabéticos y
+   * solo los activos; el catálogo ya existe y se administra aparte porque de
+   * cada motivo cuelga un concepto de nómina.
+   */
+  getMotivos: () =>
+    httpClient.get<ExecutionResponse<ICategoriaPermiso[]>>(`${schema}/Motivos`),
 
   // Empleados. Sin el acceso 'PasesDeTodos' devuelve SOLO al propio usuario:
   // el permiso es personal. Con el acceso, busca en toda la planilla.
