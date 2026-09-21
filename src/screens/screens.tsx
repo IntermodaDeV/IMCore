@@ -14,6 +14,7 @@ import { ScreensSolicitudesRepuestos } from './SolicitudesRepuestos'
 import { ScreensOvertime } from './Overtime'
 import { ScreensCooperativa } from './Cooperativa'
 import { ScreensSalidaFacturas } from './SalidaFacturas'
+import { ScreensCreditos } from './Creditos'
 
 export const SCREENS: Record<string, TScreenEntry> = {
   inicio: HomeScreen,
@@ -30,6 +31,7 @@ export const SCREENS: Record<string, TScreenEntry> = {
   ...ScreensOvertime,
   ...ScreensCooperativa,
   ...ScreensSalidaFacturas,
+  ...ScreensCreditos,
 
   not_found: NotFoundScreen,
 };
