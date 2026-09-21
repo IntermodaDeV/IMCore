@@ -10,6 +10,7 @@ import {
   IOvertimeReviewImpact,
   IOvertimeBudgetDashboard,
   IOvertimeBudgetTotals,
+  IOvertimeDashboardSettings,
   IOvertimeBudgetRow,
   IOvertimeDayTotal,
   IOvertimeMealAreaRow,
@@ -311,6 +312,19 @@ export const overtimeService = {
       startDate,
       finalDate,
     }),
+
+  /**
+   * La fecha de corte y el valor de la racion.
+   *
+   * Sin parametros de periodo: son constantes del API. Se piden en lugar de
+   * escribirlas aca porque la misma fecha la usan los procedimientos, y una
+   * copia en la app seria una segunda verdad que se separa al primer cambio.
+   */
+  getDashboardSettings: (companyCode: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeDashboardSettings>>(
+      `${schema}/DashboardSettings`,
+      { companyCode },
+    ),
 
   /**
    * El presupuesto por area de UN corte.

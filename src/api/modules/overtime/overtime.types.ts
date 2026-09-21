@@ -646,6 +646,16 @@ export interface IOvertimeDayTotal {
  * Se totaliza sobre CENTROS DE COSTO porque el presupuesto se define en la hoja
  * del arbol: es el unico corte donde cada lempira aparece una sola vez.
  */
+/**
+ * La configuracion del tablero: lo que el cliente necesita para saber QUE
+ * puede dibujar, no solo como.
+ */
+export interface IOvertimeDashboardSettings {
+  /** Hasta este dia inclusive el tablero se arma con datos previos al modulo. */
+  Fecha_Corte_Historico: string
+  Valor_Alimentacion: number
+}
+
 export interface IOvertimeBudgetTotals {
   Total_Horas: number
   Total_Costo: number

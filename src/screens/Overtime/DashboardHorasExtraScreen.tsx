@@ -7,6 +7,7 @@ import {
   BarChart3,
   CalendarX,
   ChevronLeft,
+  Clock,
   ChevronRight,
   Minus,
   PiggyBank,
@@ -389,6 +390,48 @@ const medidasColumnas = (areas: number, anchoVisible: number) => {
   }
 }
 
+/**
+ * Lo que se muestra en lugar de un grafico que no tiene fuente para la semana.
+ *
+ * Reemplaza a la tarjeta entera y no solo al grafico: dejar el encabezado con
+ * sus totales y un hueco abajo se lee como un error de carga, no como una
+ * limitacion del periodo.
+ */
+function GraficoNoDisponible({
+  titulo,
+  detalle,
+  corte,
+}: {
+  titulo: string
+  detalle: string
+  corte: string
+}) {
+  return (
+    <YStack
+      backgroundColor="$backgroundElevated"
+      borderRadius="$4"
+      padding="$3"
+      gap="$2.5"
+      {...shadows.sm}
+    >
+      <Text fontSize={12} fontWeight="800" color="$text" numberOfLines={1}>
+        {titulo}
+      </Text>
+
+      <YStack alignItems="center" justifyContent="center" gap="$1.5" paddingVertical="$5">
+        <Clock size={26} color="#CBD5E1" />
+        <Text fontSize={12} fontWeight="700" color="$textMuted" textAlign="center">
+          No se puede detallar esta semana
+        </Text>
+        <Text fontSize={11} color="$textMuted" textAlign="center" lineHeight={15}>
+          {detalle} Hasta el {corte} el tablero se arma con el dato contable, que es un monto por
+          area y por semana.
+        </Text>
+      </YStack>
+    </YStack>
+  )
+}
+
 export default function DashboardHorasExtraScreen() {
   const { defaultCompany } = useAuth()
 
@@ -487,6 +530,54 @@ export default function DashboardHorasExtraScreen() {
     () => semanas.find(w => claveSemana(w) === semana) ?? null,
     [semanas, semana],
   )
+
+  /**
+   * Hasta que dia el tablero se alimenta de fuentes anteriores al modulo.
+   *
+   * Viene del API y NO se escribe aca: la misma fecha la usan los
+   * procedimientos para elegir de donde sacan el gasto, y tenerla repetida en
+   * la app seria una segunda verdad que se separa al primer cambio.
+   */
+  const [fechaCorte, setFechaCorte] = useState('')
+
+  useEffect(() => {
+    if (!companyCode) return
+
+    let vivo = true
+    overtimeService
+      .getDashboardSettings(companyCode)
+      .then(res => {
+        if (vivo && res?.Success) setFechaCorte(res.Data?.Fecha_Corte_Historico ?? '')
+      })
+      // Sin la fecha, esHistorico queda en false y se muestra todo: ante la
+      // duda, el comportamiento de siempre.
+      .catch(() => {})
+
+    return () => {
+      vivo = false
+    }
+  }, [companyCode])
+
+  /**
+   * Si la semana que se esta viendo es anterior al modulo.
+   *
+   * De aca para atras el tablero se arma con el dato contable, que da un monto
+   * por area y por semana: sirve para el presupuesto y el comparativo, pero NO
+   * sabe que dia se trabajo ni quien, asi que los graficos que contestan eso no
+   * tienen con que dibujarse.
+   */
+  const esHistorico = useMemo(() => {
+    const inicio = semanaSel?.InitialDate?.substring(0, 10) ?? ''
+    if (!inicio || !fechaCorte) return false
+    return inicio <= fechaCorte
+  }, [semanaSel, fechaCorte])
+
+  /** La fecha de corte en formato legible, para los avisos. */
+  const corteLegible = useMemo(() => {
+    if (!fechaCorte) return ''
+    const [a, m, d] = fechaCorte.split('-')
+    return d && m && a ? `${d}/${m}/${a}` : fechaCorte
+  }, [fechaCorte])
 
   const recargarTodo = useCallback(async () => {
     if (!companyCode) return
@@ -615,12 +706,20 @@ export default function DashboardHorasExtraScreen() {
                   refrescoId={refrescoId}
                 />
 
-                <TarjetaDias
-                  companyCode={companyCode}
-                  inicio={semanaSel?.InitialDate?.substring(0, 10)}
-                  fin={semanaSel?.FinalDate?.substring(0, 10)}
-                  refrescoId={refrescoId}
-                />
+                {esHistorico ? (
+                  <GraficoNoDisponible
+                    titulo="Gasto por día"
+                    detalle="El desglose por dia sale de las solicitudes del modulo."
+                    corte={corteLegible}
+                  />
+                ) : (
+                  <TarjetaDias
+                    companyCode={companyCode}
+                    inicio={semanaSel?.InitialDate?.substring(0, 10)}
+                    fin={semanaSel?.FinalDate?.substring(0, 10)}
+                    refrescoId={refrescoId}
+                  />
+                )}
 
                 {/* Esta NO recibe la semana del filtro: siempre termina en la
                     actual. Ver la nota del componente. */}
@@ -648,12 +747,20 @@ export default function DashboardHorasExtraScreen() {
                   refrescoId={refrescoId}
                 />
 
-                <TarjetaAlimentacionDias
-                  companyCode={companyCode}
-                  inicio={semanaSel?.InitialDate?.substring(0, 10)}
-                  fin={semanaSel?.FinalDate?.substring(0, 10)}
-                  refrescoId={refrescoId}
-                />
+                {esHistorico ? (
+                  <GraficoNoDisponible
+                    titulo="Alimentación por día"
+                    detalle="El desglose por dia sale de las revisiones del modulo."
+                    corte={corteLegible}
+                  />
+                ) : (
+                  <TarjetaAlimentacionDias
+                    companyCode={companyCode}
+                    inicio={semanaSel?.InitialDate?.substring(0, 10)}
+                    fin={semanaSel?.FinalDate?.substring(0, 10)}
+                    refrescoId={refrescoId}
+                  />
+                )}
 
                 {/* Esta NO recibe la semana del filtro: siempre termina en la
                     actual, igual que su par de horas extra. */}
@@ -672,12 +779,20 @@ export default function DashboardHorasExtraScreen() {
                     es el único que se ve sin moverse, y de las dos listas la
                     que se accionaba es esta: la de empleados dice quién se
                     quedó, y esta dice a quién preguntarle por qué. */}
-                <TarjetaSolicitantes
-                  companyCode={companyCode}
-                  inicio={semanaSel?.InitialDate?.substring(0, 10)}
-                  fin={semanaSel?.FinalDate?.substring(0, 10)}
-                  refrescoId={refrescoId}
-                />
+                {esHistorico ? (
+                  <GraficoNoDisponible
+                    titulo="Horas extra por solicitante"
+                    detalle="Quien pide las horas se sabe por la solicitud."
+                    corte={corteLegible}
+                  />
+                ) : (
+                  <TarjetaSolicitantes
+                    companyCode={companyCode}
+                    inicio={semanaSel?.InitialDate?.substring(0, 10)}
+                    fin={semanaSel?.FinalDate?.substring(0, 10)}
+                    refrescoId={refrescoId}
+                  />
+                )}
 
                 <TarjetaEmpleados
                   companyCode={companyCode}
@@ -686,19 +801,35 @@ export default function DashboardHorasExtraScreen() {
                   refrescoId={refrescoId}
                 />
 
-                <TarjetaTopPorArea
-                  companyCode={companyCode}
-                  inicio={semanaSel?.InitialDate?.substring(0, 10)}
-                  fin={semanaSel?.FinalDate?.substring(0, 10)}
-                  refrescoId={refrescoId}
-                />
+                {esHistorico ? (
+                  <GraficoNoDisponible
+                    titulo="Empleado con más horas extra por área"
+                    detalle="Saber quien encabeza cada area necesita el detalle por persona."
+                    corte={corteLegible}
+                  />
+                ) : (
+                  <TarjetaTopPorArea
+                    companyCode={companyCode}
+                    inicio={semanaSel?.InitialDate?.substring(0, 10)}
+                    fin={semanaSel?.FinalDate?.substring(0, 10)}
+                    refrescoId={refrescoId}
+                  />
+                )}
 
-                <TarjetaTopPorDia
-                  companyCode={companyCode}
-                  inicio={semanaSel?.InitialDate?.substring(0, 10)}
-                  fin={semanaSel?.FinalDate?.substring(0, 10)}
-                  refrescoId={refrescoId}
-                />
+                {esHistorico ? (
+                  <GraficoNoDisponible
+                    titulo="Empleado con más horas extra por día"
+                    detalle="Necesita el detalle por persona Y por dia."
+                    corte={corteLegible}
+                  />
+                ) : (
+                  <TarjetaTopPorDia
+                    companyCode={companyCode}
+                    inicio={semanaSel?.InitialDate?.substring(0, 10)}
+                    fin={semanaSel?.FinalDate?.substring(0, 10)}
+                    refrescoId={refrescoId}
+                  />
+                )}
               </YStack>
             )}
           </>
@@ -1250,8 +1381,15 @@ function TarjetaAlimentacionAreas({
   const conRaciones = useMemo(
     () =>
       filas
-        .filter(f => Number(f.Raciones ?? 0) > 0)
-        .sort((a, b) => Number(b.Raciones ?? 0) - Number(a.Raciones ?? 0)),
+        // Raciones O costo, no solo raciones. En las semanas anteriores al
+        // modulo el consumo viene del cubo, que da un monto contable y NO
+        // cuenta raciones: filtrando solo por raciones, un area con miles de
+        // lempiras gastados desaparecia del grafico y la pantalla decia 'no se
+        // otorgo alimentacion' con el total a la vista.
+        .filter(f => Number(f.Raciones ?? 0) > 0 || Number(f.Costo ?? 0) > 0)
+        // De mas a menos COSTO: es lo unico comparable entre las dos epocas,
+        // porque en la vieja las raciones son siempre cero.
+        .sort((a, b) => Number(b.Costo ?? 0) - Number(a.Costo ?? 0)),
     [filas],
   )
 
