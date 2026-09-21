@@ -17,12 +17,17 @@ export const saludFinancieraService = {
    * `meses` y `tope` van chicos: la app no dibuja la tendencia ni lista
    * cientos de clientes, y el payload viaja por datos móviles.
    */
-  getCorte: (empresa: string, usd = true) =>
+  getCorte: (empresa: string, usd = true, refrescar = false) =>
     httpClient.get<ExecutionResponse<ISaludFinanciera>>(schema, {
       empresa: empresa || undefined,
       usd,
       todos: false,
       meses: 2,
       tope: 25,
+      // Arrastrar hacia abajo tiene que traer datos NUEVOS, no lo que el
+      // servidor guardó. La API guarda cada combinación 5 minutos porque la
+      // tabla del almacén es un heap de 119 MB sin índices; sin esto, tirar de
+      // la pantalla daría siempre lo mismo y parecería que no hace nada.
+      refrescar,
     }),
 }

@@ -56,9 +56,9 @@ export default function SaludFinancieraScreen() {
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (refrescar = false) => {
     try {
-      const res = await svc.getCorte(empresa)
+      const res = await svc.getCorte(empresa, true, refrescar)
       if (res.Success) setDatos(res.Data)
       else showToast('error', 'No se pudo cargar', res.ErrorMessage || 'Intentá de nuevo')
     } catch (e: any) {
@@ -92,7 +92,7 @@ export default function SaludFinancieraScreen() {
       contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 12 }}
       refreshControl={
         <RefreshControl refreshing={refrescando} tintColor={ACCENT}
-          onRefresh={() => { setRefrescando(true); cargar() }} />
+          onRefresh={() => { setRefrescando(true); cargar(true) }} />
       }
     >
       {/* Selector de país. Cinco opciones caben en una fila: un desplegable
