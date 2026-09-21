@@ -1,8 +1,8 @@
 import React, { useCallback, useState } from 'react'
 import { RefreshControl, ScrollView } from 'react-native'
-import { Spinner, Text, View, XStack, YStack } from 'tamagui'
-import { TriangleAlert } from 'lucide-react-native'
-import { useFocusEffect, useRoute } from '@react-navigation/native'
+import { Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
+import { ArrowLeft, TriangleAlert } from 'lucide-react-native'
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useShowToast } from '../../utils/useShowToast'
@@ -21,6 +21,8 @@ import {
 // filas que en el teléfono no se leen, y para eso está el web.
 export default function CorridaDetailScreen() {
   const route = useRoute<any>()
+  const navigation = useNavigation<any>()
+  const theme = useTheme()
   const id: number = route.params?.id
   const { showToast } = useShowToast()
 
@@ -28,7 +30,11 @@ export default function CorridaDetailScreen() {
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
 
+  /* La flecha de atrás, no el menú hamburguesa: a esta pantalla se llega desde el
+     listado o desde la notificación —que abre el listado y luego el detalle a
+     propósito, justo para que «atrás» devuelva al listado y no saque del módulo. */
   usePageHeader({
+    left: <ArrowLeft color={theme.text?.val} onPress={() => navigation.goBack()} />,
     center: <Text fontSize="$4" fontWeight="700" color="$text">Corrida #{id}</Text>,
   }, [id])
 
