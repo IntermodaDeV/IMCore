@@ -194,18 +194,11 @@ const CONFIG_META: Record<
     max: 168,
     ayudaRango: '0 apaga el refresco automático',
   },
-  // ⚠ APAGADO A PROPÓSITO (0) desde el 21-sep-2026. Trae la valorización que AX hace
-  // en su cierre, que es justamente la que contabilidad descartó. Encenderlo vuelve a
-  // pisar los costos congelados cada N horas y deshace el criterio. La descripción que
-  // se ve en pantalla sale de la BD (script 33) y ya lo advierte.
-  'Repuestos.CostoLiquidadoHoras': {
-    label: 'Traer el costo liquidado de AX, cada',
-    kind: 'number',
-    unidad: 'h',
-    min: 0,
-    max: 168,
-    ayudaRango: '0 apaga la corrección automática',
-  },
+  // 'Repuestos.CostoLiquidadoHoras' SE RETIRÓ el 21-sep-2026 (script 36 borró la clave
+  // y el job ya no se registra). Traía la valorización que AX hace en su cierre, que es
+  // la que contabilidad descartó: el costo se congela con el último precio de compra.
+  // Sin fila en la BD no hay nada que pintar; queda escrito para que nadie la agregue
+  // de vuelta sin saber por qué se fue.
   'Repuestos.CorreoDatosMaestros': {
     label: 'Correos de Datos Maestros (solicitudes de repuestos)',
     kind: 'texto',
