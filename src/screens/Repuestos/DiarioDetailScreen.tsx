@@ -22,7 +22,6 @@ const GREEN = '#16a34a'   // ticket disponible para despachar
 // veces en Ubicación o en Código de barras; mandarlo a AX solo daba un rechazo
 // confuso, y en modo suministro no había ni campo de ticket donde escanearlo.
 const ES_CODIGO_TICKET = /^MTTO-\d{4}-\d{1,10}$/i
-const WARN  = '#f59e0b'   // el ambar que ya usa el resto de la app para 'ojo con esto'
 
 type ActiveTicket = { Id: number; CodigoTicket: string; Area?: string | null; Operacion?: string | null; Estado?: string | null }
 type ScanMode = 'ticket' | 'barcode' | 'ubicacion' | null
@@ -816,18 +815,16 @@ export default function DiarioDetailScreen() {
                             C/U: L {l.Costo.toFixed(2)}  ·  Total: L {(l.Costo * Math.abs(l.Cantidad)).toFixed(2)}
                           </Text>
                         )}
-                        {/* El costo puede no ser de fiar: o AX no tiene valuación de la
-                            pieza y se está mostrando el último precio pagado, o la
-                            valuación de AX se despegó de ese precio. No se corrige el
-                            número —es lo que se contabiliza— pero sí se dice. */}
-                        {l.CostoFuente === 'ULTIMA_COMPRA' && (
+                        {/* Desde el 21-sep-2026 el costo de TODA salida es el último
+                            precio de compra, así que decirlo en cada línea sería ruido.
+                            Lo que sí hay que decir es la excepción: una pieza que nunca
+                            se ha comprado vale lo que se le puso al migrar el inventario
+                            (suele ser L 0.01) y ese valor es el correcto.
+                            El aviso de «la última compra fue a X» se fue con el cambio:
+                            comparaba contra la valuación de AX, que ya no se usa. */}
+                        {l.CostoFuente === 'MIGRADO' && (
                           <Text fontSize="$1" color="$textMuted" marginTop="$1">
-                            AX no tiene costo de esta pieza; es el último precio de compra
-                          </Text>
-                        )}
-                        {!!l.CostoSospechoso && (
-                          <Text fontSize="$1" color={WARN} marginTop="$1">
-                            Ojo: la última compra fue a L {(l.PrecioUltimaCompra ?? 0).toFixed(2)}
+                            Sin compras registradas; es el valor con que se migró
                           </Text>
                         )}
                         {!!l.Fecha && <Text fontSize="$1" color="$textMuted" marginTop="$1">{fmtFechaHora(l.Fecha)}</Text>}

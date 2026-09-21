@@ -30,12 +30,13 @@ export interface ILinea {
   TicketCodigo: string | null
   Costo: number | null   // costo unitario congelado (solo diarios posteados)
 
-  // De dónde salió el costo cuando NO es el congelado: 'PROMEDIO' es la valuación de
-  // AX y 'ULTIMA_COMPRA' el respaldo, que entra cuando AX tiene la pieza valuada en un
-  // centavo (le pasa al 43% del catálogo).
+  // De dónde salió el costo: 'ULTIMA_COMPRA' es el criterio vigente desde el
+  // 21-sep-2026 y 'MIGRADO' son las piezas que nunca se han comprado, cuyo valor es el
+  // de la migración (L 0.01) y es el correcto. 'PROMEDIO' y las etiquetas AX_* quedan
+  // de legado, en líneas congeladas antes del cambio.
   CostoFuente?: string | null
-  // AX valúa la pieza muy lejos de lo que se paga por ella. El número NO se corrige
-  // —es lo que AX tiene en libros—; se marca para que no se dé por bueno.
+  // ⚠ Ya no se enciende: comparaba contra la valuación de AX, que se descartó. Se deja
+  // el campo para no romper el contrato con la API mientras se limpia.
   CostoSospechoso?: boolean
   PrecioUltimaCompra?: number | null
   // REPUESTO va contra un ticket; SUMINISTRO contra un centro de costo, que lo
