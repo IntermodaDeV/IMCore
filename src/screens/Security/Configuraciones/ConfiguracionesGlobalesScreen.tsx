@@ -182,10 +182,10 @@ const CONFIG_META: Record<
     max: 1440,
     ayudaRango: '0 apaga el seguimiento automático',
   },
-  // Cada cuánto se rehace la foto del último precio de compra de AX, que es el
-  // respaldo del costo cuando AX tiene la pieza valuada en un centavo. El barrido de
-  // AX dura ~80 s, así que no tiene sentido bajarlo mucho: los precios de compra no
-  // cambian varias veces al día.
+  // ⚠ CAMINO CRÍTICO desde el 21-sep-2026. Esta foto dejó de ser el respaldo del costo
+  // y pasó a ser LA fuente: el costo de toda salida se congela con el último precio de
+  // compra. Apagarla (0) deja sin base de costo a los despachos nuevos.
+  // El barrido de AX tarda 3-6 s (medido el 21-sep; el ~80 s de antes quedó viejo).
   'Repuestos.PrecioCompraAXHoras': {
     label: 'Refrescar precios de compra de AX, cada',
     kind: 'number',
@@ -194,9 +194,10 @@ const CONFIG_META: Record<
     max: 168,
     ayudaRango: '0 apaga el refresco automático',
   },
-  // El cierre de inventario de AX corrige, semanas después, el costo con que se
-  // posteó cada salida. Sin este refresco el costo por máquina se queda con el
-  // número provisional, y siempre para abajo.
+  // ⚠ APAGADO A PROPÓSITO (0) desde el 21-sep-2026. Trae la valorización que AX hace
+  // en su cierre, que es justamente la que contabilidad descartó. Encenderlo vuelve a
+  // pisar los costos congelados cada N horas y deshace el criterio. La descripción que
+  // se ve en pantalla sale de la BD (script 33) y ya lo advierte.
   'Repuestos.CostoLiquidadoHoras': {
     label: 'Traer el costo liquidado de AX, cada',
     kind: 'number',

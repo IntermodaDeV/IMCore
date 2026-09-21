@@ -810,21 +810,27 @@ export default function DiarioDetailScreen() {
                           {!!l.Almacen && <Text fontSize="$2" color="$textMuted">Alm: {l.Almacen}</Text>}
                           {!!l.Ubicacion && <Text fontSize="$2" color="$textMuted">Ubic: {l.Ubicacion}</Text>}
                         </XStack>
+                        {/* De dónde sale el número va PEGADO al número, entre
+                            paréntesis. En el diario la duda no es cuánto cuesta sino
+                            por qué cuesta eso —sobre todo cuando dice L 0.01— y
+                            mandar esa respuesta a otra pantalla no la contesta nunca.
+                            Desde el 21-sep-2026: el costo se congela con el último
+                            precio de compra; una pieza sin compras conserva el valor
+                            con que se migró el inventario, y ese valor es el correcto. */}
                         {l.Costo != null && (
                           <Text fontSize="$2" color={ACCENT} fontWeight="700" marginTop="$1">
-                            C/U: L {l.Costo.toFixed(2)}  ·  Total: L {(l.Costo * Math.abs(l.Cantidad)).toFixed(2)}
+                            C/U{l.CostoFuente === 'ULTIMA_COMPRA' ? ' (últ. compra)' : l.CostoFuente === 'MIGRADO' ? ' (migración)' : ''}: L {l.Costo.toFixed(2)}  ·  Total: L {(l.Costo * Math.abs(l.Cantidad)).toFixed(2)}
                           </Text>
                         )}
-                        {/* Desde el 21-sep-2026 el costo de TODA salida es el último
-                            precio de compra, así que decirlo en cada línea sería ruido.
-                            Lo que sí hay que decir es la excepción: una pieza que nunca
-                            se ha comprado vale lo que se le puso al migrar el inventario
-                            (suele ser L 0.01) y ese valor es el correcto.
-                            El aviso de «la última compra fue a X» se fue con el cambio:
-                            comparaba contra la valuación de AX, que ya no se usa. */}
+                        {l.CostoFuente === 'ULTIMA_COMPRA' && (
+                          <Text fontSize="$1" color="$textMuted" marginTop="$1">
+                            Último precio de compra de la pieza; queda congelado
+                          </Text>
+                        )}
                         {l.CostoFuente === 'MIGRADO' && (
                           <Text fontSize="$1" color="$textMuted" marginTop="$1">
-                            Sin compras registradas; es el valor con que se migró
+                            Sin compras registradas: es el valor con que se migró el
+                            inventario del sistema anterior, y es el correcto
                           </Text>
                         )}
                         {!!l.Fecha && <Text fontSize="$1" color="$textMuted" marginTop="$1">{fmtFechaHora(l.Fecha)}</Text>}
