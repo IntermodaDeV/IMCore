@@ -459,6 +459,13 @@ export default function PaseAprobacionesScreen() {
                           </XStack>
                         )}
 
+                        {/* El motivo, en la bandeja de quien firma: "sale a las
+                            14:00" no dice lo mismo que "sale a las 14:00 por
+                            cita del IHSS". Es el dato con el que se decide. */}
+                        {!!p.CategoryName && (
+                          <Text fontSize={11} color="$text">{p.CategoryName}</Text>
+                        )}
+
                         {!!p.Departamento && (
                           <Text fontSize={11} color="$textMuted">{sinCodigo(p.Departamento)}</Text>
                         )}

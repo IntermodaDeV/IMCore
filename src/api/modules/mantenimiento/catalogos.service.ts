@@ -12,7 +12,12 @@ export interface ITipoFallaManage { Id?: number; Operacion_Id?: number; Modelo?:
 export interface ICausaFallaManage { Id?: number; TipoFalla_Id?: number; Name: string; Status_Id?: number }
 export interface IModelo { Modelo: string }
 
-export interface IMaquina { Id: number; CodigoActivo?: string | null; TipoMaquina?: string | null; Ubicacion?: string | null; Modelo?: string | null; Marca?: string | null; NumeroSerie?: string | null; Area_Id?: number | null; Area?: string | null; Status_Id: number }
+// Status_Id 1 = TITULAR (operando) · 2 = EXTRA (de respaldo) · 3 = DADA DE BAJA.
+// Confirmado = alguien la validó en piso; en false la máquina todavía está en la
+// cola de validación del tablero, sin importar su Status_Id.
+export interface IMaquina { Id: number; CodigoActivo?: string | null; TipoMaquina?: string | null; Ubicacion?: string | null; Modelo?: string | null; Marca?: string | null; NumeroSerie?: string | null; Area_Id?: number | null; Area?: string | null; Status_Id: number; Confirmado?: boolean; StatusPrevio_Id?: number | null }
+// Tickets sin cerrar de una máquina: se consulta antes de darla de baja, para avisar.
+export interface IMaquinaTicketsAbiertos { Id: number; CodigoActivo?: string | null; Abiertos: number }
 export interface IMaquinaManage { Id?: number; CodigoActivo?: string | null; TipoMaquina?: string | null; Modelo?: string | null; Marca?: string | null; NumeroSerie?: string | null; Area_Id?: number | null; Status_Id?: number }
 
 export interface IAreaPrincipal { Id: number; Name: string; PermiteMaquinas: boolean; Orden: number; Status_Id: number }
@@ -58,8 +63,10 @@ export const catalogosService = {
       `${schema}/Operaciones/Reordenar`, { Area_Id: areaId, Ids: ids }),
 
   // ── Máquinas ────────────────────────────────────────────────────────────────
-  getMaquinas: (search?: string, areaId?: number, onlyActive = false) =>
-    httpClient.get<ExecutionResponse<IMaquina[]>>(`${schema}/Maquinas`, { search, area_Id: areaId, onlyActive }),
+  // baja = true trae SOLO las dadas de baja. Con el default (false) el backend las
+  // excluye de todas partes, así que ninguna otra pantalla tuvo que cambiar.
+  getMaquinas: (search?: string, areaId?: number, onlyActive = false, baja = false) =>
+    httpClient.get<ExecutionResponse<IMaquina[]>>(`${schema}/Maquinas`, { search, area_Id: areaId, onlyActive, baja }),
   // Búsqueda por código de activo (escaneo): acepta AF-######## o solo dígitos.
   getMaquinaPorCodigo: (codigo: string) =>
     httpClient.get<ExecutionResponse<IMaquina>>(`${schema}/Maquinas/PorCodigo`, { codigo }),
@@ -67,8 +74,20 @@ export const catalogosService = {
     httpClient.post<ExecutionResponse<null>, IMaquinaManage>(`${schema}/Maquinas`, data),
   editarMaquina: (data: IMaquinaManage) =>
     httpClient.put<ExecutionResponse<null>, IMaquinaManage>(`${schema}/Maquinas`, data),
+  // Alterna TITULAR (1) <-> EXTRA (2). No es «activar/desactivar»: la máquina sigue
+  // en el tablero y en los cálculos. Para sacarla de circulación está la baja.
   toggleMaquina: (id: number) =>
     httpClient.post<ExecutionResponse<null>>(`${schema}/Maquinas/Toggle?id=${id}`),
+  // Dar de baja (3) o recuperar (0). Guarda de dónde venía la máquina para devolverla
+  // a lo que era. NO toca tickets ni indicadores históricos: solo la saca de listas
+  // y selectores de aquí en adelante.
+  darDeBajaMaquina: (id: number, statusId: 0 | 3) =>
+    httpClient.put<ExecutionResponse<null>, { Id: number; Status_Id: number }>(
+      `${schema}/Maquinas/Baja`, { Id: id, Status_Id: statusId }),
+  // Cuántos tickets sin cerrar tiene, para avisar antes de la baja. Recibe una lista
+  // separada por comas (el web da de baja varias; acá siempre va una).
+  maquinasTicketsAbiertos: (ids: number[]) =>
+    httpClient.get<ExecutionResponse<IMaquinaTicketsAbiertos[]>>(`${schema}/Maquinas/TicketsAbiertos`, { ids: ids.join(',') }),
 
   // ── Modelos por operación (maestro de fallas) ───────────────────────────────
   getModelos: (operacionId: number) =>

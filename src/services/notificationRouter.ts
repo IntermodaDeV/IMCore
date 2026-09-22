@@ -152,6 +152,22 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
+  // Terminó (o falló) la carga de datos de AX de una corrida -> su resumen.
+  // Se abre primero el listado para que «atrás» no lo deje fuera del módulo,
+  // igual que en tickets y en solicitudes de repuestos.
+  //
+  // El aviso trae `url` y `ruta` además de `corridaId`: `url` es una ruta del
+  // WEB (/creditosAdministracionPaquetes?corrida=N) que la app no puede abrir,
+  // por eso se usa el id suelto y no se parsea la URL.
+  if (category === 'administracion_paquetes') {
+    const id = Number(data.corridaId ?? data.CorridaId)
+    navigateWhenReady('creditosAdministracionPaquetes')
+    if (id > 0) {
+      setTimeout(() => navigateWhenReady('creditosCorridaDetalle', { id }), 300)
+    }
+    return true
+  }
+
   if(category === 'expense') {
     const gastoId = data.ExpenseId ?? data.ExpenseId
     navigateWhenReady('detalleGasto', gastoId ? { gasto: null, id: String(gastoId) } : undefined)

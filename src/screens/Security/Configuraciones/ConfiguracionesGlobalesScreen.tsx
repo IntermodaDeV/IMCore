@@ -182,10 +182,10 @@ const CONFIG_META: Record<
     max: 1440,
     ayudaRango: '0 apaga el seguimiento automático',
   },
-  // Cada cuánto se rehace la foto del último precio de compra de AX, que es el
-  // respaldo del costo cuando AX tiene la pieza valuada en un centavo. El barrido de
-  // AX dura ~80 s, así que no tiene sentido bajarlo mucho: los precios de compra no
-  // cambian varias veces al día.
+  // ⚠ CAMINO CRÍTICO desde el 21-sep-2026. Esta foto dejó de ser el respaldo del costo
+  // y pasó a ser LA fuente: el costo de toda salida se congela con el último precio de
+  // compra. Apagarla (0) deja sin base de costo a los despachos nuevos.
+  // El barrido de AX tarda 3-6 s (medido el 21-sep; el ~80 s de antes quedó viejo).
   'Repuestos.PrecioCompraAXHoras': {
     label: 'Refrescar precios de compra de AX, cada',
     kind: 'number',
@@ -194,17 +194,11 @@ const CONFIG_META: Record<
     max: 168,
     ayudaRango: '0 apaga el refresco automático',
   },
-  // El cierre de inventario de AX corrige, semanas después, el costo con que se
-  // posteó cada salida. Sin este refresco el costo por máquina se queda con el
-  // número provisional, y siempre para abajo.
-  'Repuestos.CostoLiquidadoHoras': {
-    label: 'Traer el costo liquidado de AX, cada',
-    kind: 'number',
-    unidad: 'h',
-    min: 0,
-    max: 168,
-    ayudaRango: '0 apaga la corrección automática',
-  },
+  // 'Repuestos.CostoLiquidadoHoras' SE RETIRÓ el 21-sep-2026 (script 36 borró la clave
+  // y el job ya no se registra). Traía la valorización que AX hace en su cierre, que es
+  // la que contabilidad descartó: el costo se congela con el último precio de compra.
+  // Sin fila en la BD no hay nada que pintar; queda escrito para que nadie la agregue
+  // de vuelta sin saber por qué se fue.
   'Repuestos.CorreoDatosMaestros': {
     label: 'Correos de Datos Maestros (solicitudes de repuestos)',
     kind: 'texto',

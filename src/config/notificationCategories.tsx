@@ -1,4 +1,4 @@
-import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck } from 'lucide-react-native'
+import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck, PackageSearch } from 'lucide-react-native'
 import type { NotificationCategory } from '../api/modules/notifications/notifications.service'
 
 /**
@@ -106,6 +106,16 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
     Icon: HandCoins,
     color: '#64748B',
     bg: 'rgba(100,116,139,0.12)',
+  },
+  // Créditos. Llega cuando termina —bien o mal— la carga de datos de AX de una
+  // corrida, que tarda de 45 s a más de 3 minutos: el aviso existe justamente
+  // para no tener que quedarse mirando la pantalla del web. El MISMO tipo cubre
+  // el éxito y la falla, así que el color no puede prometer ninguno de los dos.
+  administracion_paquetes: {
+    label: 'Administración de Paquetes',
+    Icon: PackageSearch,
+    color: '#0891B2',
+    bg: 'rgba(8,145,178,0.12)',
   },
 }
 

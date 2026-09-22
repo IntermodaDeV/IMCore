@@ -14,7 +14,7 @@ import { useShowToast } from '../../utils/useShowToast'
 import { handleError } from '../../utils/errorHandler'
 import { pasesService } from '../../api/modules/pases/pases.service'
 import { capitalizar, sinCodigo, textoCarnet } from './paseFormat'
-import { IAprobador, IEmpleado, IPaseCategoria } from '../../api/modules/pases/pases.types'
+import { IAprobador, ICategoriaPermiso, IEmpleado, IPaseCategoria } from '../../api/modules/pases/pases.types'
 
 /**
  * Crear un permiso personal.
@@ -27,6 +27,12 @@ import { IAprobador, IEmpleado, IPaseCategoria } from '../../api/modules/pases/p
  * 2. Una sola pregunta define el permiso: qué va a hacer. De esos cuatro chips
  *    sale cuántas horas se piden y en qué orden — no hay que elegir "categoría"
  *    y después entender qué campos aparecen.
+ *
+ *    Aparte va el TIPO DE MOTIVO, que es otra pregunta: no qué hace la persona
+ *    sino por qué. De ahí sale el concepto de nómina, y por eso es una lista
+ *    cerrada y no la observación libre: "fui al seguro", "IHSS" y "cita" son
+ *    tres textos para el mismo concepto y así planilla no puede sumarlos.
+ *    Viene con 'Ausencia justificada' puesto, que es el caso general.
  *
  * 3. Sin código de planilla vinculado no hay pase posible: el pase guarda a qué
  *    empleado corresponde y el carnet que se lee en la puerta es el de ese
@@ -76,6 +82,12 @@ const ORDEN_TIPO = ['S', 'SE', 'E', 'ES']
 const ICONO_TIPO: Record<string, any> = { S: LogOut, E: LogIn, SE: ArrowRightLeft, ES: ArrowRightLeft }
 
 /**
+ * El motivo que viene puesto: 'Ausencia justificada'. Es el caso general y el
+ * que RR. HH. usa cuando el permiso no cae en ninguno de los específicos.
+ */
+const MOTIVO_POR_DEFECTO = 1
+
+/**
  * Los campos de hora que pide cada secuencia, EN ORDEN. La etiqueta cambia
  * según el caso: la misma hora de entrada es "Entra" si el pase empieza
  * entrando y "Regresa" si empieza saliendo.
@@ -100,6 +112,7 @@ export default function PaseCrearScreen() {
   const sinJefe = tieneAcceso(user?.Access, ACCESO_SIN_JEFE)
 
   const [categorias, setCategorias] = useState<IPaseCategoria[]>([])
+  const [motivos, setMotivos] = useState<ICategoriaPermiso[]>([])
   const [aprobadores, setAprobadores] = useState<IAprobador[]>([])
 
   // Empleado del pase. Arranca en uno mismo.
@@ -115,6 +128,9 @@ export default function PaseCrearScreen() {
 
   // Formulario
   const [categoriaId, setCategoriaId] = useState<number | undefined>(undefined)
+  // El motivo arranca puesto, no vacío: obligar a elegir entre 25 opciones para
+  // algo que casi siempre es la misma sería trabajo para todos por el caso raro.
+  const [categoryId, setCategoryId] = useState<number>(MOTIVO_POR_DEFECTO)
   const [horaSalida, setHoraSalida] = useState<string | null>(null)
   const [horaEntrada, setHoraEntrada] = useState<string | null>(null)
   const [pickerHora, setPickerHora] = useState<'S' | 'E' | null>(null)
@@ -161,6 +177,9 @@ export default function PaseCrearScreen() {
     useCallback(() => {
       if (!yaEstuvo.current) { yaEstuvo.current = true; return }
       setCategoriaId(undefined)
+      // El motivo vuelve al de siempre, no a vacío: es un valor por defecto,
+      // no algo que la persona dejó a medias.
+      setCategoryId(MOTIVO_POR_DEFECTO)
       setHoraSalida(null)
       setHoraEntrada(null)
       setPickerHora(null)
@@ -181,8 +200,14 @@ export default function PaseCrearScreen() {
   useEffect(() => {
     ;(async () => {
       try {
-        const cat = await pasesService.getCategorias(true)
+        // Los dos catálogos van juntos: sin cualquiera de los dos el
+        // formulario no se puede completar, así que un solo aviso alcanza.
+        const [cat, mot] = await Promise.all([
+          pasesService.getCategorias(true),
+          pasesService.getMotivos(),
+        ])
         if (cat.Success) setCategorias(cat.Data ?? [])
+        if (mot.Success) setMotivos(mot.Data ?? [])
       } catch (err) {
         showToast('error', 'Error', handleError(err).message, 4000, 'bottom')
       }
@@ -300,6 +325,7 @@ export default function PaseCrearScreen() {
       const resp = await pasesService.crear({
         EmpleadoCode: empleado.EmpleadoCode,
         Categoria_Id: categoriaId,
+        CategoryId: categoryId,
         FechaPase: fecha,
         HoraSalida: secuencia.includes('S') ? horaSalida : null,
         HoraEntrada: secuencia.includes('E') ? horaEntrada : null,
@@ -320,6 +346,7 @@ export default function PaseCrearScreen() {
           'bottom',
         )
         setCategoriaId(undefined)
+        setCategoryId(MOTIVO_POR_DEFECTO)
         setHoraSalida(null)
         setHoraEntrada(null)
         setFecha(null)
@@ -615,6 +642,17 @@ export default function PaseCrearScreen() {
               options={aprobadores.map((a) => ({ label: capitalizar(a.Nombre), value: a.User_Code }))}
             />
           )}
+
+          {/* ── Por qué ──────────────────────────────────────────────
+              Va junto a la observación y no arriba con los chips a propósito:
+              las dos contestan lo mismo, solo que una la puede sumar planilla
+              y la otra no. */}
+          <AppSelect
+            label="Tipo de motivo"
+            value={categoryId}
+            onValueChange={(v) => setCategoryId(Number(v))}
+            options={motivos.map((m) => ({ label: m.Description, value: String(m.Id) }))}
+          />
 
           <AppInput label="Observación (opcional)" value={observacion} onChangeText={setObservacion} />
 

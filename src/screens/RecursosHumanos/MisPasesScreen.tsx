@@ -173,6 +173,11 @@ export default function MisPasesScreen() {
                           {p.Categoria || textoSecuencia(p.Tipo)}
                           {p.FechaPase ? ` · ${p.FechaPase}` : ''}
                         </Text>
+                        {/* Con qué motivo quedó registrado: es lo que va a ver
+                            quien lo autorice y lo que después lee planilla. */}
+                        {!!p.CategoryName && (
+                          <Text fontSize={11} color="$textMuted">{p.CategoryName}</Text>
+                        )}
                       </YStack>
                       <View
                         backgroundColor={color.bg}

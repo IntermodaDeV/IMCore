@@ -20,6 +20,7 @@ import { HeaderProvider } from '../context/HeaderContext'
 import { AppHeader } from '../components/commons/AppHeader'
 import { puedeCrearTickets } from '../screens/Mantenimiento/mantenimiento.helpers'
 import DeviceInfo from 'react-native-device-info'
+import LoadingScreen from '../components/Skeletons/LoadingScreen'
 
 const Drawer = createDrawerNavigator()
 
@@ -69,13 +70,13 @@ function AnimatedDots({ color }: { color?: string }) {
 export default function DrawerNavigator({ setTheme }: any) {
   const theme = useTheme()
   const { menu, loading } = useMenu()
-  if (loading) return null
-  
-  const screenTitles = Object.fromEntries((menu ?? []).map(item => [item.Route, item.Name]))
-  const insets = useSafeAreaInsets()
-  const screens = Object.entries(SCREENS).filter(
-    ([key]) => key !== 'Childs'
-  );
+  // Mientras se lee el menú NO se devuelve null: una pantalla vacía e indefinida
+  // es indistinguible de una app colgada, y es exactamente lo que vio la revisión
+  // de Apple. Ojo también con el orden: cualquier hook va ANTES de este return,
+  // porque un hook después de un return condicional cambia la cantidad de hooks
+  // entre renders y React lanza (en Release eso deja la pantalla en blanco).
+  if (loading) return <LoadingScreen text="Cargando menú..." duration={1000000} />
+
   return (
   <HeaderProvider>
     <Drawer.Navigator
