@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshControl, FlatList } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { useFocusEffect } from '@react-navigation/native'
 import {
+  // `History` se renombra: choca con el tipo global History del DOM y TS resuelve ese.
   Stamp, Package, User, ChevronDown, ChevronUp, CalendarDays, Check, X as Equis,
+  IdCard, History as HistoryIcon,
 } from 'lucide-react-native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -11,6 +13,8 @@ import { useShowToast } from '../../../utils/useShowToast'
 import AppInput from '../../../components/commons/AppInput'
 import AppSelect from '../../../components/commons/AppSelect'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
+import { NotificationBell } from '../../../components/notifications/NotificationBell'
+import { subscribeOpenPaseSalidaFirma } from '../../../services/pasesSalidaNavigation'
 import SearchInput from '../../../components/commons/SearchInput'
 import RecordCount from '../../../components/commons/RecordCount'
 import SkeletonList from '../../../components/Skeletons/SkeletonList'
@@ -20,9 +24,11 @@ import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
 import { ACCENT, ACCENT_BG, estadoVisual, fmtCantidad, fmtFecha, fmtFechaHora } from '../pasesSalida.helpers'
 import LineaFirmas from '../Pases/LineaFirmas'
+import LineaEstados from '../Pases/LineaEstados'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import {
-  armarBitacora, BandejaFirma, IFirmaUsuario, IPaseSalida, IPaseSalidaDetalle, IPasoFirma,
+  armarBitacora, BandejaFirma, IFirmaUsuario, IPaseSalida, IPaseSalidaDetalle,
+  IPaseSalidaEstado, IPasoFirma,
 } from '../../../api/modules/pasesSalida/pases.types'
 
 /** Las tres pestañas. La primera es la cola de trabajo; las otras, historial. */
@@ -71,6 +77,7 @@ export default function AprobacionesScreen() {
   const [abierto, setAbierto] = useState<number | null>(null)
   const [detalles, setDetalles] = useState<Record<number, IPaseSalidaDetalle[]>>({})
   const [bitacoras, setBitacoras] = useState<Record<number, IPasoFirma[]>>({})
+  const [historiales, setHistoriales] = useState<Record<number, IPaseSalidaEstado[]>>({})
   const [cargandoDet, setCargandoDet] = useState<number | null>(null)
 
   const [bandeja, setBandeja] = useState<BandejaFirma>('PEND')
@@ -81,6 +88,12 @@ export default function AprobacionesScreen() {
   const [motivo, setMotivo] = useState('')
 
   const [firmando, setFirmando] = useState(false)
+
+  /**
+   * El pase que trajo la notificación. Se resalta unos segundos y se apaga: es
+   * para encontrarlo en la lista, no un estado del pase.
+   */
+  const [highlightId, setHighlightId] = useState<number | null>(null)
 
   const abrirAccion = (pase: IPaseSalida, tipo: 'aprobar' | 'rechazar') => {
     setMotivo('')
@@ -177,19 +190,56 @@ export default function AprobacionesScreen() {
 
     setCargandoDet(id)
     try {
-      const [rDet, rFirmas] = await Promise.all([
+      const [rDet, rFirmas, rHist] = await Promise.all([
         pasesService.getDetalle(id),
         pasesService.getFirmasPase(id),
+        pasesService.getHistorialPase(id),
       ])
       setDetalles(prev => ({ ...prev, [id]: rDet.Data ?? [] }))
       setBitacoras(prev => ({ ...prev, [id]: armarBitacora(rFirmas.Data ?? []) }))
+      setHistoriales(prev => ({ ...prev, [id]: rHist.Data ?? [] }))
     } catch {
       setDetalles(prev => ({ ...prev, [id]: [] }))
       setBitacoras(prev => ({ ...prev, [id]: [] }))
+      setHistoriales(prev => ({ ...prev, [id]: [] }))
     } finally { setCargandoDet(null) }
   }
 
-  usePageHeader({ center: <Text fontSize="$4" fontWeight="700" color="$text">Aprobaciones</Text> })
+  /**
+   * Llegó desde una notificación: se abre en Pendientes —que es donde está lo
+   * que espera firma— y se resalta el pase.
+   *
+   * El destino puede llegar ANTES de que la lista esté cargada; no importa,
+   * `highlightId` solo pinta el borde cuando la tarjeta aparece.
+   */
+  const listaRef = useRef<FlatList<IPaseSalida>>(null)
+  /* El callback del bus se registra una sola vez, así que leería una lista
+     vieja. La ref siempre tiene la actual. */
+  const filtradosRef = useRef<IPaseSalida[]>([])
+  useEffect(() => { filtradosRef.current = filtered }, [filtered])
+
+  useEffect(() => {
+    const unsub = subscribeOpenPaseSalidaFirma(paseId => {
+      setBandeja('PEND')
+      setAbierto(null)
+      setHighlightId(paseId)
+
+      /* Sin el scroll el resaltado se apaga fuera de pantalla. Se espera al
+         re-render: cambiar de bandeja vuelve a consultar y rearma la lista. */
+      setTimeout(() => {
+        const i = filtradosRef.current.findIndex(x => x.Id === paseId)
+        if (i >= 0) listaRef.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0 })
+      }, 350)
+
+      setTimeout(() => setHighlightId(null), 4000)
+    })
+    return unsub
+  }, [])
+
+  usePageHeader({
+    center: <Text fontSize="$4" fontWeight="700" color="$text">Aprobaciones</Text>,
+    right: <NotificationBell size={20} />,
+  })
 
   if (loading) {
     return (
@@ -269,7 +319,7 @@ export default function AprobacionesScreen() {
 
         <SearchInput
           data={items}
-          searchKeys={['Correlativo', 'TipoSalida', 'EnviadoA', 'Solicitante', 'Comentario']}
+          searchKeys={['Correlativo', 'TipoSalida', 'EnviadoA', 'Responsable', 'Solicitante', 'Comentario']}
           onResults={setFiltered}
           placeholder="Buscar..."
         />
@@ -281,8 +331,18 @@ export default function AprobacionesScreen() {
       </YStack>
 
       <FlatList
+        ref={listaRef}
         data={filtered}
         keyExtractor={(it) => String(it.Id)}
+        /* Las tarjetas tienen alto variable (el acordeón), así que no hay
+           getItemLayout y scrollToIndex puede fallar si el destino todavía no
+           se renderizó. Se cae a un scroll aproximado en vez de reventar. */
+        onScrollToIndexFailed={(info) => {
+          listaRef.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: true,
+          })
+        }}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 12, paddingBottom: 40, flexGrow: 1 }}
         ItemSeparatorComponent={() => <View height={10} />}
@@ -302,10 +362,18 @@ export default function AprobacionesScreen() {
           const est = estadoVisual(p.Estado)
           const open = abierto === p.Id
           const lineas = detalles[p.Id]
+          // El que trajo la notificación, por unos segundos.
+          const resaltado = highlightId === p.Id
 
           return (
-            <YStack backgroundColor="$backgroundElevated" borderRadius="$4"
-              borderLeftWidth={4} borderLeftColor={est.color} borderWidth={1} borderColor="$border"
+            /* El resaltado toca el FONDO y el borde, no solo el borde: en una
+               lista de tarjetas iguales, 2px se pierden al pasar la vista. Es
+               el mismo criterio del historial de horas extra. */
+            <YStack backgroundColor={resaltado ? '$primaryOpacity2' : '$backgroundElevated'}
+              borderRadius="$4"
+              borderLeftWidth={4} borderLeftColor={est.color}
+              borderWidth={resaltado ? 2 : 1}
+              borderColor={resaltado ? '$primary' : '$border'}
               paddingVertical="$3" paddingHorizontal="$4" gap="$2" {...shadows.sm}
               onPress={() => alternar(p.Id)} pressStyle={{ opacity: 0.85 }}>
 
@@ -371,10 +439,22 @@ export default function AprobacionesScreen() {
                   <User size={12} color={theme.textMuted?.val} />
                   <Text fontSize={11} color="$textMuted">{p.Solicitante || p.Create_By}</Text>
                 </XStack>
+                {/* Quién lo retira, que no es quien lo pide. Al firmante le
+                    importa: está autorizando que ESA persona saque eso. */}
+                {p.Responsable ? (
+                  <XStack alignItems="center" gap="$1.5">
+                    <IdCard size={12} color={theme.textMuted?.val} />
+                    <Text fontSize={11} color="$textMuted">Retira {p.Responsable}</Text>
+                  </XStack>
+                ) : null}
+                {/* Etiqueta completa y no un "Sale 18/09": el firmante está
+                    autorizando PARA ESA FECHA, y con la fecha suelta se lee como
+                    un dato más en vez de como parte de lo que aprueba. */}
                 {p.FechaSalida ? (
                   <XStack alignItems="center" gap="$1.5">
                     <CalendarDays size={12} color={theme.textMuted?.val} />
-                    <Text fontSize={11} color="$textMuted">Sale {fmtFecha(p.FechaSalida)}</Text>
+                    <Text fontSize={11} color="$textMuted">Fecha de salida: </Text>
+                    <Text fontSize={11} color="$text" fontWeight="800">{fmtFecha(p.FechaSalida)}</Text>
                   </XStack>
                 ) : null}
               </XStack>
@@ -444,6 +524,20 @@ export default function AprobacionesScreen() {
                         creadoEn={p.Creation_Date}
                         fmtFecha={fmtFechaHora}
                       />
+                    </YStack>
+                  ) : null}
+
+                  {/* El movimiento del pase: qué le fue pasando y cuándo. Va
+                      aparte de las firmas porque responde otra pregunta — esas
+                      dicen qué falta, esto dice qué pasó. */}
+                  {historiales[p.Id]?.length ? (
+                    <YStack gap="$2" marginTop="$2" paddingTop="$2.5"
+                      borderTopWidth={1} borderTopColor="$border">
+                      <XStack alignItems="center" gap="$1.5">
+                        <HistoryIcon size={12} color={theme.primary?.val} />
+                        <Text fontSize={11} fontWeight="900" color="$textMuted">MOVIMIENTO</Text>
+                      </XStack>
+                      <LineaEstados movimientos={historiales[p.Id]} />
                     </YStack>
                   ) : null}
                 </YStack>

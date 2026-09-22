@@ -4,7 +4,8 @@ import { Text, XStack, YStack, View, useTheme } from 'tamagui'
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
 import {
   ArrowLeft, Package, RotateCcw, Send, QrCode, Stamp, User, Clock, CalendarDays,
-  MessageSquare, LogOut, Ban,
+  // `History` se renombra: choca con el tipo global History del DOM y TS resuelve ese.
+  MessageSquare, LogOut, Ban, IdCard, History as HistoryIcon,
 } from 'lucide-react-native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -16,10 +17,11 @@ import {
   ACCENT, ACCENT_BG, estadoVisual, fmtCantidad, fmtFecha, fmtFechaHora, situacionQr,
 } from '../pasesSalida.helpers'
 import LineaFirmas from './LineaFirmas'
+import LineaEstados from './LineaEstados'
 import PaseQrSheet from './PaseQrSheet'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import {
-  armarBitacora, IPaseSalida, IPaseSalidaDetalle, IPasoFirma,
+  armarBitacora, IPaseSalida, IPaseSalidaDetalle, IPaseSalidaEstado, IPasoFirma,
 } from '../../../api/modules/pasesSalida/pases.types'
 
 /**
@@ -86,6 +88,7 @@ export default function PaseDetalleScreen() {
   const [pase, setPase] = useState<IPaseSalida | null>(null)
   const [detalle, setDetalle] = useState<IPaseSalidaDetalle[]>([])
   const [bitacora, setBitacora] = useState<IPasoFirma[]>([])
+  const [movimientos, setMovimientos] = useState<IPaseSalidaEstado[]>([])
   const [loading, setLoading] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
@@ -93,18 +96,20 @@ export default function PaseDetalleScreen() {
 
   const cargar = useCallback(async () => {
     try {
-      const [rPase, rDet, rFirmas] = await Promise.all([
+      const [rPase, rDet, rFirmas, rHist] = await Promise.all([
         pasesService.getPase(id),
         pasesService.getDetalle(id),
         pasesService.getFirmasPase(id),
+        pasesService.getHistorialPase(id),
       ])
       // El SP devuelve una fila; el arreglo trae 0 o 1 elemento.
       setPase(rPase.Data?.[0] ?? null)
       setDetalle(rDet.Data ?? [])
       setBitacora(armarBitacora(rFirmas.Data ?? []))
+      setMovimientos(rHist.Data ?? [])
       setError(null)
     } catch (e) {
-      setPase(null); setDetalle([]); setBitacora([])
+      setPase(null); setDetalle([]); setBitacora([]); setMovimientos([])
       setError(handleError(e))
     }
   }, [id])
@@ -204,6 +209,7 @@ export default function PaseDetalleScreen() {
 
           <YStack gap="$2.5">
             <Dato icon={Send} label="Enviado a" value={pase.EnviadoA} />
+            <Dato icon={IdCard} label="Retira" value={pase.Responsable} />
             <Dato icon={User} label="Solicitante" value={pase.Solicitante || pase.Create_By} />
             <Dato icon={Clock} label="Creado" value={fmtFechaHora(pase.Creation_Date)} />
             {/* Es la fecha en que SE PLANEA sacarlo, no un hecho: el pase todavía
@@ -285,6 +291,20 @@ export default function PaseDetalleScreen() {
                 creadoEn={pase.Creation_Date}
                 fmtFecha={fmtFechaHora}
               />
+            </YStack>
+            <View height={16} />
+          </>
+        ) : null}
+
+        {/* ── El movimiento del pase ──
+             Va después de la ruta de firmas y no mezclado con ella: la ruta dice
+             qué falta, esto dice qué pasó. */}
+        {movimientos.length ? (
+          <>
+            <Seccion icon={HistoryIcon} titulo="Movimiento del pase" />
+            <YStack backgroundColor="$backgroundElevated" borderRadius="$4" borderWidth={1}
+              borderColor="$border" padding="$4" {...shadows.sm}>
+              <LineaEstados movimientos={movimientos} />
             </YStack>
             <View height={16} />
           </>

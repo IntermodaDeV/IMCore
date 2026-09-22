@@ -17,6 +17,31 @@ export interface IGrupoManage {
   Name: string
 }
 
+/**
+ * Un grupo con su horario de salida.
+ *
+ * El horario vive en dos niveles: el GENERAL, que es una propiedad de la
+ * portería y aplica a todos, y el PROPIO del grupo, que solo se pone cuando ese
+ * grupo es una excepción. `HoraSalidaDesde` nula significa que hereda.
+ */
+export interface IGrupoDetalle {
+  Id: number
+  Name: string
+  Status_Id: number
+  HoraSalidaDesde: string | null
+  HoraSalidaHasta: string | null
+  GeneralDesde: string | null
+  GeneralHasta: string | null
+  Materiales: number
+}
+
+/** Las dos horas vacías devuelven el grupo al horario general. */
+export interface IGrupoHorario {
+  Grupo_Id: number
+  HoraSalidaDesde: string | null
+  HoraSalidaHasta: string | null
+}
+
 export interface IMaterialConGrupo {
   Id: number
   Name: string

@@ -79,6 +79,8 @@ const LINEA_VACIA = (m: IMaterial): Linea => ({
 /** Alto del footer fijo: el scroll reserva ese espacio para no quedar tapado. */
 const FOOTER_H = 108
 
+const HOY = () => dayjs().format('YYYY-MM-DD')
+
 /** Devuelve el problema de la línea, o null si está bien. */
 const validarLinea = (l: Linea): string | null => {
   if (!l.Descripcion.trim()) return 'Falta la descripción del producto'
@@ -115,6 +117,9 @@ export default function PaseCrearScreen() {
   const [tipoId, setTipoId] = useState<string>('')
   const [fechaSalida, setFechaSalida] = useState<string>(dayjs().format('YYYY-MM-DD'))
   const [enviadoA, setEnviadoA] = useState('')
+  // Quién retira. No es el solicitante: puede ser un motorista o alguien sin
+  // usuario en IMCore, así que va a mano.
+  const [responsable, setResponsable] = useState('')
   const [comentario, setComentario] = useState('')
 
   // Detalle
@@ -148,6 +153,7 @@ export default function PaseCrearScreen() {
         setTipoId(String(p.TipoSalida_Id))
         setFechaSalida(p.FechaSalida ? dayjs(p.FechaSalida).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'))
         setEnviadoA(p.EnviadoA ?? '')
+        setResponsable(p.Responsable ?? '')
         setComentario(p.Comentario ?? '')
       }
       setLineas((rDet.Data ?? []).map(d => ({
@@ -241,6 +247,25 @@ export default function PaseCrearScreen() {
   const guardar = async () => {
     if (!tipoId) { showToast('warning', 'Falta el tipo', 'Seleccione el tipo de salida'); return }
     if (!enviadoA.trim()) { showToast('warning', 'Falta el destino', 'Indique a quién o a dónde va'); return }
+
+    /* El calendario ya no deja elegir días pasados, pero al EDITAR un pase viejo
+       la fecha puede venir de antes sin que nadie la toque. Se valida igual. */
+    if (fechaSalida < HOY()) {
+      showToast('warning', 'Fecha pasada',
+        'La fecha de salida no puede ser anterior a hoy. Elija una fecha válida.')
+      return
+    }
+
+    // Nombre Y apellido: el SP lo exige igual, y un "Juan" no le sirve al
+    // guardia para comparar contra el documento.
+    if (!responsable.trim()) {
+      showToast('warning', 'Falta el responsable', 'Indique quién va a retirar el material')
+      return
+    }
+    if (!responsable.trim().includes(' ')) {
+      showToast('warning', 'Falta el apellido', 'El responsable debe llevar nombre y apellido')
+      return
+    }
     if (!lineas.length) { showToast('warning', 'Sin materiales', 'Se debe agregar al menos un material'); return }
 
     // Cubre el caso de cambiar el tipo DESPUÉS de armar el detalle. El SP lo
@@ -268,6 +293,7 @@ export default function PaseCrearScreen() {
         Id: esEdicion ? paseId! : -1,
         TipoSalida_Id: Number(tipoId),
         EnviadoA: enviadoA.trim(),
+        Responsable: responsable.trim(),
         Comentario: comentario.trim() || null,
         FechaSalida: fechaSalida,
         Detalle: lineas.map(l => ({
@@ -390,16 +416,27 @@ export default function PaseCrearScreen() {
               />
             </YStack>
             <YStack flex={1}>
+              {/* No se puede pedir un pase para ayer: el plazo se cuenta desde
+                  esa fecha, así que uno con fecha pasada nace vencido y portería
+                  lo rebota. `minDate` deja los días anteriores sin tocar en el
+                  calendario, que explica la regla mejor que un error después. */}
               <AppDatePicker
                 label="Fecha de salida"
                 value={fechaSalida}
-                onChange={(v) => setFechaSalida(v ?? dayjs().format('YYYY-MM-DD'))}
+                minDate={HOY()}
+                onChange={(v) => setFechaSalida(v ?? HOY())}
               />
             </YStack>
           </XStack>
 
           <AppInput label="Enviado a" value={enviadoA} onChangeText={setEnviadoA}
             placeholder="Persona, empresa o lugar de destino" />
+
+          {/* Quién RETIRA, que no es quién pide: portería compara este nombre
+              contra el documento de quien se para en la puerta. */}
+          <AppInput label="Responsable de retirar" value={responsable} onChangeText={setResponsable}
+            placeholder="Nombre y apellido de quien lo lleva"
+            autoCapitalize="words" />
 
           <AppInput label="Comentario" value={comentario} onChangeText={setComentario}
             placeholder="Opcional" multiline />

@@ -9,10 +9,22 @@
  * Al registrar la salida, a dónde va depende del TIPO:
  *   · el que regresa   -> PSSAL "Salió", abierto hasta que el retorno lo cierre
  *   · el definitivo    -> PSFIN "Finalizado", no queda nada que esperar
- * Abiertos: PSPEND, PSEAPR, PSAPR, PSSAL. Cerrados: PSFIN, PSRET, PSREJ, PSANU.
+ * Un pase aprobado que nunca salió y se le pasó el plazo lo cierra solo un job
+ * de la API en PSVEN: la condición ya la veía portería, pero sin el estado el
+ * solicitante nunca se enteraba.
  */
 export type EstadoPase =
-  | 'PSPEND' | 'PSEAPR' | 'PSAPR' | 'PSREJ' | 'PSSAL' | 'PSFIN' | 'PSRET' | 'PSANU' | 'PSELI'
+  | 'PSPEND' | 'PSEAPR' | 'PSAPR' | 'PSREJ' | 'PSSAL' | 'PSFIN' | 'PSRET'
+  | 'PSVEN' | 'PSANU' | 'PSELI'
+
+/**
+ * Los estados en que el pase todavía tiene algo por delante. El resto ya cerró.
+ * Se define acá y no en cada pantalla para que "abierto" signifique lo mismo en
+ * todas.
+ */
+export const ESTADOS_ABIERTOS: EstadoPase[] = ['PSPEND', 'PSEAPR', 'PSAPR', 'PSSAL']
+
+export const ESTADOS_CERRADOS: EstadoPase[] = ['PSFIN', 'PSRET', 'PSREJ', 'PSVEN', 'PSANU']
 
 export interface IPaseSalida {
   Id: number
@@ -22,6 +34,13 @@ export interface IPaseSalida {
   Retorna: boolean
   Comentario: string | null
   EnviadoA: string | null
+  /**
+   * Quién va a retirar el material, con nombre y apellido. NO es el
+   * solicitante: puede ser un motorista o un proveedor sin acceso a IMCore. Es
+   * lo que portería compara contra el documento antes de dejar pasar.
+   * Null en los pases creados antes de que existiera el campo.
+   */
+  Responsable?: string | null
   /** La fecha que el solicitante PLANEÓ. No es cuándo salió. */
   FechaSalida: string | null
   FechaRetorno: string | null
@@ -33,6 +52,33 @@ export interface IPaseSalida {
   /** El guardia que registró la salida. */
   SalidaPor?: string | null
   SalidaPorNombre?: string | null
+  /**
+   * El guardia que recibió el regreso. Junto con `FechaRetorno` es lo que
+   * distingue un préstamo que volvió de una venta que salió: los dos terminan
+   * en Finalizado, pero solo el primero tiene estas dos.
+   */
+  RetornoPor?: string | null
+  RetornoPorNombre?: string | null
+
+  /**
+   * Si el pase se puede usar HOY. Lo calcula el servidor con la misma función
+   * que aplica el registro de salida, así que la pantalla y el SP no pueden
+   * discrepar.
+   *   OK            se puede
+   *   ANTICIPADA    la fecha de salida todavía no llegó
+   *   VENCIDA       pasó la fecha y se consumió la ventana de gracia
+   *   FUERAHORARIO  es el día correcto, pero no la hora
+   */
+  SalidaVigencia?: 'OK' | 'ANTICIPADA' | 'VENCIDA' | 'FUERAHORARIO' | null
+  /** Hasta cuándo se puede usar: fin del día de salida + la gracia. */
+  SalidaVence?: string | null
+  /** La gracia configurada (AdmSys.Configuracion), en horas. */
+  HorasGracia?: number | null
+  /** Horario en que este pase puede salir, ya resuelto: el del grupo, o el general. */
+  HoraDesde?: string | null
+  HoraHasta?: string | null
+  /** true si el horario es propio del grupo; false si hereda el general. */
+  HorarioPropio?: boolean
   Estado: EstadoPase
   /** El nombre para mostrar, del mismo catálogo. */
   EstadoNombre: string | null
@@ -96,6 +142,28 @@ export interface IPaseSalidaAuth {
   FirmadoPor: string | null
   FechaAuth: string | null
   Comentario: string | null
+}
+
+/**
+ * Un movimiento del pase: cuándo cambió de estado, a cuál y quién lo movió.
+ *
+ * Es la VIDA del pase, distinta de la bitácora de firmas: esa dice quién
+ * autorizó y qué falta; esta dice qué le fue pasando.
+ */
+export interface IPaseSalidaEstado {
+  Id: number
+  PaseSalida_Id: number
+  Fecha: string
+  Estado: EstadoPase
+  EstadoNombre: string | null
+  User_Code: string | null
+  Usuario: string | null
+  /**
+   * TRIGGER = hecho registrado en vivo. BACKFILL = reconstruido de los datos
+   * que había antes de que existiera el historial, así que la fecha puede ser
+   * aproximada.
+   */
+  Origen: 'TRIGGER' | 'BACKFILL' | null
 }
 
 /** Un paso de la bitácora, ya armado a partir de las alternativas. */
@@ -194,6 +262,8 @@ export interface IPaseSalidaGuardar {
   TipoSalida_Id: number
   Comentario?: string | null
   EnviadoA?: string | null
+  /** Quién retira el material. Obligatorio, con nombre y apellido. */
+  Responsable?: string | null
   FechaSalida?: string | null
   // FechaRetorno no va acá: es la fecha en que la cosa REGRESÓ y la llena el
   // proceso de retorno, no el solicitante.

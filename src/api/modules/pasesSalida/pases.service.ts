@@ -2,7 +2,7 @@ import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
   IPaseSalida, IPaseSalidaDetalle, IPaseSalidaGuardar, IFirmaUsuario, IPaseSalidaAuth,
-  BandejaFirma, BandejaPorteria, IPaseSalidaFirmar,
+  IPaseSalidaEstado, BandejaFirma, BandejaPorteria, IPaseSalidaFirmar,
 } from './pases.types'
 import { IMaterial } from './pasesSalida.types'
 import { IReglaResumen } from './configuracion.types'
@@ -35,6 +35,11 @@ export const pasesService = {
   // La bitácora: una fila por alternativa de firma. `armarBitacora` las agrupa.
   getFirmasPase: (id: number) =>
     httpClient.get<ExecutionResponse<IPaseSalidaAuth[]>>(`${schema}/${id}/Firmas`),
+
+  // El movimiento de estados, del más viejo al más nuevo. Las firmas dicen
+  // quién autorizó; esto dice qué le fue pasando al pase.
+  getHistorialPase: (id: number) =>
+    httpClient.get<ExecutionResponse<IPaseSalidaEstado[]>>(`${schema}/${id}/Historial`),
 
   // Las firmas de TODOS mis pases del período, en una sola llamada. Evita pedir
   // una por tarjeta cuando la lista las muestra todas.
@@ -85,6 +90,17 @@ export const pasesService = {
       ExecutionResponse<null> & { Estado?: string; Retorna?: boolean; FechaSalidaReal?: string },
       { Id: number }
     >(`${schema}/RegistrarSalida`, { Id: id }),
+
+  /**
+   * Registra el regreso de un pase que estaba afuera. Es el SEGUNDO escaneo del
+   * mismo QR: qué significa cada escaneo lo decide el estado del pase, no el
+   * guardia. El pase termina en Finalizado.
+   */
+  registrarRetorno: (id: number) =>
+    httpClient.post<
+      ExecutionResponse<null> & { Estado?: string; FechaRetorno?: string },
+      { Id: number }
+    >(`${schema}/RegistrarRetorno`, { Id: id }),
 
   // ── Bandeja de aprobaciones ────────────────────────────────────────────────
   // Mis accesos de firma. Normalmente devuelve uno.

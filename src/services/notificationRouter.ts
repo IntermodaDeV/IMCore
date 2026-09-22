@@ -2,6 +2,7 @@ import { navigateWhenReady } from '../navigation/navigationRef'
 import { requestOpenPass } from './passNavigation'
 import { requestOpenMiPase, requestOpenPaseAprobacion } from './paseNavigation'
 import { requestOpenHistorialHoraExtra, requestOpenSolicitudHoraExtra } from './overtimeNavigation'
+import { requestOpenMiPaseSalida, requestOpenPaseSalidaFirma } from './pasesSalidaNavigation'
 
 // Enruta una notificación (push o bandeja) a su pantalla de detalle según la
 // categoría. `data` es el payload de la notificación (FCM data o el Data del inbox).
@@ -137,6 +138,43 @@ export function routeNotification(data: any): boolean {
     if (id > 0) {
       setTimeout(() => navigateWhenReady('solicitudesRepuestosDetalle', { id, numero }), 300)
     }
+    return true
+  }
+
+  // Todo lo que le pasa a una firma de un pase de salida -> la bandeja de
+  // Aprobaciones. Las tres variantes (se requiere, ya no se requiere, ya firmó
+  // otro) van a la misma pantalla: en las tres lo que el usuario quiere ver es
+  // cómo le quedó la bandeja. El `evento` viaja para la bandeja de avisos.
+  if (category === 'pase_salida_firma') {
+    const paseId = Number(data.paseId ?? data.PaseId)
+    navigateWhenReady('pasesSalidaAprobaciones')
+    // Se publica DESPUÉS de navegar, igual que el resto: si la pantalla ya
+    // estaba montada resalta al toque, y si no, el destino queda pendiente y
+    // se consume al suscribirse.
+    if (paseId > 0) requestOpenPaseSalidaFirma(paseId)
+    return true
+  }
+
+  // Al SOLICITANTE: su pase de salida se resolvió (aprobado, y más adelante
+  // rechazado) -> Mis pases, con el pase señalado. No va a Aprobaciones: él no
+  // firma nada, y ahí su pase no aparece.
+  if (category === 'pase_salida_estado' || category === 'pase_salida_rechazado') {
+    const paseId = Number(data.paseId ?? data.PaseId)
+    const tab = String(data.tab ?? data.Tab ?? 'PROC') === 'FIN' ? 'FIN' : 'PROC'
+    navigateWhenReady('pasesSalidaMisPases', { tab })
+    if (paseId > 0) requestOpenMiPaseSalida(paseId, tab)
+    return true
+  }
+
+  // Un pase de salida venció sin usarse -> Mis pases, en la pestaña Finalizados
+  // y con el pase señalado. La pestaña viaja en el aviso y no se asume acá: si
+  // el servidor algún día avisa por otro motivo, manda a dónde corresponda sin
+  // tocar la app.
+  if (category === 'pase_salida_vencido') {
+    const paseId = Number(data.paseId ?? data.PaseId)
+    const tab = String(data.tab ?? data.Tab ?? 'FIN') === 'PROC' ? 'PROC' : 'FIN'
+    navigateWhenReady('pasesSalidaMisPases', { tab })
+    if (paseId > 0) requestOpenMiPaseSalida(paseId, tab)
     return true
   }
 

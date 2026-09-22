@@ -1,13 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshControl, FlatList, ScrollView } from 'react-native'
 import { Text, XStack, YStack, View, useTheme } from 'tamagui'
-import { useFocusEffect, useNavigation } from '@react-navigation/native'
-import { ChevronRight, RotateCcw, Package, Plus, QrCode, Trash2 } from 'lucide-react-native'
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
+import {
+  ChevronRight, RotateCcw, Package, Plus, QrCode, Trash2, IdCard, CalendarDays,
+} from 'lucide-react-native'
 import dayjs from 'dayjs'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
+import { NotificationBell } from '../../../components/notifications/NotificationBell'
+import { subscribeOpenMiPaseSalida } from '../../../services/pasesSalidaNavigation'
 import SearchInput from '../../../components/commons/SearchInput'
 import RecordCount from '../../../components/commons/RecordCount'
 import SkeletonList from '../../../components/Skeletons/SkeletonList'
@@ -22,8 +26,16 @@ import {
 } from '../pasesSalida.helpers'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import {
-  armarBitacora, EstadoPase, IPaseSalida, IPasoFirma,
+  armarBitacora, ESTADOS_ABIERTOS, ESTADOS_CERRADOS, EstadoPase, IPaseSalida, IPasoFirma,
 } from '../../../api/modules/pasesSalida/pases.types'
+
+/** Las dos pestañas: lo que sigue en curso y lo que ya cerró. */
+type TabPases = 'PROC' | 'FIN'
+
+const TABS: { key: TabPases; label: string }[] = [
+  { key: 'PROC', label: 'En proceso' },
+  { key: 'FIN', label: 'Finalizados' },
+]
 import PaseQrSheet from './PaseQrSheet'
 import LineaFirmas from './LineaFirmas'
 
@@ -50,6 +62,7 @@ const MESES = 6
 export default function MisPasesScreen() {
   const theme = useTheme()
   const navigation = useNavigation<any>()
+  const route = useRoute<any>()
   const { user } = useAuth()
   const { showToast } = useShowToast()
 
@@ -66,7 +79,27 @@ export default function MisPasesScreen() {
   // reintento, no como "no hay pases".
   const [error, setError] = useState<AppError | null>(null)
 
+  /**
+   * La pestaña manda sobre el chip de estado: primero se elige si se está
+   * mirando lo que sigue en curso o lo que ya cerró, y dentro de eso se afina.
+   * Los ocho chips sueltos obligaban a saber de memoria cuáles eran finales.
+   *
+   * Una notificación puede abrir la pantalla directo en una pestaña —el pase que
+   * venció está en Finalizados, y mandar al usuario a "En proceso" a buscarlo
+   * sería mandarlo a donde no está.
+   */
+  const [tab, setTab] = useState<TabPases>(
+    route.params?.tab === 'FIN' ? 'FIN' : 'PROC',
+  )
   const [estadoSel, setEstadoSel] = useState<EstadoPase | null>(null)
+
+  /**
+   * El pase que trajo la notificación. Se resalta unos segundos y se apaga: es
+   * para encontrarlo en la lista, no un estado del pase.
+   */
+  const [highlightId, setHighlightId] = useState<number | null>(null)
+
+  const estadosDeTab = tab === 'PROC' ? ESTADOS_ABIERTOS : ESTADOS_CERRADOS
 
   // El pase cuyo QR se está viendo. La hoja decide qué mostrar según el estado.
   const [qrPase, setQrPase] = useState<IPaseSalida | null>(null)
@@ -74,12 +107,12 @@ export default function MisPasesScreen() {
   // La bitácora de cada pase, indexada por Id. Viene con la lista.
   const [bitacoras, setBitacoras] = useState<Record<number, IPasoFirma[]>>({})
 
-  // El filtro de estado se aplica encima de lo que devolvió el buscador, no en
-  // paralelo: si no, uno de los dos pisaría al otro.
-  const visibles = useMemo(
-    () => (estadoSel ? filtered.filter(p => p.Estado === estadoSel) : filtered),
-    [filtered, estadoSel],
-  )
+  // Los tres filtros se encadenan, no corren en paralelo: buscador, luego
+  // pestaña, luego chip. Si fueran paralelos, uno pisaría al otro.
+  const visibles = useMemo(() => {
+    const deTab = filtered.filter(p => estadosDeTab.includes(p.Estado))
+    return estadoSel ? deTab.filter(p => p.Estado === estadoSel) : deTab
+  }, [filtered, estadosDeTab, estadoSel])
 
   const cargar = useCallback(async () => {
     try {
@@ -126,7 +159,46 @@ export default function MisPasesScreen() {
     } catch (e: any) { showToast('error', 'Error', e?.message || 'No se pudo eliminar') }
   }
 
-  usePageHeader({ center: <Text fontSize="$4" fontWeight="700" color="$text">Mis pases</Text> })
+  /**
+   * Llegó desde una notificación. La PESTAÑA viaja en el aviso: un pase vencido
+   * está en Finalizados, y dejar al usuario en "En proceso" sería mandarlo a
+   * buscarlo donde no está.
+   *
+   * Se limpia el chip de estado por la misma razón: si venía filtrando por
+   * "Aprobado", el pase vencido no aparecería y el aviso no serviría de nada.
+   */
+  const listaRef = useRef<FlatList<IPaseSalida>>(null)
+  /* El callback del bus se registra una sola vez, así que leería una lista
+     vieja. La ref siempre tiene la actual. */
+  const visiblesRef = useRef<IPaseSalida[]>([])
+  useEffect(() => { visiblesRef.current = visibles }, [visibles])
+
+  useEffect(() => {
+    const unsub = subscribeOpenMiPaseSalida(({ paseId, tab: destino }) => {
+      if (destino) setTab(destino)
+      setEstadoSel(null)
+      setHighlightId(paseId)
+
+      /* Sin el scroll el resaltado se apaga fuera de pantalla y no sirve de
+         nada. Se espera al re-render: cambiar de pestaña rearma la lista
+         entera y las posiciones de antes ya no valen. */
+      setTimeout(() => {
+        const i = visiblesRef.current.findIndex(x => x.Id === paseId)
+        if (i >= 0) listaRef.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0 })
+      }, 350)
+
+      setTimeout(() => setHighlightId(null), 4000)
+    })
+    return unsub
+  }, [])
+
+  // La campana acá no es decoración: el aviso de que un pase venció llega
+  // mientras el usuario no está mirando, y esta es la pantalla a la que lo
+  // manda. Sin ella, el único camino al aviso es el push del momento.
+  usePageHeader({
+    center: <Text fontSize="$4" fontWeight="700" color="$text">Mis pases</Text>,
+    right: <NotificationBell size={20} />,
+  })
 
   return (
     <View flex={1} backgroundColor="$background">
@@ -137,7 +209,7 @@ export default function MisPasesScreen() {
           <YStack flex={4}>
             <SearchInput
               data={items}
-              searchKeys={['Correlativo', 'TipoSalida', 'EnviadoA', 'Comentario', 'Estado']}
+              searchKeys={['Correlativo', 'TipoSalida', 'EnviadoA', 'Responsable', 'Comentario', 'Estado']}
               onResults={setFiltered}
               placeholder="Buscar..."
             />
@@ -153,6 +225,32 @@ export default function MisPasesScreen() {
           ) : null}
         </XStack>
 
+        {/* Pestañas: primero "¿esto sigue en curso o ya cerró?", que es la
+            pregunta con la que uno llega. Los chips de abajo afinan dentro. */}
+        <XStack padding={4} gap={4} backgroundColor="$backgroundElevated"
+          borderRadius="$4" marginBottom="$2.5" {...shadows.sm}>
+          {TABS.map(t => {
+            const sel = tab === t.key
+            return (
+              <XStack key={t.key} flex={1} alignItems="center" justifyContent="center"
+                paddingVertical="$2" borderRadius="$3"
+                backgroundColor={sel ? ACCENT : 'transparent'}
+                pressStyle={{ opacity: 0.7 }}
+                onPress={() => {
+                  setTab(t.key)
+                  // El chip elegido es de la otra pestaña: dejarlo puesto daría
+                  // una lista vacía sin explicación.
+                  setEstadoSel(null)
+                }}>
+                <Text fontSize={11} fontWeight={sel ? '800' : '600'}
+                  color={sel ? '#FFFFFF' : '$textMuted'} numberOfLines={1}>
+                  {t.label}
+                </Text>
+              </XStack>
+            )
+          })}
+        </XStack>
+
         {/* Estado: filtra en el cliente, la lista ya viene acotada por período. */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <XStack gap="$2" paddingBottom="$1">
@@ -163,7 +261,7 @@ export default function MisPasesScreen() {
               <Text fontSize={11} fontWeight="800" color={!estadoSel ? ACCENT : '$textMuted'}>Todos</Text>
             </View>
 
-            {ESTADOS_FILTRO.map(code => {
+            {ESTADOS_FILTRO.filter(c => estadosDeTab.includes(c)).map(code => {
               const on = estadoSel === code
               const est = estadoVisual(code)
               return (
@@ -180,7 +278,10 @@ export default function MisPasesScreen() {
           </XStack>
         </ScrollView>
 
-        <RecordCount count={visibles.length} label="Pases" />
+        <RecordCount
+          count={visibles.length}
+          label={tab === 'PROC' ? 'Pases en proceso' : 'Pases finalizados'}
+        />
       </YStack>
 
       {loading ? (
@@ -195,8 +296,19 @@ export default function MisPasesScreen() {
         />
       ) : (
         <FlatList
+          ref={listaRef}
           data={visibles}
           keyExtractor={(it) => String(it.Id)}
+          /* Las tarjetas tienen alto variable (la línea de firmas crece con los
+             pasos), así que no hay getItemLayout y scrollToIndex puede fallar
+             si el destino todavía no se renderizó. Se cae a un scroll
+             aproximado en vez de reventar. */
+          onScrollToIndexFailed={(info) => {
+            listaRef.current?.scrollToOffset({
+              offset: info.averageItemLength * info.index,
+              animated: true,
+            })
+          }}
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 12, paddingBottom: 40, flexGrow: 1 }}
           ItemSeparatorComponent={() => <View height={10} />}
@@ -213,13 +325,21 @@ export default function MisPasesScreen() {
           renderItem={({ item: p }) => {
             const est = estadoVisual(p.Estado)
             const color = est.color
+            // El que trajo la notificación, por unos segundos.
+            const resaltado = highlightId === p.Id
             return (
-              <YStack backgroundColor="$backgroundElevated" borderRadius="$4"
-                borderLeftWidth={4} borderLeftColor={color} borderWidth={1} borderColor="$border"
+              /* El resaltado toca el FONDO y el borde, no solo el borde: en una
+                 lista de tarjetas iguales, 2px se pierden al pasar la vista. Es
+                 el mismo criterio del historial de horas extra. */
+              <YStack backgroundColor={resaltado ? '$primaryOpacity2' : '$backgroundElevated'}
+                borderRadius="$4"
+                borderLeftWidth={4} borderLeftColor={color}
+                borderWidth={resaltado ? 2 : 1}
+                borderColor={resaltado ? '$primary' : '$border'}
                 paddingVertical="$3" paddingHorizontal="$4" gap="$2" {...shadows.sm}
                 /* Mientras se pueda editar, tocarlo abre el formulario: es lo
-                   único que se hace con un pase pendiente. Una vez que ya no
-                   admite cambios, solo queda consultarlo. */
+                  único que se hace con un pase pendiente. Una vez que ya no
+                  admite cambios, solo queda consultarlo. */
                 onPress={() => navigation.navigate(
                   p.PuedeEditar ? 'pasesSalidaPaseCrear' : 'pasesSalidaPaseDetalle',
                   { id: p.Id, correlativo: p.Correlativo },
@@ -258,12 +378,30 @@ export default function MisPasesScreen() {
                 </XStack>
 
                 <XStack alignItems="center" gap="$3" flexWrap="wrap">
+                  {/* La fecha para la que se pidió. Es la que decide si el pase
+                      sigue sirviendo —pasada esa fecha más la gracia, vence— así
+                      que va con etiqueta y no como un número suelto. */}
+                  {p.FechaSalida ? (
+                    <XStack alignItems="center" gap="$1.5">
+                      <CalendarDays size={12} color={theme.textMuted?.val} />
+                      <Text fontSize={11} color="$textMuted">Fecha de salida: </Text>
+                      <Text fontSize={11} color="$text" fontWeight="800">{fmtFecha(p.FechaSalida)}</Text>
+                    </XStack>
+                  ) : null}
                   <XStack alignItems="center" gap="$1.5">
                     <Package size={12} color={theme.textMuted?.val} />
                     <Text fontSize={11} color="$textMuted">
                       {p.Lineas} {p.Lineas === 1 ? 'línea' : 'líneas'}
                     </Text>
                   </XStack>
+                  {/* Quién lo retira: el solicitante suele pedirlo para otro, y
+                      es lo que le preguntan cuando alguien va a la puerta. */}
+                  {p.Responsable ? (
+                    <XStack alignItems="center" gap="$1.5">
+                      <IdCard size={12} color={theme.textMuted?.val} />
+                      <Text fontSize={11} color="$textMuted">{p.Responsable}</Text>
+                    </XStack>
+                  ) : null}
                   {p.Retorna && p.FechaRetorno ? (
                     <XStack alignItems="center" gap="$1.5">
                       <RotateCcw size={12} color={theme.textMuted?.val} />

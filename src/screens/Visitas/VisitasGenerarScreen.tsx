@@ -82,6 +82,15 @@ const vigenciaTexto = (g: Generated) => {
 /** El acceso que habilita los pases de meses y los horarios reservados. */
 const ACCESO_LARGA = 'VisitasLargaDuracion'
 
+/** El acceso que permite EXIMIR del documento de identidad. El documento nace
+ *  exigido; sin este acceso no hay switch que lo apague, solo un aviso. */
+const ACCESO_EXIMIR_ID = 'VisitasEximirId'
+
+/** El acceso que permite bajar el documento a UNA lectura por pase. Va al revés
+ *  que el anterior: el piso es el estricto —se pide en CADA entrada— y esto es
+ *  lo único que lo relaja. Tenerlo no obliga a nada, solo devuelve el switch. */
+const ACCESO_ID_CADA_ENTRADA = 'VisitasIdCadaEntrada'
+
 const tieneAcceso = (access: string | null | undefined, key: string) =>
   (access ?? '').split(',').map((s) => s.trim()).includes(key)
 
@@ -153,6 +162,13 @@ export default function VisitasGenerarScreen() {
   // Apagado por omisión: una lectura legible respalda todo el pase. Pedir el
   // documento en cada entrada es el respaldo extra y se elige a propósito.
   const [idCadaEntrada, setIdCadaEntrada] = useState(false)
+  // Eximir del documento necesita acceso. Sin él requiereId se queda en true y
+  // no hay control que lo mueva: el servidor lo forzaría igual, así que es mejor
+  // que el formulario diga desde el principio lo que va a pasar.
+  const puedeEximirId = tieneAcceso(user?.Access, ACCESO_EXIMIR_ID)
+  // Y la frecuencia va al revés: sin acceso el documento se pide en CADA
+  // entrada, y este acceso es lo único que lo baja a una sola lectura por pase.
+  const puedeIdCada = tieneAcceso(user?.Access, ACCESO_ID_CADA_ENTRADA)
   // ── Larga duración ──
   // Solo con el acceso 'VisitasLargaDuracion'. Se DECLARA en vez de deducirse de
   // la vigencia: si se dedujera, a quien tiene el acceso un pase rutinario de un
@@ -377,9 +393,12 @@ export default function VisitasGenerarScreen() {
         Horario_Id: horarioId ?? null,
         HoraDesde: horaPersonalizada ? horaDesde : null,
         HoraHasta: horaPersonalizada ? horaHasta : null,
-        RequiereId: requiereId,
-        // Solo tiene sentido si se pide documento; si no, el SP lo ignora igual.
-        IdCadaEntrada: requiereId && idCadaEntrada,
+        // Los dos van con el valor que la pantalla realmente pudo ofrecer, no con
+        // el del estado: sin acceso no hubo switch que los moviera. El servidor
+        // los fuerza igual, pero así el payload no miente sobre lo que se pidió.
+        RequiereId: puedeEximirId ? requiereId : true,
+        // Solo tiene sentido si se pide documento; si no, el SP lo normaliza.
+        IdCadaEntrada: !requiereId ? false : puedeIdCada ? idCadaEntrada : true,
         // Sin el acceso ni se manda: el servidor lo rechazaría igual, pero así
         // el payload dice la verdad de lo que la pantalla pudo ofrecer.
         LargaDuracion: puedeLarga && esLarga,
@@ -830,44 +849,90 @@ export default function VisitasGenerarScreen() {
           {/* ── ¿Pedir documento al entrar? ──
               Cuando está encendido, al registrar la entrada el guardia debe
               fotografiar el documento y el servidor lo lee para verificar que
-              el nombre corresponda a alguien del pase. */}
-          <XStack alignItems="center" justifyContent="space-between" marginTop="$1" gap="$2">
-            <XStack alignItems="center" gap="$2" flex={1}>
+              el nombre corresponda a alguien del pase.
+
+              Apagarlo necesita el acceso 'VisitasEximirId'. Sin él no se muestra
+              un switch deshabilitado sino un aviso: un control apagado invita a
+              tocarlo y deja al usuario preguntándose qué hizo mal, mientras que
+              el aviso le dice lo único que necesita saber —que el visitante
+              tiene que traer el documento— y sirve para avisarle a tiempo. */}
+          {puedeEximirId ? (
+            <XStack alignItems="center" justifyContent="space-between" marginTop="$1" gap="$2">
+              <XStack alignItems="center" gap="$2" flex={1}>
+                <IdCard size={16} color="#94A3B8" />
+                <YStack flex={1}>
+                  <Text fontSize={14} fontWeight="700" color="$text">Requiere identificación</Text>
+                  <Text fontSize={11} color="$textMuted">
+                    Al entrar se le toma foto al documento y se verifica el nombre
+                  </Text>
+                </YStack>
+              </XStack>
+              <View
+                onPress={() => setRequiereId((v) => !v)}
+                pressStyle={{ opacity: 0.8 }}
+                width={48}
+                height={28}
+                borderRadius={14}
+                backgroundColor={requiereId ? '$primary' : '$border'}
+                padding={3}
+                justifyContent="center"
+              >
+                <View
+                  width={22}
+                  height={22}
+                  borderRadius={11}
+                  backgroundColor="white"
+                  alignSelf={requiereId ? 'flex-end' : 'flex-start'}
+                />
+              </View>
+            </XStack>
+          ) : (
+            <XStack
+              alignItems="flex-start"
+              gap="$2"
+              marginTop="$1"
+              padding="$3"
+              borderRadius="$3"
+              borderWidth={1}
+              borderColor="$border"
+              backgroundColor="$backgroundElevated"
+            >
               <IdCard size={16} color="#94A3B8" />
-              <YStack flex={1}>
-                <Text fontSize={14} fontWeight="700" color="$text">Requiere identificación</Text>
+              <YStack flex={1} gap="$1">
+                <Text fontSize={14} fontWeight="700" color="$text">
+                  {puedeIdCada
+                    ? 'Esta visita va a necesitar identificación'
+                    : 'Esta visita va a necesitar identificación en cada entrada'}
+                </Text>
                 <Text fontSize={11} color="$textMuted">
-                  Al entrar se le toma foto al documento y se verifica el nombre
+                  {puedeIdCada
+                    ? 'Al entrar, el guardia le toma una foto al documento y se verifica el nombre contra los del pase. Avisale al visitante que lo traiga.'
+                    : 'Cada vez que entre, el guardia le toma una foto al documento y se verifica el nombre contra los del pase. Avisale al visitante que lo traiga siempre.'}
                 </Text>
               </YStack>
             </XStack>
-            <View
-              onPress={() => setRequiereId((v) => !v)}
-              pressStyle={{ opacity: 0.8 }}
-              width={48}
-              height={28}
-              borderRadius={14}
-              backgroundColor={requiereId ? '$primary' : '$border'}
-              padding={3}
-              justifyContent="center"
-            >
-              <View
-                width={22}
-                height={22}
-                borderRadius={11}
-                backgroundColor="white"
-                alignSelf={requiereId ? 'flex-end' : 'flex-start'}
-              />
-            </View>
-          </XStack>
+          )}
 
           {/* ── ¿En cada entrada, o una vez por pase? ──
               Solo aparece si se pide documento. Apagado significa que UNA lectura
               legible respalda todo el pase: un proveedor que viene cinco días
               entrega el documento una vez y no cada mañana, que en portería se
-              paga en tiempo. Encendido es el respaldo entrada por entrada. */}
-          {requiereId && (
-            <XStack alignItems="center" justifyContent="space-between" marginTop="$2" gap="$2" paddingLeft="$5">
+              paga en tiempo. Encendido es el respaldo entrada por entrada.
+
+              Acá el piso es el estricto: sin 'VisitasIdCadaEntrada' se pide en
+              cada entrada y no hay switch. Si tampoco puede eximir del documento,
+              ni siquiera hace falta el aviso: el de arriba ya lo dijo, y repetirlo
+              dos veces seguidas es ruido. */}
+          {requiereId && puedeIdCada ? (
+            <XStack
+              alignItems="center"
+              justifyContent="space-between"
+              marginTop="$2"
+              gap="$2"
+              /* Sangrado solo cuando cuelga del switch de arriba. Debajo del
+                 aviso no hay de qué colgar. */
+              paddingLeft={puedeEximirId ? '$5' : undefined}
+            >
               <XStack alignItems="center" gap="$2" flex={1}>
                 <Repeat size={14} color="#94A3B8" />
                 <YStack flex={1}>
@@ -898,7 +963,27 @@ export default function VisitasGenerarScreen() {
                 />
               </View>
             </XStack>
-          )}
+          ) : requiereId && puedeEximirId ? (
+            <XStack
+              alignItems="flex-start"
+              gap="$2"
+              marginTop="$2"
+              marginLeft="$5"
+              padding="$3"
+              borderRadius="$3"
+              borderWidth={1}
+              borderColor="$border"
+              backgroundColor="$backgroundElevated"
+            >
+              <Repeat size={14} color="#94A3B8" />
+              <YStack flex={1}>
+                <Text fontSize={11} color="$textMuted">
+                  Se le va a pedir el documento en CADA entrada. Que una sola lectura
+                  respalde todo el pase necesita un acceso aparte.
+                </Text>
+              </YStack>
+            </XStack>
+          ) : null}
 
           <Separador label="FECHAS Y HORARIO" Icon={CalendarRange} />
 

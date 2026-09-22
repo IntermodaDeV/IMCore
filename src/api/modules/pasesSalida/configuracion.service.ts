@@ -1,7 +1,7 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
-  IGrupo, IGrupoManage, IMaterialConGrupo, IGrupoMateriales,
+  IGrupo, IGrupoManage, IGrupoDetalle, IGrupoHorario, IMaterialConGrupo, IGrupoMateriales,
   IReglaFila, IAccesoFirma, IReglaGuardar,
   ISolicitante, IMaterialSolicitante, ISolicitanteMateriales,
 } from './configuracion.types'
@@ -20,6 +20,14 @@ export const pasesSalidaConfigService = {
     httpClient.put<ExecutionResponse<null>, IGrupoManage>(`${schema}/Grupos`, data),
   toggleGrupo: (id: number) =>
     httpClient.post<ExecutionResponse<null>>(`${schema}/Grupos/Toggle?id=${id}`),
+
+  // ── Horario de salida ───────────────────────────────────────────────────────
+  // El grupo con su horario propio y el general. Devuelve 0 o 1 elemento.
+  getGrupo: (id: number) =>
+    httpClient.get<ExecutionResponse<IGrupoDetalle[]>>(`${schema}/Grupo`, { id }),
+  // Las dos horas vacías devuelven el grupo al horario general.
+  guardarHorario: (data: IGrupoHorario) =>
+    httpClient.post<ExecutionResponse<null>, IGrupoHorario>(`${schema}/Grupos/Horario`, data),
 
   // ── Materiales del grupo ────────────────────────────────────────────────────
   // Sin grupoId trae todos, con su grupo cuando lo tienen.

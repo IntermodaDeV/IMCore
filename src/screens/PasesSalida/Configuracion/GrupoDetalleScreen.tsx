@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Modal, RefreshControl, ScrollView, FlatList } from 'react-native'
+import { Modal, Platform, RefreshControl, ScrollView, FlatList } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
-import { Boxes, Plus, Trash2, Check, RotateCcw, Ban, ArrowLeft } from 'lucide-react-native'
+import { Boxes, Plus, Trash2, Check, RotateCcw, Ban, ArrowLeft, Clock } from 'lucide-react-native'
+import DateTimePicker from '@react-native-community/datetimepicker'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
@@ -12,8 +13,19 @@ import { shadows } from '../../../theme/shadows'
 import { ACCENT, ACCENT_BG } from '../pasesSalida.helpers'
 import { pasesSalidaConfigService } from '../../../api/modules/pasesSalida/configuracion.service'
 import {
-  ICelda, IAccesoFirma, IMaterialConGrupo, armarCeldas,
+  ICelda, IAccesoFirma, IGrupoDetalle, IMaterialConGrupo, armarCeldas,
 } from '../../../api/modules/pasesSalida/configuracion.types'
+
+/** 'HH:mm' -> Date de hoy con esa hora, que es lo que pide el picker nativo. */
+const horaADate = (hhmm?: string | null): Date => {
+  const d = new Date()
+  const [h, m] = (hhmm ?? '06:00').split(':').map(Number)
+  d.setHours(isNaN(h) ? 6 : h, isNaN(m) ? 0 : m, 0, 0)
+  return d
+}
+
+const fmtHora = (d: Date) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
 /**
  * El detalle de un grupo: sus materiales y, por cada tipo de salida, las firmas
@@ -56,20 +68,31 @@ export default function GrupoDetalleScreen() {
   const [noPermitido, setNoPermitido] = useState(false)
   const [celdaGuardando, setCeldaGuardando] = useState(false)
 
+  // Horario de salida del grupo. `grupo` trae el propio y el general.
+  const [grupo, setGrupo] = useState<IGrupoDetalle | null>(null)
+  const [horarioOpen, setHorarioOpen] = useState(false)
+  const [hPropio, setHPropio] = useState(false)
+  const [hDesde, setHDesde] = useState('06:00')
+  const [hHasta, setHHasta] = useState('20:00')
+  const [pickerHora, setPickerHora] = useState<'desde' | 'hasta' | null>(null)
+  const [horarioGuardando, setHorarioGuardando] = useState(false)
+
   const asignados = useMemo(() => materiales.filter(m => m.Grupo_Id === grupoId), [materiales, grupoId])
 
   const cargar = useCallback(async () => {
     try {
-      const [rReglas, rMat, rFirmas] = await Promise.all([
+      const [rReglas, rMat, rFirmas, rGrupo] = await Promise.all([
         pasesSalidaConfigService.getReglas(grupoId),
         pasesSalidaConfigService.getMateriales(undefined, false),
         pasesSalidaConfigService.getFirmas(),
+        pasesSalidaConfigService.getGrupo(grupoId),
       ])
       setCeldas(armarCeldas(rReglas.Data ?? []))
       setMateriales(rMat.Data ?? [])
       setFirmas(rFirmas.Data ?? [])
+      setGrupo(rGrupo.Data?.[0] ?? null)
     } catch {
-      setCeldas([]); setMateriales([]); setFirmas([])
+      setCeldas([]); setMateriales([]); setFirmas([]); setGrupo(null)
     }
   }, [grupoId])
 
@@ -100,6 +123,39 @@ export default function GrupoDetalleScreen() {
       else showToast('error', 'No se pudo', res.ErrorMessage || 'Intente de nuevo')
     } catch (e: any) { showToast('error', 'Error', e?.message || 'No se pudo guardar') }
     finally { setMatGuardando(false) }
+  }
+
+  // ── Horario de salida ──────────────────────────────────────────────────────
+
+  const abrirHorario = () => {
+    const propio = !!grupo?.HoraSalidaDesde && !!grupo?.HoraSalidaHasta
+    setHPropio(propio)
+    // Con horario propio se edita ese; sin él se arranca del general, que es lo
+    // que hoy se le aplica — no de un valor inventado.
+    setHDesde(grupo?.HoraSalidaDesde || grupo?.GeneralDesde || '06:00')
+    setHHasta(grupo?.HoraSalidaHasta || grupo?.GeneralHasta || '20:00')
+    setPickerHora(null)
+    setHorarioOpen(true)
+  }
+
+  const guardarHorario = async () => {
+    if (hPropio && hDesde === hHasta) {
+      showToast('warning', 'Horario inválido', 'La hora de inicio y la de fin no pueden ser la misma')
+      return
+    }
+    setHorarioGuardando(true)
+    try {
+      const res = await pasesSalidaConfigService.guardarHorario({
+        Grupo_Id: grupoId,
+        // Sin horario propio se mandan las dos en null: así el grupo vuelve a
+        // heredar y no queda una copia congelada del general.
+        HoraSalidaDesde: hPropio ? hDesde : null,
+        HoraSalidaHasta: hPropio ? hHasta : null,
+      })
+      if (res.Success) { showToast('success', 'Listo', res.SuccessMessage || 'Horario actualizado'); setHorarioOpen(false); await cargar() }
+      else showToast('error', 'No se pudo guardar', res.ErrorMessage || 'Intente de nuevo')
+    } catch (e: any) { showToast('error', 'Error', e?.message || 'No se pudo guardar') }
+    finally { setHorarioGuardando(false) }
   }
 
   // ── Celda ──────────────────────────────────────────────────────────────────
@@ -216,6 +272,36 @@ export default function GrupoDetalleScreen() {
               ))}
             </XStack>
           )}
+        </YStack>
+
+        <View height={14} />
+
+        {/* ── Horario de salida ── */}
+        <YStack backgroundColor="$backgroundElevated" borderRadius="$4" borderWidth={1} borderColor="$border"
+          padding="$4" gap="$2.5" {...shadows.sm}>
+          <XStack alignItems="center" gap="$2">
+            <Clock size={16} color={theme.primary?.val} />
+            <Text flex={1} fontSize="$3" fontWeight="900" color="$text">Horario de salida</Text>
+            <View onPress={abrirHorario} pressStyle={{ opacity: 0.7 }} hitSlop={8}>
+              <Text fontSize="$2" fontWeight="800" color="$primary">Editar</Text>
+            </View>
+          </XStack>
+
+          <XStack alignItems="center" gap="$2.5">
+            <View backgroundColor={ACCENT_BG} borderWidth={1} borderColor={ACCENT}
+              borderRadius="$3" paddingHorizontal="$3" paddingVertical="$2">
+              <Text fontSize={15} fontWeight="900" color={ACCENT}>
+                {(grupo?.HoraSalidaDesde || grupo?.GeneralDesde) ?? '--:--'}
+                {'  a  '}
+                {(grupo?.HoraSalidaHasta || grupo?.GeneralHasta) ?? '--:--'}
+              </Text>
+            </View>
+            <Text flex={1} fontSize={11} color="$textMuted">
+              {grupo?.HoraSalidaDesde
+                ? 'Horario propio de este grupo.'
+                : 'Usa el horario general de portería. Editar lo convierte en una excepción solo para este grupo.'}
+            </Text>
+          </XStack>
         </YStack>
 
         <View height={14} />
@@ -340,6 +426,116 @@ export default function GrupoDetalleScreen() {
                 opacity={matGuardando ? 0.6 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
                 alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
                 {matGuardando ? <Spinner color="#fff" /> : null}
+                <Text color="#fff" fontWeight="800" fontSize="$3">Guardar</Text>
+              </View>
+            </XStack>
+          </YStack>
+        </View>
+      </Modal>
+
+      {/* ── Modal: horario de salida ── */}
+      <Modal visible={horarioOpen} transparent animationType="fade" onRequestClose={() => setHorarioOpen(false)}>
+        <View flex={1} backgroundColor="rgba(0,0,0,0.45)" alignItems="center" justifyContent="center" padding="$4">
+          <YStack width="100%" maxWidth={460} backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3">
+            <Text fontSize="$5" fontWeight="900" color="$text">Horario de salida</Text>
+            <Text fontSize={11} color="$textMuted">
+              Portería solo puede dar salida a los pases de este grupo dentro de este horario.
+            </Text>
+
+            {/* La decisión de fondo va primero: heredar o ser una excepción. Con
+                las horas arriba, se editaría un horario propio sin haber elegido
+                tenerlo. */}
+            <YStack gap="$2">
+              {[
+                { propio: false, titulo: 'Usar el horario general',
+                  detalle: `${grupo?.GeneralDesde ?? '--:--'} a ${grupo?.GeneralHasta ?? '--:--'} · cambia solo si cambia el general` },
+                { propio: true, titulo: 'Horario propio de este grupo',
+                  detalle: 'Una excepción: no lo afecta el horario general' },
+              ].map(op => {
+                const sel = hPropio === op.propio
+                return (
+                  <XStack key={String(op.propio)} alignItems="flex-start" gap="$3"
+                    padding="$3" borderRadius="$4" borderWidth={1.5}
+                    borderColor={sel ? ACCENT : '$border'}
+                    backgroundColor={sel ? ACCENT_BG : 'transparent'}
+                    onPress={() => setHPropio(op.propio)} pressStyle={{ opacity: 0.8 }}>
+                    <View width={20} height={20} borderRadius={10} borderWidth={1.5}
+                      borderColor={sel ? ACCENT : '$border'}
+                      backgroundColor={sel ? ACCENT : 'transparent'}
+                      alignItems="center" justifyContent="center" marginTop={1}>
+                      {sel ? <Check size={13} color="#fff" /> : null}
+                    </View>
+                    <YStack flex={1} gap={2}>
+                      <Text fontSize={13} fontWeight="800" color={sel ? '$primary' : '$text'}>{op.titulo}</Text>
+                      <Text fontSize={10} color="$textMuted">{op.detalle}</Text>
+                    </YStack>
+                  </XStack>
+                )
+              })}
+            </YStack>
+
+            {hPropio ? (
+              <>
+                <XStack gap="$2.5">
+                  {([
+                    { campo: 'desde' as const, label: 'Desde', valor: hDesde },
+                    { campo: 'hasta' as const, label: 'Hasta', valor: hHasta },
+                  ]).map(h => (
+                    <View key={h.campo} flex={1} borderWidth={1.5}
+                      borderColor={pickerHora === h.campo ? ACCENT : '$border'}
+                      borderRadius="$4" paddingHorizontal="$3" paddingVertical="$2.5"
+                      onPress={() => setPickerHora(pickerHora === h.campo ? null : h.campo)}
+                      pressStyle={{ opacity: 0.7 }}>
+                      <XStack alignItems="center" justifyContent="space-between">
+                        <YStack>
+                          <Text fontSize={11} color="$textMuted">{h.label}</Text>
+                          <Text fontSize={16} fontWeight="900" color="$text">{h.valor}</Text>
+                        </YStack>
+                        <Clock size={16} color={theme.textMuted?.val} />
+                      </XStack>
+                    </View>
+                  ))}
+                </XStack>
+
+                {pickerHora ? (
+                  <View backgroundColor="$backgroundSurface" borderRadius="$3" padding="$2">
+                    <DateTimePicker
+                      value={horaADate(pickerHora === 'desde' ? hDesde : hHasta)}
+                      mode="time"
+                      is24Hour
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(_, d) => {
+                        // En Android el picker es un diálogo que se cierra solo;
+                        // en iOS es una rueda embebida y se deja abierta.
+                        if (Platform.OS !== 'ios') setPickerHora(null)
+                        if (!d) return
+                        if (pickerHora === 'desde') setHDesde(fmtHora(d))
+                        else setHHasta(fmtHora(d))
+                      }}
+                    />
+                  </View>
+                ) : null}
+
+                {/* Una ventana que cruza medianoche es válida, pero es tan
+                    inusual que conviene confirmarle al usuario que se entendió
+                    así y no al revés. */}
+                {hDesde > hHasta ? (
+                  <Text fontSize={10} color="#f59e0b" fontWeight="700">
+                    Este horario cruza la medianoche: de {hDesde} a {hHasta} del día siguiente.
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
+
+            <XStack gap="$2.5" marginTop="$1">
+              <View flex={1} onPress={horarioGuardando ? undefined : () => setHorarioOpen(false)} pressStyle={{ opacity: 0.85 }}
+                borderWidth={1.5} borderColor="$border" borderRadius="$4" height={46} alignItems="center" justifyContent="center">
+                <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
+              </View>
+              <View flex={1} onPress={horarioGuardando ? undefined : guardarHorario} pressStyle={{ opacity: 0.85 }}
+                opacity={horarioGuardando ? 0.6 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
+                alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+                {horarioGuardando ? <Spinner color="#fff" /> : null}
                 <Text color="#fff" fontWeight="800" fontSize="$3">Guardar</Text>
               </View>
             </XStack>

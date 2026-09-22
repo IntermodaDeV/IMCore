@@ -39,6 +39,9 @@ export const COLOR_ESTADO: Record<EstadoPase, string> = {
   // Salió (azul-verde) porque son la continuación de lo mismo, no otra cosa.
   PSFIN:  '#0ea5e9',
   PSRET:  '#14b8a6',
+  // Vencido comparte el rojo apagado de lo que no llegó a nada: no es un
+  // rechazo, pero tampoco salió.
+  PSVEN:  '#b45309',
   PSANU:  '#64748b',
   PSELI:  '#64748b',
 }
@@ -62,6 +65,7 @@ export const BG_ESTADO: Record<EstadoPase, string> = {
   PSSAL:  'rgba(59, 130, 246, 0.18)',
   PSFIN:  'rgba(14, 165, 233, 0.18)',
   PSRET:  'rgba(20, 184, 166, 0.18)',
+  PSVEN:  'rgba(180, 83, 9, 0.18)',
   PSANU:  'rgba(100, 116, 139, 0.18)',
   PSELI:  'rgba(100, 116, 139, 0.18)',
 }
@@ -74,6 +78,7 @@ export const ETIQUETA_ESTADO: Record<EstadoPase, string> = {
   PSSAL:  'Salió',
   PSFIN:  'Finalizado',
   PSRET:  'Retornado',
+  PSVEN:  'Vencido',
   PSANU:  'Anulado',
   PSELI:  'Eliminado',
 }
@@ -86,7 +91,7 @@ export const ETIQUETA_ESTADO: Record<EstadoPase, string> = {
  * filtro sería ofrecer una búsqueda que siempre sale vacía.
  */
 export const ESTADOS_FILTRO: EstadoPase[] =
-  ['PSPEND', 'PSEAPR', 'PSAPR', 'PSREJ', 'PSSAL', 'PSFIN', 'PSRET', 'PSANU']
+  ['PSPEND', 'PSEAPR', 'PSAPR', 'PSREJ', 'PSSAL', 'PSFIN', 'PSRET', 'PSVEN', 'PSANU']
 
 /**
  * Los tres valores visuales de un estado, con respaldo gris si el servidor
@@ -121,6 +126,7 @@ export const estadoVisual = (estado?: string | null) => {
 export type SituacionQr = 'disponible' | 'pendiente' | 'cerrado'
 
 const MOTIVO_QR: Record<string, string> = {
+  PSVEN: 'Este pase venció sin usarse: se le pasó la fecha de salida y el plazo de gracia. Hay que crear uno nuevo.',
   PSFIN: 'Este pase ya finalizó: salió y no regresa, así que su código dejó de tener uso.',
   PSRET: 'Este pase ya retornó y quedó cerrado, así que su código dejó de tener uso.',
   PSREJ: 'Este pase fue rechazado, así que no llegará a tener código.',

@@ -3,7 +3,9 @@ import { RefreshControl, FlatList } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import {
+  // `History` se renombra: choca con el tipo global History del DOM y TS resuelve ese.
   ScanLine, Package, User, Building2, Stamp, ChevronDown, ChevronUp, LogOut, Clock,
+  IdCard, History as HistoryIcon,
 } from 'lucide-react-native'
 import dayjs from 'dayjs'
 
@@ -13,16 +15,19 @@ import AppDatePicker from '../../../components/commons/AppDatePicker'
 import SearchInput from '../../../components/commons/SearchInput'
 import RecordCount from '../../../components/commons/RecordCount'
 import SkeletonList from '../../../components/Skeletons/SkeletonList'
+import { NotificationBell } from '../../../components/notifications/NotificationBell'
 import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
 import { ACCENT, ACCENT_BG, estadoVisual, fmtCantidad, fmtFechaHora } from '../pasesSalida.helpers'
 import LineaFirmas from '../Pases/LineaFirmas'
+import LineaEstados from '../Pases/LineaEstados'
 import EscanerPase from './EscanerPase'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import {
-  armarBitacora, BandejaPorteria, IPaseSalida, IPaseSalidaDetalle, IPasoFirma,
+  armarBitacora, BandejaPorteria, IPaseSalida, IPaseSalidaDetalle,
+  IPaseSalidaEstado, IPasoFirma,
 } from '../../../api/modules/pasesSalida/pases.types'
 
 /** Las tres bandejas. La primera es la cola de trabajo; las otras, consulta. */
@@ -95,6 +100,7 @@ export default function ControlSalidaScreen() {
   const [abierto, setAbierto] = useState<number | null>(null)
   const [detalles, setDetalles] = useState<Record<number, IPaseSalidaDetalle[]>>({})
   const [bitacoras, setBitacoras] = useState<Record<number, IPasoFirma[]>>({})
+  const [historiales, setHistoriales] = useState<Record<number, IPaseSalidaEstado[]>>({})
   const [cargandoDet, setCargandoDet] = useState<number | null>(null)
 
   const esHoy = fecha === HOY()
@@ -136,15 +142,18 @@ export default function ControlSalidaScreen() {
 
     setCargandoDet(id)
     try {
-      const [rDet, rFirmas] = await Promise.all([
+      const [rDet, rFirmas, rHist] = await Promise.all([
         pasesService.getDetalle(id),
         pasesService.getFirmasPase(id),
+        pasesService.getHistorialPase(id),
       ])
       setDetalles(prev => ({ ...prev, [id]: rDet.Data ?? [] }))
       setBitacoras(prev => ({ ...prev, [id]: armarBitacora(rFirmas.Data ?? []) }))
+      setHistoriales(prev => ({ ...prev, [id]: rHist.Data ?? [] }))
     } catch {
       setDetalles(prev => ({ ...prev, [id]: [] }))
       setBitacoras(prev => ({ ...prev, [id]: [] }))
+      setHistoriales(prev => ({ ...prev, [id]: [] }))
     } finally { setCargandoDet(null) }
   }
 
@@ -175,7 +184,10 @@ export default function ControlSalidaScreen() {
     } finally { setBuscando(false) }
   }
 
-  usePageHeader({ center: <Text fontSize="$4" fontWeight="700" color="$text">Control de salida</Text> })
+  usePageHeader({
+    center: <Text fontSize="$4" fontWeight="700" color="$text">Control de salida</Text>,
+    right: <NotificationBell size={20} />,
+  })
 
   return (
     <View flex={1} backgroundColor="$background">
@@ -240,9 +252,11 @@ export default function ControlSalidaScreen() {
 
         <SearchInput
           data={items}
-          searchKeys={['Correlativo', 'EnviadoA', 'Solicitante', 'TipoSalida']}
+          // El responsable es clave acá: alguien llega a la puerta y lo primero
+          // que dice es su nombre, no el correlativo del pase.
+          searchKeys={['Correlativo', 'Responsable', 'EnviadoA', 'Solicitante', 'TipoSalida']}
           onResults={setFiltered}
-          placeholder="Buscar por pase, destino o solicitante..."
+          placeholder="Buscar por pase, quién retira o destino..."
         />
         <RecordCount
           count={filtered.length}
@@ -331,6 +345,18 @@ export default function ControlSalidaScreen() {
 
                 {/* Quién lo pide y de qué empresa. En Pendientes la fecha no va:
                     toda la lista es la misma y ya está en el selector. */}
+                {/* Quién puede retirarlo. En esta pantalla es el dato que el
+                    guardia compara contra la persona que tiene enfrente, así que
+                    va en su propia línea y en el color de marca, no perdido
+                    entre el solicitante y la empresa. */}
+                {p.Responsable ? (
+                  <XStack alignItems="center" gap="$1.5">
+                    <IdCard size={13} color={ACCENT} />
+                    <Text fontSize={12} fontWeight="800" color="$text">{p.Responsable}</Text>
+                    <Text fontSize={10} color="$textMuted">retira</Text>
+                  </XStack>
+                ) : null}
+
                 <XStack alignItems="center" gap="$3" flexWrap="wrap">
                   <XStack alignItems="center" gap="$1.5">
                     <User size={12} color={theme.textMuted?.val} />
@@ -437,6 +463,19 @@ export default function ControlSalidaScreen() {
                           creadoEn={p.Creation_Date}
                           fmtFecha={fmtFechaHora}
                         />
+                      </YStack>
+                    ) : null}
+
+                    {/* El movimiento del pase. Acá es lo que responde "¿y este
+                        cuándo salió y quién lo despachó?" sin llamar a nadie. */}
+                    {historiales[p.Id]?.length ? (
+                      <YStack gap="$2" marginTop="$2" paddingTop="$2.5"
+                        borderTopWidth={1} borderTopColor="$border">
+                        <XStack alignItems="center" gap="$1.5">
+                          <HistoryIcon size={12} color={theme.primary?.val} />
+                          <Text fontSize={11} fontWeight="900" color="$textMuted">MOVIMIENTO</Text>
+                        </XStack>
+                        <LineaEstados movimientos={historiales[p.Id]} />
                       </YStack>
                     ) : null}
                   </YStack>

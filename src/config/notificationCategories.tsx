@@ -1,4 +1,4 @@
-import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck, PackageSearch } from 'lucide-react-native'
+import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck, PackageSearch,Stamp, CalendarX } from 'lucide-react-native'
 import type { NotificationCategory } from '../api/modules/notifications/notifications.service'
 
 /**
@@ -107,15 +107,44 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
     color: '#64748B',
     bg: 'rgba(100,116,139,0.12)',
   },
-  // Créditos. Llega cuando termina —bien o mal— la carga de datos de AX de una
-  // corrida, que tarda de 45 s a más de 3 minutos: el aviso existe justamente
-  // para no tener que quedarse mirando la pantalla del web. El MISMO tipo cubre
-  // el éxito y la falla, así que el color no puede prometer ninguno de los dos.
   administracion_paquetes: {
     label: 'Administración de Paquetes',
     Icon: PackageSearch,
     color: '#0891B2',
     bg: 'rgba(8,145,178,0.12)',
+  },
+  // Pases de salida. Mismo criterio que la cooperativa: el ícono dice de qué
+  // módulo viene y el color separa lo que hay que atender de lo que solo
+  // informa. Naranja el que espera una firma, ámbar oscuro el que ya venció —
+  // el mismo que usa el badge del estado Vencido en las pantallas del módulo.
+  pase_salida_firma: {
+    label: 'Firma de pase de salida',
+    Icon: Stamp,
+    color: '#FF551A',
+    bg: 'rgba(255,85,26,0.12)',
+  },
+  pase_salida_vencido: {
+    label: 'Pase de salida vencido',
+    Icon: CalendarX,
+    color: '#B45309',
+    bg: 'rgba(180,83,9,0.12)',
+  },
+  // Al SOLICITANTE: su pase avanzó bien — aprobado, salió, regresó. Verde
+  // porque es el desenlace que está esperando, y distinto del naranja de "te
+  // toca firmar": este no le pide nada, le informa.
+  pase_salida_estado: {
+    label: 'Mi pase de salida',
+    Icon: CircleCheck,
+    color: '#15803D',
+    bg: 'rgba(34,197,94,0.12)',
+  },
+  // El rechazo va aparte por el ícono: un check verde sobre "tu pase fue
+  // rechazado" dice lo contrario de lo que pasó.
+  pase_salida_rechazado: {
+    label: 'Pase de salida rechazado',
+    Icon: CircleX,
+    color: '#DC2626',
+    bg: 'rgba(220,38,38,0.12)',
   },
 }
 

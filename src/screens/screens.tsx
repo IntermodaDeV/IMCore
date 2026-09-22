@@ -33,5 +33,7 @@ export const SCREENS: Record<string, TScreenEntry> = {
   ...ScreensCooperativa,
   ...ScreensSalidaFacturas,
   ...ScreensPasesSalida,
+  ...ScreensCreditos,
+
   not_found: NotFoundScreen,
-}
+};
