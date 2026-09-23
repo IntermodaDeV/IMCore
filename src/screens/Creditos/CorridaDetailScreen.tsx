@@ -170,15 +170,49 @@ export default function CorridaDetailScreen() {
             icon={reanudando ? undefined : <Send size={16} color="white" />}
             onPress={async () => {
               setReanudando(true)
+              const antes = envio.Enviadas
               try {
                 const r = await svc.enviarAX(id)
-                if (r.Success) {
-                  showToast('success', 'Envío retomado',
-                    `Van ${fmtNum(envio.Pendientes)} líneas. Podés cerrar la app: sigue en el servidor.`)
-                  cargar()
-                } else {
+                if (!r.Success) {
                   showToast('error', 'No se pudo retomar', r.ErrorMessage || 'Intentá de nuevo')
+                  return
                 }
+
+                /* HAY QUE ESPERAR EL RESULTADO, NO SOLO DISPARAR.
+                   Antes esto avisaba «envío retomado» y refrescaba de una: como el
+                   proceso todavía no había ni empezado, la pantalla salía igualita.
+                   Y si lo único pendiente eran líneas que AX rechaza por un motivo
+                   de negocio, el intento entero dura 3 segundos —menos que una
+                   vuelta del sondeo, que es de 5— así que nadie veía nunca nada
+                   cambiar. Visto desde el teléfono, el botón no hacía nada.
+
+                   Así que se espera acá: hasta 40 s, y se dice qué pasó de verdad. */
+                let ultimo = envio
+                for (let i = 0; i < 13; i++) {
+                  await new Promise(r2 => setTimeout(r2, 3000))
+                  try {
+                    const e = await svc.getEstadoEnvio(id)
+                    if (e.Success && e.Data) { ultimo = e.Data; setEnvio(e.Data) }
+                  } catch { /* un sondeo perdido no es un error */ }
+
+                  const cor = await svc.getCorrida(id)
+                  if (cor.Success && cor.Data) setC(cor.Data)
+                  if (cor.Success && cor.Data?.ProcesoEstado !== 'EN_CURSO'
+                      && ultimo.Enviadas !== antes) break
+                  if (cor.Success && cor.Data?.ProcesoEstado !== 'EN_CURSO' && i >= 1) break
+                }
+
+                if (ultimo.Pendientes === 0)
+                  showToast('success', 'El lote quedó completo',
+                    `${fmtNum(ultimo.Enviadas)} líneas en AX.`)
+                else if (ultimo.Enviadas === antes)
+                  showToast('error', 'Ninguna pudo entrar',
+                    `Las ${fmtNum(ultimo.Pendientes)} que faltan vuelven a fallar por el mismo ` +
+                    'motivo. Reintentar no las arregla: hay que corregir el pedido en AX.')
+                else
+                  showToast('success', 'Envío retomado',
+                    `${fmtNum(ultimo.Enviadas - antes)} líneas más entraron · ` +
+                    `quedan ${fmtNum(ultimo.Pendientes)}.`)
               } catch (e: any) {
                 showToast('error', 'Error', e?.message || 'No se pudo retomar el envío')
               } finally { setReanudando(false) }
