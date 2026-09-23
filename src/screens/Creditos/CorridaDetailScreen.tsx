@@ -207,6 +207,48 @@ export default function CorridaDetailScreen() {
         </YStack>
       )}
 
+      {/* EL PAQUETE EN AX, NO LA CORRIDA.
+          Quien mira esto desde el teléfono dejó subiendo el lote y lo que quiere
+          saber es si el PAQUETE ya está completo — faltantes y sobrantes son dos
+          corridas distintas pero una sola entrega. Se muestra apenas hay algo
+          confirmado por AX: antes de eso no hay nada que reportar. */}
+      {envio != null && envio.PorModo.some(m => m.Enviadas > 0) && (
+        <Tarjeta titulo={`El paquete ${c.CodigoPaquete} en AX`}>
+          {envio.PorModo.map(m => {
+            const completo = m.Pendientes === 0
+            return (
+              <XStack key={m.Modo} alignItems="center" gap="$2" paddingVertical="$1">
+                <YStack flex={1} gap={2}>
+                  <Text fontSize="$3" fontWeight="700" color="$text">
+                    {m.Modo === 'SOBRANTES' ? 'Sobrantes' : 'Faltantes'}
+                  </Text>
+                  <Text fontSize="$2" color="$textMuted">
+                    {m.Corridas.map(x => `#${x}`).join(' · ')}
+                    {m.Clientes > 0 ? ` · ${fmtNum(m.Clientes)} clientes` : ''}
+                  </Text>
+                </YStack>
+                <YStack alignItems="flex-end" gap={2}>
+                  <Text fontSize="$3" fontWeight="800"
+                    color={completo ? '#0d9488' : m.ConError > 0 ? '#ea580c' : '$text'}>
+                    {fmtNum(m.Enviadas)} de {fmtNum(m.Lineas)} líneas
+                  </Text>
+                  <Text fontSize="$2" color="$textMuted">{fmtNum(m.Unidades)} unidades en AX</Text>
+                </YStack>
+              </XStack>
+            )
+          })}
+          {/* Unidades sí se suman entre lotes; clientes y pedidos no, porque el mismo
+              cliente puede recibir faltantes y sobrantes y se contaría dos veces. */}
+          {envio.PorModo.length > 1 && (
+            <>
+              <View height={1} backgroundColor="$border" marginVertical="$1" />
+              <Dato label="Todo el paquete"
+                valor={`${fmtNum(envio.PorModo.reduce((a, m) => a + m.Unidades, 0))} unidades`} />
+            </>
+          )}
+        </Tarjeta>
+      )}
+
       <Tarjeta titulo="Cómo quedó el reparto">
         {pct !== null ? (
           <>

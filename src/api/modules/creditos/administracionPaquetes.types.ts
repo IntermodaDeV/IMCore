@@ -78,4 +78,26 @@ export interface IEstadoEnvioAx {
   UltimoEnvio: string | null
   /** DEV o PRODUCCION. */
   Ambiente: string | null
+  /** El PAQUETE completo: faltantes y sobrantes juntos. */
+  PorModo: IEnvioPorModo[]
+}
+
+/**
+ * Lo que el PAQUETE lleva subido a AX de un modo. En el teléfono es lo más útil
+ * de toda la pantalla: quien dejó subiendo el lote pregunta «¿ya está todo el
+ * 1026T?», no «¿cómo fue la corrida 9?».
+ */
+export interface IEnvioPorModo {
+  Modo: string
+  /** Qué corridas lo compusieron. Casi siempre una. */
+  Corridas: number[]
+  Lineas: number
+  Enviadas: number
+  Pendientes: number
+  ConError: number
+  /** Unidades CONFIRMADAS por AX. */
+  Unidades: number
+  Pedidos: number
+  Clientes: number
+  UltimoEnvio: string | null
 }
