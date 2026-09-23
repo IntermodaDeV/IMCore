@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshControl, ScrollView } from 'react-native'
 import { Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
 import { ArrowLeft, TriangleAlert } from 'lucide-react-native'
@@ -10,8 +10,8 @@ import { administracionPaquetesService as svc } from '../../api/modules/creditos
 import { ICorrida } from '../../api/modules/creditos/administracionPaquetes.types'
 import { shadows } from '../../theme/shadows'
 import {
-  ACCENT, BarraCobertura, Dato, EstadoChip, ModoChip, PROCESO, cobertura, colorCobertura,
-  fmtDuracion, fmtFechaHora, fmtNum,
+  ACCENT, BarraCobertura, Dato, EstadoChip, ModoChip, chipProceso, cobertura,
+  colorCobertura, fmtDuracion, fmtFechaHora, fmtNum,
 } from './components'
 
 // El resumen de UNA corrida: cómo quedó. Es a donde lleva la notificación
@@ -54,6 +54,21 @@ export default function CorridaDetailScreen() {
 
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
 
+  /* EL TELÉFONO COMO TABLERO. Un envío a AX dura media hora: la idea es dejarlo
+     subiendo desde el web y mirar acá cómo va, sin tener que tirar para refrescar
+     cada tanto. Solo sondea MIENTRAS algo corre y solo con la pantalla enfocada:
+     un `setInterval` vivo en una pantalla que nadie mira gasta batería y datos
+     para nada. */
+  const enCurso = c?.ProcesoEstado === 'EN_CURSO'
+  const cargarRef = useRef(cargar)
+  cargarRef.current = cargar
+
+  useFocusEffect(useCallback(() => {
+    if (!enCurso) return
+    const t = setInterval(() => { cargarRef.current() }, 5000)
+    return () => clearInterval(t)
+  }, [enCurso]))
+
   if (cargando) {
     return <YStack flex={1} alignItems="center" justifyContent="center"><Spinner size="large" color={ACCENT} /></YStack>
   }
@@ -66,7 +81,10 @@ export default function CorridaDetailScreen() {
   }
 
   const pct = cobertura(c)
-  const proc = c.ProcesoEstado ? PROCESO[c.ProcesoEstado] : null
+  const proc = chipProceso(c.ProcesoTipo, c.ProcesoEstado)
+  const avance = (c.ProcesoPasosTotal ?? 0) > 0
+    ? Math.round(((c.ProcesoPaso ?? 0) / (c.ProcesoPasosTotal ?? 1)) * 100)
+    : null
   const sinRepartir = (c.TotalUnidadesMeta ?? 0) - (c.TotalUnidadesAdmin ?? 0)
 
   const Tarjeta = ({ titulo, children }: { titulo: string; children: React.ReactNode }) => (
@@ -93,17 +111,54 @@ export default function CorridaDetailScreen() {
       </XStack>
       {!!c.Descripcion && <Text fontSize="$3" color="$textMuted">{c.Descripcion}</Text>}
 
+      {/* LO QUE ESTÁ PASANDO AHORA, arriba de todo. Es la razón por la que alguien
+          abre esta pantalla mientras un lote sube: quiere ver si va y cuánto falta,
+          no el resumen de cómo quedó el reparto. Se refresca solo cada 5 segundos. */}
+      {c.ProcesoEstado === 'EN_CURSO' && (
+        <YStack backgroundColor="rgba(29,78,216,0.10)" borderRadius="$4" padding="$3.5" gap="$2">
+          <XStack alignItems="center" gap="$2">
+            <Spinner size="small" color="#1d4ed8" />
+            <Text fontSize="$3" fontWeight="800" color="#1d4ed8">
+              {c.ProcesoTipo === 'ENVIO_AX' ? 'Enviando el lote a AX' : 'Trayendo los insumos desde AX'}
+            </Text>
+            {avance !== null && (
+              <Text fontSize="$3" fontWeight="800" color="#1d4ed8" marginLeft="auto">{avance}%</Text>
+            )}
+          </XStack>
+
+          {avance !== null && (
+            <View height={6} borderRadius={3} backgroundColor="rgba(29,78,216,0.20)" overflow="hidden">
+              <View height={6} borderRadius={3} backgroundColor="#1d4ed8" width={`${avance}%`} />
+            </View>
+          )}
+
+          {!!c.ProcesoFase && <Text fontSize="$2" color="$text">{c.ProcesoFase}</Text>}
+          {c.ProcesoSegundos != null && (
+            <Text fontSize="$2" color="$textMuted">
+              lleva {fmtDuracion(c.ProcesoSegundos)}
+              {c.ProcesoTipo === 'ENVIO_AX'
+                ? ' · podés cerrar la app, sigue corriendo en el servidor'
+                : ''}
+            </Text>
+          )}
+        </YStack>
+      )}
+
       {/* Si la carga falló, eso va ARRIBA de todo: es la razón por la que la
           persona abrió el aviso, y el texto del error es lo único accionable. */}
       {c.ProcesoEstado === 'ERROR' && (
         <YStack backgroundColor="rgba(239,68,68,0.10)" borderRadius="$4" padding="$3.5" gap="$1.5">
           <XStack alignItems="center" gap="$2">
             <TriangleAlert size={16} color="#dc2626" />
-            <Text fontSize="$3" fontWeight="800" color="#dc2626">Falló la carga de datos de AX</Text>
+            <Text fontSize="$3" fontWeight="800" color="#dc2626">
+            {c.ProcesoTipo === 'ENVIO_AX' ? 'Falló el envío del lote a AX' : 'Falló la carga de datos de AX'}
+          </Text>
           </XStack>
           {!!c.ProcesoError && <Text fontSize="$2" color="$text">{c.ProcesoError}</Text>}
           <Text fontSize="$2" color="$textMuted">
-            Se vuelve a intentar desde el sistema web, con «Traer insumos».
+            {c.ProcesoTipo === 'ENVIO_AX'
+              ? 'Se reintenta desde el sistema web con «Enviar lo que falta». Lo que ya se aplicó queda aplicado: mandar de nuevo no recorta dos veces.'
+              : 'Se vuelve a intentar desde el sistema web, con «Traer insumos».'}
           </Text>
         </YStack>
       )}

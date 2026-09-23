@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { FlatList, RefreshControl } from 'react-native'
 import { Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
 import { ChevronRight, PackageSearch } from 'lucide-react-native'
@@ -10,7 +10,7 @@ import { administracionPaquetesService as svc } from '../../api/modules/creditos
 import { ICorrida } from '../../api/modules/creditos/administracionPaquetes.types'
 import { shadows } from '../../theme/shadows'
 import {
-  ACCENT, BarraCobertura, EstadoChip, ModoChip, PROCESO, cobertura, colorCobertura,
+  ACCENT, BarraCobertura, EstadoChip, ModoChip, chipProceso, cobertura, colorCobertura,
   fmtDuracion, fmtFecha, fmtNum,
 } from './components'
 
@@ -52,11 +52,24 @@ export default function CorridasListScreen() {
 
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
 
+  /* Igual que en el detalle: si hay algo corriendo, el listado se refresca solo.
+     La idea es dejar subiendo el lote desde el web y mirar el teléfono. Sondea
+     únicamente cuando hay trabajo vivo y con la pantalla enfocada. */
+  const hayTrabajo = items.some(c => c.ProcesoEstado === 'EN_CURSO')
+  const cargarRef = useRef(cargar)
+  cargarRef.current = cargar
+
+  useFocusEffect(useCallback(() => {
+    if (!hayTrabajo) return
+    const t = setInterval(() => { cargarRef.current() }, 5000)
+    return () => clearInterval(t)
+  }, [hayTrabajo]))
+
   const onRefresh = useCallback(() => { setRefrescando(true); cargar() }, [cargar])
 
   const render = ({ item }: { item: ICorrida }) => {
     const pct = cobertura(item)
-    const proc = item.ProcesoEstado ? PROCESO[item.ProcesoEstado] : null
+    const proc = chipProceso(item.ProcesoTipo, item.ProcesoEstado)
     const fallo = item.ProcesoEstado === 'ERROR'
 
     return (

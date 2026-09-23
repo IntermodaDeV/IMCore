@@ -51,7 +51,12 @@ export interface ICorrida {
 
   // Última carga de insumos. Va en el listado para ver de un vistazo cuál quedó
   // a medias sin abrir una por una.
+  /** INSUMOS o ENVIO_AX: no es lo mismo leer AX que escribirle. */
+  ProcesoTipo?: string | null
   ProcesoEstado?: EstadoProceso | null
+  /** Cuánto lleva. En el envío es el % de líneas que AX ya confirmó. */
+  ProcesoPaso?: number | null
+  ProcesoPasosTotal?: number | null
   ProcesoFase?: string | null
   ProcesoError?: string | null
   ProcesoIntento?: number | null
