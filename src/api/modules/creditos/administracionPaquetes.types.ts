@@ -51,9 +51,59 @@ export interface ICorrida {
 
   // Última carga de insumos. Va en el listado para ver de un vistazo cuál quedó
   // a medias sin abrir una por una.
+  /** INSUMOS o ENVIO_AX: no es lo mismo leer AX que escribirle. */
+  ProcesoTipo?: string | null
   ProcesoEstado?: EstadoProceso | null
+  /** Cuánto lleva. En el envío es el % de líneas que AX ya confirmó. */
+  ProcesoPaso?: number | null
+  ProcesoPasosTotal?: number | null
   ProcesoFase?: string | null
   ProcesoError?: string | null
   ProcesoIntento?: number | null
   ProcesoSegundos?: number | null
+}
+
+/** Cómo va el lote contra AX. Lo poco que el teléfono necesita saber. */
+export interface IEstadoEnvioAx {
+  Corrida_Id: number
+  /** Líneas que hay que mandar. */
+  Total: number
+  /** Confirmadas por AX. */
+  Enviadas: number
+  /** Con un problema que alguien tiene que mirar. */
+  ConError: number
+  /** Todo lo que falta, incluyendo las de error. */
+  Pendientes: number
+  Unidades: number
+  UltimoEnvio: string | null
+  /** DEV o PRODUCCION. */
+  Ambiente: string | null
+  /** El PAQUETE completo: faltantes y sobrantes juntos. */
+  PorModo: IEnvioPorModo[]
+}
+
+/**
+ * Lo que el PAQUETE lleva subido a AX de un modo. En el teléfono es lo más útil
+ * de toda la pantalla: quien dejó subiendo el lote pregunta «¿ya está todo el
+ * 1026T?», no «¿cómo fue la corrida 9?».
+ */
+export interface ICorridaDelModo {
+  Corrida_Id: number
+  Lineas: number
+  Enviadas: number
+}
+
+export interface IEnvioPorModo {
+  Modo: string
+  /** Qué corridas lo compusieron y cuánto pone cada una. Casi siempre es una. */
+  Corridas: ICorridaDelModo[]
+  Lineas: number
+  Enviadas: number
+  Pendientes: number
+  ConError: number
+  /** Unidades CONFIRMADAS por AX. */
+  Unidades: number
+  Pedidos: number
+  Clientes: number
+  UltimoEnvio: string | null
 }

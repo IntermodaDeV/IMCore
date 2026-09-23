@@ -52,6 +52,23 @@ export const PROCESO: Record<EstadoProceso, { txt: string; fg: string }> = {
 }
 
 /**
+ * LOS DOS TRABAJOS LARGOS NO SON LO MISMO y la pantalla tiene que decir cuál.
+ * Uno LEE de AX para armar la corrida; el otro ESCRIBE en los pedidos de venta.
+ * Decir «Trayendo datos de AX…» mientras se manda el lote hace creer que está
+ * corriendo otra cosa.
+ */
+export const PROCESO_ENVIO: Record<EstadoProceso, { txt: string; fg: string }> = {
+  EN_CURSO:  { txt: 'Enviando a AX…',  fg: '#1d4ed8' },
+  OK:        { txt: 'Enviado a AX',    fg: '#16a34a' },
+  ERROR:     { txt: 'Falló el envío',  fg: '#dc2626' },
+  CANCELADO: { txt: 'Envío detenido',  fg: '#6b7280' },
+}
+
+/** El chip que corresponde, según qué trabajo corrió último en esa corrida. */
+export const chipProceso = (tipo?: string | null, estado?: EstadoProceso | null) =>
+  estado ? (tipo === 'ENVIO_AX' ? PROCESO_ENVIO[estado] : PROCESO[estado]) : null
+
+/**
  * LA "EFICIENCIA" DE UNA CORRIDA.
  *
  * Es la COBERTURA: de las unidades que había que repartir (la meta que salió del

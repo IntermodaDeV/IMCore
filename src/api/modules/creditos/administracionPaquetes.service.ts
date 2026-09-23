@@ -1,6 +1,6 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { ICorrida } from './administracionPaquetes.types'
+import { ICorrida, IEstadoEnvioAx } from './administracionPaquetes.types'
 
 // api/AdministracionPaquetes. baseUrl (API_URL) ya incluye /api/.
 //
@@ -18,4 +18,21 @@ export const administracionPaquetesService = {
     httpClient.get(`${schema}/Corridas`, { paquete }),
 
   getCorrida: (id: number): Res<ICorrida> => httpClient.get(`${schema}/Corridas/${id}`),
+
+  /** Cuántas líneas confirmó AX y cuántas faltan. */
+  getEstadoEnvio: (id: number): Res<IEstadoEnvioAx> =>
+    httpClient.get(`${schema}/Corridas/${id}/EnvioAX`),
+
+  /**
+   * RETOMA EL ENVÍO desde el teléfono. Es lo único que la app puede disparar en
+   * este módulo, y va contra la regla de «acá no se toca nada» a propósito: no
+   * crea trabajo nuevo —eso sigue siendo del web—, continúa uno que ya se
+   * autorizó. Cuando el lote se corta y a alguien le llega el aviso, lo normal es
+   * que esté lejos de la computadora.
+   *
+   * Manda solo lo pendiente, y repetirlo no recorta dos veces: AX asigna la
+   * cantidad de la línea, no la resta.
+   */
+  enviarAX: (id: number): Res<unknown> =>
+    httpClient.post(`${schema}/Corridas/${id}/EnviarAX`, {}),
 }
