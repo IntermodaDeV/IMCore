@@ -62,3 +62,20 @@ export interface ICorrida {
   ProcesoIntento?: number | null
   ProcesoSegundos?: number | null
 }
+
+/** Cómo va el lote contra AX. Lo poco que el teléfono necesita saber. */
+export interface IEstadoEnvioAx {
+  Corrida_Id: number
+  /** Líneas que hay que mandar. */
+  Total: number
+  /** Confirmadas por AX. */
+  Enviadas: number
+  /** Con un problema que alguien tiene que mirar. */
+  ConError: number
+  /** Todo lo que falta, incluyendo las de error. */
+  Pendientes: number
+  Unidades: number
+  UltimoEnvio: string | null
+  /** DEV o PRODUCCION. */
+  Ambiente: string | null
+}

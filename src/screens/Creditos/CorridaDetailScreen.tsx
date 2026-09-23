@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshControl, ScrollView } from 'react-native'
-import { Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
-import { ArrowLeft, TriangleAlert } from 'lucide-react-native'
+import { Button, Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
+import { ArrowLeft, Send, TriangleAlert } from 'lucide-react-native'
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useShowToast } from '../../utils/useShowToast'
 import { administracionPaquetesService as svc } from '../../api/modules/creditos/administracionPaquetes.service'
-import { ICorrida } from '../../api/modules/creditos/administracionPaquetes.types'
+import { ICorrida, IEstadoEnvioAx } from '../../api/modules/creditos/administracionPaquetes.types'
 import { shadows } from '../../theme/shadows'
 import {
   ACCENT, BarraCobertura, Dato, EstadoChip, ModoChip, chipProceso, cobertura,
@@ -27,6 +27,8 @@ export default function CorridaDetailScreen() {
   const { showToast } = useShowToast()
 
   const [c, setC] = useState<ICorrida | null>(null)
+  const [envio, setEnvio] = useState<IEstadoEnvioAx | null>(null)
+  const [reanudando, setReanudando] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
 
@@ -43,6 +45,14 @@ export default function CorridaDetailScreen() {
       const res = await svc.getCorrida(id)
       if (res.Success) setC(res.Data)
       else showToast('error', 'No se pudo cargar', res.ErrorMessage || 'Intentá de nuevo')
+
+      /* El estado del envío va aparte y en silencio: una corrida sin calcular no
+         tiene nada que mandar, y que esta consulta falle no puede impedir ver el
+         resumen —que es a lo que la mayoría entra—. */
+      try {
+        const e = await svc.getEstadoEnvio(id)
+        setEnvio(e.Success ? e.Data : null)
+      } catch { setEnvio(null) }
     } catch (e: any) {
       showToast('error', 'Error', e?.message || 'No se pudo cargar la corrida')
     } finally {
@@ -141,6 +151,40 @@ export default function CorridaDetailScreen() {
                 : ''}
             </Text>
           )}
+        </YStack>
+      )}
+
+      {/* RETOMAR DESDE EL TELÉFONO. Normalmente el envío se retoma solo; este botón
+          es para cuando ya se intentó varias veces y el sistema pidió ayuda — que es
+          justo cuando llega el aviso y la persona está lejos de la computadora.
+          Es lo único que la app dispara en este módulo: no crea trabajo nuevo, sigue
+          uno que ya se autorizó, y repetirlo no recorta dos veces. */}
+      {c.ProcesoEstado !== 'EN_CURSO' && envio != null && envio.Pendientes > 0 && envio.Enviadas > 0 && (
+        <YStack backgroundColor="rgba(234,88,12,0.10)" borderRadius="$4" padding="$3.5" gap="$2.5">
+          <Text fontSize="$3" fontWeight="800" color="#ea580c">El lote quedó a medias</Text>
+          <Text fontSize="$2" color="$text">
+            {fmtNum(envio.Enviadas)} de {fmtNum(envio.Total)} líneas están en AX
+            {envio.ConError > 0 ? ` · ${fmtNum(envio.ConError)} con error` : ''}.
+          </Text>
+          <Button size="$3" backgroundColor="#ea580c" color="white" disabled={reanudando}
+            icon={reanudando ? undefined : <Send size={16} color="white" />}
+            onPress={async () => {
+              setReanudando(true)
+              try {
+                const r = await svc.enviarAX(id)
+                if (r.Success) {
+                  showToast('success', 'Envío retomado',
+                    `Van ${fmtNum(envio.Pendientes)} líneas. Podés cerrar la app: sigue en el servidor.`)
+                  cargar()
+                } else {
+                  showToast('error', 'No se pudo retomar', r.ErrorMessage || 'Intentá de nuevo')
+                }
+              } catch (e: any) {
+                showToast('error', 'Error', e?.message || 'No se pudo retomar el envío')
+              } finally { setReanudando(false) }
+            }}>
+            {reanudando ? 'Retomando…' : `Enviar lo que falta (${fmtNum(envio.Pendientes)})`}
+          </Button>
         </YStack>
       )}
 
