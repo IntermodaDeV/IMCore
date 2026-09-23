@@ -1,4 +1,4 @@
-import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck, PackageSearch,Stamp, CalendarX } from 'lucide-react-native'
+import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck, PackageSearch,Stamp, CalendarX, ClockAlert } from 'lucide-react-native'
 import type { NotificationCategory } from '../api/modules/notifications/notifications.service'
 
 /**
@@ -145,6 +145,15 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
     Icon: CircleX,
     color: '#DC2626',
     bg: 'rgba(220,38,38,0.12)',
+  },
+  // Salió y no ha regresado. Ámbar y no rojo: no es un error ni un rechazo, es
+  // algo que hay que ir a revisar — y el reloj dice que lo que pasó es que se
+  // hizo tarde, no que algo salió mal.
+  pase_salida_retorno: {
+    label: 'Pase sin regresar',
+    Icon: ClockAlert,
+    color: '#D97706',
+    bg: 'rgba(217,119,6,0.12)',
   },
 }
 

@@ -170,8 +170,47 @@ export function routeNotification(data: any): boolean {
   // y con el pase señalado. La pestaña viaja en el aviso y no se asume acá: si
   // el servidor algún día avisa por otro motivo, manda a dónde corresponda sin
   // tocar la app.
+  // Un pase salió y no ha regresado. Le llega al SOLICITANTE —que es quien
+  // tiene que recuperar el material— y a QUIENES LO FIRMARON, y cada uno va a
+  // una pantalla distinta: el pase del firmante no está en "Mis pases", él no
+  // lo pidió. El destino viaja en el aviso en vez de deducirse acá, igual que
+  // la pestaña del aviso de vencimiento.
+  if (category === 'pase_salida_retorno') {
+    const paseId = Number(data.paseId ?? data.PaseId)
+    const destino = String(data.destino ?? data.Destino ?? 'misPases')
+
+    if (destino === 'aprobaciones') {
+      navigateWhenReady('pasesSalidaAprobaciones')
+      // El pase que firmó ya está aprobado y salió, así que vive en la bandeja
+      // de Aprobadas: mandarlo a Pendientes sería mandarlo a donde no está.
+      if (paseId > 0) requestOpenPaseSalidaFirma(paseId, 'APR')
+      return true
+    }
+
+    // Un pase que está afuera sigue abierto, así que está en "En proceso".
+    const tab = 'PROC'
+    navigateWhenReady('pasesSalidaMisPases', { tab })
+    if (paseId > 0) requestOpenMiPaseSalida(paseId, tab)
+    return true
+  }
+
   if (category === 'pase_salida_vencido') {
     const paseId = Number(data.paseId ?? data.PaseId)
+
+    /* Este aviso le cae a DOS papeles: al solicitante, que es el dueño del
+       pase, y a quien lo tenía esperando su firma. El firmante no va a Mis
+       pases —el pase no es suyo y ahí no aparece—, va a su bandeja, que es la
+       que acaba de perder la fila.
+
+       No se pide resaltar el pase en ese caso: un pase vencido ya no está en
+       ninguna de las tres bandejas de firma (Pendientes lo excluye por estado,
+       y Aprobadas/Rechazadas piden una firma que nunca dio), así que el
+       resaltado no tendría a qué agarrarse. */
+    if (String(data.destino ?? data.Destino ?? 'misPases') === 'aprobaciones') {
+      navigateWhenReady('pasesSalidaAprobaciones')
+      return true
+    }
+
     const tab = String(data.tab ?? data.Tab ?? 'FIN') === 'PROC' ? 'PROC' : 'FIN'
     navigateWhenReady('pasesSalidaMisPases', { tab })
     if (paseId > 0) requestOpenMiPaseSalida(paseId, tab)

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshControl, FlatList } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { useFocusEffect } from '@react-navigation/native'
@@ -22,8 +22,9 @@ import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT, ACCENT_BG, estadoVisual, fmtCantidad, fmtFecha, fmtFechaHora } from '../pasesSalida.helpers'
+import { ACCENT, ACCENT_BG, PRESS_CARD, estadoVisual, fmtCantidad, fmtFecha, fmtFechaHora } from '../pasesSalida.helpers'
 import LineaFirmas from '../Pases/LineaFirmas'
+import TarjetaResaltable from '../Pases/TarjetaResaltable'
 import LineaEstados from '../Pases/LineaEstados'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import {
@@ -40,6 +41,25 @@ const BANDEJAS: { key: BandejaFirma; label: string }[] = [
 
 const VERDE = '#22c55e'
 const ROJO = '#ef4444'
+
+/**
+ * Qué se muestra dentro de la bandeja de Aprobadas.
+ *
+ * Un pase que firmé y que después venció sin usarse no es lo mismo que uno que
+ * firmé y salió: el primero no es historial de trabajo hecho, es trabajo que se
+ * perdió. Mezclados, la bandeja no responde "¿qué aprobé?" ni "¿qué se me
+ * venció?".
+ *
+ * Arranca en VIG —lo que sirvió o sigue vivo— porque es la lectura normal. Los
+ * vencidos se piden aparte, y el control ni aparece cuando no hay ninguno.
+ */
+type VistaApr = 'VIG' | 'VEN' | 'TODO'
+
+const VISTAS_APR: { key: VistaApr; label: string }[] = [
+  { key: 'VIG', label: 'Aprobados' },
+  { key: 'VEN', label: 'Vencidos' },
+  { key: 'TODO', label: 'Todos' },
+]
 
 /**
  * Los pases que esperan MI firma.
@@ -81,6 +101,7 @@ export default function AprobacionesScreen() {
   const [cargandoDet, setCargandoDet] = useState<number | null>(null)
 
   const [bandeja, setBandeja] = useState<BandejaFirma>('PEND')
+  const [vistaApr, setVistaApr] = useState<VistaApr>('VIG')
   // La acción que está por confirmarse. El diálogo sale de acá.
   const [accion, setAccion] = useState<{ pase: IPaseSalida; tipo: 'aprobar' | 'rechazar' } | null>(null)
   // El motivo del rechazo. Vive fuera de `accion` para no reescribir el objeto
@@ -94,6 +115,23 @@ export default function AprobacionesScreen() {
    * para encontrarlo en la lista, no un estado del pase.
    */
   const [highlightId, setHighlightId] = useState<number | null>(null)
+
+  /**
+   * Cuántos de los que firmé vencieron sin usarse. Se cuenta sobre la bandeja
+   * COMPLETA y no sobre lo buscado: el control no puede desaparecer a mitad de
+   * una búsqueda, que es justo cuando uno lo iba a usar.
+   */
+  const vencidos = useMemo(() => items.filter(p => p.Estado === 'PSVEN').length, [items])
+
+  /** El corte solo existe si hay algo que cortar. */
+  const hayCorte = bandeja === 'APR' && vencidos > 0
+
+  const visibles = useMemo(() => {
+    if (!hayCorte || vistaApr === 'TODO') return filtered
+    return vistaApr === 'VEN'
+      ? filtered.filter(p => p.Estado === 'PSVEN')
+      : filtered.filter(p => p.Estado !== 'PSVEN')
+  }, [filtered, hayCorte, vistaApr])
 
   const abrirAccion = (pase: IPaseSalida, tipo: 'aprobar' | 'rechazar') => {
     setMotivo('')
@@ -213,28 +251,61 @@ export default function AprobacionesScreen() {
    * `highlightId` solo pinta el borde cuando la tarjeta aparece.
    */
   const listaRef = useRef<FlatList<IPaseSalida>>(null)
-  /* El callback del bus se registra una sola vez, así que leería una lista
-     vieja. La ref siempre tiene la actual. */
-  const filtradosRef = useRef<IPaseSalida[]>([])
-  useEffect(() => { filtradosRef.current = filtered }, [filtered])
+  /* En qué pase ya se hizo foco. Sin esta marca, cada recarga de la bandeja
+     volvería a desplazar la pantalla mientras el resaltado siga vivo. */
+  const enfocadoRef = useRef<number | null>(null)
+  const apagadoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    const unsub = subscribeOpenPaseSalidaFirma(paseId => {
-      setBandeja('PEND')
+    const unsub = subscribeOpenPaseSalidaFirma(({ paseId, bandeja: destino }) => {
+      // La bandeja viaja en el aviso: "te toca firmar" apunta a Pendientes,
+      // pero "el pase que autorizaste no ha regresado" apunta a Aprobadas.
+      // Sin esto el segundo caso dejaba al usuario donde el pase no está.
+      setBandeja(destino ?? 'PEND')
+      // Un pase atrasado llega por Aprobadas y estaría escondido si el corte
+      // quedó en "solo vencidos": este no venció, salió.
+      setVistaApr(destino === 'APR' ? 'TODO' : 'VIG')
       setAbierto(null)
+      enfocadoRef.current = null
       setHighlightId(paseId)
 
-      /* Sin el scroll el resaltado se apaga fuera de pantalla. Se espera al
-         re-render: cambiar de bandeja vuelve a consultar y rearma la lista. */
-      setTimeout(() => {
-        const i = filtradosRef.current.findIndex(x => x.Id === paseId)
-        if (i >= 0) listaRef.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0 })
-      }, 350)
-
-      setTimeout(() => setHighlightId(null), 4000)
+      /* Red de seguridad: si el pase nunca aparece en la bandeja elegida, el
+         resaltado no se queda encendido para siempre. */
+      setTimeout(
+        () => setHighlightId(actual => (actual === paseId ? null : actual)),
+        15000,
+      )
     })
     return unsub
   }, [])
+
+  /**
+   * Desplaza hasta el pase, pero ESPERANDO A QUE EXISTA EN LA LISTA.
+   *
+   * Acá el retraso es peor que en Mis pases: cambiar de bandeja no filtra lo que
+   * ya está, VUELVE A CONSULTAR. A los 350 ms la lista es todavía la de la
+   * bandeja anterior, así que el desplazamiento apuntaba a la fila equivocada o
+   * a ninguna, y el resaltado se apagaba a los 4 segundos sin que se viera.
+   *
+   * Ahora los 4 segundos arrancan cuando la fila ya está en pantalla.
+   */
+  useEffect(() => {
+    if (highlightId == null || enfocadoRef.current === highlightId) return
+
+    const i = visibles.findIndex(x => x.Id === highlightId)
+    // Todavía no llegó: se reintenta solo, cuando cambie la lista.
+    if (i < 0) return
+
+    enfocadoRef.current = highlightId
+    listaRef.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0 })
+
+    /* El apagado NO va en el cleanup del efecto: `visibles` cambia con cada
+       recarga, y el cleanup lo cancelaría sin que nadie lo vuelva a armar. */
+    if (apagadoRef.current) clearTimeout(apagadoRef.current)
+    apagadoRef.current = setTimeout(() => setHighlightId(null), 4000)
+  }, [highlightId, visibles])
+
+  useEffect(() => () => { if (apagadoRef.current) clearTimeout(apagadoRef.current) }, [])
 
   usePageHeader({
     center: <Text fontSize="$4" fontWeight="700" color="$text">Aprobaciones</Text>,
@@ -307,7 +378,13 @@ export default function AprobacionesScreen() {
                 paddingVertical="$2" borderRadius="$3"
                 backgroundColor={sel ? ACCENT : 'transparent'}
                 pressStyle={{ opacity: 0.7 }}
-                onPress={() => { setBandeja(b.key); setAbierto(null) }}>
+                onPress={() => {
+                  setBandeja(b.key); setAbierto(null)
+                  // Cada bandeja se entra desde cero: dejar puesto "solo
+                  // vencidos" al volver daría una lista recortada sin que nadie
+                  // lo haya pedido.
+                  setVistaApr('VIG')
+                }}>
                 <Text fontSize={11} fontWeight={sel ? '800' : '600'}
                   color={sel ? '#FFFFFF' : '$textMuted'} numberOfLines={1}>
                   {b.label}
@@ -324,15 +401,48 @@ export default function AprobacionesScreen() {
           placeholder="Buscar..."
         />
 
+        {/* El corte solo aparece si hay vencidos. Sin ellos, tres chips con dos
+            listas iguales serían ruido. */}
+        {hayCorte ? (
+          <YStack gap="$1.5" marginBottom="$2">
+            <XStack gap="$2">
+              {VISTAS_APR.map(v => {
+                const on = vistaApr === v.key
+                const rojo = v.key === 'VEN'
+                const color = rojo ? ROJO : ACCENT
+                return (
+                  <View key={v.key} onPress={() => setVistaApr(v.key)} pressStyle={{ opacity: 0.8 }}
+                    borderWidth={1} borderColor={on ? color : '$border'}
+                    backgroundColor={on ? (rojo ? `${ROJO}1F` : ACCENT_BG) : 'transparent'}
+                    borderRadius="$10" paddingHorizontal="$3" paddingVertical={5}>
+                    <Text fontSize={11} fontWeight="800" color={on ? color : '$textMuted'}>
+                      {v.label}
+                      {v.key === 'VEN' ? ` (${vencidos})` : ''}
+                    </Text>
+                  </View>
+                )
+              })}
+            </XStack>
+            <Text fontSize={10} color="$textMuted">
+              {vencidos === 1
+                ? 'Un pase que aprobó venció sin usarse: se le pasó la fecha de salida y el plazo de gracia, así que nunca salió.'
+                : `${vencidos} pases que aprobó vencieron sin usarse: se les pasó la fecha de salida y el plazo de gracia, así que nunca salieron.`}
+            </Text>
+          </YStack>
+        ) : null}
+
         <RecordCount
-          count={filtered.length}
-          label={bandeja === 'PEND' ? 'Por firmar' : bandeja === 'APR' ? 'Aprobadas' : 'Rechazadas'}
+          count={visibles.length}
+          label={bandeja === 'PEND' ? 'Por firmar'
+            : bandeja === 'REJ' ? 'Rechazadas'
+              : hayCorte && vistaApr === 'VEN' ? 'Vencidas'
+                : 'Aprobadas'}
         />
       </YStack>
 
       <FlatList
         ref={listaRef}
-        data={filtered}
+        data={visibles}
         keyExtractor={(it) => String(it.Id)}
         /* Las tarjetas tienen alto variable (el acordeón), así que no hay
            getItemLayout y scrollToIndex puede fallar si el destino todavía no
@@ -351,11 +461,19 @@ export default function AprobacionesScreen() {
         ListEmptyComponent={
           <EmptyState
             title={items.length ? 'Sin resultados' : 'Nada por firmar'}
-            message={items.length
-              ? 'Ningún pase coincide con la búsqueda.'
-              : bandeja === 'PEND'
-                ? 'No hay pases esperando esta firma.'
-                : 'Todavía no hay pases en este historial.'}
+            message={
+              /* Con el corte puesto, "sin resultados" a secas haría pensar que
+                 la bandeja está vacía cuando lo que pasa es que se está mirando
+                 una de las dos mitades. */
+              hayCorte && vistaApr === 'VEN' && !visibles.length
+                ? 'Ningún pase vencido coincide con la búsqueda.'
+                : hayCorte && vistaApr === 'VIG' && !visibles.length
+                  ? 'Todos los pases de esta bandeja vencieron sin usarse. Véalos en "Vencidos".'
+                  : items.length
+                    ? 'Ningún pase coincide con la búsqueda.'
+                    : bandeja === 'PEND'
+                      ? 'No hay pases esperando esta firma.'
+                      : 'Todavía no hay pases en este historial.'}
           />
         }
         renderItem={({ item: p }) => {
@@ -366,16 +484,15 @@ export default function AprobacionesScreen() {
           const resaltado = highlightId === p.Id
 
           return (
-            /* El resaltado toca el FONDO y el borde, no solo el borde: en una
-               lista de tarjetas iguales, 2px se pierden al pasar la vista. Es
-               el mismo criterio del historial de horas extra. */
-            <YStack backgroundColor={resaltado ? '$primaryOpacity2' : '$backgroundElevated'}
-              borderRadius="$4"
-              borderLeftWidth={4} borderLeftColor={est.color}
-              borderWidth={resaltado ? 2 : 1}
-              borderColor={resaltado ? '$primary' : '$border'}
+            /* El resaltado va en un ANILLO por fuera, para que la tarjeta quede
+               con props ESTÁTICAS e idéntica a la de Control de salida: con el
+               fondo y el borde puestos por un ternario, al presionarla la sombra
+               de la elevación se asomaba por las orillas. Ver TarjetaResaltable. */
+            <TarjetaResaltable resaltado={resaltado}>
+            <YStack backgroundColor="$backgroundElevated" borderRadius="$4"
+              borderLeftWidth={4} borderLeftColor={est.color} borderWidth={1} borderColor="$border"
               paddingVertical="$3" paddingHorizontal="$4" gap="$2" {...shadows.sm}
-              onPress={() => alternar(p.Id)} pressStyle={{ opacity: 0.85 }}>
+              onPress={() => alternar(p.Id)} pressStyle={PRESS_CARD}>
 
               {/* ── Encabezado ── */}
               <XStack alignItems="center" gap="$2">
@@ -543,6 +660,7 @@ export default function AprobacionesScreen() {
                 </YStack>
               ) : null}
             </YStack>
+            </TarjetaResaltable>
           )
         }}
       />

@@ -389,7 +389,7 @@ export default function VerificarSalidaScreen() {
             </XStack>
             <Text fontSize={20} fontWeight="900" color="$text">{pase.Responsable}</Text>
             <Text fontSize={11} color={ACCENT} fontWeight="700">
-              Confirme su identidad antes de dejarlo pasar. Si no es esta persona, no entregue el material.
+              Confirme su identidad antes de dejarlo pasar.
             </Text>
           </YStack>
         ) : null}
