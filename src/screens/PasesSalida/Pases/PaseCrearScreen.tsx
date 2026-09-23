@@ -578,7 +578,7 @@ export default function PaseCrearScreen() {
           borderWidth={1} borderColor="#f59e0b" borderRadius="$3" paddingHorizontal="$2.5" paddingVertical={5}>
           <TriangleAlert size={11} color="#f59e0b" />
           <Text flex={1} fontSize={10} color="#f59e0b" fontWeight="700">
-            El pase queda pendiente hasta reunir todas las firmas requeridas.
+            El pase se envía a autorización. Si usted mismo puede dar alguna de las firmas requeridas, se aplica sola al guardar.
           </Text>
         </XStack>
 

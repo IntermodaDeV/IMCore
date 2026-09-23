@@ -220,8 +220,13 @@ export default function PaseDetalleScreen() {
             <Dato
               icon={LogOut}
               label="Salió"
+              /* Con dos portones, "salió" sin decir POR DÓNDE deja a medias la
+                 única pregunta que importa después: si pasó por seguridad o se
+                 fue directo por planta. */
               value={pase.FechaSalidaReal
                 ? `${fmtFechaHora(pase.FechaSalidaReal)}${
+                    pase.SalidaPuesto ? ` · ${pase.SalidaPuesto}` : ''
+                  }${
                     pase.SalidaPorNombre || pase.SalidaPor
                       ? ` · ${pase.SalidaPorNombre || pase.SalidaPor}`
                       : ''
@@ -229,7 +234,16 @@ export default function PaseDetalleScreen() {
                 : null}
             />
             {pase.Retorna ? (
-              <Dato icon={RotateCcw} label="Regresó" value={fmtFechaHora(pase.FechaRetorno)} />
+              <Dato icon={RotateCcw} label="Regresó"
+                value={pase.FechaRetorno
+                  ? `${fmtFechaHora(pase.FechaRetorno)}${
+                      pase.RetornoPuesto ? ` · ${pase.RetornoPuesto}` : ''
+                    }${
+                      pase.RetornoPorNombre || pase.RetornoPor
+                        ? ` · ${pase.RetornoPorNombre || pase.RetornoPor}`
+                        : ''
+                    }`
+                  : null} />
             ) : null}
             <Dato icon={MessageSquare} label="Comentario" value={pase.Comentario} />
           </YStack>

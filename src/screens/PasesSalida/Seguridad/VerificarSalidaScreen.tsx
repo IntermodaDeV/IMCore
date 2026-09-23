@@ -4,18 +4,21 @@ import { Text, XStack, YStack, View, useTheme } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import {
   ArrowLeft, Package, User, Send, RotateCcw, TriangleAlert, ShieldAlert, LogOut,
-  MessageSquare, CalendarClock, IdCard,
+  MessageSquare, CalendarClock, IdCard, DoorOpen, ShieldCheck,
 } from 'lucide-react-native'
 import dayjs from 'dayjs'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
-import ConfirmDialog from '../../../components/commons/ConfirmDialog'
 import SkeletonList from '../../../components/Skeletons/SkeletonList'
 import ErrorState from '../../AdmSys/ErrorState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT, ACCENT_BG, estadoVisual, fmtCantidad, fmtFecha, fmtFechaHora } from '../pasesSalida.helpers'
+import {
+  ACCENT, ACCENT_BG, MINUTOS_SALIDA_RECIENTE, estadoVisual, fmtCantidad, fmtFecha,
+  fmtFechaHora, haceCuanto, miPorton,
+} from '../pasesSalida.helpers'
+import { useAuth } from '../../../context/AuthContext'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import { IPaseSalida, IPaseSalidaDetalle } from '../../../api/modules/pasesSalida/pases.types'
 
@@ -55,6 +58,12 @@ export default function VerificarSalidaScreen() {
   const navigation = useNavigation<any>()
   const route = useRoute<any>()
   const { showToast } = useShowToast()
+  const { user } = useAuth()
+
+  /* En qué portón está parado ESTE guardia. Sale de su acceso: nadie tiene los
+     dos, así que no hay nada que elegir ni que pueda equivocarse. */
+  const miPuestoKey = miPorton(user?.Access)
+
 
   const id: number = route.params?.id
   const correlativo: string = route.params?.correlativo ?? 'Pase'
@@ -63,8 +72,17 @@ export default function VerificarSalidaScreen() {
   const [detalle, setDetalle] = useState<IPaseSalidaDetalle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<AppError | null>(null)
-  const [confirmando, setConfirmando] = useState(false)
   const [registrando, setRegistrando] = useState(false)
+
+  /**
+   * Hacia dónde va el material, cuando el sistema no lo puede saber.
+   *
+   * `null` = todavía no se preguntó. Solo se usa en el caso ambiguo —el pase
+   * salió hace poco por el OTRO portón—, y ahí la pregunta va ANTES de mostrar
+   * nada: qué pantalla corresponde depende de la respuesta, y enseñar la de
+   * regreso a alguien que está viendo material salir es inducirlo al error.
+   */
+  const [direccion, setDireccion] = useState<'SALE' | 'VUELVE' | null>(null)
 
   const cargar = useCallback(async () => {
     try {
@@ -73,9 +91,22 @@ export default function VerificarSalidaScreen() {
         pasesService.getDetalle(id),
       ])
       // El SP devuelve una fila; el arreglo trae 0 o 1 elemento.
-      setPase(rPase.Data?.[0] ?? null)
+      const p = rPase.Data?.[0] ?? null
+      setPase(p)
       setDetalle(rDet.Data ?? [])
       setError(null)
+
+      /* Presentarse en un portón con un pase que YA SALIÓ es un hecho aunque no
+         cambie nada: es el pase que salió por planta y pasa por seguridad. Sin
+         este registro no queda ninguna prueba de que cruzó el segundo portón, y
+         esa es la pregunta que motivó todo el cambio.
+
+         Best-effort y en silencio: si falla, el guardia igual está viendo el
+         pase y puede actuar. Molestarlo con un error por una anotación de
+         auditoría sería peor que no tenerla. */
+      if (p && ['PSSAL', 'PSFIN', 'PSRET'].includes(p.Estado)) {
+        pasesService.registrarCruce(p.Id).catch(() => {})
+      }
     } catch (e) {
       setPase(null); setDetalle([])
       setError(handleError(e))
@@ -105,21 +136,38 @@ export default function VerificarSalidaScreen() {
         ? await pasesService.registrarRetorno(pase.Id)
         : await pasesService.registrarSalida(pase.Id)
       if (res.Success) {
-        setConfirmando(false)
         showToast('success', esRegreso ? 'Regreso registrado' : 'Salida registrada',
           res.SuccessMessage || 'El movimiento quedó registrado')
         navigation.goBack()
       } else {
         // El estado pudo cambiar entre el escaneo y la confirmación: se recarga
         // para que la pantalla deje de ofrecer algo que ya no se puede.
-        setConfirmando(false)
         showToast('error', 'No se pudo registrar', res.ErrorMessage || 'Intente de nuevo')
         await cargar()
       }
     } catch (e: any) {
-      setConfirmando(false)
       showToast('error', 'Error', e?.message || 'No se pudo registrar el movimiento')
     } finally { setRegistrando(false) }
+  }
+
+  /**
+   * "Va saliendo": el material NO está regresando, solo pasa por este portón
+   * camino a la calle. No hay estado que mover — el pase ya salió — pero sí un
+   * hecho que dejar anotado.
+   *
+   * Es un botón y no "no toque nada" a propósito: las dos respuestas a la
+   * pregunta tienen que costar lo mismo. Si una fuera una acción y la otra
+   * cerrar la pantalla, la de cerrar se elegiría por comodidad y no por lo que
+   * el guardia vio.
+   */
+  const vaSaliendo = async () => {
+    if (!pase) return
+    /* El cruce ya se anotó al abrir la pantalla; el SP agrupa por minuto, así
+       que esta segunda llamada no duplica. Se hace igual para que la anotación
+       corresponda a la decisión y no solo a haber mirado. */
+    try { await pasesService.registrarCruce(pase.Id) } catch { /* auditoría, no bloquea */ }
+    showToast('success', 'Anotado', 'Quedó registrado que el pase pasó por este portón.')
+    navigation.goBack()
   }
 
   usePageHeader({
@@ -189,6 +237,123 @@ export default function VerificarSalidaScreen() {
   // Cerrado de verdad: PSSAL no cuenta, ese todavía tiene el regreso pendiente.
   const cerrado = ['PSFIN', 'PSRET'].includes(pase.Estado)
   const totalLineas = detalle.length
+
+  /* ── El problema de los dos portones ───────────────────────────────────────
+     Un pase que salió por planta y camina hacia la salida principal está en
+     PSSAL, EXACTAMENTE IGUAL que uno que vuelve de la calle. Ningún dato los
+     distingue: mismo estado, misma salida registrada. Así que la pantalla NO
+     adivina — afirma el hecho ("ya salió, por acá, hace tanto") y deja que el
+     guardia, que es el único que ve hacia dónde camina la persona, decida.
+
+     Lo único que sí se puede calcular es cuán probable es cada caso, y eso
+     sirve para poner una red donde el error es caro: registrar un regreso que
+     no ocurrió cierra el pase, lo saca de "pendiente de regreso" y nadie vuelve
+     a perseguir ese material. */
+  const salioPorOtroPorton =
+    !!pase.SalidaPuestoKey && !!miPuestoKey && pase.SalidaPuestoKey !== miPuestoKey
+  const salidaReciente =
+    pase.MinutosDesdeSalida != null && pase.MinutosDesdeSalida < MINUTOS_SALIDA_RECIENTE
+  /* Salió hace poco POR EL OTRO PORTÓN: puede estar yendo o viniendo, y ningún
+     dato lo dice. Acá se pregunta; en cualquier otro caso no hace falta — un
+     pase que salió hace tres días solo puede estar volviendo. */
+  const regresoDudoso = esRetorno && salioPorOtroPorton && salidaReciente
+
+  /* Un pase DEFINITIVO no queda en PSSAL: al registrar su salida se cierra en
+     PSFIN. Así que cuando pasa por el segundo portón no hay ninguna duda que
+     preguntar —no va a volver nunca— pero SÍ está saliendo, y el guardia
+     necesita lo mismo: que le digan que ya fue revisado y poder dejar rastro.
+
+     `FechaRetorno` es lo que separa los dos caminos a PSFIN: el definitivo que
+     salió no la tiene; el que regresó y se cerró, sí. Sin esa condición, un
+     pase que ya volvió y está adentro diría "puede dejar pasar". */
+  const salidaDefinitivaEnTransito =
+    pase.Estado === 'PSFIN' && !pase.FechaRetorno && !!pase.FechaSalidaReal
+    && salioPorOtroPorton && salidaReciente
+
+  /* Modo salida: el material va hacia la calle y acá no se registra ninguna
+     salida —ya se registró en el otro portón—. Se llega por dos caminos: el
+     pase con retorno cuyo guardia contestó "está saliendo", y el definitivo,
+     que no necesita que le pregunten nada. */
+  const modoSalida = (regresoDudoso && direccion === 'SALE') || salidaDefinitivaEnTransito
+
+  /* ── LA PREGUNTA, ANTES DE MOSTRAR NADA ───────────────────────────────────
+     Se contesta primero porque de la respuesta depende QUÉ pantalla
+     corresponde. Mostrar la de regreso —con su botón de "Registrar regreso"—
+     a alguien que está viendo material SALIR es ponerle el error a un toque de
+     distancia. Y es lo único que el sistema no puede deducir: el guardia ve
+     hacia dónde camina la persona, los datos no. */
+  if (regresoDudoso && direccion === null) {
+    return (
+      <View flex={1} backgroundColor="$background" padding="$4" justifyContent="center" gap="$4">
+        <YStack alignItems="center" gap="$2">
+          <Text fontSize={22} fontWeight="900" color="$text">{pase.Correlativo}</Text>
+          <Text fontSize={13} color="$textMuted" textAlign="center">
+            {pase.TipoSalida}{pase.EnviadoA ? ` · ${pase.EnviadoA}` : ''}
+          </Text>
+        </YStack>
+
+        {/* El hecho que permite contestar. Va antes que la pregunta a propósito:
+            "hace 12 minutos" es lo que la responde. */}
+        <YStack backgroundColor={ACCENT_BG} borderWidth={1.5} borderColor={ACCENT}
+          borderRadius="$4" padding="$3.5" gap="$1.5">
+          <XStack alignItems="center" gap="$2">
+            <DoorOpen size={16} color={ACCENT} />
+            <Text flex={1} fontSize={11} fontWeight="900" color={ACCENT}>ESTE PASE YA SALIÓ</Text>
+            <Text fontSize={12} fontWeight="900" color={ACCENT}>
+              {haceCuanto(pase.MinutosDesdeSalida)}
+            </Text>
+          </XStack>
+          <Text fontSize={14} fontWeight="800" color="$text">
+            {fmtFechaHora(pase.FechaSalidaReal)}
+            {pase.SalidaPuesto ? ` · ${pase.SalidaPuesto}` : ''}
+          </Text>
+          {pase.SalidaPorNombre || pase.SalidaPor ? (
+            <Text fontSize={11} color="$textMuted">
+              Registró: {pase.SalidaPorNombre || pase.SalidaPor}
+            </Text>
+          ) : null}
+        </YStack>
+
+        <Text fontSize={18} fontWeight="900" color="$text" textAlign="center">
+          ¿El material está saliendo o regresando?
+        </Text>
+
+        {/* Las dos respuestas, del mismo tamaño y en el mismo nivel: ninguna es
+            "lo normal" ni se puede elegir por descuido. */}
+        <YStack gap="$2.5">
+          <View onPress={() => setDireccion('SALE')} pressStyle={{ opacity: 0.85 }}
+            backgroundColor={VERDE} borderRadius="$4" paddingVertical="$3.5"
+            paddingHorizontal="$4" flexDirection="row" alignItems="center" gap="$3">
+            <LogOut size={22} color="#fff" />
+            <YStack flex={1} gap={1}>
+              <Text color="#fff" fontWeight="900" fontSize={16}>Está saliendo</Text>
+              <Text color="#fff" fontSize={11} opacity={0.9}>
+                Va camino a la calle. El pase no cambia.
+              </Text>
+            </YStack>
+          </View>
+
+          <View onPress={() => setDireccion('VUELVE')} pressStyle={{ opacity: 0.85 }}
+            backgroundColor={ACCENT} borderRadius="$4" paddingVertical="$3.5"
+            paddingHorizontal="$4" flexDirection="row" alignItems="center" gap="$3">
+            <RotateCcw size={22} color="#fff" />
+            <YStack flex={1} gap={1}>
+              <Text color="#fff" fontWeight="900" fontSize={16}>Está regresando</Text>
+              <Text color="#fff" fontSize={11} opacity={0.9}>
+                Vuelve a entrar. Habrá que contar y cerrar el pase.
+              </Text>
+            </YStack>
+          </View>
+        </YStack>
+
+        <View onPress={() => navigation.goBack()} pressStyle={{ opacity: 0.85 }}
+          borderWidth={1.5} borderColor="$border" borderRadius="$4" height={48}
+          alignItems="center" justifyContent="center">
+          <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
+        </View>
+      </View>
+    )
+  }
 
   return (
     <View flex={1} backgroundColor="$background">
@@ -265,8 +430,26 @@ export default function VerificarSalidaScreen() {
 
         <View height={14} />
 
-        {/* ── El aviso: es la razón de que esta pantalla exista ── */}
-        {puedeActuar ? (
+        {/* ── Modo salida: ya lo revisaron en el otro portón ──
+             Acá NO se pide contar de nuevo. El pase pasó por el portón donde se
+             registró la salida y ahí se verificó; repetir la instrucción haría
+             que el guardia desconfíe de un control que ya se hizo, y que la
+             fila avance más lento por nada. */}
+        {modoSalida ? (
+          <XStack alignItems="flex-start" gap="$2.5" backgroundColor="rgba(34, 197, 94, 0.15)"
+            borderWidth={1.5} borderColor={VERDE} borderRadius="$4"
+            paddingHorizontal="$3" paddingVertical="$3" marginBottom="$3">
+            <ShieldCheck size={18} color={VERDE} style={{ marginTop: 1 }} />
+            <YStack flex={1} gap={2}>
+              <Text fontSize={13} fontWeight="900" color={VERDE}>
+                Ya fue revisado{pase.SalidaPuesto ? ` en ${pase.SalidaPuesto}` : ''}
+              </Text>
+              <Text fontSize={12} color={VERDE} fontWeight="600">
+                Puede dejar pasar sin problemas.
+              </Text>
+            </YStack>
+          </XStack>
+        ) : puedeActuar ? (
           <XStack alignItems="flex-start" gap="$2.5" backgroundColor="rgba(245, 158, 11, 0.15)"
             borderWidth={1} borderColor={AMBAR} borderRadius="$4"
             paddingHorizontal="$3" paddingVertical="$3" marginBottom="$3">
@@ -283,14 +466,6 @@ export default function VerificarSalidaScreen() {
                   ? 'Cuente cada línea y compárela con lo que está regresando. Si falta algo o el número de serie no es el mismo, no registre el regreso.'
                   : 'Cuente cada línea y compárela con lo que va en el vehículo. Si algo no coincide —cantidad, marca o número de serie— no genere la salida.'}
               </Text>
-              {esRetorno && pase.FechaSalidaReal ? (
-                <Text fontSize={10} color={AMBAR} fontWeight="700" marginTop={2}>
-                  Salió el {fmtFechaHora(pase.FechaSalidaReal)}
-                  {pase.SalidaPorNombre || pase.SalidaPor
-                    ? `, registrado por ${pase.SalidaPorNombre || pase.SalidaPor}`
-                    : ''}.
-                </Text>
-              ) : null}
             </YStack>
           </XStack>
         ) : soloEsperar ? (
@@ -378,13 +553,13 @@ export default function VerificarSalidaScreen() {
              persona que tiene enfrente— y si esa falla no hace falta contar
              nada. Solo cuando todavía se puede actuar; en un pase cerrado es
              una instrucción para algo que ya no va a pasar. */}
-        {puedeActuar && pase.Responsable ? (
+        {(puedeActuar || modoSalida) && pase.Responsable ? (
           <YStack gap="$2" backgroundColor={ACCENT_BG} borderWidth={1.5} borderColor={ACCENT}
             borderRadius="$4" paddingHorizontal="$3" paddingVertical="$3" marginBottom="$3">
             <XStack alignItems="center" gap="$2">
               <IdCard size={16} color={ACCENT} />
               <Text flex={1} fontSize={11} fontWeight="900" color={ACCENT}>
-                {esRetorno ? 'QUIEN DEBE TRAERLO DE VUELTA' : 'QUIEN PUEDE SACAR EL MATERIAL'}
+                {esRetorno && !modoSalida ? 'QUIEN DEBE TRAERLO DE VUELTA' : 'QUIEN PUEDE SACAR EL MATERIAL'}
               </Text>
             </XStack>
             <Text fontSize={20} fontWeight="900" color="$text">{pase.Responsable}</Text>
@@ -398,7 +573,9 @@ export default function VerificarSalidaScreen() {
         <XStack alignItems="center" gap="$2" paddingHorizontal="$1" paddingBottom="$2">
           <Package size={15} color={theme.primary?.val} />
           <Text flex={1} fontSize="$3" fontWeight="900" color="$text">
-            {esRetorno ? 'Qué debe regresar' : 'Qué debe salir'} ({totalLineas})
+            {modoSalida ? 'Qué lleva'
+              : esRetorno ? 'Qué debe regresar'
+                : 'Qué debe salir'} ({totalLineas})
           </Text>
         </XStack>
 
@@ -467,7 +644,7 @@ export default function VerificarSalidaScreen() {
         backgroundColor="$background" borderTopWidth={1} borderTopColor="$border"
         paddingHorizontal="$3" paddingTop="$2.5" paddingBottom="$3" gap="$2">
 
-        {!puedeActuar ? (
+        {!puedeActuar && !modoSalida ? (
           <Text fontSize={10} fontWeight="700" textAlign="center"
             color={soloEsperar ? AMBAR : '#ef4444'}>
             {cerrado
@@ -482,6 +659,58 @@ export default function VerificarSalidaScreen() {
           </Text>
         ) : null}
 
+        {/* Qué va a pasar al tocar el botón. Vivía dentro del diálogo de
+            confirmación; al quitarlo se sube acá, porque es lo único que ese
+            diálogo decía y la pantalla no: el guardia no tiene por qué saber de
+            memoria si este pase queda abierto esperando el regreso o si se
+            cierra para siempre.
+
+            Con duda de portón NO se muestra: el bloque de la pregunta ya dice
+            qué pasa con cada respuesta, y repetirlo justo encima de los botones
+            solo agrega ruido donde hay que decidir. */}
+        {puedeActuar && !regresoDudoso ? (
+          <XStack alignItems="flex-start" gap="$2" marginBottom="$2"
+            backgroundColor={ACCENT_BG} borderWidth={1} borderColor={ACCENT}
+            borderRadius="$3" paddingHorizontal="$2.5" paddingVertical="$2">
+            {pase.Retorna
+              ? <RotateCcw size={13} color={ACCENT} style={{ marginTop: 1 }} />
+              : <LogOut size={13} color={ACCENT} style={{ marginTop: 1 }} />}
+            <Text flex={1} fontSize={11} color={ACCENT} fontWeight="700">
+              {esRetorno
+                ? 'Al registrarlo el pase queda "Finalizado": salió y ya regresó, no habrá nada más que hacer con él.'
+                : pase.Retorna
+                  ? 'Este pase debe regresar: quedará en "Salió", y al volver se escanea otra vez para cerrarlo.'
+                  : 'Es una salida definitiva: el pase quedará "Finalizado" y no habrá nada más que hacer con él.'}
+            </Text>
+          </XStack>
+        ) : null}
+
+        {/* En modo salida NO hay nada que registrar: el pase ya salió por el
+            otro portón. El botón solo deja constancia de que pasó por acá y
+            cierra — por eso dice "dejar pasar" y no "registrar". */}
+        {modoSalida ? (
+          <XStack gap="$2.5">
+            {/* "Volver" solo tiene sentido si hubo una pregunta que rehacer.
+                En el pase definitivo no la hubo, así que es "Cancelar". */}
+            <View flex={1}
+              onPress={regresoDudoso ? () => setDireccion(null) : () => navigation.goBack()}
+              pressStyle={{ opacity: 0.85 }}
+              borderWidth={1.5} borderColor="$border" borderRadius="$4" height={48}
+              alignItems="center" justifyContent="center">
+              <Text color="$text" fontWeight="800" fontSize="$3">
+                {regresoDudoso ? 'Volver' : 'Cancelar'}
+              </Text>
+            </View>
+
+            <View flex={1} onPress={registrando ? undefined : vaSaliendo}
+              pressStyle={{ opacity: 0.85 }} opacity={registrando ? 0.6 : 1}
+              backgroundColor={VERDE} borderRadius="$4" height={48}
+              alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+              <LogOut size={17} color="#fff" />
+              <Text color="#fff" fontWeight="800" fontSize="$3">Dejar pasar</Text>
+            </View>
+          </XStack>
+        ) : (
         <XStack gap="$2.5">
           {/* Cancelar no toca nada: vuelve a la lista y ya. */}
           <View flex={1} onPress={() => navigation.goBack()} pressStyle={{ opacity: 0.85 }}
@@ -496,7 +725,7 @@ export default function VerificarSalidaScreen() {
               Bloqueado en vez de escondido: si desaparece, no sabe si el
               problema es el pase o la app. */}
           <View flex={1}
-            onPress={puedeActuar && !registrando ? () => setConfirmando(true) : undefined}
+            onPress={puedeActuar && !registrando ? registrar : undefined}
             pressStyle={puedeActuar ? { opacity: 0.85 } : undefined}
             opacity={puedeActuar && !registrando ? 1 : 0.45}
             backgroundColor={puedeActuar ? (esRetorno ? ACCENT : VERDE) : '$border'}
@@ -508,60 +737,9 @@ export default function VerificarSalidaScreen() {
             </Text>
           </View>
         </XStack>
+        )}
       </YStack>
 
-      {/* La confirmación no es un trámite: es donde se dice QUÉ va a pasar
-          después, que es distinto según el tipo y el guardia no lo tiene por qué
-          saber de memoria. */}
-      <ConfirmDialog
-        open={confirmando}
-        onOpenChange={(o: boolean) => { if (!o && !registrando) setConfirmando(false) }}
-        loading={registrando}
-        title={esRetorno ? 'Registrar regreso' : 'Registrar salida'}
-        message={esRetorno
-          ? `Se registrará el regreso de ${pase.Correlativo} con la hora de este momento.`
-          : `Se registrará la salida de ${pase.Correlativo} con la hora de este momento.`}
-        extra={
-          <YStack gap="$2">
-            {/* El nombre se repite acá a propósito: es el último momento antes
-                de entregar el material, y es el dato que más fácil se pasa por
-                alto cuando hay fila en la puerta. */}
-            {pase.Responsable ? (
-              <XStack alignItems="center" gap="$2" backgroundColor="$backgroundHover"
-                borderRadius="$3" paddingHorizontal="$2.5" paddingVertical="$2">
-                <IdCard size={14} color={theme.textMuted?.val} />
-                <YStack flex={1}>
-                  <Text fontSize={10} color="$textMuted" fontWeight="700">ENTREGAR A</Text>
-                  <Text fontSize={14} fontWeight="900" color="$text">{pase.Responsable}</Text>
-                </YStack>
-              </XStack>
-            ) : null}
-
-            <XStack alignItems="flex-start" gap="$2" backgroundColor={ACCENT_BG}
-              borderWidth={1} borderColor={ACCENT} borderRadius="$3"
-              paddingHorizontal="$2.5" paddingVertical="$2">
-              {pase.Retorna
-                ? <RotateCcw size={13} color={ACCENT} style={{ marginTop: 1 }} />
-                : <LogOut size={13} color={ACCENT} style={{ marginTop: 1 }} />}
-              <Text flex={1} fontSize={11} color={ACCENT} fontWeight="700">
-                {esRetorno
-                  ? 'Con esto el pase queda "Finalizado": salió y ya regresó, no habrá nada más que hacer con él.'
-                  : pase.Retorna
-                    ? 'Este pase debe regresar: quedará en "Salió", y al volver se escanea otra vez para cerrarlo.'
-                    : 'Es una salida definitiva: el pase quedará "Finalizado" y no habrá nada más que hacer con él.'}
-              </Text>
-            </XStack>
-            <Text fontSize={10} color="$textMuted">
-              {totalLineas === 1
-                ? `Confirme que la línea del pase coincide con lo que está ${esRetorno ? 'regresando' : 'saliendo'}.`
-                : `Confirme que las ${totalLineas} líneas del pase coinciden con lo que está ${esRetorno ? 'regresando' : 'saliendo'}.`}
-            </Text>
-          </YStack>
-        }
-        confirmLabel={esRetorno ? 'Registrar regreso' : 'Registrar salida'}
-        confirmColor={esRetorno ? ACCENT : VERDE}
-        onConfirm={registrar}
-      />
     </View>
   )
 }

@@ -38,10 +38,12 @@ type Props = {
 
 /** Una parada de la línea. */
 function Parada({
-  titulo, detalle, estado, ultimo,
+  titulo, detalle, nota, estado, ultimo,
 }: {
   titulo: string
   detalle?: string | null
+  /** Texto libre debajo, como el motivo de un rechazo. */
+  nota?: string | null
   estado: 'hecho' | 'actual' | 'pendiente' | 'rechazado'
   ultimo: boolean
 }) {
@@ -72,6 +74,9 @@ function Parada({
           {titulo}
         </Text>
         {detalle ? <Text fontSize={10} color="$textMuted">{detalle}</Text> : null}
+        {/* El motivo del rechazo es lo único que le dice al solicitante qué
+            corregir. Sin esto, "Rechazado" es una pared. */}
+        {nota ? <Text fontSize={10} color={ROJO} fontStyle="italic">«{nota}»</Text> : null}
       </YStack>
     </XStack>
   )
@@ -102,7 +107,8 @@ export default function LineaFirmas({ pasos, pasoActual, creadoPor, creadoEn, fm
 
         const detalle = p.Firmado && p.FirmadoPor
           ? `Firmó ${p.FirmadoPor}${p.FechaAuth && fmtFecha ? ` · ${fmtFecha(p.FechaAuth)}` : ''}`
-          : p.Rechazado ? 'Rechazado'
+          : p.Rechazado
+            ? `Rechazó ${p.FirmadoPor ?? ''}${p.FechaAuth && fmtFecha ? ` · ${fmtFecha(p.FechaAuth)}` : ''}`.trim()
             : estado === 'actual' ? 'En espera de firma'
               : null
 
@@ -111,6 +117,7 @@ export default function LineaFirmas({ pasos, pasoActual, creadoPor, creadoEn, fm
             key={p.Paso}
             titulo={p.Alternativas.join('  o  ') || `Firma ${p.Paso}`}
             detalle={detalle}
+            nota={p.Rechazado ? p.Comentario : null}
             estado={estado}
             ultimo={i === pasos.length - 1}
           />

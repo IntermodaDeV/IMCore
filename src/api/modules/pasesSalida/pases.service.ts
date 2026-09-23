@@ -105,6 +105,19 @@ export const pasesService = {
     >(`${schema}/RegistrarSalida`, { Id: id }),
 
   /**
+   * Deja constancia de que el pase se presentó en un portón sin que hubiera
+   * nada que registrar: el que ya salió por el otro portón y pasa por seguridad
+   * camino a la calle. No cambia ningún estado.
+   *
+   * Sin esto ese cruce no deja rastro, y "¿pasó por seguridad o se fue directo
+   * por planta?" se queda sin respuesta. El portón sale de los accesos del
+   * guardia, no viaja desde acá.
+   */
+  registrarCruce: (id: number) =>
+    httpClient.post<ExecutionResponse<null>, { Id: number }>(
+      `${schema}/RegistrarCruce`, { Id: id }),
+
+  /**
    * Registra el regreso de un pase que estaba afuera. Es el SEGUNDO escaneo del
    * mismo QR: qué significa cada escaneo lo decide el estado del pase, no el
    * guardia. El pase termina en Finalizado.

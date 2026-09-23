@@ -36,6 +36,46 @@ export const PRESS_CARD = {
 /** Acceso que habilita crear pases. El alcance por material se valida aparte. */
 export const ACCESO_SOLICITANTE = 'PSSolicitante'
 
+/**
+ * Los dos portones. El acceso ES el puesto: quien tiene uno registra ahí, y
+ * nadie debe tener los dos.
+ */
+export const ACCESOS_PORTON = ['PSPorton1', 'PSPorton2'] as const
+
+/** El acceso de portón de este usuario, o null si no tiene ninguno. */
+export const miPorton = (access: string | null | undefined): string | null =>
+  ACCESOS_PORTON.find(k => tieneAcceso(access, k)) ?? null
+
+/**
+ * Cuántos minutos después de una salida seguimos asumiendo que el pase VA
+ * SALIENDO y no que está regresando.
+ *
+ * No es una regla de negocio, es una red: dentro de esa ventana, registrar un
+ * regreso pide confirmación. Fuera de ella el botón actúa directo.
+ *
+ * Cuatro horas cubre de sobra la caminata de planta a la salida principal, con
+ * fila incluida. Un regreso real casi nunca ocurre tan rápido, y si ocurre solo
+ * cuesta un toque más.
+ */
+export const MINUTOS_SALIDA_RECIENTE = 240
+
+/**
+ * "hace 12 minutos", "hace 3 horas", "hace 2 días".
+ *
+ * Es el dato que resuelve la ambigüedad sin que el sistema tenga que adivinar:
+ * el guardia lee cuánto hace que salió y sabe solo si lo que tiene enfrente va
+ * o viene. Una fecha exacta obliga a hacer la resta mentalmente.
+ */
+export const haceCuanto = (minutos?: number | null): string => {
+  if (minutos == null || minutos < 0) return ''
+  if (minutos < 1) return 'recién'
+  if (minutos < 60) return `hace ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}`
+  const horas = Math.floor(minutos / 60)
+  if (horas < 24) return `hace ${horas} ${horas === 1 ? 'hora' : 'horas'}`
+  const dias = Math.floor(horas / 24)
+  return `hace ${dias} ${dias === 1 ? 'día' : 'días'}`
+}
+
 /** La clave global con las horas de gracia (AdmSys.Configuracion). */
 export const CLAVE_HORAS_GRACIA = 'PasesSalida.HorasGraciaSalida'
 

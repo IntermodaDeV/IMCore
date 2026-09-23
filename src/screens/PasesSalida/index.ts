@@ -11,6 +11,7 @@ import AprobacionesScreen from './Aprobaciones/AprobacionesScreen'
 import ControlSalidaScreen from './Seguridad/ControlSalidaScreen'
 import VerificarSalidaScreen from './Seguridad/VerificarSalidaScreen'
 import SalidaManualScreen from './Seguridad/SalidaManualScreen'
+import EscanearPaseScreen from './Seguridad/EscanearPaseScreen'
 
 // La key debe coincidir con el `Route` del item de menú en la BD de seguridad
 // (ver Persistance/Scripts/PasesSalida_02_Menu.sql y _08_MenuConfiguracion.sql).
@@ -52,4 +53,10 @@ export const ScreensPasesSalida: TScreens = {
       pasesSalidaSalidaManual: SalidaManualScreen,
     },
   },
+
+  /* Atajo de portería: entra y la cámara ya está abierta. Va como opción de
+     menú propia y no como hija de Control de salida porque su razón de ser es
+     justamente evitar ese rodeo. Después de leer el QR navega a la MISMA
+     pantalla de verificación. */
+  pasesSalidaEscanear: { Screen: EscanearPaseScreen, Childs: {} },
 }

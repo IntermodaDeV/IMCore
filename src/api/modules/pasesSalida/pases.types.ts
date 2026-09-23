@@ -61,6 +61,27 @@ export interface IPaseSalida {
   RetornoPorNombre?: string | null
 
   /**
+   * Por qué PORTÓN salió y por cuál regresó. Hay dos —planta y salida
+   * principal— y un pase puede salir por cualquiera; el que registra primero
+   * cierra la salida. Lo resuelve el servidor con los accesos del guardia, así
+   * que el cliente no lo manda ni lo puede falsear.
+   */
+  SalidaPuesto_Id?: number | null
+  SalidaPuesto?: string | null
+  /** El KeyVar del portón: es lo que la app compara contra el acceso del guardia. */
+  SalidaPuestoKey?: string | null
+  RetornoPuesto?: string | null
+  /**
+   * Cuántos minutos hace que salió, CALCULADO POR EL SERVIDOR.
+   *
+   * Es lo que le permite a la pantalla no confundir "va saliendo por el segundo
+   * portón" con "está regresando de la calle": los dos estados son PSSAL y
+   * ningún dato los distingue, pero doce minutos y dos días sí. El reloj del
+   * teléfono del guardia no sirve para eso.
+   */
+  MinutosDesdeSalida?: number | null
+
+  /**
    * Si el pase se puede usar HOY. Lo calcula el servidor con la misma función
    * que aplica el registro de salida, así que la pantalla y el SP no pueden
    * discrepar.
@@ -190,6 +211,11 @@ export interface IPasoFirma {
   /** Quién firmó y cuándo, si ya pasó. */
   FirmadoPor: string | null
   FechaAuth: string | null
+  /**
+   * El motivo del rechazo. Es lo único que el solicitante necesita leer para
+   * saber qué corregir: sin esto, un pase rechazado es una pared.
+   */
+  Comentario: string | null
   Rechazado: boolean
   Firmado: boolean
 }
@@ -204,7 +230,10 @@ export function armarBitacora(filas: IPaseSalidaAuth[]): IPasoFirma[] {
   for (const f of filas) {
     let p = porPaso.get(f.Paso)
     if (!p) {
-      p = { Paso: f.Paso, Alternativas: [], FirmadoPor: null, FechaAuth: null, Rechazado: false, Firmado: false }
+      p = {
+        Paso: f.Paso, Alternativas: [], FirmadoPor: null, FechaAuth: null,
+        Comentario: null, Rechazado: false, Firmado: false,
+      }
       porPaso.set(f.Paso, p)
     }
     p.Alternativas.push(f.FirmaNombre.replace(/^Firma /, ''))
@@ -213,7 +242,15 @@ export function armarBitacora(filas: IPaseSalidaAuth[]): IPasoFirma[] {
       p.FirmadoPor = f.FirmadoPor || f.UserAuth
       p.FechaAuth = f.FechaAuth
     }
-    if (f.IsAuth === false) p.Rechazado = true
+    if (f.IsAuth === false) {
+      p.Rechazado = true
+      /* Solo el rechazo trae un motivo que valga la pena mostrar; quien firma a
+         favor casi nunca escribe nada. Se guarda también quién y cuándo: el
+         rechazo es una firma dada, aunque sea en contra. */
+      p.FirmadoPor = p.FirmadoPor || f.FirmadoPor || f.UserAuth
+      p.FechaAuth = p.FechaAuth || f.FechaAuth
+      p.Comentario = f.Comentario
+    }
   }
 
   return Array.from(porPaso.values()).sort((a, b) => a.Paso - b.Paso)
