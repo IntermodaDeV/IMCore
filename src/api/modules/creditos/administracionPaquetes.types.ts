@@ -87,10 +87,16 @@ export interface IEstadoEnvioAx {
  * de toda la pantalla: quien dejó subiendo el lote pregunta «¿ya está todo el
  * 1026T?», no «¿cómo fue la corrida 9?».
  */
+export interface ICorridaDelModo {
+  Corrida_Id: number
+  Lineas: number
+  Enviadas: number
+}
+
 export interface IEnvioPorModo {
   Modo: string
-  /** Qué corridas lo compusieron. Casi siempre una. */
-  Corridas: number[]
+  /** Qué corridas lo compusieron y cuánto pone cada una. Casi siempre es una. */
+  Corridas: ICorridaDelModo[]
   Lineas: number
   Enviadas: number
   Pendientes: number

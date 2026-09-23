@@ -256,8 +256,12 @@ export default function CorridaDetailScreen() {
                   <Text fontSize="$3" fontWeight="700" color="$text">
                     {m.Modo === 'SOBRANTES' ? 'Sobrantes' : 'Faltantes'}
                   </Text>
+                  {/* Con lo que pone cada corrida: si no, alguien que ve 500 líneas
+                      arriba y 672 acá no tiene cómo seguir la cuenta. */}
                   <Text fontSize="$2" color="$textMuted">
-                    {m.Corridas.map(x => `#${x}`).join(' · ')}
+                    {m.Corridas.map(x =>
+                      `#${x.Corrida_Id}${m.Corridas.length > 1 ? ` (${fmtNum(x.Lineas)})` : ''}`
+                    ).join(' · ')}
                     {m.Clientes > 0 ? ` · ${fmtNum(m.Clientes)} clientes` : ''}
                   </Text>
                 </YStack>
