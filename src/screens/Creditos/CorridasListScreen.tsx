@@ -113,31 +113,25 @@ export default function CorridasListScreen() {
                 proceso solo se mostraba cuando la corrida NO tenía resultado, así
                 que en una corrida ya calculada —que es justo la que se manda a
                 AX— el «Enviando a AX…» no aparecía nunca. La idea de mirar esto
-                desde el teléfono se caía ahí mismo. */}
+                desde el teléfono se caía ahí mismo.
+
+                UNA LÍNEA, NO UN RECUADRO. Acá la pregunta es «¿cuál está trabajando
+                y cuánto le falta?»; con eso se contesta en un renglón. La barra, la
+                fase y la empresa engordaban la tarjeta unos 130 px y empujaban fuera
+                de pantalla al resto de las corridas, que es justamente lo que uno
+                vino a ver. El detalle sí muestra todo: ahí la pregunta es otra. */}
             {item.ProcesoEstado === 'EN_CURSO' && (
-              <YStack gap="$1.5" marginTop="$1"
-                backgroundColor="rgba(29,78,216,0.10)" borderRadius="$3" padding="$2.5">
-                <XStack alignItems="center" gap="$2">
-                  <Spinner size="small" color="#1d4ed8" />
-                  <Text fontSize="$3" fontWeight="700" color="#1d4ed8" flex={1}>
-                    {proc?.txt ?? 'Trabajando…'}
-                  </Text>
-                  {(item.ProcesoPasosTotal ?? 0) > 0 && (
-                    <Text fontSize="$3" fontWeight="800" color="#1d4ed8">
-                      {Math.round(((item.ProcesoPaso ?? 0) / (item.ProcesoPasosTotal ?? 1)) * 100)}%
-                    </Text>
-                  )}
-                </XStack>
+              <XStack alignItems="center" gap="$2" marginTop="$0.5">
+                <Spinner size="small" color="#1d4ed8" />
+                <Text fontSize="$3" fontWeight="700" color="#1d4ed8" flex={1} numberOfLines={1}>
+                  {proc?.txt ?? 'Trabajando…'}
+                </Text>
                 {(item.ProcesoPasosTotal ?? 0) > 0 && (
-                  <View height={5} borderRadius={3} backgroundColor="rgba(29,78,216,0.20)" overflow="hidden">
-                    <View height={5} borderRadius={3} backgroundColor="#1d4ed8"
-                      width={`${Math.round(((item.ProcesoPaso ?? 0) / (item.ProcesoPasosTotal ?? 1)) * 100)}%`} />
-                  </View>
+                  <Text fontSize="$3" fontWeight="800" color="#1d4ed8">
+                    {Math.round(((item.ProcesoPaso ?? 0) / (item.ProcesoPasosTotal ?? 1)) * 100)}%
+                  </Text>
                 )}
-                {!!item.ProcesoFase && (
-                  <Text fontSize="$2" color="$textMuted">{item.ProcesoFase}</Text>
-                )}
-              </YStack>
+              </XStack>
             )}
 
             {/* El resultado va después. Una corrida sin calcular no tiene cobertura
