@@ -15,7 +15,7 @@ import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT, ACCENT_BG } from '../pasesSalida.helpers'
+import { ACCENT, ACCENT_BG, PRESS_CARD } from '../pasesSalida.helpers'
 import { pasesSalidaService } from '../../../api/modules/pasesSalida/pasesSalida.service'
 import { ITipoSalida } from '../../../api/modules/pasesSalida/pasesSalida.types'
 
@@ -140,7 +140,7 @@ export default function TiposSalidaScreen() {
                 <XStack backgroundColor="$backgroundElevated" borderRadius="$4"
                   borderLeftWidth={4} borderLeftColor={activo ? '$primary' : '$border'} borderWidth={1} borderColor="$border"
                   paddingVertical="$3" paddingHorizontal="$4" alignItems="center" gap="$3" {...shadows.sm}
-                  onPress={() => abrirEditar(it)} pressStyle={{ opacity: 0.8, scale: 0.99 }}>
+                  onPress={() => abrirEditar(it)} pressStyle={PRESS_CARD}>
                   <YStack flex={1} gap={3}>
                     <Text fontSize={14} fontWeight="800" color="$text">{it.Name}</Text>
                     {it.Retorna ? (

@@ -10,6 +10,7 @@ import PaseCrearScreen from './Pases/PaseCrearScreen'
 import AprobacionesScreen from './Aprobaciones/AprobacionesScreen'
 import ControlSalidaScreen from './Seguridad/ControlSalidaScreen'
 import VerificarSalidaScreen from './Seguridad/VerificarSalidaScreen'
+import SalidaManualScreen from './Seguridad/SalidaManualScreen'
 
 // La key debe coincidir con el `Route` del item de menú en la BD de seguridad
 // (ver Persistance/Scripts/PasesSalida_02_Menu.sql y _08_MenuConfiguracion.sql).
@@ -45,8 +46,10 @@ export const ScreensPasesSalida: TScreens = {
   pasesSalidaControlSalida: {
     Screen: ControlSalidaScreen,
     Childs: {
-      // Pantalla interna: se llega escaneando el QR del pase.
+      // Pantallas internas: a la de verificación se llega escaneando el QR o
+      // desde la búsqueda manual; a la manual solo con el acceso PSSalidaManual.
       pasesSalidaVerificarSalida: VerificarSalidaScreen,
+      pasesSalidaSalidaManual: SalidaManualScreen,
     },
   },
 }

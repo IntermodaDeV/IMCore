@@ -13,19 +13,30 @@
  */
 
 /* ───────────────────────────────────────────────────────────────────────────
-   CANAL 1: la bandeja de firmas. Se va a FIRMAR un pase ajeno.
+   CANAL 1: la bandeja de firmas. Es un pase AJENO.
+
+   Viaja además la BANDEJA, por la misma razón que en el canal 2 viaja la
+   pestaña: "te toca firmar" apunta a Pendientes, pero "el pase que autorizaste
+   no ha regresado" apunta a Aprobadas — ese pase ya se firmó y salió. Sin este
+   dato, el segundo aviso dejaba al usuario en una bandeja donde el pase no
+   está.
    ─────────────────────────────────────────────────────────────────────────── */
 
-let pendingFirma: number | null = null
-let listenerFirma: ((paseId: number) => void) | null = null
+export type BandejaDestino = 'PEND' | 'APR' | 'REJ'
 
-export function requestOpenPaseSalidaFirma(paseId: number) {
+type DestinoFirma = { paseId: number; bandeja?: BandejaDestino }
+
+let pendingFirma: DestinoFirma | null = null
+let listenerFirma: ((destino: DestinoFirma) => void) | null = null
+
+export function requestOpenPaseSalidaFirma(paseId: number, bandeja?: BandejaDestino) {
   if (!paseId || paseId <= 0) return
-  if (listenerFirma) listenerFirma(paseId)
-  else pendingFirma = paseId
+  const destino: DestinoFirma = { paseId, bandeja }
+  if (listenerFirma) listenerFirma(destino)
+  else pendingFirma = destino
 }
 
-export function subscribeOpenPaseSalidaFirma(cb: (paseId: number) => void): () => void {
+export function subscribeOpenPaseSalidaFirma(cb: (destino: DestinoFirma) => void): () => void {
   listenerFirma = cb
   if (pendingFirma != null) {
     const p = pendingFirma

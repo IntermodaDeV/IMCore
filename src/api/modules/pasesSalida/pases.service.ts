@@ -2,7 +2,7 @@ import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
   IPaseSalida, IPaseSalidaDetalle, IPaseSalidaGuardar, IFirmaUsuario, IPaseSalidaAuth,
-  IPaseSalidaEstado, BandejaFirma, BandejaPorteria, IPaseSalidaFirmar,
+  IPaseSalidaEstado, IPaseSalidaManual, BandejaFirma, BandejaPorteria, IPaseSalidaFirmar,
 } from './pases.types'
 import { IMaterial } from './pasesSalida.types'
 import { IReglaResumen } from './configuracion.types'
@@ -65,11 +65,24 @@ export const pasesService = {
    * Una bandeja de portería. El backend filtra por estado: acá no se decide
    * nada sobre eso.
    *
-   * `fecha` ('YYYY-MM-DD') solo aplica a PEND, que es una agenda del día. FIN y
-   * REG son historial y se acotan por meses contra la fecha REAL de salida.
+   * `fecha` ('YYYY-MM-DD') la interpretan distinto según la bandeja, porque las
+   * tres responden preguntas distintas:
+   *   PEND  la lee como DÍA: es la agenda de lo autorizado a salir.
+   *   FIN   la lee como MES: el historial se consulta por mes, no por una
+   *         ventana móvil que no se puede recorrer ni citar.
+   *   REG   la ignora y trae TODAS. Un préstamo que salió hace ocho meses y no
+   *         volvió es justo el que hay que perseguir, y cualquier corte por
+   *         fecha lo escondía por ser el más viejo.
    */
-  getPasesParaSalida: (bandeja: BandejaPorteria = 'PEND', fecha?: string, meses?: number) =>
-    httpClient.get<ExecutionResponse<IPaseSalida[]>>(`${schema}/ParaSalida`, { bandeja, fecha, meses }),
+  getPasesParaSalida: (bandeja: BandejaPorteria = 'PEND', fecha?: string) =>
+    httpClient.get<ExecutionResponse<IPaseSalida[]>>(`${schema}/ParaSalida`, { bandeja, fecha }),
+
+  /**
+   * Camino alterno al escaneo: lo que se puede sacar en la fecha más todo lo
+   * que está afuera. Requiere el acceso PSSalidaManual.
+   */
+  getPasesSalidaManual: (fecha?: string) =>
+    httpClient.get<ExecutionResponse<IPaseSalidaManual[]>>(`${schema}/SalidaManual`, { fecha }),
 
   // El pase que codifica un QR escaneado. Devuelve 0 o 1 elemento, y lo trae
   // cualquiera sea su estado: un pase rechazado no puede verse igual que un

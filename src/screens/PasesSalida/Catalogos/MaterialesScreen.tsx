@@ -15,7 +15,7 @@ import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT, ACCENT_BG } from '../pasesSalida.helpers'
+import { ACCENT, ACCENT_BG, PRESS_CARD } from '../pasesSalida.helpers'
 import { pasesSalidaService } from '../../../api/modules/pasesSalida/pasesSalida.service'
 import { IMaterial } from '../../../api/modules/pasesSalida/pasesSalida.types'
 
@@ -139,7 +139,7 @@ export default function MaterialesScreen() {
                 <XStack backgroundColor="$backgroundElevated" borderRadius="$4"
                   borderLeftWidth={4} borderLeftColor={activo ? '$primary' : '$border'} borderWidth={1} borderColor="$border"
                   paddingVertical="$3" paddingHorizontal="$4" alignItems="center" gap="$3" {...shadows.sm}
-                  onPress={() => abrirEditar(it)} pressStyle={{ opacity: 0.8, scale: 0.99 }}>
+                  onPress={() => abrirEditar(it)} pressStyle={PRESS_CARD}>
                   <Text flex={1} fontSize={14} fontWeight="800" color="$text">{it.Name}</Text>
                   <View onPress={(e: any) => { e?.stopPropagation?.(); setConfirm(it) }} pressStyle={{ opacity: 0.7 }}
                     backgroundColor={activo ? ACCENT_BG : 'rgba(100, 116, 139, 0.18)'}
@@ -177,9 +177,6 @@ export default function MaterialesScreen() {
                   )
                 })}
               </XStack>
-              <Text fontSize={11} color="$textMuted">
-                Un equipo exige marca, modelo y serie al pedirlo. Lo demás solo pide marca.
-              </Text>
             </YStack>
 
             <XStack gap="$2.5" marginTop="$1">

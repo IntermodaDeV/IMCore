@@ -22,8 +22,9 @@ const CATEGORIA_LABEL: Record<string, string> = {
   Gira: 'Gira · gastos de viaje',
   Repuestos: 'Repuestos y suministros',
   CooInter: 'Cooperativa',
+  PasesSalida: 'Pases de salida de material',
 }
-const CATEGORIA_ORDEN = ['Mtto', 'Repuestos', 'Visitas', 'RH', 'Gira', 'CooInter']
+const CATEGORIA_ORDEN = ['Mtto', 'Repuestos', 'Visitas', 'RH', 'Gira', 'CooInter', 'PasesSalida']
 
 // ── Pares mínimo/máximo que se muestran como UNA sola configuración ────────
 //
@@ -388,6 +389,39 @@ const CONFIG_META: Record<
     label: 'Aporte máximo · planilla sin clasificar',
     kind: 'number',
     unidad: 'L/pago',
+  },
+
+  // ── Pases de salida ──────────────────────────────────────────────────────
+  // Reglas de la PORTERÍA: iguales para todos los grupos. Un grupo puede tener
+  // su propio horario, y eso se configura en el grupo, no acá.
+  //
+  // El horario queda como texto libre a propósito: el valor es 'HH:mm', que no
+  // es un número ni una bandera, y un campo que exige escribir y confirmar no
+  // se destruye de un toque.
+  'PasesSalida.HoraSalidaDesde': {
+    label: 'Salida · desde qué hora',
+    kind: 'texto',
+  },
+  'PasesSalida.HoraSalidaHasta': {
+    label: 'Salida · hasta qué hora',
+    kind: 'texto',
+  },
+  'PasesSalida.HorasGraciaSalida': {
+    label: 'Horas de gracia para usar un pase aprobado',
+    kind: 'number',
+    unidad: 'horas',
+    min: 0,
+    max: 168,
+  },
+  // Cuántos días después de la salida REAL se considera atrasado el retorno.
+  // Se cuenta desde que salió y no desde la fecha prevista: lo que importa es
+  // cuánto lleva la cosa afuera.
+  'PasesSalida.DiasAvisoRetorno': {
+    label: 'Avisar que un pase no ha regresado a los',
+    kind: 'number',
+    unidad: 'días de haber salido',
+    min: 1,
+    max: 90,
   },
 }
 

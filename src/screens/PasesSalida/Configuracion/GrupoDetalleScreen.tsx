@@ -10,7 +10,7 @@ import { useShowToast } from '../../../utils/useShowToast'
 import SearchInput from '../../../components/commons/SearchInput'
 import SkeletonList from '../../../components/Skeletons/SkeletonList'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT, ACCENT_BG } from '../pasesSalida.helpers'
+import { ACCENT, ACCENT_BG, PRESS_CARD } from '../pasesSalida.helpers'
 import { pasesSalidaConfigService } from '../../../api/modules/pasesSalida/configuracion.service'
 import {
   ICelda, IAccesoFirma, IGrupoDetalle, IMaterialConGrupo, armarCeldas,
@@ -324,7 +324,7 @@ export default function GrupoDetalleScreen() {
               <YStack key={c.TipoSalida_Id} backgroundColor="$backgroundElevated" borderRadius="$4"
                 borderLeftWidth={4} borderLeftColor={c.NoPermitido ? '#ef4444' : aplica ? '$primary' : '$border'}
                 borderWidth={1} borderColor="$border" padding="$4" gap="$2.5" {...shadows.sm}
-                onPress={() => abrirCelda(c)} pressStyle={{ opacity: 0.85, scale: 0.995 }}>
+                onPress={() => abrirCelda(c)} pressStyle={PRESS_CARD}>
                 <XStack alignItems="center" gap="$2">
                   <Text flex={1} fontSize={14} fontWeight="800" color="$text">{c.TipoSalida}</Text>
                   {c.Retorna ? (

@@ -5,7 +5,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import {
   // `History` se renombra: choca con el tipo global History del DOM y TS resuelve ese.
   ScanLine, Package, User, Building2, Stamp, ChevronDown, ChevronUp, LogOut, Clock,
-  IdCard, History as HistoryIcon,
+  IdCard, PencilLine, CalendarDays, ChevronLeft, ChevronRight, History as HistoryIcon,
 } from 'lucide-react-native'
 import dayjs from 'dayjs'
 
@@ -20,7 +20,10 @@ import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT, ACCENT_BG, estadoVisual, fmtCantidad, fmtFechaHora } from '../pasesSalida.helpers'
+import { useAuth } from '../../../context/AuthContext'
+import {
+  ACCENT, ACCENT_BG, ACCESO_SALIDA_MANUAL, PRESS_CARD, estadoVisual, fmtCantidad, fmtFecha, fmtFechaHora, tieneAcceso,
+} from '../pasesSalida.helpers'
 import LineaFirmas from '../Pases/LineaFirmas'
 import LineaEstados from '../Pases/LineaEstados'
 import EscanerPase from './EscanerPase'
@@ -38,10 +41,19 @@ const BANDEJAS: { key: BandejaPorteria; label: string }[] = [
 ]
 
 /**
- * Ventana del historial, fija. Aplica solo a Finalizados y Pendiente regreso:
- * Pendientes es una agenda y se mueve con el selector de fecha.
+ * Los nombres de mes, a mano y no con el locale de dayjs: la app no configura
+ * `dayjs/locale/es`, así que `format('MMMM')` devolvería "September".
  */
-const MESES = 3
+const NOMBRE_MES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+
+/** 'YYYY-MM' -> "Septiembre 2026". */
+const etiquetaMes = (mes: string) => {
+  const [y, m] = mes.split('-')
+  return `${NOMBRE_MES[Number(m) - 1] ?? m} ${y}`
+}
 
 /**
  * Portería: qué está autorizado a salir.
@@ -50,13 +62,18 @@ const MESES = 3
  * acá ni en gris: si apareciera, tarde o temprano alguien lo deja salir
  * "porque ahí estaba".
  *
- * TRES BANDEJAS, Y CADA UNA SE ORDENA POR UNA FECHA DISTINTA:
- *   · Pendientes es una AGENDA: lo autorizado que todavía no sale, por fecha
- *     prevista. Por eso es la única con selector de fecha — le importa lo que
- *     sale hoy, no lo que se pidió hoy.
- *   · Finalizados y Pendiente regreso son HISTORIAL: se acotan a los últimos
- *     meses contra la fecha REAL de salida, porque la prevista ahí ya no
- *     significa nada.
+ * TRES BANDEJAS, Y CADA UNA SE ACOTA DISTINTO, porque responden preguntas
+ * distintas:
+ *   · Pendientes es una AGENDA: lo aprobado que se puede sacar ESE día. Va con
+ *     selector de fecha — le importa lo que sale hoy, no lo que se pidió hoy.
+ *     No es "lo fechado ese día": un pase sigue sirviendo mientras le duren las
+ *     horas de gracia, así que el de ayer aparece hoy —marcado en ámbar— porque
+ *     el registro de salida lo va a aceptar igual.
+ *   · Finalizados es HISTORIAL y se consulta por MES, con el mismo selector que
+ *     el dashboard de horas extra usa para las semanas. Un mes concreto se
+ *     puede recorrer y citar; una ventana móvil de N meses no.
+ *   · Pendiente regreso son TODAS, sin tope. Cualquier corte por fecha escondía
+ *     justo lo que hay que perseguir: lo que lleva más tiempo afuera.
  *
  * "Pendiente regreso" es la que justifica la pantalla entera: un préstamo que
  * salió hace dos meses y no volvió es un problema de seguridad, y sin esta
@@ -75,17 +92,31 @@ const MESES = 3
 const FOOTER_H = 84
 
 const HOY = () => dayjs().format('YYYY-MM-DD')
+const MES_ACTUAL = () => dayjs().format('YYYY-MM')
 
 export default function ControlSalidaScreen() {
   const theme = useTheme()
   const navigation = useNavigation<any>()
+  const { user } = useAuth()
   const { showToast } = useShowToast()
+
+  // Registrar sin escanear es una excepción y se concede aparte: el menú de
+  // portería no alcanza.
+  const puedeManual = tieneAcceso(user?.Access, ACCESO_SALIDA_MANUAL)
 
   const [escaneando, setEscaneando] = useState(false)
   const [buscando, setBuscando] = useState(false)
 
   const [bandeja, setBandeja] = useState<BandejaPorteria>('PEND')
   const [fecha, setFecha] = useState<string>(HOY())
+  /**
+   * El mes que se está viendo en Finalizados, 'YYYY-MM'. Arranca en el actual.
+   *
+   * Va aparte de `fecha` aunque las dos viajen por el mismo parámetro: son dos
+   * navegaciones distintas —un día y un mes— y compartir el estado haría que
+   * moverse en una arrastrara la otra.
+   */
+  const [mes, setMes] = useState<string>(MES_ACTUAL())
   const [items, setItems] = useState<IPaseSalida[]>([])
   // SearchInput filtra contra `items` y devuelve el resultado acá.
   const [filtered, setFiltered] = useState<IPaseSalida[]>([])
@@ -104,13 +135,19 @@ export default function ControlSalidaScreen() {
   const [cargandoDet, setCargandoDet] = useState<number | null>(null)
 
   const esHoy = fecha === HOY()
+  const esMesActual = mes === MES_ACTUAL()
   // La fecha es una agenda del día: solo tiene sentido en Pendientes. En el
   // historial se manda igual pero el servidor la ignora.
   const conFecha = bandeja === 'PEND'
 
   const cargar = useCallback(async () => {
     try {
-      const r = await pasesService.getPasesParaSalida(bandeja, fecha, MESES)
+      /* PEND manda el día y FIN el mes, por el mismo parámetro. REG no manda
+         nada: trae todo lo que sigue afuera. */
+      const r = await pasesService.getPasesParaSalida(
+        bandeja,
+        bandeja === 'FIN' ? `${mes}-01` : fecha,
+      )
       const data = r.Data ?? []
       setItems(data); setFiltered(data)
       setError(null)
@@ -118,7 +155,7 @@ export default function ControlSalidaScreen() {
       setItems([]); setFiltered([])
       setError(handleError(e))
     }
-  }, [bandeja, fecha])
+  }, [bandeja, fecha, mes])
 
   useEffect(() => { (async () => { setLoading(true); await cargar(); setLoading(false) })() }, [cargar])
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
@@ -250,6 +287,65 @@ export default function ControlSalidaScreen() {
           </XStack>
         ) : null}
 
+        {/* Finalizados se consulta por MES. Un mes concreto se puede recorrer y
+            citar —"lo de septiembre"—; una ventana móvil de tres meses no.
+            Pendiente regreso no lleva selector: son todas.
+
+            El selector es el MISMO del dashboard de horas extra, con meses en
+            vez de semanas: dos flechas que se apagan cuando no hay a dónde ir,
+            el período en grande, la insignia ACTUAL y el rango de fechas
+            debajo. Repetir ese patrón vale más que inventar otro — quien navega
+            semanas allá ya sabe usar este sin mirarlo. */}
+        {bandeja === 'FIN' ? (
+          <XStack
+            alignItems="center"
+            backgroundColor="$backgroundElevated"
+            borderRadius="$4"
+            paddingVertical="$1.5"
+            paddingHorizontal="$1.5"
+            marginBottom="$2.5"
+            {...shadows.sm}
+          >
+            <View
+              padding="$2"
+              borderRadius={999}
+              pressStyle={{ opacity: 0.5 }}
+              onPress={() => setMes(dayjs(`${mes}-01`).subtract(1, 'month').format('YYYY-MM'))}
+            >
+              <ChevronLeft size={20} color="#94A3B8" />
+            </View>
+
+            <YStack flex={1} alignItems="center" gap={1}>
+              <XStack alignItems="center" gap="$1.5">
+                <Text fontSize={14} fontWeight="800" color="$text">{etiquetaMes(mes)}</Text>
+                {esMesActual ? (
+                  <XStack backgroundColor={`${ACCENT}22`} paddingHorizontal={6} paddingVertical={1} borderRadius={6}>
+                    <Text fontSize={9} fontWeight="800" color={ACCENT}>ACTUAL</Text>
+                  </XStack>
+                ) : null}
+              </XStack>
+              <Text fontSize={10} color="$textMuted">
+                {dayjs(`${mes}-01`).format('DD/MM')} — {dayjs(`${mes}-01`).endOf('month').format('DD/MM')}
+              </Text>
+            </YStack>
+
+            {/* Hacia adelante solo hasta el mes en curso: no hay pases
+                finalizados en el futuro. Se apaga en vez de esconderse, igual
+                que allá, para que el control no cambie de ancho al navegar. */}
+            <View
+              padding="$2"
+              borderRadius={999}
+              opacity={esMesActual ? 0.25 : 1}
+              pressStyle={esMesActual ? undefined : { opacity: 0.5 }}
+              onPress={esMesActual
+                ? undefined
+                : () => setMes(dayjs(`${mes}-01`).add(1, 'month').format('YYYY-MM'))}
+            >
+              <ChevronRight size={20} color="#94A3B8" />
+            </View>
+          </XStack>
+        ) : null}
+
         <SearchInput
           data={items}
           // El responsable es clave acá: alguien llega a la puerta y lo primero
@@ -297,7 +393,7 @@ export default function ControlSalidaScreen() {
                   ? `No hay pases aprobados con salida el ${dayjs(fecha).format('DD/MM/YYYY')}.`
                   : bandeja === 'REG'
                     ? 'Todo lo que salió y debía volver ya regresó.'
-                    : `No hay pases cerrados en los últimos ${MESES} meses.`}
+                    : `No hay pases cerrados en ${etiquetaMes(mes)}.`}
             />
           }
           renderItem={({ item: p }) => {
@@ -309,7 +405,7 @@ export default function ControlSalidaScreen() {
               <YStack backgroundColor="$backgroundElevated" borderRadius="$4"
                 borderLeftWidth={4} borderLeftColor={est.color} borderWidth={1} borderColor="$border"
                 paddingVertical="$3" paddingHorizontal="$4" gap="$2" {...shadows.sm}
-                onPress={() => alternar(p.Id)} pressStyle={{ opacity: 0.85 }}>
+                onPress={() => alternar(p.Id)} pressStyle={PRESS_CARD}>
 
                 {/* ── Encabezado ── */}
                 <XStack alignItems="center" gap="$2">
@@ -374,6 +470,31 @@ export default function ControlSalidaScreen() {
                     <XStack alignItems="center" gap="$1.5">
                       <LogOut size={12} color={theme.textMuted?.val} />
                       <Text fontSize={11} color="$textMuted">Salió {fmtFechaHora(p.FechaSalidaReal)}</Text>
+                    </XStack>
+                  ) : null}
+                  {/* En Pendientes las tarjetas ya NO son todas del día
+                      elegido: un pase aprobado para ayer sigue vigente mientras
+                      le duren las horas de gracia, y portería tiene que poder
+                      sacarlo. Cuando la fecha prevista no es la del día que se
+                      está mirando se dice, en ámbar: para el guardia no es lo
+                      mismo uno de hoy que uno en su último día. */}
+                  {conFecha && p.FechaSalida && p.FechaSalida.slice(0, 10) !== fecha ? (
+                    <XStack alignItems="center" gap="$1.5">
+                      <Clock size={12} color="#f59e0b" />
+                      <Text fontSize={11} color="#f59e0b" fontWeight="700">
+                        Era para {fmtFecha(p.FechaSalida)} · último plazo
+                      </Text>
+                    </XStack>
+                  ) : null}
+                  {/* Un vencido también cerró su ciclo, pero nunca cruzó la
+                      puerta: no tiene fecha real. Se muestra para cuándo estaba
+                      previsto, que es el dato por el que el guardia lo busca
+                      —"lo del martes que nunca salió"— y sin el cual la tarjeta
+                      queda sin ninguna fecha. */}
+                  {!conFecha && !p.FechaSalidaReal && p.Estado === 'PSVEN' && p.FechaSalida ? (
+                    <XStack alignItems="center" gap="$1.5">
+                      <CalendarDays size={12} color={theme.textMuted?.val} />
+                      <Text fontSize={11} color="$textMuted">Era para {fmtFecha(p.FechaSalida)}</Text>
                     </XStack>
                   ) : null}
                 </XStack>
@@ -491,14 +612,32 @@ export default function ControlSalidaScreen() {
       <YStack position="absolute" left={0} right={0} bottom={0}
         backgroundColor="$background" borderTopWidth={1} borderTopColor="$border"
         paddingHorizontal="$3" paddingTop="$2.5" paddingBottom="$3">
-        <View
-          onPress={() => setEscaneando(true)}
-          pressStyle={{ opacity: 0.85 }}
-          backgroundColor={ACCENT} borderRadius="$4" height={48}
-          alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
-          <ScanLine size={18} color="#fff" />
-          <Text color="#fff" fontWeight="800" fontSize="$3">Escanear para registrar salida</Text>
-        </View>
+        <XStack gap="$2.5">
+          <View flex={1}
+            onPress={() => setEscaneando(true)}
+            pressStyle={{ opacity: 0.85 }}
+            backgroundColor={ACCENT} borderRadius="$4" height={48}
+            alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+            <ScanLine size={18} color="#fff" />
+            <Text color="#fff" fontWeight="800" fontSize="$3">Escanear</Text>
+          </View>
+
+          {/* Saltarse el QR es saltarse la prueba de que quien llegó traía el
+              pase, así que va detrás de su propio acceso. Sin él el botón no
+              existe — no se muestra deshabilitado: alguien sin el permiso no
+              tiene por qué saber que la excepción existe. */}
+          {puedeManual ? (
+            <View
+              onPress={() => navigation.navigate('pasesSalidaSalidaManual', { fecha })}
+              pressStyle={{ opacity: 0.85 }}
+              borderWidth={1.5} borderColor={ACCENT} backgroundColor={ACCENT_BG}
+              borderRadius="$4" height={48} paddingHorizontal="$3.5"
+              alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
+              <PencilLine size={17} color={ACCENT} />
+              <Text color={ACCENT} fontWeight="800" fontSize="$3">Manual</Text>
+            </View>
+          ) : null}
+        </XStack>
       </YStack>
 
       <EscanerPase

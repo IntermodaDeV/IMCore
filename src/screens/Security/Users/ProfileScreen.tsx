@@ -63,11 +63,20 @@ export default function ProfileScreen() {
     const initials = `${user?.Name?.charAt(0) ?? ''}${user?.LastName?.charAt(0) ?? ''}`.toUpperCase()
     const { menu } = useMenu()
     const [favorites, setFavorites] = useState<number[]>([])
+
+    const MAX_FAVORITOS = 4
+    const ACCESO_SIN_TOPE = 'QuickActions'
+    const sinTope = (user?.Access ?? '').split(',').map(a => a.trim()).includes(ACCESO_SIN_TOPE)
+
+    /** Ya no caben más. Con el acceso nunca es cierto. */
+    const topeAlcanzado = !sinTope && favorites.length >= MAX_FAVORITOS
+
+    /** La insignia se enciende al llegar al tope, o con cualquier favorito si no hay tope. */
+    const destacado = sinTope ? favorites.length > 0 : topeAlcanzado
     const [quickActions, setQuickActions] = useState<IQuickActions[]>([])
     const { showToast } = useShowToast()
     const { setTheme } = useAuth()
     const themeName = useThemeName()
-    const [loading, setLoading] = useState(false)
     // Biometría: tipo soportado por el equipo y si el ingreso biométrico está activo.
     const [biometryType, setBiometryType] = useState<BiometryKind>(null)
     const [bioEnabled, setBioEnabled] = useState(false)
@@ -275,20 +284,20 @@ export default function ProfileScreen() {
                         </XStack>
 
                         <XStack
-                            backgroundColor={favorites.length >= 4 ? 'rgba(255,85,26,0.12)' : 'rgba(100,116,139,0.1)'}
+                            backgroundColor={destacado ? 'rgba(255,85,26,0.12)' : 'rgba(100,116,139,0.1)'}
                             paddingHorizontal="$2"
                             paddingVertical={4}
                             borderRadius={6}
                             alignItems="center"
                             gap="$1"
                         >
-                            <Icons.Star size={12} color={favorites.length >= 4 ? '#FF551A' : '#94A3B8'} fill={favorites.length >= 4 ? '#FF551A' : 'transparent'} />
+                            <Icons.Star size={12} color={destacado ? '#FF551A' : '#94A3B8'} fill={destacado ? '#FF551A' : 'transparent'} />
                             <Text
                                 fontSize={12}
                                 fontWeight="700"
-                                color={favorites.length >= 4 ? '$primary' : '$textMuted'}
+                                color={destacado ? '$primary' : '$textMuted'}
                             >
-                                {favorites.length}/4
+                                {sinTope ? favorites.length : `${favorites.length}/${MAX_FAVORITOS}`}
                             </Text>
                         </XStack>
                     </XStack>
@@ -302,8 +311,8 @@ export default function ProfileScreen() {
                         return (
                             <Pressable key={item.Id}
                                 onPress={() => {
-                                    if (!isFav && favorites.length >= 4) {
-                                        showToast('error', 'Error','Solo se permiten 4 acciones rápidas', 5000, 'top')
+                                    if (!isFav && topeAlcanzado) {
+                                        showToast('error', 'Error', `Solo se permiten ${MAX_FAVORITOS} acciones rápidas`, 5000, 'top')
                                         return
                                     }
                                     toggleFavorite(item.Id)
@@ -334,8 +343,8 @@ export default function ProfileScreen() {
 
                                     <Pressable onPress={(e) => {
                                         e.stopPropagation()
-                                        if (!isFav && favorites.length >= 4) {
-                                            showToast('error', 'Error','Solo se permiten 4 acciones rápidas', 5000, 'top')
+                                        if (!isFav && topeAlcanzado) {
+                                            showToast('error', 'Error', `Solo se permiten ${MAX_FAVORITOS} acciones rápidas`, 5000, 'top')
                                             return
                                         }
                                         toggleFavorite(item.Id)

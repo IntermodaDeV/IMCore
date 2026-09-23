@@ -6,8 +6,78 @@ export const ACCENT = '#FF551A'
 /** Fondo del acento para chips y badges. Legible en claro y en oscuro. */
 export const ACCENT_BG = 'rgba(255, 85, 26, 0.18)'
 
+/**
+ * Feedback al presionar una TARJETA del módulo.
+ *
+ * SE APAGA LA SOMBRA, y esa es la parte que importa. Las tarjetas llevan
+ * elevación (`shadows.sm`) y en Android la sombra se dibuja DETRÁS de la vista.
+ * El tinte naranja es translúcido (9 %), así que mientras la sombra siga
+ * encendida se transparenta a través de él y aparece como un halo gris pegado a
+ * las orillas — que es justo lo que se veía. Bajarle la opacidad a la tarjeta,
+ * que era lo de antes, provocaba lo mismo pero peor: apagaba además el texto y
+ * los badges.
+ *
+ * Apagando la elevación durante la presión no hay nada detrás que se pueda
+ * colar, y la tarjeta se aplana un instante: la misma lectura que tienen las
+ * tarjetas de solicitudes de compra, que no se ensucian al tocarlas.
+ *
+ * `elevation` cubre Android y `shadowOpacity` cubre iOS; ninguna de las dos
+ * afecta el layout, así que la tarjeta no se mueve ni salta.
+ *
+ * Es SOLO para tarjetas. En los íconos sueltos la opacidad sigue siendo lo
+ * correcto: no tienen elevación ni un fondo que teñir.
+ */
+export const PRESS_CARD = {
+  backgroundColor: '$primaryOpacity2',
+  elevation: 0,
+  shadowOpacity: 0,
+} as const
+
 /** Acceso que habilita crear pases. El alcance por material se valida aparte. */
 export const ACCESO_SOLICITANTE = 'PSSolicitante'
+
+/** La clave global con las horas de gracia (AdmSys.Configuracion). */
+export const CLAVE_HORAS_GRACIA = 'PasesSalida.HorasGraciaSalida'
+
+/**
+ * La fecha más vieja para la que todavía tiene sentido crear o editar un pase.
+ *
+ * NO ES "HOY". Un pase no vence al terminar su día de salida: vence al final de
+ * ese día MÁS las horas de gracia. Con las 24 h configuradas, uno fechado ayer
+ * sigue siendo perfectamente válido durante todo el día de hoy — portería lo
+ * deja salir. Bloquear ayer en el formulario le impedía al solicitante corregir
+ * un pase que el sistema todavía acepta, que es justo lo contrario de lo que la
+ * validación quería evitar.
+ *
+ * El cálculo es la fecha calendario de (ahora − gracia), que es exactamente el
+ * punto donde FN_VigenciaSalida deja de responder VENCIDA:
+ *
+ *   Vence(D) = fin del día D + gracia        (lo que hace el SP)
+ *   D sirve mientras  ahora <= Vence(D)  <=>  D >= fecha de (ahora − gracia)
+ *
+ * Sin horas conocidas devuelve HOY. Es el valor estricto a propósito: si la
+ * configuración no se pudo leer, permitir una fecha de más crearía un pase que
+ * nace vencido, y eso no lo corrige nadie.
+ */
+export const fechaMinimaSalida = (horasGracia?: number | null): string => {
+  const horas = typeof horasGracia === 'number' && isFinite(horasGracia) && horasGracia > 0
+    ? horasGracia
+    : 0
+  const d = new Date()
+  d.setHours(d.getHours() - horas)
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+/**
+ * Acceso que habilita registrar salidas y regresos SIN escanear el QR.
+ *
+ * Saltarse el QR es saltarse la prueba de que quien llegó traía el pase, así
+ * que no alcanza con tener el menú de portería: es una excepción y se concede
+ * aparte. Sin el acceso la opción ni se muestra.
+ */
+export const ACCESO_SALIDA_MANUAL = 'PSSalidaManual'
 
 /** `user.Access` viene como una lista separada por comas. */
 export const tieneAcceso = (access: string | null | undefined, key: string) =>

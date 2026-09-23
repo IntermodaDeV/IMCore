@@ -13,7 +13,7 @@ import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT } from '../pasesSalida.helpers'
+import { ACCENT, PRESS_CARD } from '../pasesSalida.helpers'
 import { pasesSalidaConfigService } from '../../../api/modules/pasesSalida/configuracion.service'
 import { ISolicitante, IMaterialSolicitante } from '../../../api/modules/pasesSalida/configuracion.types'
 
@@ -142,7 +142,7 @@ export default function SolicitantesScreen() {
                   borderLeftWidth={4} borderLeftColor={sinAlcance ? '#f59e0b' : '$primary'}
                   borderWidth={1} borderColor="$border"
                   paddingVertical="$3" paddingHorizontal="$4" alignItems="center" gap="$3" {...shadows.sm}
-                  onPress={() => abrir(s)} pressStyle={{ opacity: 0.8, scale: 0.99 }}>
+                  onPress={() => abrir(s)} pressStyle={PRESS_CARD}>
                   <YStack flex={1} gap={3}>
                     <Text fontSize={14} fontWeight="800" color="$text">{s.Nombre || s.User_Code}</Text>
                     <Text fontSize={11} color="$textMuted">{s.User_Code}{s.Email ? ` · ${s.Email}` : ''}</Text>

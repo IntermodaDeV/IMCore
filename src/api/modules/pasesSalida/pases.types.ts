@@ -121,6 +121,22 @@ export interface IPaseSalida {
 }
 
 /**
+ * Un pase sobre el que portería puede actuar sin escanear.
+ *
+ * Extiende el pase con lo que hace falta para ENCONTRARLO cuando no se tiene el
+ * correlativo a mano: el grupo y los materiales en texto. Sin eso, buscar sin
+ * el código es imposible — nadie recuerda "PS2609-00017", recuerda "el de las
+ * herramientas de Juan".
+ */
+export interface IPaseSalidaManual extends IPaseSalida {
+  /** SALIDA (está aprobado) o REGRESO (está afuera). Lo decide el estado. */
+  Accion: 'SALIDA' | 'REGRESO'
+  Grupo: string | null
+  /** Materiales y descripciones concatenados, para buscar por texto. */
+  Materiales: string | null
+}
+
+/**
  * Las tres bandejas de portería.
  *   PEND  autorizado y todavía no sale, organizado por fecha prevista
  *   FIN   el ciclo terminó: salió definitivo, o salió y ya regresó

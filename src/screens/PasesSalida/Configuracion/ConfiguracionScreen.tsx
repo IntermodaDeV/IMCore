@@ -15,7 +15,7 @@ import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT, ACCENT_BG } from '../pasesSalida.helpers'
+import { ACCENT, ACCENT_BG, PRESS_CARD } from '../pasesSalida.helpers'
 import { pasesSalidaConfigService } from '../../../api/modules/pasesSalida/configuracion.service'
 import { IGrupo } from '../../../api/modules/pasesSalida/configuracion.types'
 
@@ -139,7 +139,7 @@ export default function ConfiguracionScreen() {
                   borderLeftWidth={4} borderLeftColor={activo ? '$primary' : '$border'} borderWidth={1} borderColor="$border"
                   paddingVertical="$3" paddingHorizontal="$4" alignItems="center" gap="$3" {...shadows.sm}
                   onPress={() => navigation.navigate('pasesSalidaGrupoDetalle', { id: it.Id, name: it.Name })}
-                  pressStyle={{ opacity: 0.8, scale: 0.99 }}>
+                  pressStyle={PRESS_CARD}>
                   <YStack flex={1} gap={4}>
                     <Text fontSize={14} fontWeight="800" color="$text">{it.Name}</Text>
                     <XStack alignItems="center" gap="$2">

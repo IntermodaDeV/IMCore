@@ -18,7 +18,10 @@ import ErrorState from '../../AdmSys/ErrorState'
 import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
-import { ACCENT, ACCENT_BG, UNIDADES } from '../pasesSalida.helpers'
+import {
+  ACCENT, ACCENT_BG, CLAVE_HORAS_GRACIA, UNIDADES, fechaMinimaSalida,
+} from '../pasesSalida.helpers'
+import { configuracionService } from '../../../api/modules/configuracion/configuracion.service'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import { pasesSalidaService } from '../../../api/modules/pasesSalida/pasesSalida.service'
 import { ITipoSalida, IMaterial } from '../../../api/modules/pasesSalida/pasesSalida.types'
@@ -106,6 +109,15 @@ export default function PaseCrearScreen() {
   // Qué grupo puede salir con qué tipo. Tabla chica: se trae entera y se
   // resuelve en memoria cada vez que cambia el tipo o el grupo del pase.
   const [reglas, setReglas] = useState<IReglaResumen[]>([])
+  /**
+   * La fecha más vieja que el formulario acepta. Sale de las horas de gracia
+   * configuradas, no de "hoy": con 24 h de gracia un pase fechado ayer sigue
+   * siendo válido todo el día de hoy y tiene que poder editarse.
+   *
+   * Arranca en hoy —el valor estricto— y se afloja cuando llega la
+   * configuración. Al revés se ofrecería una fecha que quizá no corresponde.
+   */
+  const [fechaMinima, setFechaMinima] = useState<string>(HOY())
   const [materiales, setMateriales] = useState<IMaterial[]>([])
   const [matFiltrados, setMatFiltrados] = useState<IMaterial[]>([])
   const [loading, setLoading] = useState(true)
@@ -129,13 +141,20 @@ export default function PaseCrearScreen() {
 
   const cargar = useCallback(async () => {
     try {
-      const [rTipos, rMat, rReglas] = await Promise.all([
+      const [rTipos, rMat, rReglas, rConfig] = await Promise.all([
         pasesSalidaService.getTiposSalida(true),
         pasesService.getMisMateriales(),
         pasesService.getReglas(),
+        configuracionService.getAll(),
       ])
       setTipos(rTipos.Data ?? [])
       setReglas(rReglas.Data ?? [])
+      /* Las horas de gracia son globales (no hay override por grupo: eso es el
+         horario). Si la lectura falla, `fechaMinimaSalida` cae en hoy. */
+      const gracia = Number(
+        (rConfig.Data ?? []).find(c => c.Clave === CLAVE_HORAS_GRACIA)?.Valor,
+      )
+      setFechaMinima(fechaMinimaSalida(gracia))
       const mats = rMat.Data ?? []
       setMateriales(mats); setMatFiltrados(mats)
 
@@ -250,9 +269,9 @@ export default function PaseCrearScreen() {
 
     /* El calendario ya no deja elegir días pasados, pero al EDITAR un pase viejo
        la fecha puede venir de antes sin que nadie la toque. Se valida igual. */
-    if (fechaSalida < HOY()) {
-      showToast('warning', 'Fecha pasada',
-        'La fecha de salida no puede ser anterior a hoy. Elija una fecha válida.')
+    if (fechaSalida < fechaMinima) {
+      showToast('warning', 'Fecha vencida',
+        'Un pase con esa fecha ya estaría vencido y portería no lo dejaría salir. Elija una fecha válida.')
       return
     }
 
@@ -423,7 +442,7 @@ export default function PaseCrearScreen() {
               <AppDatePicker
                 label="Fecha de salida"
                 value={fechaSalida}
-                minDate={HOY()}
+                minDate={fechaMinima}
                 onChange={(v) => setFechaSalida(v ?? HOY())}
               />
             </YStack>

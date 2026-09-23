@@ -21,7 +21,7 @@ import { AppError, handleError } from '../../../utils/errorHandler'
 import { useAuth } from '../../../context/AuthContext'
 import { shadows } from '../../../theme/shadows'
 import {
-  ACCENT, ACCENT_BG, ACCESO_SOLICITANTE, ESTADOS_FILTRO, ETIQUETA_ESTADO,
+  ACCENT, ACCENT_BG, ACCESO_SOLICITANTE, ESTADOS_FILTRO, ETIQUETA_ESTADO, PRESS_CARD,
   estadoVisual, fmtFecha, fmtFechaHora, tieneAcceso,
 } from '../pasesSalida.helpers'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
@@ -38,6 +38,7 @@ const TABS: { key: TabPases; label: string }[] = [
 ]
 import PaseQrSheet from './PaseQrSheet'
 import LineaFirmas from './LineaFirmas'
+import TarjetaResaltable from './TarjetaResaltable'
 
 
 /**
@@ -168,29 +169,58 @@ export default function MisPasesScreen() {
    * "Aprobado", el pase vencido no aparecería y el aviso no serviría de nada.
    */
   const listaRef = useRef<FlatList<IPaseSalida>>(null)
-  /* El callback del bus se registra una sola vez, así que leería una lista
-     vieja. La ref siempre tiene la actual. */
-  const visiblesRef = useRef<IPaseSalida[]>([])
-  useEffect(() => { visiblesRef.current = visibles }, [visibles])
+  /* En qué pase ya se hizo foco. Sin esta marca, cada recarga de la lista
+     volvería a desplazar la pantalla mientras el resaltado siga vivo. */
+  const enfocadoRef = useRef<number | null>(null)
+  const apagadoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const unsub = subscribeOpenMiPaseSalida(({ paseId, tab: destino }) => {
       if (destino) setTab(destino)
       setEstadoSel(null)
+      enfocadoRef.current = null
       setHighlightId(paseId)
 
-      /* Sin el scroll el resaltado se apaga fuera de pantalla y no sirve de
-         nada. Se espera al re-render: cambiar de pestaña rearma la lista
-         entera y las posiciones de antes ya no valen. */
-      setTimeout(() => {
-        const i = visiblesRef.current.findIndex(x => x.Id === paseId)
-        if (i >= 0) listaRef.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0 })
-      }, 350)
-
-      setTimeout(() => setHighlightId(null), 4000)
+      /* Red de seguridad: si el pase nunca aparece —lo dejó fuera un filtro, o
+         quedó fuera del período de la consulta— el resaltado no se queda
+         encendido para siempre. */
+      setTimeout(
+        () => setHighlightId(actual => (actual === paseId ? null : actual)),
+        15000,
+      )
     })
     return unsub
   }, [])
+
+  /**
+   * Desplaza hasta el pase, pero ESPERANDO A QUE EXISTA EN LA LISTA.
+   *
+   * Antes se intentaba una sola vez a los 350 ms. Eso alcanzaba si la pantalla
+   * ya estaba abierta, pero no en el caso que de verdad importa: tocar la
+   * notificación con el app cerrada monta la pantalla y recién ahí arranca la
+   * consulta, así que a los 350 ms la lista todavía está vacía. No se desplazaba
+   * nada y el resaltado se apagaba a los 4 segundos sobre una fila que el
+   * usuario nunca llegó a ver — se veía como si no resaltara nada.
+   *
+   * Ahora los 4 segundos arrancan cuando la fila ya está en pantalla.
+   */
+  useEffect(() => {
+    if (highlightId == null || enfocadoRef.current === highlightId) return
+
+    const i = visibles.findIndex(x => x.Id === highlightId)
+    // Todavía no llegó: se reintenta solo, cuando cambie la lista.
+    if (i < 0) return
+
+    enfocadoRef.current = highlightId
+    listaRef.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0 })
+
+    /* El apagado NO va en el cleanup del efecto: `visibles` cambia con cada
+       recarga, y el cleanup lo cancelaría sin que nadie lo vuelva a armar. */
+    if (apagadoRef.current) clearTimeout(apagadoRef.current)
+    apagadoRef.current = setTimeout(() => setHighlightId(null), 4000)
+  }, [highlightId, visibles])
+
+  useEffect(() => () => { if (apagadoRef.current) clearTimeout(apagadoRef.current) }, [])
 
   // La campana acá no es decoración: el aviso de que un pase venció llega
   // mientras el usuario no está mirando, y esta es la pantalla a la que lo
@@ -328,14 +358,22 @@ export default function MisPasesScreen() {
             // El que trajo la notificación, por unos segundos.
             const resaltado = highlightId === p.Id
             return (
-              /* El resaltado toca el FONDO y el borde, no solo el borde: en una
-                 lista de tarjetas iguales, 2px se pierden al pasar la vista. Es
-                 el mismo criterio del historial de horas extra. */
-              <YStack backgroundColor={resaltado ? '$primaryOpacity2' : '$backgroundElevated'}
-                borderRadius="$4"
-                borderLeftWidth={4} borderLeftColor={color}
-                borderWidth={resaltado ? 2 : 1}
-                borderColor={resaltado ? '$primary' : '$border'}
+              /* El resaltado va en un ANILLO por fuera, no en el fondo ni en el
+                 borde de la tarjeta.
+
+                 No es capricho: la tarjeta tiene elevación, y con el fondo y el
+                 grosor del borde puestos por un ternario dejaba de verse igual
+                 que la de Control de salida al presionarla — la sombra se
+                 asomaba por las orillas. Manteniendo la tarjeta con props
+                 ESTÁTICAS, idéntica a la de allá, se comporta idéntico; el
+                 resaltado vive afuera y no toca su pintura.
+
+                 Y sigue cumpliendo lo suyo: en una lista de tarjetas iguales un
+                 borde de 2px se pierde al pasar la vista, así que el anillo
+                 tiñe un área, no una línea. */
+              <TarjetaResaltable resaltado={resaltado}>
+              <YStack backgroundColor="$backgroundElevated" borderRadius="$4"
+                borderLeftWidth={4} borderLeftColor={color} borderWidth={1} borderColor="$border"
                 paddingVertical="$3" paddingHorizontal="$4" gap="$2" {...shadows.sm}
                 /* Mientras se pueda editar, tocarlo abre el formulario: es lo
                   único que se hace con un pase pendiente. Una vez que ya no
@@ -344,7 +382,7 @@ export default function MisPasesScreen() {
                   p.PuedeEditar ? 'pasesSalidaPaseCrear' : 'pasesSalidaPaseDetalle',
                   { id: p.Id, correlativo: p.Correlativo },
                 )}
-                pressStyle={{ opacity: 0.8, scale: 0.99 }}>
+                pressStyle={PRESS_CARD}>
 
                 <XStack alignItems="center" gap="$2">
                   <Text flex={1} fontSize={14} fontWeight="800" color="$text">{p.Correlativo}</Text>
@@ -425,6 +463,7 @@ export default function MisPasesScreen() {
                   </YStack>
                 ) : null}
               </YStack>
+              </TarjetaResaltable>
             )
           }}
         />
