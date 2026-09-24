@@ -65,6 +65,24 @@ export const timeToSeconds = (value: string | null | undefined): number | null =
   return hours * 3600 + minutes * 60 + seconds
 }
 
+/**
+ * '13:30' → '1:30 PM'. Solo para MOSTRAR: el valor de la fila sigue en 24 h,
+ * que es con lo que se calcula y lo que viaja al servidor. '00:00' y '24:00'
+ * son medianoche. Lo que no se pueda interpretar se devuelve tal cual.
+ */
+export const hora12 = (value: string | null | undefined): string => {
+  const sec = timeToSeconds(value)
+  if (sec === null) return value ?? ''
+
+  const totalMin = Math.floor(sec / 60) % (24 * 60)
+  const h24 = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  const sufijo = h24 < 12 ? 'AM' : 'PM'
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+
+  return `${h12}:${String(m).padStart(2, '0')} ${sufijo}`
+}
+
 /** Segundos desde la medianoche a 'HH:mm'. */
 export const secondsToTime = (total: number): string => {
   const h = Math.floor(total / 3600) % 24
@@ -158,17 +176,23 @@ export const finMaximoEnBandas = (
  * como pagable. Cuando el turno no tiene bandas —o todavía no llegaron— se cae
  * a un tope genérico, porque un selector vacío dejaría la fila sin forma de
  * llenarse; quien las use tiene que avisar que van sin respaldo.
+ *
+ * En una HE MANUAL las bandas no la limitan: se ofrece al menos el tope
+ * genérico aunque la cobertura sea más corta, porque la hora puede caer dentro
+ * de la jornada, donde no hay banda que la cubra.
  */
 export const opcionesFin = (
   inicio: string | null | undefined,
   bands: TimeBand[] = [],
   horasMaxSinBandas = 10,
+  manual = false,
 ): OpcionFin[] => {
   const start = timeToSeconds(inicio)
   if (start === null) return []
 
   const techoBandas = finMaximoEnBandas(inicio, bands)
-  const techo = techoBandas ?? start + horasMaxSinBandas * 3600
+  const generico = start + horasMaxSinBandas * 3600
+  const techo = manual ? Math.max(techoBandas ?? 0, generico) : (techoBandas ?? generico)
 
   const out: OpcionFin[] = []
 
@@ -196,10 +220,11 @@ export const opcionesFin = (
 /**
  * Horas de inicio posibles, cada 30 minutos.
  *
- * Solo hacen falta cuando el día NO es laborable para el turno: ahí no hay
- * jornada de la cual deducir el inicio. El rango arranca a las 04:00 y no a la
- * medianoche porque nadie programa horas extra a las 02:00 y cuarenta opciones
- * ya son largas de recorrer.
+ * Hacen falta cuando la fila no respeta la jornada: el día NO es laborable para
+ * el turno, o es HE Manual. El rango arranca a las 04:00 y no a la medianoche
+ * porque nadie programa horas extra a las 02:00 y cuarenta opciones ya son
+ * largas de recorrer; la HE Manual pasa '00:00' porque es la excepción que puede
+ * caer a cualquier hora.
  */
 export const opcionesInicio = (desde = '04:00', hasta = '23:30'): string[] => {
   const ini = timeToSeconds(desde)
@@ -309,42 +334,138 @@ export const bandsFrom = (params: IOvertimeParameter[]): TimeBand[] =>
     .sort((a, b) => a.start - b.start)
 
 /**
+ * Recargo con el que se paga la parte de una HE Manual que cae DENTRO de la
+ * jornada.
+ *
+ * Las bandas del turno arrancan donde termina la jornada, así que no cubren
+ * esas horas y saldrían como 'Fuera de banda'. La regla es que dentro del
+ * horario laboral la hora extra manual se paga al 25%: se busca en las bandas
+ * del propio turno la que tiene ese porcentaje, para usar SU concepto de
+ * PayRoll y no escribir un código a mano.
+ *
+ * Es el mismo valor que PORCENTAJE_HE_MANUAL_EN_JORNADA de la web: si se
+ * cambia acá, hay que cambiarlo allá.
+ */
+export const PORCENTAJE_HE_MANUAL_EN_JORNADA = 0.25
+
+/** La banda del turno con el recargo de la HE Manual dentro de la jornada. */
+const bandaEnJornada = (bands: TimeBand[]): TimeBand | null =>
+  bands.find(
+    b =>
+      b.porcentaje !== null &&
+      b.porcentaje !== undefined &&
+      Math.abs(b.porcentaje - PORCENTAJE_HE_MANUAL_EN_JORNADA) < 0.0001,
+  ) ?? null
+
+/**
+ * Los tramos de [start, end] que caen dentro de la jornada, en segundos.
+ *
+ * Se mira la jornada del día y la del día siguiente: una HE Manual que cruza la
+ * medianoche puede meterse en el turno de la mañana siguiente.
+ */
+const tramosEnJornada = (
+  schedule: IOvertimeShiftSchedule | undefined,
+  start: number,
+  end: number,
+): Array<[number, number]> => {
+  if (!esLaborable(schedule)) return []
+
+  const jornadaIni = timeToSeconds(schedule?.ShiftStart)
+  let jornadaFin = timeToSeconds(schedule?.ShiftEnd)
+  if (jornadaIni === null || jornadaFin === null) return []
+
+  // Turno de noche: termina al día siguiente.
+  if (jornadaFin <= jornadaIni) jornadaFin += SEGUNDOS_DIA
+
+  const tramos: Array<[number, number]> = []
+  for (const offset of [0, SEGUNDOS_DIA]) {
+    const from = Math.max(start, jornadaIni + offset)
+    const to = Math.min(end, jornadaFin + offset)
+    if (to > from) tramos.push([from, to])
+  }
+  return tramos
+}
+
+/**
  * Reparte las horas del rango entre las bandas.
  *
  * Lo que no cae en ninguna se reporta aparte en lugar de desaparecer del total:
  * si el turno no tiene bandas para ese día, o el rango se sale de las que
  * tiene, el usuario tiene que verlo — esas horas no son pagables y la
  * diferencia contra el total es la única señal.
+ *
+ * `jornadaManual` se pasa SOLO en las filas HE Manual: el tramo que cae dentro
+ * de esa jornada no pasa por las bandas y va entero a la del 25%
+ * (PORCENTAJE_HE_MANUAL_EN_JORNADA). El resto se reparte como siempre.
  */
 export const computeBreakdown = (
   startTime: string | null | undefined,
   endTime: string | null | undefined,
   bands: TimeBand[],
+  jornadaManual?: IOvertimeShiftSchedule,
 ): OvertimeBand[] => {
   const start = timeToSeconds(startTime)
   const end = endSeconds(startTime, endTime)
   if (start === null || end === null || end <= start) return []
 
   const result: OvertimeBand[] = []
-  let covered = 0
 
-  for (const band of bands) {
-    const from = Math.max(start, band.start)
-    const to = Math.min(end, band.end)
-
-    if (to > from) {
-      covered += to - from
+  // Suma horas a una banda, juntando si ya estaba: el tramo de la jornada y el
+  // de después pueden caer en la misma.
+  const sumar = (band: TimeBand, seconds: number) => {
+    const hours = seconds / 3600
+    const actual = result.find(
+      b => b.concepto === band.concepto && b.parametroId === band.parametroId,
+    )
+    if (actual) {
+      actual.hours = +(actual.hours + hours).toFixed(2)
+    } else {
       result.push({
         concepto: band.concepto,
         descripcion: band.descripcion,
         porcentaje: band.porcentaje,
         parametroId: band.parametroId,
-        hours: +((to - from) / 3600).toFixed(2),
+        hours: +hours.toFixed(2),
       })
     }
   }
 
-  const uncovered = end - start - covered
+  // 1) Lo que cae dentro de la jornada, solo en HE Manual.
+  const enJornada = jornadaManual ? tramosEnJornada(jornadaManual, start, end) : []
+  const banda25 = bandaEnJornada(bands)
+  let segundosEnJornada = 0
+  let enJornadaSinBanda = 0
+
+  for (const [from, to] of enJornada) {
+    segundosEnJornada += to - from
+    if (banda25) sumar(banda25, to - from)
+    else enJornadaSinBanda += to - from
+  }
+
+  // 2) El resto, contra las bandas. Se recorta lo ya contado en la jornada para
+  //    no pagarlo dos veces si alguna banda se encima con ella.
+  let covered = 0
+
+  for (const band of bands) {
+    const from = Math.max(start, band.start)
+    const to = Math.min(end, band.end)
+    if (to <= from) continue
+
+    let segundos = to - from
+    for (const [jFrom, jTo] of enJornada) {
+      const solape = Math.min(to, jTo) - Math.max(from, jFrom)
+      if (solape > 0) segundos -= solape
+    }
+
+    if (segundos > 0) {
+      covered += segundos
+      sumar(band, segundos)
+    }
+  }
+
+  // Lo de la jornada que no encontró banda del 25% queda como no cubierto,
+  // igual que cualquier hora sin banda: se ve y se puede investigar.
+  const uncovered = end - start - covered - (segundosEnJornada - enJornadaSinBanda)
 
   // Más de un segundo: por debajo de eso es el redondeo de los tramos.
   if (uncovered > 1) {

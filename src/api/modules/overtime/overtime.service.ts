@@ -28,6 +28,7 @@ import {
   IOvertimeEmployeeWithRequest,
   IOvertimeParameter,
   IOvertimeReason,
+  IOvertimeRequestPermissions,
   IOvertimeShiftSchedule,
   IOvertimeUserParameter,
   IPayWebWeek,
@@ -125,6 +126,17 @@ export const overtimeService = {
     httpClient.get<ExecutionResponse<IOvertimeEmployee[]>>(`${schema}/OtherEmployees`, {
       companyCode,
     }),
+
+  /**
+   * Qué puede hacer el usuario en la captura: hoy, si puede marcar horas extra
+   * como manuales. El acceso vive en PayWeb; el servidor lo vuelve a validar
+   * al guardar, así que esto solo decide si se muestra el botón.
+   */
+  getRequestPermissions: (companyCode: string) =>
+    httpClient.get<ExecutionResponse<IOvertimeRequestPermissions>>(
+      `${schema}/RequestPermissions`,
+      { companyCode },
+    ),
 
   /**
    * Quiénes ya tienen horas extra pedidas para esa fecha.

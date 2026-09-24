@@ -9,6 +9,7 @@ import {
   Check,
   Clock,
   Lock,
+  Pencil,
   Search,
   Send,
   Users,
@@ -45,6 +46,7 @@ import {
   computeBreakdown,
   cruzaMedianoche,
   fechaHoraISO,
+  hora12,
   inicioPorJornada,
   normalizeTime,
   opcionesFin,
@@ -92,6 +94,8 @@ interface Semilla {
   start: string
   end: string
   categoryId: number | null
+  /** Venía guardada como HE Manual. */
+  manual: boolean
 }
 
 /** Un empleado ya elegido, con su horario y sus horas. */
@@ -113,6 +117,13 @@ interface Fila {
   end_Time: string
   category_Id: number | null
   breakdown: OvertimeBand[]
+
+  /**
+   * HE Manual: no respeta la jornada. El inicio se elige igual que el fin, las
+   * horas pueden caer dentro del horario laboral y ese tramo se paga al 25%.
+   * Solo la marca quien tiene el acceso 'CrearHorasExtraManuales'.
+   */
+  is_Manual: boolean
 
   /**
    * Este empleado ya tiene firma: sus horas no se tocan.
@@ -157,6 +168,33 @@ const corrimiento = (dias: number): string => {
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+/**
+ * La fila se rige por la jornada: tiene turno ese día y NO es HE Manual.
+ *
+ * Es la condición que fija el inicio al fin de jornada. Todo lo que amarra el
+ * horario al turno pregunta por esto y no por hasSchedule directo, para que la
+ * excepción de la HE Manual viva en un solo lugar. Es la misma regla que
+ * respetaJornada() de la web.
+ */
+const respetaJornada = (f: Fila): boolean => f.hasSchedule && !f.is_Manual
+
+/**
+ * Pone o quita la marca de HE Manual de una fila.
+ *
+ * Al QUITARLA, si la fila tiene jornada, el inicio vuelve al fin de jornada:
+ * dejar el que se eligió a mano la dejaría encimada con el turno y marcada en
+ * rojo sin que el usuario haya tocado nada. Al PONERLA se conserva lo que
+ * había, que sirve de punto de partida. Las filas firmadas no se tocan.
+ */
+const conMarca = (f: Fila, valor: boolean): Fila => {
+  if (f.isLocked || f.is_Manual === valor) return f
+  return {
+    ...f,
+    is_Manual: valor,
+    start_Time: !valor && f.hasSchedule ? f.shift_End : f.start_Time,
+  }
 }
 
 /** Un entero no negativo, o null si el parámetro no está configurado. */
@@ -268,10 +306,19 @@ export default function CrearSolicitudHoraExtraScreen() {
           start: String(d.Start_Time ?? '').substring(11, 16),
           end: String(d.End_Time ?? '').substring(11, 16),
           categoryId: d.Category_Id ?? null,
+          manual: !!d.Is_Manual,
         },
       ]),
     )
   })
+
+  /**
+   * Puede marcar horas extra como manuales ('CrearHorasExtraManuales').
+   *
+   * Arranca en false y se queda así si la consulta falla: ante la duda no se
+   * ofrece la excepción. El servidor lo vuelve a validar al guardar.
+   */
+  const [puedeManual, setPuedeManual] = useState(false)
 
   // Paso 3
   const [horarios, setHorarios] = useState<IOvertimeShiftSchedule[]>([])
@@ -330,12 +377,15 @@ export default function CrearSolicitudHoraExtraScreen() {
 
     try {
       // En paralelo: no dependen entre sí y son cuatro viajes al abrir.
-      const [resEnt, resMot, resProp, resPrest, resParams] = await Promise.all([
+      const [resEnt, resMot, resProp, resPrest, resParams, resPerm] = await Promise.all([
         overtimeService.getRequestorEntities(companyCode),
         overtimeService.getReasons(companyCode),
         overtimeService.getEmployeesInCharge(companyCode),
         overtimeService.getOtherEmployees(companyCode),
         overtimeService.getMyParameters(companyCode),
+        // De mejor esfuerzo: si falla, simplemente no aparece el botón de HE
+        // Manual. No puede tumbar la pantalla.
+        overtimeService.getRequestPermissions(companyCode).catch(() => null),
       ])
 
       if (!resEnt?.Success) {
@@ -356,6 +406,8 @@ export default function CrearSolicitudHoraExtraScreen() {
       // servidor devuelve vacío, y ahí la solicitud se arma igual con la gente
       // propia.
       setPrestados(resPrest?.Success ? (resPrest.Data ?? []) : [])
+
+      setPuedeManual(!!(resPerm?.Success && resPerm.Data?.Can_Create_Manual))
 
       // Los parámetros tampoco: sin ellos no hay límite de fechas, que es
       // justo lo que significa no tenerlos configurados.
@@ -510,6 +562,14 @@ export default function CrearSolicitudHoraExtraScreen() {
           // Lo capturado en esta sesión manda sobre lo guardado: volver atrás
           // a agregar gente no puede deshacer lo que se acaba de cambiar.
           const guardado = previa ? undefined : semilla?.get(code)
+          const manual = previa?.is_Manual ?? guardado?.manual ?? false
+
+          // El inicio escrito a mano se conserva: el del día sin jornada y el
+          // de una HE Manual. Una HE Manual sin nada escrito arranca en el fin
+          // de jornada, que es un punto de partida razonable.
+          const inicioPrevio = previa
+            ? (!previa.hasSchedule || previa.is_Manual ? previa.start_Time : '')
+            : (guardado?.start ?? '')
 
           return {
             employee_Code: code,
@@ -520,14 +580,14 @@ export default function CrearSolicitudHoraExtraScreen() {
             shift_Start: horario?.ShiftStart ? String(horario.ShiftStart).substring(0, 5) : '',
             shift_End: horario?.ShiftEnd ? String(horario.ShiftEnd).substring(0, 5) : '',
             hasSchedule: conJornada,
-            // Con jornada el inicio lo manda el turno; sin ella se conserva lo
-            // que el usuario ya había puesto, o lo que traía guardado.
-            start_Time: conJornada
-              ? inicio
-              : (previa && !previa.hasSchedule ? previa.start_Time : (guardado?.start ?? '')),
+            // Con jornada el inicio lo manda el turno, salvo en HE Manual; en
+            // los demás casos se conserva lo que el usuario ya había puesto, o
+            // lo que traía guardado.
+            start_Time: conJornada && !manual ? inicio : (inicioPrevio || (conJornada ? inicio : '')),
             end_Time: previa?.end_Time ?? guardado?.end ?? '',
             category_Id: previa?.category_Id ?? guardado?.categoryId ?? null,
             breakdown: [] as OvertimeBand[],
+            is_Manual: manual,
             isLocked: bloqueados.has(code),
             lockLabel: bloqueados.get(code) ?? '',
           } as Fila
@@ -594,13 +654,17 @@ export default function CrearSolicitudHoraExtraScreen() {
   )
 
   // El reparto se recalcula cuando cambian las horas o llegan las bandas.
+  //
+  // En una HE Manual se le pasa la jornada del empleado: el tramo que cae
+  // dentro de ella va a la banda del 25% en lugar de quedar fuera de banda.
   useEffect(() => {
     setFilas(prev => {
       let cambio = false
 
       const next = prev.map(f => {
         const llave = parameterKey(f.cod_Planilla, f.shift_Id, f.shift_ScheduleId)
-        const nuevo = computeBreakdown(f.start_Time, f.end_Time, bandas.get(llave) ?? [])
+        const jornada = f.is_Manual ? horarios.find(h => h.ShiftId === f.shift_Id) : undefined
+        const nuevo = computeBreakdown(f.start_Time, f.end_Time, bandas.get(llave) ?? [], jornada)
 
         if (JSON.stringify(nuevo) === JSON.stringify(f.breakdown)) return f
         cambio = true
@@ -609,7 +673,7 @@ export default function CrearSolicitudHoraExtraScreen() {
 
       return cambio ? next : prev
     })
-  }, [bandas, filas])
+  }, [bandas, filas, horarios])
 
   const editarFila = useCallback((code: string, cambios: Partial<Fila>) => {
     setFilas(prev => prev.map(f => (f.employee_Code === code ? { ...f, ...cambios } : f)))
@@ -627,12 +691,31 @@ export default function CrearSolicitudHoraExtraScreen() {
           : {
               ...f,
               end_Time: origen.end_Time,
-              // El inicio solo se copia a quien lo captura a mano: donde hay
-              // jornada lo manda el turno, y pisarlo pondría al empleado a
-              // hacer horas extra dentro de su propio horario.
-              start_Time: f.hasSchedule ? f.start_Time : origen.start_Time,
+              // El inicio solo se copia a quien lo captura a mano: donde la
+              // fila respeta la jornada lo manda el turno, y pisarlo pondría al
+              // empleado a hacer horas extra dentro de su propio horario. Las
+              // HE Manual sí lo reciben: justamente no respetan la jornada.
+              start_Time: respetaJornada(f) ? f.start_Time : origen.start_Time,
             },
       )
+    })
+  }, [])
+
+  // ── HE Manual ─────────────────────────────────────────────────────────────
+
+  const alternarManual = useCallback((code: string) => {
+    setFilas(prev => prev.map(f => (f.employee_Code === code ? conMarca(f, !f.is_Manual) : f)))
+  }, [])
+
+  /**
+   * Marca o desmarca a todos los editables a la vez. Si ya están todos
+   * marcados, desmarca; si falta alguno, marca a todos.
+   */
+  const alternarManualATodos = useCallback(() => {
+    setFilas(prev => {
+      const editables = prev.filter(f => !f.isLocked)
+      const valor = !(editables.length > 0 && editables.every(f => f.is_Manual))
+      return prev.map(f => conMarca(f, valor))
     })
   }, [])
 
@@ -665,9 +748,10 @@ export default function CrearSolicitudHoraExtraScreen() {
       const horas = rowHours(f.start_Time, f.end_Time)
       if (horas === null || horas <= 0) return 'El fin no puede ser igual al inicio'
 
+      // La HE Manual es justamente la que se puede pedir dentro de la jornada.
       const horario = horarios.find(h => h.ShiftId === f.shift_Id)
-      if (seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
-        return `Se encima con la jornada ${f.shift_Start} - ${f.shift_End}`
+      if (!f.is_Manual && seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
+        return `Se encima con la jornada ${hora12(f.shift_Start)} - ${hora12(f.shift_End)}`
       }
 
       if (!f.category_Id) return 'Falta el motivo'
@@ -770,6 +854,10 @@ export default function CrearSolicitudHoraExtraScreen() {
           // El fin cae el día siguiente cuando el rango cruza la medianoche.
           End_Time: fechaHoraISO(fecha, f.end_Time, cruza ? 1 : 0),
           Total_Overtime_Hours: rowHours(f.start_Time, f.end_Time),
+          // El servidor la rechaza si el usuario no tiene el acceso.
+          Is_Manual: f.is_Manual,
+          // En una HE Manual el reparto ya trae el tramo de la jornada al 25%:
+          // el procedimiento guarda estos conceptos tal cual.
           Concepts: f.breakdown
             // Las horas sin banda no son pagables y el procedimiento las
             // descarta; no se mandan para que el payload diga lo mismo que se
@@ -896,6 +984,9 @@ export default function CrearSolicitudHoraExtraScreen() {
             onEditar={editarFila}
             onAplicarHorario={aplicarHorarioATodos}
             onAplicarMotivo={aplicarMotivoATodos}
+            puedeManual={puedeManual}
+            onAlternarManual={alternarManual}
+            onAlternarManualATodos={alternarManualATodos}
             totalHoras={totalHoras}
             autorizar={autorizar}
             onAutorizar={setAutorizar}
@@ -1417,6 +1508,9 @@ function PasoHoras({
   onEditar,
   onAplicarHorario,
   onAplicarMotivo,
+  puedeManual,
+  onAlternarManual,
+  onAlternarManualATodos,
   totalHoras,
   autorizar,
   onAutorizar,
@@ -1432,6 +1526,10 @@ function PasoHoras({
   onEditar: (code: string, cambios: Partial<Fila>) => void
   onAplicarHorario: () => void
   onAplicarMotivo: () => void
+  /** Tiene el acceso 'CrearHorasExtraManuales': sin él no hay botón. */
+  puedeManual: boolean
+  onAlternarManual: (code: string) => void
+  onAlternarManualATodos: () => void
   totalHoras: number
   autorizar: boolean
   onAutorizar: (v: boolean) => void
@@ -1454,66 +1552,104 @@ function PasoHoras({
    * Va marcado, porque esas horas quedan sin concepto con el que pagarse.
    */
   const opcionesDeFin = (f: Fila) => {
-    const opciones = opcionesFin(f.start_Time, bandasDe(f)).map(o => ({
-      label: `${o.hora}  ·  ${fmtHoras(o.minutos / 60)}`,
+    const opciones = opcionesFin(f.start_Time, bandasDe(f), 10, f.is_Manual).map(o => ({
+      label: `${hora12(o.hora)}  ·  ${fmtHoras(o.minutos / 60)}`,
       value: o.hora,
     }))
 
     if (f.end_Time && !opciones.some(o => o.value === f.end_Time)) {
-      opciones.push({ label: `${f.end_Time}  ·  fuera de banda`, value: f.end_Time })
+      opciones.push({ label: `${hora12(f.end_Time)}  ·  fuera de banda`, value: f.end_Time })
+    }
+
+    return opciones
+  }
+
+  /** Las de inicio, en AM/PM. La HE Manual ofrece el día completo. */
+  const opcionesDeInicio = (f: Fila) => {
+    const opciones = opcionesInicio(f.is_Manual ? '00:00' : '04:00').map(h => ({
+      label: hora12(h),
+      value: h,
+    }))
+
+    if (f.start_Time && !opciones.some(o => o.value === f.start_Time)) {
+      opciones.push({ label: hora12(f.start_Time), value: f.start_Time })
     }
 
     return opciones
   }
 
   const editables = filas.filter(f => !f.isLocked)
-  const hayHorario = editables.length > 1 && editables.some(f => !!f.end_Time)
-  const hayMotivo = editables.length > 1 && editables.some(f => !!f.category_Id)
+  const hayHorario = editables.some(f => !!f.end_Time)
+  const hayMotivo = editables.some(f => !!f.category_Id)
+
+  // La barra existe con al menos dos filas editables: con una sola no hay a
+  // quién copiarle nada, y la marca de HE Manual se pone desde la propia fila.
+  const mostrarBarra = editables.length > 1
+  const todasManual = editables.length > 0 && editables.every(f => f.is_Manual)
+  const cuantasManual = filas.filter(f => f.is_Manual).length
 
   return (
     <YStack gap="$3">
       <Text fontSize={13} color="$textMuted">
         ¿Hasta qué hora se queda cada uno y por qué? Donde hay jornada, la hora
-        de inicio sale del turno y no se cambia.
+        de inicio sale del turno y no se cambia
+        {puedeManual ? ', salvo que la marques como HE Manual.' : '.'}
       </Text>
 
-      {/* Lo normal es que todo el lote se quede a la misma hora y por lo mismo:
-          se captura un renglón y se copia. */}
-      {(hayHorario || hayMotivo) && (
-        <XStack gap="$2" flexWrap="wrap">
-          {hayHorario && (
-            <Button
-              height={34}
-              borderRadius="$3"
-              paddingHorizontal="$3"
-              backgroundColor="transparent"
-              borderWidth={1}
-              borderColor="$border"
-              pressStyle={{ opacity: 0.7 }}
+      {/* Acciones en lote, en su propia barra y todas con el mismo formato. Lo
+          normal es que el lote entero se quede a la misma hora y por lo mismo:
+          se captura un renglón y se copia.
+
+          Los botones no aparecen y desaparecen mientras se captura —eso movía
+          la barra con cada cambio—: están siempre, y se apagan cuando todavía
+          no hay qué copiar. */}
+      {mostrarBarra && (
+        <YStack
+          gap="$2"
+          padding="$2.5"
+          borderRadius={12}
+          backgroundColor="$backgroundSurface"
+          borderWidth={1}
+          borderColor="$border"
+        >
+          <Text fontSize={10} fontWeight="800" color="$textMuted" letterSpacing={0.5}>
+            APLICAR A TODOS
+          </Text>
+
+          <XStack gap="$2" flexWrap="wrap" alignItems="center">
+            <BotonLote
+              icono={<Clock size={13} color={theme.text?.val as string} />}
+              texto="Horario"
+              habilitado={hayHorario}
               onPress={onAplicarHorario}
-            >
-              <Text fontSize={12} fontWeight="700" color="$primary">
-                Aplicar horario a todos
-              </Text>
-            </Button>
-          )}
-          {hayMotivo && (
-            <Button
-              height={34}
-              borderRadius="$3"
-              paddingHorizontal="$3"
-              backgroundColor="transparent"
-              borderWidth={1}
-              borderColor="$border"
-              pressStyle={{ opacity: 0.7 }}
+            />
+            <BotonLote
+              icono={<Check size={13} color={theme.text?.val as string} />}
+              texto="Motivo"
+              habilitado={hayMotivo}
               onPress={onAplicarMotivo}
-            >
-              <Text fontSize={12} fontWeight="700" color="$primary">
-                Aplicar motivo a todos
-              </Text>
-            </Button>
+            />
+
+            {/* Separado de los otros dos: no copia un dato, cambia las reglas
+                de las filas. Si ya están todas marcadas, desmarca. */}
+            {puedeManual && (
+              <>
+                <View width={1} height={22} backgroundColor="$border" marginHorizontal="$1" />
+                <MarcaManual
+                  activa={todasManual}
+                  texto={cuantasManual > 0 ? `HE Manual · ${cuantasManual}` : 'HE Manual'}
+                  onPress={onAlternarManualATodos}
+                />
+              </>
+            )}
+          </XStack>
+
+          {!hayHorario && !hayMotivo && (
+            <Text fontSize={10} color="$textMuted">
+              Capturá el horario o el motivo de un empleado para poder copiarlo.
+            </Text>
           )}
-        </XStack>
+        </YStack>
       )}
 
       {cargandoHorarios && (
@@ -1555,7 +1691,12 @@ function PasoHoras({
 
       {filas.map(f => {
         const horas = rowHours(f.start_Time, f.end_Time)
-        const err = errorFila(f)
+        // El motivo que falta no pinta la tarjeta en rojo: al entrar al paso
+        // TODAS lo tendrían así, y lo rojo tiene que quedar para lo que está
+        // mal, no para lo que todavía no se llenó. Sigue siendo obligatorio —
+        // el asterisco lo dice y el guardado no se habilita sin él—.
+        const errorCompleto = errorFila(f)
+        const err = errorCompleto === 'Falta el motivo' ? '' : errorCompleto
 
         return (
           <Card
@@ -1609,6 +1750,20 @@ function PasoHoras({
                   {nombreConCodigo(f.employee_Name, f.employee_Code)}
                 </Text>
 
+                {/* HE Manual de este empleado. Con el acceso es un botón que
+                    prende y apaga; sin él, o con la fila firmada, solo se
+                    muestra si ya venía marcada, para que se sepa. */}
+                {puedeManual && !f.isLocked ? (
+                  <MarcaManual
+                    activa={f.is_Manual}
+                    texto="HE Manual"
+                    compacta
+                    onPress={() => onAlternarManual(f.employee_Code)}
+                  />
+                ) : f.is_Manual ? (
+                  <MarcaManual activa texto="HE Manual" compacta />
+                ) : null}
+
                 <XStack
                   alignItems="center"
                   gap="$1"
@@ -1654,7 +1809,8 @@ function PasoHoras({
                   <XStack alignItems="center" gap="$2">
                     <Clock size={13} color={theme.textMuted?.val as string} />
                     <Text fontSize={12} color="$textSecondary">
-                      {f.start_Time || '--:--'} - {f.end_Time || '--:--'}
+                      {f.start_Time ? hora12(f.start_Time) : '--:--'} -{' '}
+                      {f.end_Time ? hora12(f.end_Time) : '--:--'}
                     </Text>
                   </XStack>
                   <Text fontSize={11} color="$textMuted" numberOfLines={2}>
@@ -1665,10 +1821,10 @@ function PasoHoras({
               ) : (
                 <>
                 {/* ── El inicio ──────────────────────────────────────────────
-                    Con jornada no se elige: lo manda el turno y solo se informa
-                    de dónde salió. Sin jornada se elige de una lista, porque no
-                    hay jornada de la cual deducirlo. */}
-                {f.hasSchedule ? (
+                    Si la fila respeta la jornada no se elige: lo manda el turno
+                    y solo se informa de dónde salió. Sin jornada, o en una HE
+                    Manual, se elige de una lista. */}
+                {respetaJornada(f) ? (
                   <XStack
                     alignItems="center"
                     gap="$2"
@@ -1681,7 +1837,7 @@ function PasoHoras({
                     <Text fontSize={12} color="$textSecondary" flex={1}>
                       Empieza a las{' '}
                       <Text fontSize={13} fontWeight="800" color="$text">
-                        {f.start_Time}
+                        {hora12(f.start_Time)}
                       </Text>
                       , al terminar su jornada
                     </Text>
@@ -1690,7 +1846,7 @@ function PasoHoras({
                   <AppSelect
                     label="Empieza a las"
                     value={f.start_Time}
-                    options={opcionesInicio().map(h => ({ label: h, value: h }))}
+                    options={opcionesDeInicio(f)}
                     onValueChange={v => onEditar(f.employee_Code, { start_Time: String(v) })}
                   />
                 )}
@@ -1731,7 +1887,7 @@ function PasoHoras({
                   </YStack>
                 )}
                   <AppSelect
-                    label="Motivo"
+                    label="Motivo *"
                     value={f.category_Id ? String(f.category_Id) : ''}
                     options={opcionesMotivo}
                     onValueChange={v =>
@@ -1844,5 +2000,88 @@ function PasoHoras({
         </XStack>
       </Card>
     </YStack>
+  )
+}
+
+/**
+ * Un botón de la barra de "Aplicar a todos".
+ *
+ * Los dos de copiar comparten formato: borde, ícono y texto corto. Apagado se
+ * queda en su lugar en vez de desaparecer, para que la barra no se mueva
+ * mientras se captura.
+ */
+function BotonLote({
+  icono,
+  texto,
+  habilitado,
+  onPress,
+}: {
+  icono: React.ReactNode
+  texto: string
+  habilitado: boolean
+  onPress: () => void
+}) {
+  return (
+    <Button
+      height={32}
+      borderRadius="$3"
+      paddingHorizontal="$2.5"
+      backgroundColor="$backgroundElevated"
+      borderWidth={1}
+      borderColor="$border"
+      opacity={habilitado ? 1 : 0.45}
+      disabled={!habilitado}
+      pressStyle={{ opacity: 0.7 }}
+      onPress={onPress}
+    >
+      <XStack alignItems="center" gap="$1.5">
+        {icono}
+        <Text fontSize={12} fontWeight="700" color="$text">
+          {texto}
+        </Text>
+      </XStack>
+    </Button>
+  )
+}
+
+/**
+ * La marca de HE Manual, en naranja para que se distinga de todo lo demás.
+ *
+ * Sin onPress es solo una etiqueta: la fila ya venía marcada y el usuario no la
+ * puede cambiar (está firmada, o no tiene el acceso).
+ */
+function MarcaManual({
+  activa,
+  texto,
+  compacta = false,
+  onPress,
+}: {
+  activa: boolean
+  texto: string
+  compacta?: boolean
+  onPress?: () => void
+}) {
+  const naranja = '#F97316'
+  const colorTexto = activa ? '#FFFFFF' : '#C2410C'
+
+  return (
+    <XStack
+      alignItems="center"
+      gap="$1"
+      height={compacta ? 24 : 32}
+      paddingHorizontal={compacta ? 8 : 10}
+      borderRadius={compacta ? 20 : 8}
+      borderWidth={1}
+      borderColor={activa ? naranja : '#FDBA74'}
+      backgroundColor={activa ? naranja : '#FFF7ED'}
+      pressStyle={onPress ? { opacity: 0.7 } : undefined}
+      onPress={onPress}
+      hitSlop={onPress ? 6 : undefined}
+    >
+      <Pencil size={compacta ? 10 : 12} color={colorTexto} />
+      <Text fontSize={compacta ? 10 : 12} fontWeight="800" color={colorTexto}>
+        {texto}
+      </Text>
+    </XStack>
   )
 }

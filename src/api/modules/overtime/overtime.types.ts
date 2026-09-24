@@ -70,6 +70,11 @@ export interface IOvertimeRequestDetail {
   Detail_Comment: string | null
   Clock_In: string | null
   Clock_Out: string | null
+  /**
+   * HE Manual: no respeta la jornada. Opcional porque las APIs anteriores al
+   * cambio no lo mandan; sin el campo, es hora extra normal.
+   */
+  Is_Manual?: boolean
 
   /**
    * Motivo. Es del DETALLE: en un mismo lote cada empleado se queda por una
@@ -993,7 +998,18 @@ export interface ISaveOvertimeDetail {
   Start_Time: string
   End_Time: string
   Total_Overtime_Hours: number | null
+  /**
+   * HE Manual: no respeta la jornada. El servidor la rechaza si el usuario no
+   * tiene el acceso 'CrearHorasExtraManuales'.
+   */
+  Is_Manual: boolean
   Concepts: ISaveOvertimeConcept[]
+}
+
+/** Qué puede hacer el usuario en la captura de solicitudes. */
+export interface IOvertimeRequestPermissions {
+  /** Tiene el acceso 'CrearHorasExtraManuales'. */
+  Can_Create_Manual: boolean
 }
 
 export interface ISaveOvertimeHeader {

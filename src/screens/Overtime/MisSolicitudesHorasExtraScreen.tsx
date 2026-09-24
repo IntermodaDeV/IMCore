@@ -520,41 +520,52 @@ export default function MisSolicitudesHorasExtraScreen() {
   return (
     <View flex={1} backgroundColor="$backgroundPage">
       <YStack paddingHorizontal="$4" paddingTop="$3" gap="$2">
-        {/* La acción, arriba a la derecha y CON NOMBRE: un '+' suelto no se lee
-            como "crear" para quien no usa mucho el teléfono, y esta pantalla es
-            justo para ellos. Mismo patrón que Cooperativa.
+        {/* La semana y la acción en una sola línea: el selector toma el ancho
+            que sobra y el botón queda a su derecha, alineado por abajo con el
+            campo (la etiqueta del selector va encima y no tiene que empujarlo).
+
+            El botón lleva nombre y no un '+' suelto —que no se lee como "crear"
+            para quien no usa mucho el teléfono—, pero corto: "Crear" alcanza en
+            una pantalla que es de solicitudes, y deja el espacio al selector.
 
             Va siempre, no solo cuando hay solicitudes: pedir horas extra es
             para lo que se entra acá, y esconderlo en la semana vacía —que es
-            justo cuando hace falta— sería al revés. */}
-        <XStack justifyContent="flex-end">
+            justo cuando hace falta— sería al revés.
+
+            El selector NO se esconde mientras carga: es el control con el que
+            se está pidiendo, y ocultarlo deja sin saber qué semana quedó. */}
+        <XStack alignItems="flex-end" gap="$2">
+          <YStack flex={1} minWidth={0}>
+            <AppSelect
+              label="Semana"
+              value={semana}
+              options={opcionesSemana}
+              onValueChange={v => cambiarSemana(String(v))}
+              placeholder={semanas.length === 0 ? 'Sin semanas' : ''}
+              disabled={semanas.length === 0}
+            />
+          </YStack>
+
+          {/* Mismo alto que el selector (44) y el mismo margen de abajo que él
+              trae: sin el margen, alineados por abajo, el botón quedaría unos
+              píxeles más abajo que el campo. */}
           <Button
-            height={40}
+            height={44}
+            marginBottom="$2"
             borderRadius="$3"
             paddingHorizontal="$3"
             backgroundColor="$primary"
             pressStyle={{ opacity: 0.85 }}
             onPress={() => navigation.navigate('crearSolicitudHE')}
           >
-            <XStack alignItems="center" gap="$2">
+            <XStack alignItems="center" gap="$1.5">
               <PlusCircle size={17} color="#FFFFFF" />
               <Text fontSize={14} fontWeight="700" color="white">
-                Crear solicitud
+                Crear
               </Text>
             </XStack>
           </Button>
         </XStack>
-
-        {/* El selector NO se esconde mientras carga: es el control con el que
-            se está pidiendo, y ocultarlo deja sin saber qué semana quedó. */}
-        <AppSelect
-          label="Semana"
-          value={semana}
-          options={opcionesSemana}
-          onValueChange={v => cambiarSemana(String(v))}
-          placeholder={semanas.length === 0 ? 'Sin semanas' : ''}
-          disabled={semanas.length === 0}
-        />
 
         {dias.length > 0 && (
           <ScrollView
@@ -814,9 +825,11 @@ function SolicitudCard({
       <YStack gap="$2.5">
         {/* Correlativo y en qué va: el titular de la tarjeta */}
         <XStack justifyContent="space-between" alignItems="center" gap="$2">
-          <Text fontSize={13} fontWeight="800" color="$text" numberOfLines={1}>
-            {item.correlativo}
-          </Text>
+          <XStack alignItems="center" gap="$2" flex={1} minWidth={0}>
+            <Text fontSize={13} fontWeight="800" color="$text" numberOfLines={1} flexShrink={1}>
+              {item.correlativo}
+            </Text>
+          </XStack>
 
           <XStack
             paddingHorizontal={8}
@@ -912,6 +925,7 @@ function SolicitudCard({
                     <Text fontSize={12} fontWeight="700" color="$text" flex={1} numberOfLines={1}>
                       {nombreConCodigo(d.Employee_Name, d.Employee_Code)}
                     </Text>
+                    {!!d.Is_Manual && <EtiquetaManual texto="HE Manual" />}
                     <Text fontSize={13} fontWeight="800" color="$text">
                       {fmtHoras(d.Total_Overtime_Hours)}
                     </Text>
@@ -958,25 +972,7 @@ function SolicitudCard({
               )
             })}
           </YStack>
-        ) : (
-          item.motivos.length > 0 && (
-            <XStack gap="$1.5" flexWrap="wrap">
-              {item.motivos.map((motivo, i) => (
-                <XStack
-                  key={`mot-${i}`}
-                  paddingHorizontal={8}
-                  paddingVertical={3}
-                  borderRadius={20}
-                  backgroundColor="$backgroundSurface"
-                >
-                  <Text fontSize={11} color="$textSecondary" numberOfLines={1}>
-                    {motivo}
-                  </Text>
-                </XStack>
-              ))}
-            </XStack>
-          )
-        )}
+        ) : null}
 
         {!!item.comentario && (
           <Text fontSize={12} color="$textSecondary" numberOfLines={2}>
@@ -1088,6 +1084,31 @@ function AccionSutil({
     >
       <Icono size={13} color={color} />
       <Text fontSize={12} fontWeight="700" style={{ color }}>
+        {texto}
+      </Text>
+    </XStack>
+  )
+}
+
+/**
+ * La marca de HE Manual en el listado. Mismo naranja que en la captura, para
+ * que se reconozca como el mismo dato en las dos pantallas.
+ */
+function EtiquetaManual({ texto }: { texto: string }) {
+  return (
+    <XStack
+      alignItems="center"
+      gap="$1"
+      paddingHorizontal={7}
+      paddingVertical={2}
+      borderRadius={20}
+      backgroundColor="#FFF7ED"
+      borderWidth={1}
+      borderColor="#FDBA74"
+      flexShrink={0}
+    >
+      <Pencil size={10} color="#C2410C" />
+      <Text fontSize={10} fontWeight="800" color="#C2410C" numberOfLines={1}>
         {texto}
       </Text>
     </XStack>
