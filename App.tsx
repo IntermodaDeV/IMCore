@@ -31,6 +31,7 @@ import SessionClosedByAdminScreen from './src/navigation/SessionClosedByAdminScr
 import FirstPasswordChangeScreen from './src/screens/Auth/FirstPasswordChangeScreen'
 import RegisterScreen from './src/screens/Auth/RegistroScreen'
 import ErrorBoundary from './src/components/commons/ErrorBoundary'
+import AppUpdateDialog from './src/components/commons/AppUpdateDialog'
 
 function Root() {
   const { theme, loading, user, transitioning, setTransitioning, transitionMessage, setTransitionMessage, sessionExpired, sessionClosedByAdmin, mustChangePassword } = useAuth()
@@ -234,6 +235,10 @@ function Root() {
               </View>
 
               <CustomToast />
+
+              {/* Aviso de versión nueva: también en el login, porque una
+                  versión obligatoria tiene que frenar antes de entrar. */}
+              <AppUpdateDialog />
 
               <ToastViewport
                 top={toastPosition === 'top' ? 50 : undefined}

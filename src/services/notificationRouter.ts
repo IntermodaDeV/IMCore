@@ -3,6 +3,7 @@ import { requestOpenPass } from './passNavigation'
 import { requestOpenMiPase, requestOpenPaseAprobacion } from './paseNavigation'
 import { requestOpenHistorialHoraExtra, requestOpenSolicitudHoraExtra } from './overtimeNavigation'
 import { requestOpenMiPaseSalida, requestOpenPaseSalidaFirma } from './pasesSalidaNavigation'
+import { openStore } from './appUpdate'
 
 // Enruta una notificación (push o bandeja) a su pantalla de detalle según la
 // categoría. `data` es el payload de la notificación (FCM data o el Data del inbox).
@@ -242,6 +243,13 @@ export function routeNotification(data: any): boolean {
     if (id > 0) {
       setTimeout(() => navigateWhenReady('creditosCorridaDetalle', { id }), 300)
     }
+    return true
+  }
+
+  // Versión nueva publicada en la tienda de ESTE teléfono (el push se manda por
+  // plataforma) -> su tienda. No navega a ninguna pantalla.
+  if (category === 'app_version') {
+    openStore()
     return true
   }
 

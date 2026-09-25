@@ -23,8 +23,9 @@ const CATEGORIA_LABEL: Record<string, string> = {
   Repuestos: 'Repuestos y suministros',
   CooInter: 'Cooperativa',
   PasesSalida: 'Pases de salida de material',
+  App: 'App móvil · versiones',
 }
-const CATEGORIA_ORDEN = ['Mtto', 'Repuestos', 'Visitas', 'RH', 'Gira', 'CooInter', 'PasesSalida']
+const CATEGORIA_ORDEN = ['Mtto', 'Repuestos', 'Visitas', 'RH', 'Gira', 'CooInter', 'PasesSalida', 'App']
 
 // ── Pares mínimo/máximo que se muestran como UNA sola configuración ────────
 //
@@ -423,6 +424,28 @@ const CONFIG_META: Record<
     min: 1,
     max: 90,
   },
+
+  // ── App móvil: versión publicada en cada tienda (script Security_10) ─────
+  // 'texto' y no 'number': el valor es «1.5.3 (41)», versión y build juntos
+  // para que nunca quede una versión con el build de otra. La API rechaza otro
+  // formato y un mínimo mayor que el build publicado.
+  'App.Android.UltimaVersion': { label: 'Última versión en Play Store', kind: 'texto' },
+  'App.iOS.UltimaVersion': { label: 'Última versión en App Store', kind: 'texto' },
+  'App.Android.BuildMinimo': {
+    label: 'Build mínimo obligatorio · Android',
+    kind: 'number',
+    min: 0,
+    max: 100000,
+    ayudaRango: '0 = nunca obliga. No puede pasar del build publicado.',
+  },
+  'App.iOS.BuildMinimo': {
+    label: 'Build mínimo obligatorio · iPhone',
+    kind: 'number',
+    min: 0,
+    max: 100000,
+    ayudaRango: '0 = nunca obliga. No puede pasar del build publicado.',
+  },
+  'App.AvisarPorPush': { label: 'Avisar por notificación al publicar una versión', kind: 'bool' },
 }
 
 export default function ConfiguracionesGlobalesScreen() {
