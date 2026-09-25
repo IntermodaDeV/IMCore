@@ -805,6 +805,19 @@ export default function DiarioDetailScreen() {
                       <YStack flex={1} gap="$1">
                         <Text fontSize="$4" fontWeight="800" color="$text">{l.ItemId}</Text>
                         <Text fontSize="$2" color="$textMuted" numberOfLines={2}>{l.Descripcion}</Text>
+                        {/* La pieza salió de bodega y AX no tiene la línea. Se avisa acá
+                            y no se esconde la fila: es la única evidencia de que se
+                            entregó y contra qué ticket. Antes no se veía hasta postear
+                            —cuando ya no se puede corregir— porque con el diario abierto
+                            la lista la arma AX. */}
+                        {l.FaltaEnAX && (
+                          <XStack backgroundColor="rgba(239, 68, 68, 0.12)" borderRadius={8}
+                            paddingHorizontal="$2" paddingVertical="$1.5" marginTop="$1" alignSelf="flex-start">
+                            <Text fontSize="$1" color="#ef4444" fontWeight="800">
+                              No llegó a AX · volvé a escanearla antes de postear
+                            </Text>
+                          </XStack>
+                        )}
                         <XStack gap="$4" flexWrap="wrap" marginTop="$1">
                           <Text fontSize="$2" color="$text">Cant: <Text fontWeight="800">{Math.abs(l.Cantidad)}</Text></Text>
                           {!!l.Almacen && <Text fontSize="$2" color="$textMuted">Alm: {l.Almacen}</Text>}

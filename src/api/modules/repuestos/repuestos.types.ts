@@ -45,6 +45,11 @@ export interface ILinea {
   CentroCosto: string | null
   CentroCostoNombre: string | null
   Fecha: string | null   // fecha/hora en que se agregó la línea (local)
+
+  /** La pieza se despachó acá pero AX NO tiene esa línea: salió de bodega y AX no
+   *  la va a descargar ni a costear. La fila no se borra — es la única evidencia
+   *  de que se entregó y contra qué ticket. */
+  FaltaEnAX?: boolean
 }
 
 // Costo unitario de referencia (promedio AX) de un repuesto.
