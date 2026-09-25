@@ -835,6 +835,21 @@ export default function DiarioDetailScreen() {
                             C/U{l.CostoFuente === 'ULTIMA_COMPRA' ? ' (últ. compra)' : l.CostoFuente === 'MIGRADO' ? ' (migración)' : ''}: L {l.Costo.toFixed(2)}  ·  Total: L {(l.Costo * Math.abs(l.Cantidad)).toFixed(2)}
                           </Text>
                         )}
+                        {/* Sin costo la app no decía NADA, ni siquiera en un diario
+                            posteado —donde un costo vacío ya no es algo que esté por
+                            llegar, sino una línea que AX dejó afuera—. El web sí lo
+                            decía, así que la misma pieza se leía distinto en cada
+                            pantalla. */}
+                        {l.Costo == null && (
+                          <Text fontSize="$2" color={l.FaltaEnAX || posteado ? ERR : '$textMuted'}
+                            fontWeight="700" marginTop="$1">
+                            {l.FaltaEnAX
+                              ? 'Sin costo: AX no tiene esta línea, así que nunca se lo va a poner'
+                              : posteado
+                                ? 'Sin costo: el diario se posteó y AX no costeó esta línea'
+                                : 'Costo pendiente: AX lo congela al postear'}
+                          </Text>
+                        )}
                         {l.CostoFuente === 'ULTIMA_COMPRA' && (
                           <Text fontSize="$1" color="$textMuted" marginTop="$1">
                             Último precio de compra de la pieza; queda congelado
