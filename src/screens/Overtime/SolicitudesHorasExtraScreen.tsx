@@ -3,7 +3,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet } from 'react-native'
 import dayjs from 'dayjs'
 import { YStack, XStack, Text, Card, View, Button, Spinner, useTheme } from 'tamagui'
-import { BarChart3, Briefcase, CalendarDays, Check, CheckSquare, ChevronDown, Clock, MessageSquare, Square, UserRound, X } from 'lucide-react-native'
+import { BarChart3, Briefcase, CheckCircle2, History, CalendarDays, Check, CheckSquare, ChevronDown, Clock, MessageSquare, Square, Undo2, UserRound, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -29,6 +29,7 @@ import {
 import {
   DistribucionHoras,
   fmtFecha,
+  fmtFechaLarga,
   fmtHora,
   fmtHoras,
   nombreConCodigo,
@@ -175,6 +176,10 @@ export default function SolicitudesHorasExtraScreen() {
   // dos que hay que mantener parejos.
   const [aprobando, setAprobando] = useState<IOvertimeRequestDetail[] | null>(null)
   const [rechazando, setRechazando] = useState<IOvertimeRequestDetail[] | null>(null)
+  // Devolver al solicitante: un solo empleado, y solo el jefe (Order 1).
+  const [devolviendo, setDevolviendo] = useState<IOvertimeRequestDetail | null>(null)
+  // El módulo de cada detalle (Id → nombre). Llega después de la lista.
+  const [modulos, setModulos] = useState<Map<number, string>>(new Map())
 
   // Ids marcados para resolver en lote.
   const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set())
@@ -344,6 +349,18 @@ export default function SolicitudesHorasExtraScreen() {
 
       pedirImpactoBandeja(filas)
 
+      // El módulo va al cubo: se pide aparte y sin esperar, y si falla la
+      // tarjeta sale sin él.
+      if (filas.length > 0) {
+        overtimeService
+          .getDetailModules(companyCode, filas.map(d => d.Id))
+          .then(r => {
+            if (!r?.Success) return
+            setModulos(new Map((r.Data ?? []).filter(m => !!m.Modulo).map(m => [m.Id, String(m.Modulo)])))
+          })
+          .catch(() => {})
+      }
+
       // Lo que ya no está en la bandeja no se puede seguir teniendo marcado.
       setSeleccionados(prev => {
         const vigentes = new Set(filas.map(d => d.Id))
@@ -500,6 +517,57 @@ export default function SolicitudesHorasExtraScreen() {
     },
     [pedirImpacto],
   )
+
+  /**
+   * Devuelve UN empleado al solicitante para que lo corrija. Sale de la bandeja
+   * igual que al firmar: sin la firma del solicitante ya no le toca al jefe.
+   */
+  const confirmarDevolucion = useCallback(async () => {
+    if (!devolviendo) return
+    const texto = motivo.trim()
+    if (texto.length < 10) {
+      setMotivoError('Indica qué hay que corregir (al menos 10 caracteres)')
+      return
+    }
+
+    try {
+      setEnviando(true)
+      loader.show()
+
+      const res = await overtimeService.returnRequestDetail(companyCode, {
+        RequestDetails_Id: devolviendo.Id,
+        SystemEntities_Id: Number(entidad),
+        Comment: texto,
+      })
+
+      if (!res.Success) {
+        showToast('error', 'Error', res.ErrorMessage || 'No se pudo devolver el registro', 5000, 'top')
+        return
+      }
+
+      const quitar = (lista: IOvertimeRequestDetail[]) => lista.filter(d => d.Id !== devolviendo.Id)
+      setData(quitar)
+      setFiltered(quitar)
+      setSeleccionados(prev => new Set([...prev].filter(id => id !== devolviendo.Id)))
+      pedirImpactoBandeja(data.filter(d => d.Id !== devolviendo.Id))
+
+      setDevolviendo(null)
+      setMotivo('')
+
+      showToast(
+        'success',
+        'Devuelto al solicitante',
+        `Horas extra de ${nombreConCodigo(devolviendo.Employee_Name, devolviendo.Employee_Code)}`,
+        3000,
+        'top',
+      )
+    } catch (err) {
+      showToast('error', 'Error', handleError(err).message, 5000, 'top')
+    } finally {
+      setEnviando(false)
+      loader.hide()
+    }
+  }, [devolviendo, motivo, companyCode, entidad, loader, showToast, data, pedirImpactoBandeja])
 
   const confirmarRechazo = useCallback(() => {
     if (!rechazando || rechazando.length === 0) return
@@ -794,6 +862,43 @@ export default function SolicitudesHorasExtraScreen() {
               <BarChart3 size={19} color={theme.primary?.val as string} />
             </Button>
           )}
+          {/* El gerente (última entidad): el dashboard de presupuesto que ya
+              existe (DashboardHE), no uno nuevo. */}
+          {!esJefe && esUltimaEntidad && (
+            <Button
+              height={42}
+              width={42}
+              marginBottom="$3"
+              borderRadius="$3"
+              padding={0}
+              backgroundColor="$backgroundElevated"
+              borderWidth={1}
+              borderColor="$border"
+              pressStyle={{ opacity: 0.7 }}
+              onPress={() => (navigation as any).navigate('DashboardHE')}
+              accessibilityLabel="Ver el dashboard de horas extra"
+            >
+              <BarChart3 size={19} color={theme.primary?.val as string} />
+            </Button>
+          )}
+          {/* El historial: lo que la entidad aprobó, rechazó o devolvió. */}
+          {!!entidad && (
+            <Button
+              height={42}
+              width={42}
+              marginBottom="$3"
+              borderRadius="$3"
+              padding={0}
+              backgroundColor="$backgroundElevated"
+              borderWidth={1}
+              borderColor="$border"
+              pressStyle={{ opacity: 0.7 }}
+              onPress={() => (navigation as any).navigate('historialJefeHE', { entityId: Number(entidad), puedeDevolver: esJefe })}
+              accessibilityLabel="Ver el historial de firmas del jefe"
+            >
+              <History size={19} color={theme.primary?.val as string} />
+            </Button>
+          )}
         </XStack>
 
         {/* Los días con algo pendiente. Solo aparece con más de uno: con todo
@@ -958,6 +1063,7 @@ export default function SolicitudesHorasExtraScreen() {
               seleccionados={seleccionados}
               esFirmable={d => puedeAutorizar(d, nombreEntidad)}
               costoDe={costoDetalle}
+              moduloDe={d => modulos.get(d.Id)}
               onAlternar={() => alternarGrupo(item.requestId)}
               onSeleccionar={id => alternarSeleccion(id)}
               onAprobar={detalles => abrirAprobacion(detalles)}
@@ -966,10 +1072,16 @@ export default function SolicitudesHorasExtraScreen() {
                 setMotivoError('')
                 setRechazando(detalles)
               }}
+              onDevolver={esJefe ? d => {
+                setMotivo('')
+                setMotivoError('')
+                setDevolviendo(d)
+              } : undefined}
             />
           ) : (
             <SolicitudCard
               item={item}
+              modulo={modulos.get(item.Id)}
               resaltada={item.Request_Id === resaltadaId}
               seleccionada={seleccionados.has(item.Id)}
               firmable={puedeAutorizar(item, nombreEntidad)}
@@ -980,6 +1092,11 @@ export default function SolicitudesHorasExtraScreen() {
                 setMotivoError('')
                 setRechazando([item])
               }}
+              onDevolver={esJefe ? () => {
+                setMotivo('')
+                setMotivoError('')
+                setDevolviendo(item)
+              } : undefined}
             />
           )
         }
@@ -1035,11 +1152,11 @@ export default function SolicitudesHorasExtraScreen() {
       />
 
       <Modal
-        visible={!!rechazando}
+        visible={!!rechazando || !!devolviendo}
         transparent
         animationType="fade"
         statusBarTranslucent
-        onRequestClose={() => setRechazando(null)}
+        onRequestClose={() => { setRechazando(null); setDevolviendo(null) }}
       >
         <ScrollView
           style={styles.backdrop}
@@ -1050,10 +1167,12 @@ export default function SolicitudesHorasExtraScreen() {
             <XStack justifyContent="space-between" alignItems="flex-start" gap="$3">
               <YStack flex={1}>
                 <Text fontSize={17} fontWeight="700" color="$text" marginBottom="$1">
-                  Motivo de rechazo
+                  {devolviendo ? 'Devolver para corregir' : 'Motivo de rechazo'}
                 </Text>
                 <Text fontSize={13} color="$textMuted" marginBottom="$3">
-                  {rechazando ? `Vas a rechazar ${resumenLote(rechazando)}. Indica por qué.` : ''}
+                  {devolviendo
+                    ? `Vas a devolverle ${resumenLote([devolviendo])} al solicitante. Indica qué tiene que corregir: le llegará una notificación y podrá editarlo una vez.`
+                    : rechazando ? `Vas a rechazar ${resumenLote(rechazando)}. Indica por qué.` : ''}
                 </Text>
               </YStack>
 
@@ -1063,17 +1182,19 @@ export default function SolicitudesHorasExtraScreen() {
                 marginRight={-8}
                 borderRadius={999}
                 pressStyle={{ opacity: 0.6 }}
-                onPress={() => setRechazando(null)}
+                onPress={() => { setRechazando(null); setDevolviendo(null) }}
               >
                 <X size={20} color={theme.textMuted?.val as string} />
               </View>
             </XStack>
 
             <AppInput
-              label="Motivo"
+              label={devolviendo ? 'Qué hay que corregir' : 'Motivo'}
               multiline
               minLines={4}
-              placeholder="Ej: No corresponde al turno, horas no autorizadas..."
+              placeholder={devolviendo
+                ? 'Ej: El horario es de 5 a 7 PM, no de 5 a 8 PM...'
+                : 'Ej: No corresponde al turno, horas no autorizadas...'}
               value={motivo}
               onChangeText={(v: string) => { setMotivo(v); setMotivoError('') }}
               error={motivoError}
@@ -1087,19 +1208,19 @@ export default function SolicitudesHorasExtraScreen() {
                 backgroundColor="$backgroundSurface"
                 borderWidth={1} borderColor="$border"
                 pressStyle={{ opacity: 0.7 }}
-                onPress={() => setRechazando(null)}
+                onPress={() => { setRechazando(null); setDevolviendo(null) }}
               >
                 <Text color="$text" fontWeight="600">Cancelar</Text>
               </Button>
               <Button
                 flex={1} height={44} borderRadius={10}
-                backgroundColor="$error"
+                backgroundColor={devolviendo ? '$warning' : '$error'}
                 pressStyle={{ opacity: 0.8 }}
                 disabled={enviando}
-                onPress={confirmarRechazo}
+                onPress={devolviendo ? confirmarDevolucion : confirmarRechazo}
               >
                 <Text color="white" fontWeight="700">
-                  {rechazando && rechazando.length > 1 ? `Rechazar ${rechazando.length}` : 'Rechazar'}
+                  {devolviendo ? 'Devolver' : rechazando && rechazando.length > 1 ? `Rechazar ${rechazando.length}` : 'Rechazar'}
                 </Text>
               </Button>
             </XStack>
@@ -1260,10 +1381,12 @@ function SolicitudGrupoCard({
   seleccionados,
   esFirmable,
   costoDe,
+  moduloDe,
   onAlternar,
   onSeleccionar,
   onAprobar,
   onRechazar,
+  onDevolver,
 }: {
   grupo: GrupoSolicitud
   resaltada?: boolean
@@ -1274,29 +1397,58 @@ function SolicitudGrupoCard({
   seleccionados: Set<number>
   esFirmable: (d: IOvertimeRequestDetail) => boolean
   costoDe: (d: IOvertimeRequestDetail) => number | null
+  /** El módulo del empleado ese día, si ya llegó. */
+  moduloDe: (d: IOvertimeRequestDetail) => string | undefined
   onAlternar: () => void
   onSeleccionar: (id: number) => void
   onAprobar: (detalles: IOvertimeRequestDetail[]) => void
   onRechazar: (detalles: IOvertimeRequestDetail[]) => void
+  /** Solo el jefe: devolver ESTE empleado al solicitante para corregir. */
+  onDevolver?: (detalle: IOvertimeRequestDetail) => void
 }) {
   const theme = useTheme()
   const firmables = grupo.detalles.filter(esFirmable)
 
+  // Con algo marcado en la bandeja se firma en lote desde la barra de arriba:
+  // los botones de cada tarjeta y de cada empleado se esconden para que no
+  // compitan con ella. La solicitud con marcados se remarca.
+  const enLote = seleccionados.size > 0
+  const marcada = grupo.detalles.some(d => seleccionados.has(d.Id))
+  const todaMarcada = firmables.length > 0 && firmables.every(d => seleccionados.has(d.Id))
+
+  // Marca o desmarca la solicitud completa (sus empleados firmables).
+  const alternarSolicitud = () => {
+    const cambiar = todaMarcada ? firmables : firmables.filter(d => !seleccionados.has(d.Id))
+    cambiar.forEach(d => onSeleccionar(d.Id))
+  }
+
+  // Con un solo empleado, los botones de la solicitud ya son los de él.
+  const porEmpleado = grupo.detalles.length > 1
+
   return (
     <Card
-      backgroundColor={resaltada ? '$primaryOpacity2' : '$backgroundElevated'}
+      backgroundColor={resaltada || marcada ? '$primaryOpacity2' : '$backgroundElevated'}
       borderRadius={14}
-      padding="$3"
-      borderWidth={resaltada ? 2 : 1}
-      borderColor={resaltada ? '$primary' : '$border'}
+      padding="$2.5"
+      borderWidth={resaltada || marcada ? 2 : 1}
+      borderColor={resaltada || marcada ? '$primary' : '$border'}
     >
-      <YStack gap="$2.5">
+      <YStack gap="$2">
 
         {/* Encabezado: toda la tarjeta abre y cierra, no un ícono chiquito */}
         <XStack alignItems="flex-start" gap="$2" pressStyle={{ opacity: 0.7 }} onPress={onAlternar}>
+          {firmables.length > 0 && (
+            <View hitSlop={12} paddingTop={2} pressStyle={{ opacity: 0.6 }} onPress={alternarSolicitud}>
+              {todaMarcada ? (
+                <CheckSquare size={17} color={theme.primary?.val as string} />
+              ) : (
+                <Square size={17} color={theme.textMuted?.val as string} />
+              )}
+            </View>
+          )}
           <YStack flex={1} gap="$1">
             <XStack alignItems="center" gap="$2">
-              <Text fontSize={15} fontWeight="700" color="$text">
+              <Text fontSize={13} fontWeight="700" color="$text">
                 {grupo.correlativo}
               </Text>
               <XStack
@@ -1307,18 +1459,18 @@ function SolicitudGrupoCard({
                 gap="$1"
                 backgroundColor={resaltada ? 'transparent' : '$backgroundSurface'}
               >
-                <CalendarDays size={11} color={theme.textMuted?.val as string} />
-                <Text fontSize={11} fontWeight="600" color="$textSecondary">
-                  {fmtFecha(grupo.fecha)}
+                <CalendarDays size={12} color={theme.text?.val as string} />
+                <Text fontSize={11} fontWeight="800" color="$text">
+                  {fmtFechaLarga(grupo.fecha)}
                 </Text>
               </XStack>
             </XStack>
 
             <XStack alignItems="center" gap="$2">
               <UserRound size={13} color={theme.textMuted?.val as string} />
-              <Text fontSize={12} color="$textMuted" numberOfLines={1} flex={1}>
+              <Text fontSize={11} color="$textMuted" numberOfLines={1} flex={1}>
                 Solicita{' '}
-                <Text fontSize={12} fontWeight="600" color="$textSecondary">
+                <Text fontSize={11} fontWeight="600" color="$textSecondary">
                   {nombreConCodigo(grupo.solicitante) || '—'}
                 </Text>
               </Text>
@@ -1326,11 +1478,11 @@ function SolicitudGrupoCard({
           </YStack>
 
           <YStack alignItems="flex-end" gap={2}>
-            <Text fontSize={18} fontWeight="800" color="$text">
+            <Text fontSize={15} fontWeight="800" color="$text">
               {fmtHoras(grupo.horas)}
             </Text>
             {veCosto && grupo.costo !== null && (
-              <Text fontSize={13} fontWeight="700" color="$textSecondary">
+              <Text fontSize={11} fontWeight="700" color="$textSecondary">
                 {fmtDinero(grupo.costo)}
               </Text>
             )}
@@ -1352,7 +1504,7 @@ function SolicitudGrupoCard({
             tarjeta obligaba a elegir uno y mostrarlo como si fuera el de todos.
             Ahora va en el renglón de cada empleado, que es de quien es. */}
         {!!grupo.comentario && (
-          <Text fontSize={11} color="$textMuted" numberOfLines={abierta ? 4 : 1}>
+          <Text fontSize={10} color="$textMuted" numberOfLines={abierta ? 4 : 1}>
             {grupo.comentario}
           </Text>
         )}
@@ -1373,34 +1525,30 @@ function SolicitudGrupoCard({
                   gap="$1.5"
                 >
                   <XStack alignItems="flex-start" gap="$2">
-                    {firmable && (
-                      <View hitSlop={12} paddingTop={2} pressStyle={{ opacity: 0.6 }} onPress={() => onSeleccionar(d.Id)}>
-                        {seleccionados.has(d.Id) ? (
-                          <CheckSquare size={18} color={theme.primary?.val as string} />
-                        ) : (
-                          <Square size={18} color={theme.textMuted?.val as string} />
-                        )}
-                      </View>
-                    )}
-
                     <YStack flex={1} gap={2}>
-                      <Text fontSize={13} fontWeight="600" color="$text" numberOfLines={2}>
+                      <Text fontSize={11} fontWeight="600" color="$text" numberOfLines={2}>
                         {nombreConCodigo(d.Employee_Name, d.Employee_Code)}
                       </Text>
+                      {!!moduloDe(d) && (
+                        <Text fontSize={10} fontWeight="600" color="$primary" numberOfLines={1}>
+                          {moduloDe(d)}
+                        </Text>
+                      )}
+                      <MarcaCorregido d={d} />
                       <XStack alignItems="center" gap="$1.5">
                         <Clock size={11} color={theme.textMuted?.val as string} />
-                        <Text fontSize={11} color="$textMuted">
+                        <Text fontSize={10} color="$textMuted">
                           {fmtHora(d.Start_Time)} — {fmtHora(d.End_Time)}
                         </Text>
                       </XStack>
                     </YStack>
 
                     <YStack alignItems="flex-end" gap={2}>
-                      <Text fontSize={14} fontWeight="700" color="$text">
+                      <Text fontSize={12} fontWeight="700" color="$text">
                         {fmtHoras(d.Total_Overtime_Hours)}
                       </Text>
                       {veCosto && costo !== null && (
-                        <Text fontSize={11} fontWeight="600" color="$textMuted">
+                        <Text fontSize={10} fontWeight="600" color="$textMuted">
                           {fmtDinero(costo)}
                         </Text>
                       )}
@@ -1413,7 +1561,7 @@ function SolicitudGrupoCard({
                   {!!d.Category_Name && (
                     <XStack alignItems="flex-start" gap="$1.5">
                       <MessageSquare size={11} color={theme.textMuted?.val as string} style={{ marginTop: 2 }} />
-                      <Text fontSize={11} color="$textSecondary" lineHeight={15} flex={1}>
+                      <Text fontSize={10} color="$textSecondary" lineHeight={14} flex={1}>
                         {d.Category_Name}
                       </Text>
                     </XStack>
@@ -1424,7 +1572,7 @@ function SolicitudGrupoCard({
                   {!!d.Centro_Costos && (
                     <XStack alignItems="center" gap="$1.5">
                       <Briefcase size={11} color={theme.textMuted?.val as string} />
-                      <Text fontSize={11} color="$textMuted" numberOfLines={1} flex={1}>
+                      <Text fontSize={10} color="$textMuted" numberOfLines={1} flex={1}>
                         {d.Centro_Costos}
                       </Text>
                     </XStack>
@@ -1434,8 +1582,24 @@ function SolicitudGrupoCard({
                       grandes con texto son los de la solicitud completa, al pie de
                       la tarjeta, que es la decisión frecuente; acá se firma la
                       excepción y no tiene por qué competir con ella. */}
-                  {firmable && (
+                  {firmable && !enLote && porEmpleado && (
                     <XStack gap="$2" justifyContent="flex-end" paddingTop={2}>
+                      {onDevolver && (
+                        <Button
+                          height={28} borderRadius={8} paddingHorizontal="$2"
+                          backgroundColor="$backgroundElevated"
+                          borderWidth={1} borderColor="$border"
+                          pressStyle={{ opacity: 0.7 }}
+                          accessibilityLabel={`Devolver horas de ${d.Employee_Name} al solicitante`}
+                          onPress={() => onDevolver(d)}
+                        >
+                          <XStack alignItems="center" gap={4}>
+                            <Undo2 size={13} color={theme.warning?.val as string} />
+                            <Text fontSize={10} fontWeight="700" color="$warning">Devolver</Text>
+                          </XStack>
+                        </Button>
+                      )}
+
                       <Button
                         height={28} width={42} borderRadius={8} padding={0}
                         backgroundColor="$backgroundElevated"
@@ -1466,10 +1630,10 @@ function SolicitudGrupoCard({
 
         {/* La solicitud entera. Se muestra abierta o cerrada: es la decisión
             más frecuente y no debería exigir desplegar primero. */}
-        {firmables.length > 0 && (
+        {firmables.length > 0 && !enLote && (
           <XStack gap="$2" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
             <Button
-              flex={1} height={40} borderRadius={10}
+              flex={1} height={34} borderRadius={10}
               backgroundColor="$backgroundSurface"
               borderWidth={1} borderColor="$border"
               pressStyle={{ opacity: 0.7 }}
@@ -1477,21 +1641,21 @@ function SolicitudGrupoCard({
             >
               <XStack alignItems="center" gap="$2">
                 <X size={15} color={theme.error?.val as string} />
-                <Text fontSize={13} fontWeight="700" color="$error">
+                <Text fontSize={11} fontWeight="700" color="$error">
                   {firmables.length > 1 ? 'Rechazar todo' : 'Rechazar'}
                 </Text>
               </XStack>
             </Button>
 
             <Button
-              flex={1} height={40} borderRadius={10}
+              flex={1} height={34} borderRadius={10}
               backgroundColor="$success"
               pressStyle={{ opacity: 0.85 }}
               onPress={() => onAprobar(firmables)}
             >
               <XStack alignItems="center" gap="$2">
                 <Check size={15} color="white" />
-                <Text fontSize={13} fontWeight="700" color="white">
+                <Text fontSize={11} fontWeight="700" color="white">
                   {firmables.length > 1 ? 'Aprobar todo' : 'Aprobar'}
                 </Text>
               </XStack>
@@ -1503,16 +1667,47 @@ function SolicitudGrupoCard({
   )
 }
 
+/**
+ * Ya CORREGIDO por el solicitante después de que el jefe lo devolvió: se
+ * marca en la bandeja para que no parezca una solicitud cualquiera, con lo que
+ * se le pidió corregir para poder comprobarlo.
+ */
+const fueCorregido = (d: IOvertimeRequestDetail) => !d.Is_Returned && !!d.Resubmitted_Date
+
+function MarcaCorregido({ d }: { d: IOvertimeRequestDetail }) {
+  if (!fueCorregido(d)) return null
+  return (
+    <XStack
+      alignSelf="flex-start"
+      alignItems="center"
+      gap={3}
+      paddingHorizontal={6}
+      paddingVertical={1}
+      borderRadius={20}
+      style={{ backgroundColor: '#0EA5E91f' }}
+    >
+      <CheckCircle2 size={9} color="#0284C7" />
+      <Text fontSize={9} fontWeight="800" style={{ color: '#0284C7' }}>
+        Corregido
+      </Text>
+    </XStack>
+  )
+}
+
 function SolicitudCard({
   item,
+  modulo,
   resaltada,
   seleccionada,
   firmable = true,
   onSeleccionar,
   onAprobar,
   onRechazar,
+  onDevolver,
 }: {
   item: IOvertimeRequestDetail
+  /** El módulo del empleado ese día, si ya llegó del cubo. */
+  modulo?: string
   /** Llegó por notificación: se marca un momento para poder ubicarla. */
   resaltada?: boolean
   /** Marcada para resolver en lote. */
@@ -1522,137 +1717,169 @@ function SolicitudCard({
   onSeleccionar: () => void
   onAprobar: () => void
   onRechazar: () => void
+  /** Solo el jefe: devolver al solicitante para corregir. */
+  onDevolver?: () => void
 }) {
   const theme = useTheme()
   const conceptos = useMemo(() => parseConceptos(item.ConceptsJson), [item.ConceptsJson])
+  const muted = theme.textMuted?.val as string
+
+  const comentario = (item.Detail_Comment ?? '').trim()
+  const d = dayjs(item.Date)
+  const DIAS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
+  const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC']
 
   return (
     <Card
-      backgroundColor={resaltada || seleccionada ? '$primaryOpacity2' : '$backgroundElevated'}
-      borderRadius={14}
-      padding="$3"
-      // Seleccionada y resaltada comparten el borde naranja: son dos formas de
-      // "esta es la que importa ahora", y distinguirlas con dos colores
-      // obligaría a recordar cuál es cuál.
+      backgroundColor="$backgroundElevated"
+      borderRadius={16}
+      padding={0}
+      overflow="hidden"
       borderWidth={resaltada || seleccionada ? 2 : 1}
       borderColor={resaltada || seleccionada ? '$primary' : '$border'}
     >
-      <YStack gap="$3">
-        {/* Quién y cuándo */}
-        <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
-          {/* Casilla de selección. Solo en las que esta entidad puede firmar:
-              marcar una que no se puede resolver solo llevaría a un lote que
-              silenciosamente la deja fuera. */}
+      <XStack>
+        {/* ── El DÍA: un bloque de calendario a la izquierda, lo primero que se
+            lee. Tocarlo marca la tarjeta para el lote. */}
+        <YStack
+          width={62}
+          alignItems="center"
+          justifyContent="center"
+          paddingVertical="$3"
+          gap={1}
+          backgroundColor={seleccionada ? '$primaryOpacity2' : '$backgroundSurface'}
+          borderRightWidth={1}
+          borderRightColor="$border"
+          pressStyle={firmable ? { opacity: 0.7 } : undefined}
+          onPress={firmable ? onSeleccionar : undefined}
+        >
+          <Text fontSize={10} fontWeight="800" color="$textSecondary" letterSpacing={0.6}>
+            {d.isValid() ? DIAS[d.day()] : ''}
+          </Text>
+          <Text fontSize={24} fontWeight="900" color="$text" lineHeight={26}>
+            {d.isValid() ? d.format('DD') : '—'}
+          </Text>
+          <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.6}>
+            {d.isValid() ? MESES[d.month()] : ''}
+          </Text>
           {firmable && (
-            <View
-              paddingTop={2}
-              paddingRight="$1"
-              hitSlop={12}
-              pressStyle={{ opacity: 0.6 }}
-              onPress={onSeleccionar}
-            >
+            <View marginTop={4}>
               {seleccionada ? (
-                <CheckSquare size={20} color={theme.primary?.val as string} />
+                <CheckSquare size={15} color={theme.primary?.val as string} />
               ) : (
-                <Square size={20} color={theme.textMuted?.val as string} />
+                <Square size={15} color={muted} />
               )}
             </View>
           )}
+        </YStack>
 
-          <YStack flex={1} gap="$1">
-            <Text fontSize={15} fontWeight="700" color="$text" numberOfLines={2}>
+        <YStack flex={1} padding="$2.5" gap="$1.5" minWidth={0}>
+          {/* ── El EMPLEADO y sus HORAS. */}
+          <XStack alignItems="flex-start" gap="$2">
+            <Text flex={1} fontSize={13} fontWeight="800" color="$text" lineHeight={17}>
               {nombreConCodigo(item.Employee_Name, item.Employee_Code)}
             </Text>
-            {!!item.Departamento && (
-              <Text fontSize={12} color="$textMuted" numberOfLines={1}>
-                {item.Departamento}
+            <YStack
+              alignItems="center"
+              paddingHorizontal={8}
+              paddingVertical={3}
+              borderRadius={10}
+              backgroundColor="$text"
+            >
+              <Text fontSize={14} fontWeight="900" color="$backgroundElevated">
+                {fmtHoras(item.Total_Overtime_Hours)}
               </Text>
-            )}
-          </YStack>
-
-          <XStack
-            paddingHorizontal={8}
-            paddingVertical={3}
-            borderRadius={20}
-            alignItems="center"
-            gap="$1"
-            // Transparente al resaltar, para que el naranja de la tarjeta no
-            // quede recortado por los bloques grises de adentro.
-            backgroundColor={resaltada ? 'transparent' : '$backgroundSurface'}
-          >
-            <CalendarDays size={11} color={theme.textMuted?.val as string} />
-            <Text fontSize={11} fontWeight="600" color="$textSecondary">
-              {fmtFecha(item.Date)}
-            </Text>
-          </XStack>
-        </XStack>
-
-        {/* Las horas: el dato que se está aprobando */}
-        <XStack justifyContent="space-between" alignItems="center" gap="$2">
-          <XStack alignItems="center" gap="$2">
-            <Clock size={15} color={theme.textMuted?.val as string} />
-            <Text fontSize={14} fontWeight="600" color="$text">
-              {fmtHora(item.Start_Time)} — {fmtHora(item.End_Time)}
-            </Text>
-          </XStack>
-          <Text fontSize={20} fontWeight="800" color="$text">
-            {fmtHoras(item.Total_Overtime_Hours)}
-          </Text>
-        </XStack>
-
-        <DistribucionHoras conceptos={conceptos} />
-
-        {/* Quién las pide y por qué */}
-        <YStack gap="$1" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
-          <XStack alignItems="center" gap="$2">
-            <UserRound size={13} color={theme.textMuted?.val as string} />
-            <Text fontSize={12} color="$textMuted" numberOfLines={1}>
-              Solicita{' '}
-              <Text fontSize={12} fontWeight="600" color="$textSecondary">
-                {nombreConCodigo(item.Solicitante) || '—'}
-              </Text>
-            </Text>
+            </YStack>
           </XStack>
 
-          <XStack justifyContent="space-between" alignItems="center" gap="$2">
-            <Text fontSize={12} color="$textMuted" numberOfLines={1} flex={1}>
-              {item.Category_Name || 'Sin motivo'}
+          <XStack alignItems="center" gap="$1.5">
+            <Clock size={10} color={muted} />
+            <Text fontSize={10} color="$textSecondary">
+              {fmtHora(item.Start_Time)} – {fmtHora(item.End_Time)}
             </Text>
-            <Text fontSize={11} fontWeight="600" color="$textMuted">
+            <MarcaCorregido d={item} />
+            <Text fontSize={9} color="$textMuted" marginLeft="auto">
               {item.Correlative}
             </Text>
           </XStack>
-        </YStack>
 
-        {/* La decisión. Va al pie de la tarjeta, después de todo lo que hay que
-            leer para tomarla. */}
-        <XStack gap="$2">
+          {/* ── De dónde y quién lo pide. */}
+          <YStack gap={2} paddingTop="$1.5" borderTopWidth={1} borderTopColor="$border">
+            <XStack alignItems="center" gap="$1.5">
+              <Briefcase size={10} color={muted} />
+              <Text fontSize={10} fontWeight="700" color="$textSecondary" numberOfLines={1} flex={1}>
+                {modulo || 'Sin módulo'}
+              </Text>
+            </XStack>
+            <XStack alignItems="center" gap="$1.5">
+              <UserRound size={10} color={muted} />
+              <Text fontSize={10} color="$textMuted" numberOfLines={1} flex={1}>
+                {nombreConCodigo(item.Solicitante) || '—'}
+              </Text>
+            </XStack>
+          </YStack>
+
+          {/* ── Por qué: el motivo y el comentario del renglón. */}
+          <YStack gap={2}>
+            <Text fontSize={10} color="$textSecondary" numberOfLines={2}>
+              {item.Category_Name || 'Sin motivo'}
+            </Text>
+            {!!comentario && (
+              <XStack gap="$1.5" alignItems="flex-start">
+                <MessageSquare size={10} color={muted} style={{ marginTop: 2 }} />
+                <Text fontSize={10} color="$textMuted" fontStyle="italic" numberOfLines={3} flex={1}>
+                  {comentario}
+                </Text>
+              </XStack>
+            )}
+          </YStack>
+
+          <DistribucionHoras conceptos={conceptos} />
+        </YStack>
+      </XStack>
+
+      {/* ── Las ACCIONES: botones dentro de la tarjeta, en una fila. */}
+      <XStack gap="$2" padding="$2.5" paddingTop="$2" borderTopWidth={1} borderTopColor="$border">
+        {onDevolver && (
           <Button
-            flex={1} height={40} borderRadius={10}
+            flex={1} height={36} borderRadius={10} paddingHorizontal="$1"
             backgroundColor="$backgroundSurface"
             borderWidth={1} borderColor="$border"
             pressStyle={{ opacity: 0.7 }}
-            onPress={onRechazar}
+            onPress={onDevolver}
           >
-            <XStack alignItems="center" gap="$2">
-              <X size={15} color={theme.error?.val as string} />
-              <Text fontSize={13} fontWeight="700" color="$error">Rechazar</Text>
+            <XStack alignItems="center" gap="$1">
+              <Undo2 size={14} color={theme.warning?.val as string} />
+              <Text fontSize={12} fontWeight="700" color="$warning">Devolver</Text>
             </XStack>
           </Button>
+        )}
 
-          <Button
-            flex={1} height={40} borderRadius={10}
-            backgroundColor="$success"
-            pressStyle={{ opacity: 0.85 }}
-            onPress={onAprobar}
-          >
-            <XStack alignItems="center" gap="$2">
-              <Check size={15} color="white" />
-              <Text fontSize={13} fontWeight="700" color="white">Aprobar</Text>
-            </XStack>
-          </Button>
-        </XStack>
-      </YStack>
+        <Button
+          flex={1} height={36} borderRadius={10} paddingHorizontal="$1"
+          backgroundColor="$backgroundSurface"
+          borderWidth={1} borderColor="$border"
+          pressStyle={{ opacity: 0.7 }}
+          onPress={onRechazar}
+        >
+          <XStack alignItems="center" gap="$1">
+            <X size={14} color={theme.error?.val as string} />
+            <Text fontSize={12} fontWeight="700" color="$error">Rechazar</Text>
+          </XStack>
+        </Button>
+
+        <Button
+          flex={1} height={36} borderRadius={10} paddingHorizontal="$1"
+          backgroundColor="$success"
+          pressStyle={{ opacity: 0.85 }}
+          onPress={onAprobar}
+        >
+          <XStack alignItems="center" gap="$1">
+            <Check size={14} color="white" />
+            <Text fontSize={12} fontWeight="700" color="white">Aprobar</Text>
+          </XStack>
+        </Button>
+      </XStack>
     </Card>
   )
 }

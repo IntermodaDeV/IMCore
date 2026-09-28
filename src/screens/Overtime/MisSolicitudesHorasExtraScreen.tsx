@@ -13,6 +13,8 @@ import {
   Clock,
   Pencil,
   PlusCircle,
+  Trash2,
+  Undo2,
   Users,
   X,
   XCircle,
@@ -57,7 +59,7 @@ type NavParams = {
    * Los detalles viajan junto al id porque el listado ya los tiene: pedirlos de
    * nuevo del otro lado obligaría a saber en qué semana cae la solicitud.
    */
-  crearSolicitudHE: { requestId?: number; detalles?: IOvertimeRequestDetail[] } | undefined
+  crearSolicitudHE: { requestId?: number; detalles?: IOvertimeRequestDetail[]; corregir?: boolean } | undefined
   /** El tablero del solicitante: lo propio en números. */
   dashboardSolicitanteHE: undefined
 }
@@ -79,7 +81,7 @@ const puedeFirmar = (item: IOvertimeRequestDetail, nombreEntidad: string): boole
 }
 
 /** Estado del flujo de UN renglón, leído de sus columnas dinámicas. */
-type EstadoDetalle = 'aprobada' | 'rechazada' | 'pendiente'
+type EstadoDetalle = 'aprobada' | 'rechazada' | 'pendiente' | 'devuelta'
 
 /**
  * En qué quedó un renglón.
@@ -90,6 +92,9 @@ type EstadoDetalle = 'aprobada' | 'rechazada' | 'pendiente'
  * 'No aplica' no cuenta como firma, es lo que queda después de un rechazo.
  */
 const estadoDetalle = (item: IOvertimeRequestDetail): EstadoDetalle => {
+  // Devuelto por el jefe: no tiene firmas y le toca al solicitante corregirlo.
+  if (item?.Is_Returned) return 'devuelta'
+
   const estados = Object.entries(item?.DynamicColumns ?? {})
     .filter(([k]) => k.startsWith('Status_'))
     .map(([, v]) => String(v ?? '').trim())
@@ -119,6 +124,8 @@ interface Solicitud {
   aprobados: number
   rechazados: number
   pendientes: number
+  /** Devueltos por el jefe para corregir. */
+  devueltos: number
 }
 
 const agrupar = (filas: IOvertimeRequestDetail[]): Solicitud[] => {
@@ -139,6 +146,7 @@ const agrupar = (filas: IOvertimeRequestDetail[]): Solicitud[] => {
         aprobados: 0,
         rechazados: 0,
         pendientes: 0,
+        devueltos: 0,
       }
       mapa.set(fila.Request_Id, grupo)
     }
@@ -152,6 +160,7 @@ const agrupar = (filas: IOvertimeRequestDetail[]): Solicitud[] => {
     const estado = estadoDetalle(fila)
     if (estado === 'aprobada') grupo.aprobados++
     else if (estado === 'rechazada') grupo.rechazados++
+    else if (estado === 'devuelta') grupo.devueltos++
     else grupo.pendientes++
   }
 
@@ -260,6 +269,8 @@ export default function MisSolicitudesHorasExtraScreen() {
   } | null>(null)
 
   const [motivoRechazo, setMotivoRechazo] = useState('')
+  // Devuelto que el solicitante decidió quitar en vez de corregir.
+  const [eliminando, setEliminando] = useState<IOvertimeRequestDetail | null>(null)
   const [enviando, setEnviando] = useState(false)
 
   // El usuario no tiene la entidad de Solicitante. No es un error: es que no
@@ -492,6 +503,51 @@ export default function MisSolicitudesHorasExtraScreen() {
     [entidad, enviando, companyCode, showToast, onRefresh],
   )
 
+  /**
+   * Quita a un empleado DEVUELTO en vez de corregirlo. Al jefe que lo devolvió
+   * le llega un aviso (lo manda la API).
+   */
+  const eliminarDevuelto = useCallback(async () => {
+    if (!eliminando || enviando) return
+
+    setEnviando(true)
+    loader.show()
+
+    try {
+      const res = await overtimeService.deleteRequestDetail(companyCode, eliminando.Id)
+
+      if (!res?.Success) {
+        showToast('error', 'No se pudo eliminar', res?.ErrorMessage || 'El servidor no aceptó la baja.', 6000, 'top')
+        return
+      }
+
+      showToast('success', 'Eliminado', res.SuccessMessage || 'Se le avisó al jefe.')
+      setEliminando(null)
+      onRefresh()
+    } catch (err) {
+      showToast('error', 'Error', handleError(err).message, 6000, 'top')
+    } finally {
+      setEnviando(false)
+      loader.hide()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eliminando, enviando, companyCode, showToast, onRefresh])
+
+  /**
+   * Corregir un devuelto: directo a las horas de los devueltos, sin el paso de
+   * empleados, para que no se pueda agregar ni quitar a nadie.
+   */
+  const corregir = useCallback(
+    (grupo: Solicitud) => {
+      navigation.navigate('crearSolicitudHE', {
+        requestId: grupo.requestId,
+        detalles: grupo.detalles,
+        corregir: true,
+      })
+    },
+    [navigation],
+  )
+
   /** Editar lleva la solicitud completa al formulario. */
   const editar = useCallback(
     (grupo: Solicitud) => {
@@ -682,6 +738,8 @@ export default function MisSolicitudesHorasExtraScreen() {
               item={item}
               nombreEntidad={entidad?.Name ?? ''}
               onEditar={() => editar(item)}
+              onCorregir={() => corregir(item)}
+              onEliminarDevuelto={d => setEliminando(d)}
               onDecidir={(detalles, aprueba) => {
                 setMotivoRechazo('')
                 setDecidiendo({ correlativo: item.correlativo, detalles, aprueba })
@@ -750,6 +808,22 @@ export default function MisSolicitudesHorasExtraScreen() {
         }
       />
 
+      <ConfirmDialog
+        open={!!eliminando}
+        onOpenChange={abierto => { if (!abierto) setEliminando(null) }}
+        title="Eliminar registro devuelto"
+        message={
+          eliminando
+            ? `¿Eliminar las horas de ${nombreConCodigo(eliminando.Employee_Name, eliminando.Employee_Code)}? Se le avisará al jefe que lo devolvió.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        confirmColor="#EF4444"
+        loading={enviando}
+        onConfirm={eliminarDevuelto}
+        onCancel={() => setEliminando(null)}
+      />
+
     </View>
   )
 }
@@ -799,6 +873,8 @@ function SolicitudCard({
   nombreEntidad,
   onEditar,
   onDecidir,
+  onEliminarDevuelto,
+  onCorregir,
 }: {
   item: Solicitud
   /** Con qué entidad entra el usuario: define qué puede firmar. */
@@ -806,6 +882,10 @@ function SolicitudCard({
   onEditar: () => void
   /** Los renglones a firmar: todos los de la tarjeta, o uno del detalle. */
   onDecidir: (detalles: IOvertimeRequestDetail[], aprueba: boolean) => void
+  /** Quitar a un empleado devuelto en vez de corregirlo. */
+  onEliminarDevuelto: (detalle: IOvertimeRequestDetail) => void
+  /** Corregir los devueltos: directo a sus horas. */
+  onCorregir: () => void
 }) {
   const theme = useTheme()
 
@@ -815,20 +895,24 @@ function SolicitudCard({
 
   // Un rechazo manda sobre el resto: es lo que hay que ir a ver. Después lo
   // pendiente, que es lo que todavía puede cambiar.
+  // Un devuelto va primero de todo: es lo único que espera algo del solicitante.
   const estado =
-    item.rechazados > 0 ? 'rechazada' : item.pendientes > 0 ? 'pendiente' : 'aprobada'
+    item.devueltos > 0
+      ? 'devuelta'
+      : item.rechazados > 0 ? 'rechazada' : item.pendientes > 0 ? 'pendiente' : 'aprobada'
 
   const tono = {
     aprobada: { color: theme.success?.val as string, texto: 'Aprobada', Icono: CheckCircle2 },
     rechazada: { color: theme.error?.val as string, texto: 'Rechazada', Icono: XCircle },
     pendiente: { color: theme.warning?.val as string, texto: 'En proceso', Icono: Clock },
+    devuelta: { color: '#FF551A', texto: 'Devuelta', Icono: Undo2 },
   }[estado]
 
   // Con renglones en distinto estado el badge solo dice el peor: el desglose
   // aclara cuántos son cuáles, que en una solicitud de varios empleados es la
   // diferencia entre "me la rechazaron" y "le rechazaron a uno".
   const mixta =
-    [item.aprobados, item.rechazados, item.pendientes].filter(n => n > 0).length > 1
+    [item.aprobados, item.rechazados, item.pendientes, item.devueltos].filter(n => n > 0).length > 1
 
   /**
    * Queda al menos un empleado sin firma.
@@ -842,7 +926,8 @@ function SolicitudCard({
 
   // Los renglones que ESTA entidad todavía puede firmar. El botón de la
   // tarjeta los firma todos de una; el del detalle, uno solo.
-  const firmables = item.detalles.filter(d => puedeFirmar(d, nombreEntidad))
+  // Un devuelto no se firma: se corrige y se reenvía desde Editar.
+  const firmables = item.detalles.filter(d => !d.Is_Returned && puedeFirmar(d, nombreEntidad))
   const puedeDecidir = firmables.length > 0
 
   return (
@@ -908,6 +993,11 @@ function SolicitudCard({
                 <Text fontSize={11} fontWeight="700" color="$error">{item.rechazados}</Text> rechazado(s)
               </Text>
             )}
+            {item.devueltos > 0 && (
+              <Text fontSize={11} color="$textMuted">
+                <Text fontSize={11} fontWeight="700" style={{ color: '#FF551A' }}>{item.devueltos}</Text> devuelto(s)
+              </Text>
+            )}
           </XStack>
         )}
 
@@ -959,7 +1049,8 @@ function SolicitudCard({
                 Icono={Pencil}
                 texto="Editar"
                 color={theme.textSecondary?.val as string}
-                onPress={onEditar}
+                // Con un devuelto, editar es corregirlo: solo ese empleado.
+                onPress={item.devueltos > 0 ? onCorregir : onEditar}
               />
             )}
 
@@ -1012,7 +1103,9 @@ function SolicitudCard({
                   ? (theme.success?.val as string)
                   : estadoD === 'rechazada'
                     ? (theme.error?.val as string)
-                    : (theme.warning?.val as string)
+                    : estadoD === 'devuelta'
+                      ? '#FF551A'
+                      : (theme.warning?.val as string)
 
               return (
                 <YStack
@@ -1058,15 +1151,53 @@ function SolicitudCard({
                         ? 'Aprobada'
                         : estadoD === 'rechazada'
                           ? 'Rechazada'
-                          : 'En proceso'}
+                          : estadoD === 'devuelta'
+                            ? 'Devuelta'
+                            : 'En proceso'}
                     </Text>
                   </XStack>
+
+                  {/* Devuelto por el jefe: qué corregir y las dos salidas. Se
+                      corrige UNA vez; al reenviarlo vuelve a la bandeja del jefe. */}
+                  {estadoD === 'devuelta' && (
+                    <YStack
+                      gap="$1"
+                      marginTop={2}
+                      padding="$2"
+                      borderRadius={8}
+                      style={{ backgroundColor: '#FF551A14' }}
+                    >
+                      <XStack alignItems="center" gap="$1">
+                        <Undo2 size={11} color="#FF551A" />
+                        <Text fontSize={10} fontWeight="800" style={{ color: '#FF551A' }}>
+                          {`DEVUELTO PARA CORREGIR${(d.Return_Count ?? 0) > 1 ? ` (${d.Return_Count}ª VEZ)` : ''}${d.Returned_By ? ` · ${d.Returned_By}` : ''}`}
+                        </Text>
+                      </XStack>
+                      <Text fontSize={11} color="$text">
+                        {d.Return_Comment || 'Sin detalle.'}
+                      </Text>
+                      <XStack gap="$1" justifyContent="flex-end" marginTop={2}>
+                        <AccionSutil
+                          Icono={Trash2}
+                          texto="Eliminar"
+                          color={theme.error?.val as string}
+                          onPress={() => onEliminarDevuelto(d)}
+                        />
+                        <AccionSutil
+                          Icono={Pencil}
+                          texto="Corregir"
+                          color="#FF551A"
+                          onPress={onCorregir}
+                        />
+                      </XStack>
+                    </YStack>
+                  )}
 
                   {/* Firmar SOLO a este empleado. La decisión es por empleado,
                       así que en una solicitud de varios se puede aprobar a
                       unos y rechazar a otros sin abrir nada más: acá mismo y
                       con un confirm. */}
-                  {puedeFirmar(d, nombreEntidad) && (
+                  {!d.Is_Returned && puedeFirmar(d, nombreEntidad) && (
                     <XStack gap="$1" justifyContent="flex-end" marginTop={2}>
                       <AccionSutil
                         Icono={X}

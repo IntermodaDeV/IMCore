@@ -77,6 +77,20 @@ export interface IOvertimeRequestDetail {
   Is_Manual?: boolean
 
   /**
+   * Devuelto por el jefe para corregir. Sin firmas: el solicitante lo edita
+   * una vez y al reenviarlo vuelve a false.
+   */
+  Is_Returned?: boolean
+  /** Qué hay que corregir, escrito por el jefe. */
+  Return_Comment?: string | null
+  Returned_By?: string | null
+  Returned_Date?: string | null
+  /** Ya se corrigió y se reenvió (se conserva después de reenviar). */
+  Resubmitted_Date?: string | null
+  /** Cuántas veces se ha devuelto: el historial vive en Overtime.RequestDetailReturns. */
+  Return_Count?: number
+
+  /**
    * Motivo. Es del DETALLE: en un mismo lote cada empleado se queda por una
    * razón distinta. En las solicitudes anteriores al cambio cae al motivo del
    * encabezado, que era donde vivía.
@@ -1122,6 +1136,33 @@ export interface IApproverWeekDay {
   Horas_Aprobadas: number
   Empleados: number
   Solicitantes: number
+}
+
+/** Historial del jefe: una decisión suya sobre un detalle. */
+export interface IApproverHistory {
+  Id: number
+  Request_Id: number
+  Correlative: string
+  Fecha: string | null
+  Employee_Code: string
+  Employee_Name: string
+  Posicion: string
+  Centro_Costos: string
+  Category_Name: string
+  Is_Manual: boolean
+  Start_Time: string | null
+  End_Time: string | null
+  Horas: number
+  Solicitante?: string | null
+  /** 'Aprobado', 'Rechazado' o 'Devuelto'. */
+  Mi_Decision: 'Aprobado' | 'Rechazado' | 'Devuelto' | string
+  Mi_Comentario?: string | null
+  Fecha_Firma: string | null
+  /** Solo en devoluciones: 'Corregido', 'Eliminado' o null (abierta). */
+  Resolucion?: string | null
+  /** En qué quedó en el flujo completo. */
+  Estado: string
+  ConceptsJson?: string | null
 }
 
 /** Tablero del jefe: un solicitante del top de la semana. */

@@ -70,7 +70,29 @@ export const fmtHoras = (horas: number | null | undefined) => {
 /** Solo la hora: la fecha ya está en la tarjeta. */
 export const fmtHora = (iso: string | null) => (iso ? dayjs(iso).format('HH:mm') : '—')
 
-export const fmtFecha = (iso: string | null) => (iso ? dayjs(iso).format('ddd DD MMM') : '')
+const DIAS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+const MESES_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+/**
+ * 'Mié 24 sep'. En español a mano y no con el locale de dayjs: la app no lo
+ * carga y salía 'Wed 24 Sep'.
+ */
+export const fmtFecha = (iso: string | null) => {
+  if (!iso) return ''
+  const d = dayjs(iso)
+  if (!d.isValid()) return ''
+  return `${DIAS_ES[d.day()]} ${d.format('DD')} ${MESES_ES[d.month()]}`
+}
+
+const DIAS_LARGOS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+/** 'Miércoles 24 sep': el día con su nombre completo, para que resalte. */
+export const fmtFechaLarga = (iso: string | null) => {
+  if (!iso) return ''
+  const d = dayjs(iso)
+  if (!d.isValid()) return ''
+  return `${DIAS_LARGOS_ES[d.day()]} ${d.format('DD')} ${MESES_ES[d.month()]}`
+}
 
 export const fmtFechaHora = (iso: string | null) =>
   iso ? dayjs(iso).format('DD/MM/YYYY HH:mm') : '—'

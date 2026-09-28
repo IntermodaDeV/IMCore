@@ -37,6 +37,7 @@ import {
   IApproverWeekSummary,
   IApproverWeekDay,
   IApproverTopRequester,
+  IApproverHistory,
   IOvertimeShiftSchedule,
   IOvertimeUserParameter,
   IPayWebWeek,
@@ -248,6 +249,25 @@ export const overtimeService = {
       finalDate,
     }),
 
+  /**
+   * El módulo de cada detalle de la bandeja, el día de su hora extra. Aparte
+   * del listado: va al cubo y puede tardar, así que se pide después.
+   */
+  getDetailModules: (companyCode: string, detailIds: number[]) =>
+    httpClient.post<ExecutionResponse<{ Id: number; Modulo: string | null }[]>, number[]>(
+      `${schema}/DetailModules?companyCode=${encodeURIComponent(companyCode)}`,
+      detailIds,
+    ),
+
+  /** Historial del jefe: lo que aprobó, rechazó o devolvió en la semana. */
+  getApproverHistory: (companyCode: string, entityId: number, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IApproverHistory[]>>(`${schema}/ApproverHistory`, {
+      companyCode,
+      entityId,
+      startDate,
+      finalDate,
+    }),
+
   /** Tablero del jefe: los 8 solicitantes que más horas le piden. */
   getApproverTopRequesters: (companyCode: string, entityId: number, startDate: string, finalDate: string) =>
     httpClient.get<ExecutionResponse<IApproverTopRequester[]>>(`${schema}/ApproverTopRequesters`, {
@@ -383,6 +403,19 @@ export const overtimeService = {
   authorizeRequest: (companyCode: string, info: IAuthorizeRequest) =>
     httpClient.post<ExecutionResponse<any>, IAuthorizeRequest>(
       `${schema}/AuthorizeRequest?companyCode=${encodeURIComponent(companyCode)}`,
+      info,
+    ),
+
+  /**
+   * El jefe (primera entidad) le devuelve UN empleado al solicitante para que
+   * lo corrija. El motivo es obligatorio; al solicitante le llega un aviso.
+   */
+  returnRequestDetail: (
+    companyCode: string,
+    info: { RequestDetails_Id: number; SystemEntities_Id: number; Comment: string },
+  ) =>
+    httpClient.post<ExecutionResponse<any>, typeof info>(
+      `${schema}/ReturnRequestDetail?companyCode=${encodeURIComponent(companyCode)}`,
       info,
     ),
 

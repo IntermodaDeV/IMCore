@@ -98,6 +98,22 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
+  // El solicitante corrigió (o eliminó) lo que el jefe le devolvió -> la
+  // bandeja del jefe, igual que una solicitud nueva.
+  if (category === 'horas_extra_corregida' || category === 'horas_extra_devuelta_eliminada') {
+    const requestId = Number(data.requestId ?? data.RequestId)
+    navigateWhenReady('RequestHours')
+    if (requestId > 0 && category === 'horas_extra_corregida') requestOpenSolicitudHoraExtra(requestId)
+    return true
+  }
+
+  // El jefe le devolvió un empleado para corregir -> Mis solicitudes, donde
+  // está el motivo y el botón para corregirlo.
+  if (category === 'horas_extra_devuelta') {
+    navigateWhenReady('MyRequestHours')
+    return true
+  }
+
   // Rechazo -> historial. La bandeja de aprobación no sirve acá: el solicitante
   // no aprueba nada, y su solicitud rechazada solo existe en el historial.
   if (category === 'horas_extra_rechazo') {

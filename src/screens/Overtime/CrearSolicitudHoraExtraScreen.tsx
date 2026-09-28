@@ -13,6 +13,7 @@ import {
   Pencil,
   Search,
   Send,
+  Undo2,
   Users,
   X,
 } from 'lucide-react-native'
@@ -87,6 +88,8 @@ type CrearRouteParams = {
     /** Mayor que 0 = editar esa solicitud. Sin esto, crea una nueva. */
     requestId?: number
     detalles?: IOvertimeRequestDetail[]
+    /** Corregir lo que devolvió el jefe: directo a las horas de los devueltos. */
+    corregir?: boolean
   }
 }
 
@@ -140,6 +143,11 @@ interface Fila {
   isLocked: boolean
   /** Por qué quedó bloqueado: 'Aprobado' o 'Rechazado'. */
   lockLabel: string
+  /**
+   * Devuelto por el jefe: lo que hay que corregir. Se edita como cualquier
+   * renglón sin firma, pero el empleado no se puede quitar ni cambiar.
+   */
+  returnComment?: string
 }
 
 /**
@@ -224,6 +232,13 @@ export default function CrearSolicitudHoraExtraScreen() {
   const editando = editandoId > 0
 
   /**
+   * Corrigiendo lo que devolvió el jefe: solo el paso de horas y solo los
+   * devueltos a la vista. No se puede agregar ni quitar gente; los demás
+   * empleados viajan igual en el guardado, pero intactos.
+   */
+  const corrigiendo = editando && !!route.params?.corregir
+
+  /**
    * Los empleados con firma, con el estado que los bloqueó.
    *
    * Sale de los detalles que trajo la navegación, así que se calcula una vez:
@@ -247,6 +262,31 @@ export default function CrearSolicitudHoraExtraScreen() {
    * afectaría a los empleados que ya fueron autorizados, y esos no se tocan.
    */
   const encabezadoFijo = bloqueados.size > 0
+
+  /**
+   * Los empleados DEVUELTOS por el jefe, con lo que hay que corregir.
+   *
+   * No tienen firma, así que sus horas se editan; lo que no se puede es
+   * quitarlos o cambiarlos por otro (lo rechaza el procedimiento). Para
+   * quitarlos está Eliminar en Mis solicitudes, que le avisa al jefe.
+   */
+  const devueltos = useMemo(() => {
+    const mapa = new Map<string, string>()
+
+    for (const d of route.params?.detalles ?? []) {
+      if (d.Is_Returned) mapa.set(d.Employee_Code, (d.Return_Comment ?? '').trim())
+    }
+
+    return mapa
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Los que no se pueden quitar en el paso de empleados, y por qué. */
+  const fijosSeleccion = useMemo(() => {
+    const mapa = new Map(bloqueados)
+    for (const code of devueltos.keys()) if (!mapa.has(code)) mapa.set(code, 'Devuelto para corregir')
+    return mapa
+  }, [bloqueados, devueltos])
 
   const { defaultCompany } = useAuth()
   const theme = useTheme()
@@ -357,8 +397,9 @@ export default function CrearSolicitudHoraExtraScreen() {
    * solicitud queda guardada sin entrar al flujo —editable todavía— pero solo
    * se puede terminar desde la pantalla web, y eso se advierte en la casilla.
    */
+  // Corrigiendo, lo normal es reenviarlo al jefe: sale marcado.
   const [autorizar, setAutorizar] = useState(
-    () => editando && !!route.params?.detalles?.[0]?.Auth,
+    () => corrigiendo || (editando && !!route.params?.detalles?.[0]?.Auth),
   )
 
   usePageHeader({
@@ -530,11 +571,16 @@ export default function CrearSolicitudHoraExtraScreen() {
     )
   }, [])
 
+  // Con cientos de empleados, filtrar en cada render (cualquier tecla, cualquier
+  // marca) era trabajo tirado: solo cambia con la lista o la búsqueda.
+  const propiosFiltrados = useMemo(() => filtrar(propios, busquedaPropios), [filtrar, propios, busquedaPropios])
+  const prestadosFiltrados = useMemo(() => filtrar(prestados, busquedaPrestados), [filtrar, prestados, busquedaPrestados])
+
   const alternar = useCallback(
     (code: string) => {
       // Un empleado con firma no se puede quitar: el procedimiento lo rechaza
       // y tumbaría el guardado completo.
-      if (bloqueados.has(code)) return
+      if (bloqueados.has(code) || devueltos.has(code)) return
 
       setElegidos(prev => {
         const next = new Set(prev)
@@ -543,7 +589,7 @@ export default function CrearSolicitudHoraExtraScreen() {
         return next
       })
     },
-    [bloqueados],
+    [bloqueados, devueltos],
   )
 
   // ── Filas de horas ────────────────────────────────────────────────────────
@@ -598,8 +644,11 @@ export default function CrearSolicitudHoraExtraScreen() {
             breakdown: [] as OvertimeBand[],
             is_Manual: manual,
             comment: previa?.comment ?? guardado?.comment ?? '',
-            isLocked: bloqueados.has(code),
+            // Corrigiendo, todo lo que no es devuelto queda como está: fuera
+            // de los "aplicar a todos" y de la validación.
+            isLocked: bloqueados.has(code) || (corrigiendo && !devueltos.has(code)),
             lockLabel: bloqueados.get(code) ?? '',
+            returnComment: devueltos.get(code),
           } as Fila
         })
         .filter((f): f is Fila => f !== null)
@@ -608,7 +657,7 @@ export default function CrearSolicitudHoraExtraScreen() {
     // La semilla se consume una sola vez: de acá en adelante el estado de las
     // filas ES la verdad.
     setSemilla(null)
-  }, [elegidos, todos, horarios, semilla, bloqueados])
+  }, [elegidos, todos, horarios, semilla, bloqueados, devueltos, corrigiendo])
 
   /**
    * Las bandas de recargo de las combinaciones que hay en pantalla.
@@ -786,10 +835,12 @@ export default function CrearSolicitudHoraExtraScreen() {
    */
   const pasos = useMemo<Paso[]>(
     () =>
-      prestados.length > 0
-        ? ['Mis empleados', 'Prestados', 'Horas']
-        : ['Mis empleados', 'Horas'],
-    [prestados.length],
+      corrigiendo
+        ? ['Horas']
+        : prestados.length > 0
+          ? ['Mis empleados', 'Prestados', 'Horas']
+          : ['Mis empleados', 'Horas'],
+    [prestados.length, corrigiendo],
   )
 
   const pasoActual = pasos[Math.min(paso, pasos.length - 1)]
@@ -839,6 +890,32 @@ export default function CrearSolicitudHoraExtraScreen() {
 
     setPaso(p => Math.min(p + 1, pasos.length - 1))
   }, [siguientePaso, construirFilas, elegidos, todos, horarios, cargarBandas, pasos.length])
+
+  /**
+   * Corrigiendo se entra directo a las horas: las filas se arman solas en
+   * cuanto están los empleados y las jornadas, igual que al pasar de paso.
+   */
+  const filasListas = useRef(false)
+  useEffect(() => {
+    if (!corrigiendo || filasListas.current || cargando || todos.size === 0) return
+    filasListas.current = true
+
+    construirFilas()
+    cargarBandas(
+      [...elegidos]
+        .map(code => {
+          const emp = todos.get(code)
+          if (!emp) return null
+          const horario = horarios.find(h => h.ShiftId === emp.Turno_Id)
+          return {
+            cod_Planilla: emp.Cod_Planilla ?? '',
+            shift_Id: emp.Turno_Id ?? null,
+            shift_ScheduleId: horario?.ShiftScheduleId ?? null,
+          } as Fila
+        })
+        .filter((f): f is Fila => f !== null),
+    )
+  }, [corrigiendo, cargando, todos, horarios, elegidos, construirFilas, cargarBandas])
 
   const retroceder = useCallback(() => {
     if (paso === 0) {
@@ -972,8 +1049,8 @@ export default function CrearSolicitudHoraExtraScreen() {
             minFecha={minFecha}
             maxFecha={maxFecha}
             encabezadoFijo={encabezadoFijo}
-            bloqueados={bloqueados}
-            propios={filtrar(propios, busquedaPropios)}
+            bloqueados={fijosSeleccion}
+            propios={propiosFiltrados}
             elegidos={elegidos}
             tomados={tomados}
             busqueda={busquedaPropios}
@@ -984,8 +1061,8 @@ export default function CrearSolicitudHoraExtraScreen() {
 
         {pasoActual === 'Prestados' && (
           <PasoPrestados
-            prestados={filtrar(prestados, busquedaPrestados)}
-            bloqueados={bloqueados}
+            prestados={prestadosFiltrados}
+            bloqueados={fijosSeleccion}
             elegidos={elegidos}
             tomados={tomados}
             busqueda={busquedaPrestados}
@@ -996,7 +1073,8 @@ export default function CrearSolicitudHoraExtraScreen() {
 
         {pasoActual === 'Horas' && (
           <PasoHoras
-            filas={filas}
+            // Corrigiendo solo se ven los devueltos; los demás viajan intactos.
+            filas={corrigiendo ? filas.filter(f => f.returnComment !== undefined) : filas}
             cargandoHorarios={cargandoHorarios}
             errorHorarios={errorHorarios}
             opcionesMotivo={opcionesMotivo}
@@ -1010,7 +1088,8 @@ export default function CrearSolicitudHoraExtraScreen() {
             onAlternarManualATodos={alternarManualATodos}
             totalHoras={totalHoras}
             autorizar={autorizar}
-            onAutorizar={setAutorizar}
+            // Corrigiendo, reenviarlo al jefe es obligatorio: no se desmarca.
+            onAutorizar={corrigiendo ? () => {} : setAutorizar}
             bandas={bandas}
             cargandoBandas={cargandoBandas}
           />
@@ -1314,6 +1393,10 @@ function PasoPrestados({
  * duplicarla haría que se separaran con el primer ajuste. Con `grupos` dibuja
  * encabezados por módulo; sin ellos, una lista plana.
  */
+/** Filas de la primera pintada y de cada tanda siguiente (ver ListaEmpleados). */
+const PRIMERA_TANDA = 30
+const TANDA = 60
+
 function ListaEmpleados({
   titulo,
   ayuda,
@@ -1342,7 +1425,60 @@ function ListaEmpleados({
   vacioTitulo: string
   vacioMensaje: string
 }) {
-  const marcadosAqui = lista.filter(e => elegidos.has(e.Employee_Code)).length
+  const marcadosAqui = useMemo(
+    () => lista.filter(e => elegidos.has(e.Employee_Code)).length,
+    [lista, elegidos],
+  )
+
+  /**
+   * Cuántas filas se dibujan. Con cientos de empleados, montarlos todos de
+   * golpe era lo que tardaba (los datos ya habían llegado): se pintan primero
+   * los que caben en pantalla y el resto en tandas, sin bloquear.
+   */
+  const [limite, setLimite] = useState(PRIMERA_TANDA)
+
+  // Una lista nueva (otra búsqueda) vuelve a empezar por arriba.
+  useEffect(() => {
+    setLimite(PRIMERA_TANDA)
+  }, [lista])
+
+  useEffect(() => {
+    if (limite >= lista.length) return
+    const t = setTimeout(() => setLimite(l => l + TANDA), 16)
+    return () => clearTimeout(t)
+  }, [limite, lista.length])
+
+  // Los colores se leen UNA vez aquí y no en cada fila.
+  const theme = useTheme()
+  const colores = useMemo(
+    () => ({ success: theme.success?.val as string, warning: theme.warning?.val as string }),
+    [theme],
+  )
+
+  // Grupos recortados al límite, en el mismo orden en que se ven.
+  const gruposVisibles = useMemo(() => {
+    if (!grupos) return null
+    let resto = limite
+    const out: [string, IOvertimeEmployee[], number][] = []
+    for (const [modulo, empleados] of grupos) {
+      if (resto <= 0) break
+      out.push([modulo, empleados.slice(0, resto), empleados.length])
+      resto -= empleados.length
+    }
+    return out
+  }, [grupos, limite])
+
+  const fila = (emp: IOvertimeEmployee) => (
+    <FilaEmpleado
+      key={emp.Employee_Code}
+      emp={emp}
+      marcado={elegidos.has(emp.Employee_Code)}
+      tomado={tomados.get(emp.Employee_Code)}
+      firma={bloqueados.get(emp.Employee_Code)}
+      colores={colores}
+      onAlternar={onAlternar}
+    />
+  )
 
   return (
     <YStack gap="$2.5">
@@ -1395,8 +1531,8 @@ function ListaEmpleados({
           title={busqueda ? 'Sin resultados' : vacioTitulo}
           message={busqueda ? 'Ningún empleado coincide con lo que buscaste.' : vacioMensaje}
         />
-      ) : grupos ? (
-        grupos.map(([modulo, empleados]) => (
+      ) : gruposVisibles ? (
+        gruposVisibles.map(([modulo, empleados, total]) => (
           <YStack key={modulo} gap="$2">
             <XStack alignItems="center" gap="$2" paddingTop="$1">
               <View width={3} height={14} borderRadius={2} backgroundColor="$primary" />
@@ -1404,44 +1540,33 @@ function ListaEmpleados({
                 {modulo}
               </Text>
               <Text fontSize={11} color="$textMuted">
-                {empleados.length}
+                {total}
               </Text>
             </XStack>
 
-            {empleados.map(emp => (
-              <FilaEmpleado
-                key={emp.Employee_Code}
-                emp={emp}
-                marcado={elegidos.has(emp.Employee_Code)}
-                tomado={tomados.get(emp.Employee_Code)}
-                firma={bloqueados.get(emp.Employee_Code)}
-                onPress={() => onAlternar(emp.Employee_Code)}
-              />
-            ))}
+            {empleados.map(fila)}
           </YStack>
         ))
       ) : (
-        lista.map(emp => (
-          <FilaEmpleado
-            key={emp.Employee_Code}
-            emp={emp}
-            marcado={elegidos.has(emp.Employee_Code)}
-            tomado={tomados.get(emp.Employee_Code)}
-            firma={bloqueados.get(emp.Employee_Code)}
-            onPress={() => onAlternar(emp.Employee_Code)}
-          />
-        ))
+        lista.slice(0, limite).map(fila)
       )}
     </YStack>
   )
 }
 
-function FilaEmpleado({
+/**
+ * Un empleado de la lista. MEMORIZADO: al marcar a uno solo se redibuja ese,
+ * no los cientos que hay. Por eso recibe el código y la función estable
+ * (onAlternar) en vez de una función nueva por fila, y los colores ya leídos.
+ * Es un XStack y no un Card: con cientos de filas el Card pesaba.
+ */
+const FilaEmpleado = React.memo(function FilaEmpleado({
   emp,
   marcado,
   tomado,
   firma,
-  onPress,
+  colores,
+  onAlternar,
 }: {
   emp: IOvertimeEmployee
   marcado: boolean
@@ -1449,16 +1574,17 @@ function FilaEmpleado({
   tomado?: IOvertimeEmployeeWithRequest
   /** Ya fue autorizado en ESTA solicitud: no se puede quitar. */
   firma?: string
-  onPress: () => void
+  colores: { success: string; warning: string }
+  onAlternar: (code: string) => void
 }) {
-  const theme = useTheme()
-
   // Las dos razones para no poder tocarlo, pero se explican distinto: una es
   // que esta en otra solicitud y la otra que ya le firmaron esta.
   const fijo = !!tomado || !!firma
 
   return (
-    <Card
+    <XStack
+      alignItems="center"
+      gap="$3"
       backgroundColor={marcado ? '$primaryOpacity2' : '$backgroundElevated'}
       borderRadius={12}
       padding="$3"
@@ -1466,59 +1592,57 @@ function FilaEmpleado({
       borderColor={marcado ? '$primary' : '$border'}
       opacity={tomado ? 0.6 : 1}
       pressStyle={fijo ? undefined : { opacity: 0.75 }}
-      onPress={() => !fijo && onPress()}
+      onPress={fijo ? undefined : () => onAlternar(emp.Employee_Code)}
     >
-      <XStack alignItems="center" gap="$3">
-        <View
-          width={22}
-          height={22}
-          borderRadius={6}
-          borderWidth={2}
-          borderColor={marcado ? '$primary' : '$border'}
-          backgroundColor={marcado ? '$primary' : 'transparent'}
-          alignItems="center"
-          justifyContent="center"
-        >
-          {marcado && <Check size={14} color="#FFFFFF" />}
-        </View>
+      <View
+        width={22}
+        height={22}
+        borderRadius={6}
+        borderWidth={2}
+        borderColor={marcado ? '$primary' : '$border'}
+        backgroundColor={marcado ? '$primary' : 'transparent'}
+        alignItems="center"
+        justifyContent="center"
+      >
+        {marcado && <Check size={14} color="#FFFFFF" />}
+      </View>
 
-        <YStack flex={1} gap={2}>
-          <Text fontSize={14} fontWeight="700" color="$text" numberOfLines={1}>
-            {nombreConCodigo(emp.Employee_Name, emp.Employee_Code)}
+      <YStack flex={1} gap={2}>
+        <Text fontSize={14} fontWeight="700" color="$text" numberOfLines={1}>
+          {nombreConCodigo(emp.Employee_Name, emp.Employee_Code)}
+        </Text>
+
+        {!!emp.Posicion && (
+          <Text fontSize={11} color="$textMuted" numberOfLines={1}>
+            {emp.Posicion}
           </Text>
+        )}
 
-          {!!emp.Posicion && (
-            <Text fontSize={11} color="$textMuted" numberOfLines={1}>
-              {emp.Posicion}
+        {/* Ya le firmaron este renglon: se queda en la solicitud. */}
+        {!!firma && (
+          <XStack alignItems="center" gap="$1.5" marginTop={2}>
+            <Check size={11} color={colores.success} />
+            <Text fontSize={11} color="$success" numberOfLines={1}>
+              {firma} · no se puede quitar
             </Text>
-          )}
+          </XStack>
+        )}
 
-          {/* Ya le firmaron este renglon: se queda en la solicitud. */}
-          {!!firma && (
-            <XStack alignItems="center" gap="$1.5" marginTop={2}>
-              <Check size={11} color={theme.success?.val as string} />
-              <Text fontSize={11} color="$success" numberOfLines={1}>
-                {firma} · no se puede quitar
-              </Text>
-            </XStack>
-          )}
-
-          {/* Por qué no se puede elegir, y a quién reclamarle: casi siempre lo
-              pidió otro jefe. */}
-          {!!tomado && (
-            <XStack alignItems="center" gap="$1.5" marginTop={2}>
-              <AlertTriangle size={11} color={theme.warning?.val as string} />
-              <Text fontSize={11} color="$warning" numberOfLines={2}>
-                Ya tiene horas extra ese día ({tomado.Correlative})
-                {tomado.Solicitante ? ` · ${tomado.Solicitante}` : ''}
-              </Text>
-            </XStack>
-          )}
-        </YStack>
-      </XStack>
-    </Card>
+        {/* Por qué no se puede elegir, y a quién reclamarle: casi siempre lo
+            pidió otro jefe. */}
+        {!!tomado && (
+          <XStack alignItems="center" gap="$1.5" marginTop={2}>
+            <AlertTriangle size={11} color={colores.warning} />
+            <Text fontSize={11} color="$warning" numberOfLines={2}>
+              Ya tiene horas extra ese día ({tomado.Correlative})
+              {tomado.Solicitante ? ` · ${tomado.Solicitante}` : ''}
+            </Text>
+          </XStack>
+        )}
+      </YStack>
+    </XStack>
   )
-}
+})
 
 function PasoHoras({
   filas,
@@ -1735,6 +1859,31 @@ function PasoHoras({
               {/* Por que esta fila no se puede tocar. La edicion es por capas:
                   el renglon firmado queda de solo lectura y los demas se
                   siguen pudiendo cambiar. */}
+              {/* Devuelto por el jefe: qué hay que corregir. */}
+              {f.returnComment !== undefined && (
+                <YStack
+                  gap={2}
+                  padding="$2"
+                  borderRadius={8}
+                  style={{ backgroundColor: '#FF551A14' }}
+                >
+                  <XStack alignItems="center" gap="$1">
+                    <Undo2 size={11} color="#FF551A" />
+                    <Text fontSize={10} fontWeight="800" style={{ color: '#FF551A' }}>
+                      DEVUELTO PARA CORREGIR
+                    </Text>
+                  </XStack>
+                  {!!f.returnComment && (
+                    <Text fontSize={11} color="$text">
+                      {f.returnComment}
+                    </Text>
+                  )}
+                  <Text fontSize={10} color="$textMuted">
+                    Solo se puede corregir una vez: al enviarlo vuelve al jefe.
+                  </Text>
+                </YStack>
+              )}
+
               {f.isLocked && (
                 <XStack alignItems="center" gap="$1.5">
                   <XStack
