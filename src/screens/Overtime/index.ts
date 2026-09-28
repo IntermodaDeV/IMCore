@@ -6,12 +6,17 @@ import RevisionHorasExtraScreen from './RevisionHorasExtraScreen'
 import HistorialHorasExtraScreen from './HistorialHorasExtraScreen'
 import DashboardHorasExtraScreen from './DashboardHorasExtraScreen'
 import DashboardSolicitanteScreen from './DashboardSolicitanteScreen'
+import DashboardJefeScreen from './DashboardJefeScreen'
 
 export const ScreensOvertime: TScreens = {
   // Primer flujo: aprobar las horas que se solicitaron
   RequestHours: {
     Screen: SolicitudesHorasExtraScreen,
-    Childs: {},
+    Childs: {
+      // El tablero del jefe: se entra desde la bandeja cuando la entidad es la
+      // del Jefe, y "atrás" vuelve a ella.
+      dashboardJefeHE: DashboardJefeScreen,
+    },
   },
   // Lo que el usuario PIDIÓ, semana por semana. Es la contraparte de
   // RequestHours: allá se firma lo de otros, acá se ve lo propio.

@@ -1614,12 +1614,6 @@ function PasoHoras({
 
   return (
     <YStack gap="$3">
-      <Text fontSize={13} color="$textMuted">
-        ¿Hasta qué hora se queda cada uno y por qué? Donde hay jornada, la hora
-        de inicio sale del turno y no se cambia
-        {puedeManual ? ', salvo que la marques como HE Manual.' : '.'}
-      </Text>
-
       {/* Acciones en lote, en su propia barra y todas con el mismo formato. Lo
           normal es que el lote entero se quede a la misma hora y por lo mismo:
           se captura un renglón y se copia.

@@ -1065,6 +1065,8 @@ export interface IRequesterDayEmployee {
   End_Time: string | null
   Horas: number
   Estado: 'Aprobada' | 'En proceso' | 'Rechazada' | string
+  /** Quién lo solicitó. Solo en el tablero del jefe. */
+  Solicitante?: string | null
   ConceptsJson: string | null
 }
 
@@ -1083,6 +1085,58 @@ export interface IRequesterTopEmployee {
   Solicitudes: number
   /** Cuántas veces en la semana se le pidieron horas. */
   Veces: number
+}
+
+/**
+ * Tablero del jefe: lo que firmó en la semana con su entidad.
+ * Aprobadas_Final + Esperando + Rechazadas_Despues suman las Aprobadas.
+ */
+export interface IApproverWeekSummary {
+  Semana_Inicio: string | null
+  Semana_Fin: string | null
+  Solicitudes: number
+  Empleados: number
+  Solicitantes: number
+  /** Lo que el usuario aprobó con su firma. */
+  Horas_Aprobadas: number
+  /** De lo aprobado: después firmaron todas las etapas. */
+  Horas_Aprobadas_Final: number
+  /** De lo aprobado: falta alguna firma de las siguientes. */
+  Horas_Esperando: number
+  /** De lo aprobado: una etapa posterior lo rechazó. */
+  Horas_Rechazadas_Despues: number
+  /** Lo que el usuario rechazó. */
+  Horas_Rechazadas: number
+  Detalles_Aprobados: number
+  Detalles_Aprobados_Final: number
+  Detalles_Esperando: number
+  Detalles_Rechazados_Despues: number
+  Detalles_Rechazados: number
+}
+
+/** Tablero del jefe: las horas que aprobó en UN día de la semana. */
+export interface IApproverWeekDay {
+  Fecha: string | null
+  /** 0 = lunes … 6 = domingo. */
+  Dia_Semana: number
+  Horas_Aprobadas: number
+  Empleados: number
+  Solicitantes: number
+}
+
+/** Tablero del jefe: un solicitante del top de la semana. */
+export interface IApproverTopRequester {
+  /** El usuario que creó las solicitudes. */
+  Solicitante: string
+  /** El nombre de su empleado; sin empleado vinculado, el usuario. */
+  Solicitante_Name: string
+  Posicion: string
+  /** Lo que le pidió a este jefe = aprobadas + rechazadas. */
+  Horas_Solicitadas: number
+  Horas_Aprobadas: number
+  Horas_Rechazadas: number
+  Solicitudes: number
+  Empleados: number
 }
 
 /** Qué puede hacer el usuario en la captura de solicitudes. */

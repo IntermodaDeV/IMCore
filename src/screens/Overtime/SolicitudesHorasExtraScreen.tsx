@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, StyleSheet } from 'react-native'
 import dayjs from 'dayjs'
 import { YStack, XStack, Text, Card, View, Button, Spinner, useTheme } from 'tamagui'
-import { Briefcase, CalendarDays, Check, CheckSquare, ChevronDown, Clock, MessageSquare, Square, UserRound, X } from 'lucide-react-native'
+import { BarChart3, Briefcase, CalendarDays, Check, CheckSquare, ChevronDown, Clock, MessageSquare, Square, UserRound, X } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -150,6 +150,7 @@ export default function SolicitudesHorasExtraScreen() {
   const { defaultCompany } = useAuth()
   const loader = useLoader()
   const theme = useTheme()
+  const navigation = useNavigation()
   const { showToast } = useShowToast()
   const keyboardHeight = useKeyboardHeight()
 
@@ -555,6 +556,17 @@ export default function SolicitudesHorasExtraScreen() {
   )
 
   /**
+   * La entidad elegida es la del JEFE: la etapa 1 del flujo.
+   *
+   * Por el Order y no por el nombre ('Autoriza Jefe'): un renombre en AdmSys
+   * no puede esconder el botón del tablero.
+   */
+  const esJefe = useMemo(
+    () => entidades.find(e => String(e.Id) === entidad)?.Order === 1,
+    [entidades, entidad],
+  )
+
+  /**
    * ¿Le toca la última firma?
    *
    * Es la que compromete el dinero, y es donde agrupar por solicitud cambia
@@ -737,7 +749,7 @@ export default function SolicitudesHorasExtraScreen() {
   return (
     <>
     <View flex={1} backgroundColor="$backgroundPage">
-      <YStack paddingHorizontal="$4" paddingTop="$3" gap="$2">
+      <YStack paddingHorizontal="$4" paddingTop="$3" gap="$1">
         {opcionesEntidad.length > 1 && (
           <AppSelect
             label="Entidad"
@@ -747,12 +759,42 @@ export default function SolicitudesHorasExtraScreen() {
           />
         )}
 
-        <SearchInput
-          data={data}
-          searchKeys={['Employee_Name', 'Employee_Code', 'Correlative', 'Category_Name', 'Solicitante']}
-          onResults={setFiltered}
-          placeholder="Buscar por empleado, correlativo o motivo"
-        />
+        {/* El buscador y, para el Jefe, el acceso a su tablero en la misma
+            línea: es consulta, así que va como botón de ícono con borde y no le
+            quita lugar al buscador.
+
+            Alineados ARRIBA y con el botón del mismo alto (42) y el mismo
+            margen de abajo que trae SearchInput: centrados, el botón quedaba
+            contra el buscador MÁS su margen y el buscador se veía más arriba. */}
+        <XStack alignItems="flex-start" gap="$2">
+          <YStack flex={1} minWidth={0}>
+            <SearchInput
+              data={data}
+              searchKeys={['Employee_Name', 'Employee_Code', 'Correlative', 'Category_Name', 'Solicitante']}
+              onResults={setFiltered}
+              placeholder="Buscar por empleado, correlativo o motivo"
+            />
+          </YStack>
+
+          {esJefe && (
+            <Button
+              height={42}
+              width={42}
+              marginBottom="$3"
+              borderRadius="$3"
+              padding={0}
+              backgroundColor="$backgroundElevated"
+              borderWidth={1}
+              borderColor="$border"
+              pressStyle={{ opacity: 0.7 }}
+              // La entidad viaja: el tablero cuenta solo lo firmado con ella.
+              onPress={() => (navigation as any).navigate('dashboardJefeHE', { entityId: Number(entidad) })}
+              accessibilityLabel="Ver el resumen del jefe"
+            >
+              <BarChart3 size={19} color={theme.primary?.val as string} />
+            </Button>
+          )}
+        </XStack>
 
         {/* Los días con algo pendiente. Solo aparece con más de uno: con todo
             en el mismo día el filtro no separa nada y sería una fila de más. */}

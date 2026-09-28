@@ -359,18 +359,18 @@ function TarjetaSemana({
 // ── Medidas y colores del gráfico ───────────────────────────────────────────
 // Las MISMAS que "Gasto por día" de DashboardHorasExtraScreen, para que los dos
 // tableros se lean igual. Si allá cambian, cambiarlas acá también.
-const COLOR_BARRA = '#F97316'
-const COLOR_BARRA_SUAVE = '#FDBA74'
+export const COLOR_BARRA = '#F97316'
+export const COLOR_BARRA_SUAVE = '#FDBA74'
 const BAR_W_MAX = 34
-const BAR_W_MIN = 12
+export const BAR_W_MIN = 12
 const BAR_SPACING_MAX = 20
 const BAR_SPACING_MIN = 6
-const BAR_INITIAL = 12
+export const BAR_INITIAL = 12
 // Más bajo que en DashboardHE (190): las mismas cuatro divisiones del eje Y,
 // pero más juntas. Acá los valores son pocas horas y el alto sobraba.
-const CHART_H = 130
+export const CHART_H = 130
 /** En esta librería `width` es el área de columnas y NO incluye esta franja. */
-const Y_LABEL_W = 40
+export const Y_LABEL_W = 40
 
 /** Ancho de barra y espacio para que las columnas entren en la tarjeta. */
 const medidasColumnas = (columnas: number, anchoVisible: number) => {
@@ -393,7 +393,7 @@ const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
  * Se redondea el PASO y no el tope: así el eje se lee de 5 en 5 (o de 2 en 2),
  * nunca en 4.8, y con 20h llega a 25 y no a 40.
  */
-const escalaEje = (maximo: number): { paso: number; secciones: number } => {
+export const escalaEje = (maximo: number): { paso: number; secciones: number } => {
   if (maximo <= 0) return { paso: 1, secciones: 4 }
   const bruto = maximo / 4
   const potencia = Math.pow(10, Math.floor(Math.log10(bruto)))
@@ -411,27 +411,48 @@ const escalaEje = (maximo: number): { paso: number; secciones: number } => {
  * pregunta y con las siete iguales habría que ir a buscarlo comparando alturas.
  * Siempre los siete días: uno sin columna se lee como "ese día no pedí".
  */
-function GraficoDias({
+/**
+ * Un día del gráfico. Es la forma del tablero del solicitante; el del jefe
+ * pone sus horas APROBADAS en Horas_Solicitadas al llamarlo.
+ */
+export type DiaGrafico = Pick<IRequesterWeekDay, 'Fecha' | 'Dia_Semana' | 'Horas_Solicitadas'>
+
+export function GraficoDias({
   dias,
   cargando,
   companyCode,
+  titulo = 'HORAS SOLICITADAS POR DÍA',
+  verbo = 'solicitadas',
+  vacio = 'No pediste horas extra ningún día de esta semana.',
+  cargarEmpleados,
 }: {
-  dias: IRequesterWeekDay[]
+  dias: DiaGrafico[]
   cargando: boolean
   companyCode: string
+  /** El título de la tarjeta. */
+  titulo?: string
+  /** Cómo se llaman estas horas en el panel: 'solicitadas', 'aprobadas'. */
+  verbo?: string
+  /** Qué decir cuando la semana no tiene horas. */
+  vacio?: string
+  /**
+   * De dónde salen los empleados de un día. Sin esto, los del solicitante.
+   * El jefe pasa los suyos (lo que él aprobó, con quién lo pidió).
+   */
+  cargarEmpleados?: (fecha: string) => Promise<{ Success?: boolean; ErrorMessage?: string; Data?: IRequesterDayEmployee[] | null } | null | undefined>
 }) {
   const theme = useTheme()
   const { width } = useWindowDimensions()
 
   // Día abierto en el desglose. null = cerrado.
-  const [diaAbierto, setDiaAbierto] = useState<IRequesterWeekDay | null>(null)
+  const [diaAbierto, setDiaAbierto] = useState<DiaGrafico | null>(null)
   const [empleados, setEmpleados] = useState<IRequesterDayEmployee[]>([])
   const [cargandoEmpleados, setCargandoEmpleados] = useState(false)
   const [errorEmpleados, setErrorEmpleados] = useState('')
 
   /** Abre el desglose de un día, igual que "Gasto por día" de DashboardHE. */
   const abrirDia = useCallback(
-    async (dia: IRequesterWeekDay) => {
+    async (dia: DiaGrafico) => {
       const fecha = String(dia?.Fecha ?? '').substring(0, 10)
       // Un día sin horas no tiene a quién mostrar.
       if (!companyCode || !fecha || !(Number(dia.Horas_Solicitadas) > 0)) return
@@ -442,7 +463,9 @@ function GraficoDias({
       setCargandoEmpleados(true)
 
       try {
-        const res = await overtimeService.getRequesterDayEmployees(companyCode, fecha)
+        const res = cargarEmpleados
+          ? await cargarEmpleados(fecha)
+          : await overtimeService.getRequesterDayEmployees(companyCode, fecha)
         if (!res?.Success) {
           setErrorEmpleados(res?.ErrorMessage || 'No se pudo cargar el detalle del día.')
           return
@@ -454,7 +477,7 @@ function GraficoDias({
         setCargandoEmpleados(false)
       }
     },
-    [companyCode],
+    [companyCode, cargarEmpleados],
   )
 
   const cerrarDia = useCallback(() => {
@@ -517,7 +540,7 @@ ${clave.substring(8, 10)}/${clave.substring(5, 7)}`,
         {/* Mismo estilo que el título de la tarjeta de arriba. */}
         <YStack flex={1} minWidth={0}>
           <Text fontSize={11} fontWeight="800" color="$text" letterSpacing={0.4} numberOfLines={1}>
-            HORAS SOLICITADAS POR DÍA
+            {titulo}
           </Text>
           {!cargando && maximo > 0 && (
             <Text fontSize={9} color="$textMuted">
@@ -552,9 +575,7 @@ ${clave.substring(8, 10)}/${clave.substring(5, 7)}`,
         <YStack alignItems="center" justifyContent="center" gap="$1.5" paddingVertical="$5">
           <CalendarX size={26} color="#94A3B8" />
           <Text fontSize={11} color="$textMuted" textAlign="center" lineHeight={16}>
-            {dias.length === 0
-              ? 'No se pudieron cargar los días de la semana.'
-              : 'No pediste horas extra ningún día de esta semana.'}
+            {dias.length === 0 ? 'No se pudieron cargar los días de la semana.' : vacio}
           </Text>
         </YStack>
       ) : (
@@ -599,8 +620,8 @@ ${clave.substring(8, 10)}/${clave.substring(5, 7)}`,
       <DesgloseEmpleados
         abierto={!!diaAbierto}
         titulo={diaAbierto ? diaYFecha(String(diaAbierto.Fecha ?? '')) : ''}
-        subtitulo={`${fmtHoras(diaAbierto?.Horas_Solicitadas ?? 0)} solicitadas · ${empleados.length} empleado(s)`}
-        vacio="Ese día no tiene empleados con horas extra pedidas."
+        subtitulo={`${fmtHoras(diaAbierto?.Horas_Solicitadas ?? 0)} ${verbo} · ${empleados.length} empleado(s)`}
+        vacio={`Ese día no tiene empleados con horas extra ${verbo}.`}
         empleados={empleados}
         cargando={cargandoEmpleados}
         error={errorEmpleados}
@@ -620,18 +641,37 @@ ${clave.substring(8, 10)}/${clave.substring(5, 7)}`,
  * Mismos colores que el gráfico de días: el módulo con más horas en naranja
  * fuerte y el resto apagado. 'Sin módulo' viene al final desde el servidor.
  */
-function GraficoModulos({
+export function GraficoModulos({
   modulos,
   error,
   cargando,
   companyCode,
   semana,
+  titulo = 'HORAS SOLICITADAS POR MÓDULO',
+  verbo = 'solicitadas',
+  vacio = 'No pediste horas extra en esta semana.',
+  cargarEmpleados,
 }: {
   modulos: IRequesterWeekModule[]
   error: string
   cargando: boolean
   companyCode: string
   semana: IPayWebWeek | null
+  /** El título de la tarjeta. */
+  titulo?: string
+  /** Cómo se llaman estas horas en el panel: 'solicitadas', 'aprobadas'. */
+  verbo?: string
+  /** Qué decir cuando la semana no tiene horas. */
+  vacio?: string
+  /**
+   * De dónde salen los empleados de un módulo. Sin esto, los del solicitante.
+   * El jefe pasa los suyos (lo que él aprobó, con quién lo pidió).
+   */
+  cargarEmpleados?: (
+    modulo: string,
+    inicio: string,
+    fin: string,
+  ) => Promise<{ Success?: boolean; ErrorMessage?: string; Data?: IRequesterDayEmployee[] | null } | null | undefined>
 }) {
   const maximo = modulos.reduce((m, x) => Math.max(m, Number(x.Horas_Solicitadas ?? 0)), 0)
 
@@ -653,7 +693,9 @@ function GraficoModulos({
       setCargandoEmpleados(true)
 
       try {
-        const res = await overtimeService.getRequesterModuleEmployees(companyCode, inicio, fin, m.Modulo)
+        const res = cargarEmpleados
+          ? await cargarEmpleados(m.Modulo, inicio, fin)
+          : await overtimeService.getRequesterModuleEmployees(companyCode, inicio, fin, m.Modulo)
         if (!res?.Success) {
           setErrorEmpleados(res?.ErrorMessage || 'No se pudo cargar el detalle del módulo.')
           return
@@ -665,7 +707,7 @@ function GraficoModulos({
         setCargandoEmpleados(false)
       }
     },
-    [companyCode, semana],
+    [companyCode, semana, cargarEmpleados],
   )
 
   const cerrar = useCallback(() => {
@@ -685,7 +727,7 @@ function GraficoModulos({
       <XStack alignItems="center" justifyContent="space-between" gap="$2">
         <YStack flex={1} minWidth={0}>
           <Text fontSize={11} fontWeight="800" color="$text" letterSpacing={0.4} numberOfLines={1}>
-            HORAS SOLICITADAS POR MÓDULO
+            {titulo}
           </Text>
           {!cargando && modulos.length > 0 && (
             <Text fontSize={9} color="$textMuted">
@@ -714,7 +756,7 @@ function GraficoModulos({
         <YStack alignItems="center" justifyContent="center" gap="$1.5" paddingVertical="$4">
           <CalendarX size={24} color="#94A3B8" />
           <Text fontSize={11} color="$textMuted" textAlign="center">
-            No pediste horas extra en esta semana.
+            {vacio}
           </Text>
         </YStack>
       ) : (
@@ -773,8 +815,8 @@ function GraficoModulos({
       <DesgloseEmpleados
         abierto={!!abierto}
         titulo={abierto?.Modulo ?? ''}
-        subtitulo={`${fmtHoras(abierto?.Horas_Solicitadas ?? 0)} solicitadas · ${abierto?.Empleados ?? 0} empleado(s) en la semana`}
-        vacio="Ese módulo no tiene empleados con horas extra pedidas en la semana."
+        subtitulo={`${fmtHoras(abierto?.Horas_Solicitadas ?? 0)} ${verbo} · ${abierto?.Empleados ?? 0} empleado(s) en la semana`}
+        vacio={`Ese módulo no tiene empleados con horas extra ${verbo} en la semana.`}
         empleados={empleados}
         cargando={cargandoEmpleados}
         error={errorEmpleados}
@@ -785,6 +827,30 @@ function GraficoModulos({
 }
 
 const DIAS_LARGOS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+/**
+ * El horario corto: '1 – 5 PM' en lugar de '1:00 PM - 5:00 PM'.
+ *
+ * El AM/PM va UNA vez si los dos extremos lo comparten, y los ':00' se omiten.
+ * Con el día, el motivo y el reparto por banda en el mismo renglón, el horario
+ * completo cargaba la lista más que ningún otro dato.
+ */
+const horarioCorto = (inicio: string | null | undefined, fin: string | null | undefined): string => {
+  const partir = (iso: string | null | undefined) => {
+    const hhmm = String(iso ?? '').substring(11, 16)
+    const [h, m] = hhmm.split(':').map(Number)
+    if (isNaN(h) || isNaN(m)) return null
+    const sufijo = h < 12 ? 'AM' : 'PM'
+    const h12 = h % 12 === 0 ? 12 : h % 12
+    return { texto: m === 0 ? `${h12}` : `${h12}:${String(m).padStart(2, '0')}`, sufijo }
+  }
+  const a = partir(inicio)
+  const b = partir(fin)
+  if (!a || !b) return ''
+  return a.sufijo === b.sufijo
+    ? `${a.texto} – ${b.texto} ${b.sufijo}`
+    : `${a.texto} ${a.sufijo} – ${b.texto} ${b.sufijo}`
+}
 
 /** 'yyyy-mm-dd' a 'Miércoles 23/09', con partes locales. */
 const diaYFecha = (iso: string): string => {
@@ -916,9 +982,7 @@ function DesgloseEmpleados({
               ItemSeparatorComponent={() => <View height={1} backgroundColor="$border" opacity={0.5} />}
               renderItem={({ item }) => {
                 const color = colorEstado(item.Estado, theme)
-                const horario = item.Start_Time
-                  ? `${hora12(String(item.Start_Time).substring(11, 16))} - ${hora12(String(item.End_Time ?? '').substring(11, 16))}`
-                  : ''
+                const horario = horarioCorto(item.Start_Time, item.End_Time)
                 // Solo en el desglose por módulo, que junta varios días.
                 const dia = item.Fecha ? diaYFecha(String(item.Fecha)) : ''
 
@@ -932,6 +996,12 @@ function DesgloseEmpleados({
                         <Text fontSize={9} color="$textMuted" numberOfLines={1}>
                           {[item.Correlative, item.Category_Name].filter(Boolean).join(' · ')}
                         </Text>
+                        {/* Solo en el tablero del jefe: quién lo pidió. */}
+                        {!!item.Solicitante && (
+                          <Text fontSize={9} color="$textSecondary" numberOfLines={1}>
+                            Solicitó: {item.Solicitante}
+                          </Text>
+                        )}
                       </YStack>
 
                       <YStack alignItems="flex-end" gap={2}>
@@ -946,7 +1016,7 @@ function DesgloseEmpleados({
 
                     <XStack alignItems="center" gap="$2" flexWrap="wrap">
                       {!!(dia || horario) && (
-                        <Text fontSize={10} color="$textSecondary">
+                        <Text fontSize={9} color="$textMuted">
                           {[dia, horario].filter(Boolean).join(' · ')}
                         </Text>
                       )}
@@ -990,7 +1060,7 @@ function DesgloseEmpleados({
 }
 
 /** Tope de barras del top y el más gruesa que puede llegar a ser una. */
-const TOP_MAX = 8
+export const TOP_MAX = 8
 const TOP_BAR_W_MAX = 56
 
 /**
@@ -1001,7 +1071,7 @@ const TOP_BAR_W_MAX = 56
  * un espacio vacío se leen como un gráfico roto—, pero con un tope: una sola
  * barra a todo lo ancho parecería un bloque y no una columna.
  */
-const medidasTop = (columnas: number, anchoVisible: number) => {
+export const medidasTop = (columnas: number, anchoVisible: number) => {
   const plot = Math.max(140, anchoVisible - Y_LABEL_W)
   const n = Math.max(1, columnas)
   const porColumna = (plot - BAR_INITIAL) / n
@@ -1027,7 +1097,7 @@ const medidasTop = (columnas: number, anchoVisible: number) => {
  * Con cuatro palabras el primer apellido es la tercera (nombre, segundo
  * nombre, apellido, apellido); con menos, la segunda.
  */
-const rotuloEmpleado = (nombre: string): string => {
+export const rotuloEmpleado = (nombre: string): string => {
   const partes = String(nombre ?? '').trim().split(/\s+/).filter(Boolean)
   if (partes.length === 0) return ''
   const apellido = partes.length >= 4 ? partes[2] : (partes[1] ?? '')
@@ -1042,14 +1112,29 @@ const rotuloEmpleado = (nombre: string): string => {
  * eje Y con pasos limpios (escalaEje). Vienen ordenados de mayor a menor desde
  * el servidor, así que se leen como un podio de izquierda a derecha.
  */
-function GraficoTop({
+export function GraficoTop({
   empleados,
   error,
   cargando,
+  titulo = `TOP ${TOP_MAX} EMPLEADOS CON MÁS HORAS`,
+  verbo = 'solicitadas',
+  vacio = 'No pediste horas extra en esta semana.',
+  etiquetaAprobadas = 'Aprobadas',
+  etiquetaEnProceso = 'En proceso' as string | null,
 }: {
   empleados: IRequesterTopEmployee[]
   error: string
   cargando: boolean
+  /** El título de la tarjeta. */
+  titulo?: string
+  /** Cómo se llaman estas horas en el detalle: 'solicitadas', 'aprobadas'. */
+  verbo?: string
+  /** Qué decir cuando la semana no tiene horas. */
+  vacio?: string
+  /** Los nombres de las dos partes en el detalle. El jefe dice qué pasó
+   *  null en etiquetaEnProceso = una sola parte (el jefe: 'Aprobadas por mí'). */
+  etiquetaAprobadas?: string
+  etiquetaEnProceso?: string | null
 }) {
   const theme = useTheme()
   const { width } = useWindowDimensions()
@@ -1101,7 +1186,7 @@ function GraficoTop({
       <XStack alignItems="center" justifyContent="space-between" gap="$2">
         <YStack flex={1} minWidth={0}>
           <Text fontSize={11} fontWeight="800" color="$text" letterSpacing={0.4} numberOfLines={1}>
-            {`TOP ${TOP_MAX} EMPLEADOS CON MÁS HORAS`}
+            {titulo}
           </Text>
           {!cargando && lista.length > 0 && (
             <Text fontSize={9} color="$textMuted">
@@ -1138,7 +1223,7 @@ function GraficoTop({
         <YStack alignItems="center" justifyContent="center" gap="$1.5" paddingVertical="$5">
           <CalendarX size={26} color="#94A3B8" />
           <Text fontSize={11} color="$textMuted" textAlign="center" lineHeight={16}>
-            No pediste horas extra en esta semana.
+            {vacio}
           </Text>
         </YStack>
       ) : (
@@ -1159,8 +1244,8 @@ function GraficoTop({
             minHeight={2}
             yAxisLabelWidth={Y_LABEL_W}
             yAxisTextStyle={{ fontSize: 9, color: muted }}
-            labelWidth={medidas.barW + medidas.spacing}
-            xAxisLabelTextStyle={{ fontSize: 8, color: muted }}
+            labelWidth={medidas.barW}
+            xAxisLabelTextStyle={{ fontSize: 8, color: muted, textAlign: 'center' }}
             // El nombre en una línea y girado: entra entero sin montarse sobre
             // la columna vecina. El alto extra es para que el giro no se corte.
             rotateLabel
@@ -1182,7 +1267,13 @@ function GraficoTop({
         </View>
       )}
 
-      <DetalleEmpleadoTop empleado={abierto} onCerrar={() => setAbierto(null)} />
+      <DetalleEmpleadoTop
+        empleado={abierto}
+        verbo={verbo}
+        etiquetaAprobadas={etiquetaAprobadas}
+        etiquetaEnProceso={etiquetaEnProceso}
+        onCerrar={() => setAbierto(null)}
+      />
     </YStack>
   )
 }
@@ -1199,9 +1290,15 @@ function GraficoTop({
  */
 function DetalleEmpleadoTop({
   empleado,
+  verbo,
+  etiquetaAprobadas,
+  etiquetaEnProceso,
   onCerrar,
 }: {
   empleado: IRequesterTopEmployee | null
+  verbo: string
+  etiquetaAprobadas: string
+  etiquetaEnProceso: string | null
   onCerrar: () => void
 }) {
   const theme = useTheme()
@@ -1275,7 +1372,7 @@ function DetalleEmpleadoTop({
                 {fmtHoras(total)}
               </Text>
               <Text fontSize={12} fontWeight="600" color="$textSecondary">
-                solicitadas en la semana
+                {verbo} en la semana
               </Text>
             </XStack>
 
@@ -1289,24 +1386,26 @@ function DetalleEmpleadoTop({
                 <XStack gap="$1" alignItems="center">
                   <View width={8} height={8} borderRadius={4} style={{ backgroundColor: verde }} />
                   <Text fontSize={11} fontWeight="600" color="$textSecondary">
-                    Aprobadas
+                    {etiquetaAprobadas}
                   </Text>
                 </XStack>
                 <Text fontSize={14} fontWeight="800" color="$text">
                   {fmtHoras(aprobadas)}
                 </Text>
               </YStack>
-              <YStack flex={1} gap={1}>
-                <XStack gap="$1" alignItems="center">
-                  <View width={8} height={8} borderRadius={4} style={{ backgroundColor: ambar }} />
-                  <Text fontSize={11} fontWeight="600" color="$textSecondary">
-                    En proceso
+              {etiquetaEnProceso != null && (
+                <YStack flex={1} gap={1}>
+                  <XStack gap="$1" alignItems="center">
+                    <View width={8} height={8} borderRadius={4} style={{ backgroundColor: ambar }} />
+                    <Text fontSize={11} fontWeight="600" color="$textSecondary">
+                      {etiquetaEnProceso}
+                    </Text>
+                  </XStack>
+                  <Text fontSize={14} fontWeight="800" color="$text">
+                    {fmtHoras(enProceso)}
                   </Text>
-                </XStack>
-                <Text fontSize={14} fontWeight="800" color="$text">
-                  {fmtHoras(enProceso)}
-                </Text>
-              </YStack>
+                </YStack>
+              )}
             </XStack>
 
             <Text fontSize={10} color="$textMuted">

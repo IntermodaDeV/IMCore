@@ -34,6 +34,9 @@ import {
   IRequesterWeekModule,
   IRequesterDayEmployee,
   IRequesterTopEmployee,
+  IApproverWeekSummary,
+  IApproverWeekDay,
+  IApproverTopRequester,
   IOvertimeShiftSchedule,
   IOvertimeUserParameter,
   IPayWebWeek,
@@ -181,6 +184,75 @@ export const overtimeService = {
   getRequesterTopEmployees: (companyCode: string, startDate: string, finalDate: string) =>
     httpClient.get<ExecutionResponse<IRequesterTopEmployee[]>>(`${schema}/RequesterTopEmployees`, {
       companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /** Tablero del jefe: lo que firmó en la semana con su entidad. */
+  getApproverWeekSummary: (companyCode: string, entityId: number, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IApproverWeekSummary>>(`${schema}/ApproverWeekSummary`, {
+      companyCode,
+      entityId,
+      startDate,
+      finalDate,
+    }),
+
+  /** Tablero del jefe: las horas que aprobó por día de la semana. */
+  getApproverWeekDays: (companyCode: string, entityId: number, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IApproverWeekDay[]>>(`${schema}/ApproverWeekDays`, {
+      companyCode,
+      entityId,
+      startDate,
+      finalDate,
+    }),
+
+  /** Tablero del jefe: lo que aprobó en un día, con quién lo solicitó. */
+  getApproverDayEmployees: (companyCode: string, entityId: number, date: string) =>
+    httpClient.get<ExecutionResponse<IRequesterDayEmployee[]>>(`${schema}/ApproverDayEmployees`, {
+      companyCode,
+      entityId,
+      date,
+    }),
+
+  /** Tablero del jefe: lo que aprobó por módulo. */
+  getApproverWeekModules: (companyCode: string, entityId: number, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IRequesterWeekModule[]>>(`${schema}/ApproverWeekModules`, {
+      companyCode,
+      entityId,
+      startDate,
+      finalDate,
+    }),
+
+  /** Tablero del jefe: lo que aprobó en un módulo, con quién lo pidió. */
+  getApproverModuleEmployees: (
+    companyCode: string,
+    entityId: number,
+    startDate: string,
+    finalDate: string,
+    modulo: string,
+  ) =>
+    httpClient.get<ExecutionResponse<IRequesterDayEmployee[]>>(`${schema}/ApproverModuleEmployees`, {
+      companyCode,
+      entityId,
+      startDate,
+      finalDate,
+      modulo,
+    }),
+
+  /** Tablero del jefe: los 8 empleados con más horas que aprobó. */
+  getApproverTopEmployees: (companyCode: string, entityId: number, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IRequesterTopEmployee[]>>(`${schema}/ApproverTopEmployees`, {
+      companyCode,
+      entityId,
+      startDate,
+      finalDate,
+    }),
+
+  /** Tablero del jefe: los 8 solicitantes que más horas le piden. */
+  getApproverTopRequesters: (companyCode: string, entityId: number, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IApproverTopRequester[]>>(`${schema}/ApproverTopRequesters`, {
+      companyCode,
+      entityId,
       startDate,
       finalDate,
     }),
