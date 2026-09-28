@@ -36,7 +36,14 @@ export const useShowToast = () => {
       title: string,
       message?: string,
       duration: number = 4000,
-      position: ToastPosition = 'bottom'
+      /* Arriba por defecto. Abajo el aviso caía sobre la botonera fija de
+         varias pantallas —"Guardar" en los formularios, la barra de portería—,
+         justo donde está el pulgar y justo después de tocar. Arriba queda en
+         zona muerta y se lee sin tapar nada.
+
+         El parámetro sigue existiendo: una pantalla que necesite el aviso abajo
+         lo pide explícito. */
+      position: ToastPosition = 'top'
     ) => {
       vivo.current.setPosition(position)
 

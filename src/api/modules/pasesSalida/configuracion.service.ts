@@ -3,7 +3,7 @@ import { ExecutionResponse } from '../response.type'
 import {
   IGrupo, IGrupoManage, IGrupoDetalle, IGrupoHorario, IMaterialConGrupo, IGrupoMateriales,
   IReglaFila, IAccesoFirma, IReglaGuardar,
-  ISolicitante, IMaterialSolicitante, ISolicitanteMateriales,
+  ISolicitante, IMaterialSolicitante, ITipoSalidaSolicitante, ISolicitanteAlcance,
 } from './configuracion.types'
 
 // Configuración de firmas (api/PasesSalidaConfiguracion). El acceso lo gobierna
@@ -52,6 +52,10 @@ export const pasesSalidaConfigService = {
     httpClient.get<ExecutionResponse<ISolicitante[]>>(`${schema}/Solicitantes`),
   getMaterialesDeSolicitante: (userCode: string) =>
     httpClient.get<ExecutionResponse<IMaterialSolicitante[]>>(`${schema}/Solicitantes/Materiales`, { userCode }),
-  asignarMaterialesSolicitante: (data: ISolicitanteMateriales) =>
-    httpClient.post<ExecutionResponse<null>, ISolicitanteMateriales>(`${schema}/Solicitantes/Materiales`, data),
+  getTiposDeSolicitante: (userCode: string) =>
+    httpClient.get<ExecutionResponse<ITipoSalidaSolicitante[]>>(`${schema}/Solicitantes/Tipos`, { userCode }),
+  // Materiales y tipos en una sola llamada: el servidor los guarda en una
+  // transacción, así el alcance no queda a medias.
+  guardarAlcanceSolicitante: (data: ISolicitanteAlcance) =>
+    httpClient.post<ExecutionResponse<null>, ISolicitanteAlcance>(`${schema}/Solicitantes/Alcance`, data),
 }

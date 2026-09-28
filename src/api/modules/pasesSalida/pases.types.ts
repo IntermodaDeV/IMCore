@@ -14,7 +14,7 @@
  * solicitante nunca se enteraba.
  */
 export type EstadoPase =
-  | 'PSPEND' | 'PSEAPR' | 'PSAPR' | 'PSREJ' | 'PSSAL' | 'PSFIN' | 'PSRET'
+  | 'PSPEND' | 'PSEAPR' | 'PSAPR' | 'PSREJ' | 'PSSAL' | 'PSREPA' | 'PSFIN' | 'PSRET'
   | 'PSVEN' | 'PSANU' | 'PSELI'
 
 /**
@@ -22,7 +22,7 @@ export type EstadoPase =
  * Se define acá y no en cada pantalla para que "abierto" signifique lo mismo en
  * todas.
  */
-export const ESTADOS_ABIERTOS: EstadoPase[] = ['PSPEND', 'PSEAPR', 'PSAPR', 'PSSAL']
+export const ESTADOS_ABIERTOS: EstadoPase[] = ['PSPEND', 'PSEAPR', 'PSAPR', 'PSSAL', 'PSREPA']
 
 export const ESTADOS_CERRADOS: EstadoPase[] = ['PSFIN', 'PSRET', 'PSREJ', 'PSVEN', 'PSANU']
 
@@ -72,6 +72,15 @@ export interface IPaseSalida {
   SalidaPuestoKey?: string | null
   RetornoPuesto?: string | null
   /**
+   * El KeyVar del portón donde se registró el REGRESO.
+   *
+   * El camino de vuelta es el de ida al revés —calle, portón 2, portón 1,
+   * planta—, así que el pase también cruza dos portones volviendo. Esto es lo
+   * que le permite al guardia del segundo tramo saber que el material ya fue
+   * revisado en el otro portón y que él solo tiene que dejarlo pasar.
+   */
+  RetornoPuestoKey?: string | null
+  /**
    * Cuántos minutos hace que salió, CALCULADO POR EL SERVIDOR.
    *
    * Es lo que le permite a la pantalla no confundir "va saliendo por el segundo
@@ -80,6 +89,40 @@ export interface IPaseSalida {
    * teléfono del guardia no sirve para eso.
    */
   MinutosDesdeSalida?: number | null
+  /**
+   * La gemela para el sentido de vuelta: sin esto, un pase que acaba de entrar
+   * por el otro portón se ve igual que uno que cerró hace una semana.
+   */
+  MinutosDesdeRetorno?: number | null
+  /**
+   * Los KeyVar de los portones por los que el pase YA CRUZÓ saliendo en este
+   * viaje, separados por coma. Cuenta el portón donde se registró la salida y
+   * aquellos donde un guardia confirmó el paso con «Dejar pasar».
+   *
+   * Sirve para no preguntar dos veces lo mismo: si el pase ya cruzó por el
+   * portón de quien escanea, este escaneo solo puede ser un regreso.
+   */
+  PuestosCruzadosSalida?: string | null
+
+  /**
+   * La última entrega parcial: qué volvió, cuánto, dónde y hace cuánto.
+   *
+   * Entrando, los portones se cruzan al revés que saliendo. Si una entrega se
+   * registró en uno y el material se presenta en el otro, el guardia tiene que
+   * poder distinguir «es lo mismo que ya registraron» de «son otras unidades»;
+   * los datos por sí solos no los separan.
+   */
+  UltimoRetornoFecha?: string | null
+  UltimoRetornoPuesto?: string | null
+  UltimoRetornoPuestoKey?: string | null
+  MinutosDesdeUltimoRetorno?: number | null
+  /** Legible, para comparar contra las cajas: «Martillo 1, Taladro 1». */
+  UltimoRetornoResumen?: string | null
+  /**
+   * Por qué portones ya pasó ESA entrega. La ventana arranca en la última: una
+   * entrega vieja no tapa la pregunta de una nueva.
+   */
+  PuestosCruzadosRetorno?: string | null
 
   /**
    * Si el pase se puede usar HOY. Lo calcula el servidor con la misma función
@@ -290,11 +333,36 @@ export interface IPaseSalidaDetalle {
   /** Para reabrir el formulario sabiendo si exige modelo y serie. */
   EsEquipo: boolean
   Descripcion: string | null
-  Cantidad: number
+  /**
+   * Null cuando el pase es de unidad general: la línea se capturó sin cantidad
+   * ni unidad. No mostrar el badge en ese caso — «0» o «1 Unidad» serían un
+   * dato inventado.
+   */
+  Cantidad: number | null
   UnidadMedida: string | null
   Marca: string | null
   Modelo: string | null
   Serie: string | null
+  /**
+   * Si esta línea puede volver por partes. `null` = no aplica: el tipo de
+   * salida no exige retorno, o el pase se creó antes de que existiera la marca.
+   */
+  RegresoParcial?: boolean | null
+  /** Cuánto de esta línea ya volvió, acumulado. Null = todavía nada. */
+  CantidadRetornada?: number | null
+  /**
+   * Cuánto falta por volver, calculado por el SERVIDOR. Es el número que decide
+   * si el pase se puede cerrar; dos clientes redondeando distinto darían dos
+   * verdades. Null en las líneas sin cantidad.
+   */
+  CantidadPendiente?: number | null
+}
+
+/** Lo que vuelve AHORA de una línea. Las que no traen nada no se mandan. */
+export interface IRetornoLinea {
+  /** El Id de la LÍNEA, no el del pase. */
+  Detalle_Id: number
+  Cantidad: number
 }
 
 // ── Guardado ─────────────────────────────────────────────────────────────────
@@ -302,11 +370,18 @@ export interface IPaseSalidaDetalle {
 export interface IPaseSalidaLinea {
   Material_Id: number
   Descripcion?: string | null
-  Cantidad: number
+  /** Null en los pases de unidad general. */
+  Cantidad: number | null
   UnidadMedida?: string | null
   Marca?: string | null
   Modelo?: string | null
   Serie?: string | null
+  /**
+   * Si esta línea puede volver por partes. Solo se manda cuando el tipo exige
+   * retorno y el solicitante tiene el acceso PSRegresoParcial; el servidor lo
+   * revalida y rebota si se marca sin tenerlo.
+   */
+  RegresoParcial?: boolean | null
 }
 
 /** Id menor o igual a cero (mandá -1) crea; mayor que cero edita. */
@@ -317,6 +392,11 @@ export interface IPaseSalidaGuardar {
   EnviadoA?: string | null
   /** Quién retira el material. Obligatorio, con nombre y apellido. */
   Responsable?: string | null
+  /**
+   * El pase se captura sin cantidad ni unidad. Requiere el acceso GeneralUnit,
+   * y el servidor lo revalida: mandarlo en true sin tenerlo rebota.
+   */
+  UnidadGeneral?: boolean
   FechaSalida?: string | null
   // FechaRetorno no va acá: es la fecha en que la cosa REGRESÓ y la llena el
   // proceso de retorno, no el solicitante.

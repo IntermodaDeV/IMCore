@@ -1003,7 +1003,86 @@ export interface ISaveOvertimeDetail {
    * tiene el acceso 'CrearHorasExtraManuales'.
    */
   Is_Manual: boolean
+  /** Comentario del renglón, además del motivo. Opcional. */
+  Comment: string | null
   Concepts: ISaveOvertimeConcept[]
+}
+
+/**
+ * Tablero del solicitante: lo que pidió en la semana y en qué quedó.
+ * Aprobadas + En proceso + Rechazadas suman las Solicitadas.
+ */
+export interface IRequesterWeekSummary {
+  Semana_Inicio: string | null
+  Semana_Fin: string | null
+  Solicitudes: number
+  Empleados: number
+  Detalles: number
+  Horas_Solicitadas: number
+  Horas_Aprobadas: number
+  Horas_En_Proceso: number
+  Horas_Rechazadas: number
+  /** De lo aprobado, lo que RRHH ya cerró con horas reales. */
+  Horas_Reconocidas: number
+  Detalles_Reconocidos: number
+  Detalles_Aprobados: number
+  Detalles_En_Proceso: number
+  Detalles_Rechazados: number
+}
+
+/** Tablero del solicitante: las horas pedidas en UN día de la semana. */
+export interface IRequesterWeekDay {
+  Fecha: string | null
+  /** 0 = lunes … 6 = domingo. */
+  Dia_Semana: number
+  Horas_Solicitadas: number
+  Solicitudes: number
+  Empleados: number
+}
+
+/** Tablero del solicitante: las horas pedidas en UN módulo. */
+export interface IRequesterWeekModule {
+  Modulo: string
+  Horas_Solicitadas: number
+  Empleados: number
+  Solicitudes: number
+}
+
+/** Tablero del solicitante: un empleado de un día, con su estado. */
+export interface IRequesterDayEmployee {
+  Id: number
+  Request_Id: number
+  Correlative: string
+  /** Solo en el desglose por módulo, que abarca la semana. */
+  Fecha?: string | null
+  Employee_Code: string
+  Employee_Name: string
+  Posicion: string
+  Centro_Costos: string
+  Category_Name: string
+  Is_Manual: boolean
+  Start_Time: string | null
+  End_Time: string | null
+  Horas: number
+  Estado: 'Aprobada' | 'En proceso' | 'Rechazada' | string
+  ConceptsJson: string | null
+}
+
+/** Tablero del solicitante: un empleado del top de la semana. */
+export interface IRequesterTopEmployee {
+  Employee_Code: string
+  /** Nombre formateado ('Rosa Melida Vasquez'), sin el código. */
+  Employee_Name: string
+  Posicion: string
+  /** El último módulo de la semana, según el cubo. */
+  Modulo: string
+  /** Lo solicitado SIN las rechazadas: aprobadas + en proceso. */
+  Horas_Solicitadas: number
+  Horas_Aprobadas: number
+  Horas_En_Proceso: number
+  Solicitudes: number
+  /** Cuántas veces en la semana se le pidieron horas. */
+  Veces: number
 }
 
 /** Qué puede hacer el usuario en la captura de solicitudes. */

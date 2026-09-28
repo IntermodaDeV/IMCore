@@ -9,6 +9,7 @@ import {
   Check,
   Clock,
   Lock,
+  MessageSquare,
   Pencil,
   Search,
   Send,
@@ -96,6 +97,7 @@ interface Semilla {
   categoryId: number | null
   /** Venía guardada como HE Manual. */
   manual: boolean
+  comment: string
 }
 
 /** Un empleado ya elegido, con su horario y sus horas. */
@@ -124,6 +126,9 @@ interface Fila {
    * Solo la marca quien tiene el acceso 'CrearHorasExtraManuales'.
    */
   is_Manual: boolean
+
+  /** Comentario del renglón, además del motivo. Opcional. */
+  comment: string
 
   /**
    * Este empleado ya tiene firma: sus horas no se tocan.
@@ -307,6 +312,7 @@ export default function CrearSolicitudHoraExtraScreen() {
           end: String(d.End_Time ?? '').substring(11, 16),
           categoryId: d.Category_Id ?? null,
           manual: !!d.Is_Manual,
+          comment: d.Detail_Comment ?? '',
         },
       ]),
     )
@@ -345,12 +351,15 @@ export default function CrearSolicitudHoraExtraScreen() {
   /**
    * Enviar la solicitud ya autorizada por el solicitante.
    *
-   * Es lo que arranca el flujo, y por eso viene marcado: el caso normal es
-   * pedir y mandar. Desmarcado la solicitud queda guardada sin entrar al flujo
-   * —editable todavía— pero solo se puede terminar desde la pantalla web, así
-   * que se advierte en lugar de dejarlo como una opción cualquiera.
+   * Es lo que arranca el flujo y cierra la edición, así que al CREAR viene
+   * sin marcar: tiene que ser una decisión y no algo que ya viene puesto. Al
+   * editar se respeta lo que la solicitud tenía guardado. Desmarcada, la
+   * solicitud queda guardada sin entrar al flujo —editable todavía— pero solo
+   * se puede terminar desde la pantalla web, y eso se advierte en la casilla.
    */
-  const [autorizar, setAutorizar] = useState(true)
+  const [autorizar, setAutorizar] = useState(
+    () => editando && !!route.params?.detalles?.[0]?.Auth,
+  )
 
   usePageHeader({
     center: (
@@ -588,6 +597,7 @@ export default function CrearSolicitudHoraExtraScreen() {
             category_Id: previa?.category_Id ?? guardado?.categoryId ?? null,
             breakdown: [] as OvertimeBand[],
             is_Manual: manual,
+            comment: previa?.comment ?? guardado?.comment ?? '',
             isLocked: bloqueados.has(code),
             lockLabel: bloqueados.get(code) ?? '',
           } as Fila
@@ -716,6 +726,15 @@ export default function CrearSolicitudHoraExtraScreen() {
       const editables = prev.filter(f => !f.isLocked)
       const valor = !(editables.length > 0 && editables.every(f => f.is_Manual))
       return prev.map(f => conMarca(f, valor))
+    })
+  }, [])
+
+  /** Copia el comentario del primer renglón que lo tenga al resto. */
+  const aplicarComentarioATodos = useCallback(() => {
+    setFilas(prev => {
+      const origen = prev.find(f => !f.isLocked && !!f.comment.trim())
+      if (!origen) return prev
+      return prev.map(f => (f.isLocked ? f : { ...f, comment: origen.comment }))
     })
   }, [])
 
@@ -856,6 +875,7 @@ export default function CrearSolicitudHoraExtraScreen() {
           Total_Overtime_Hours: rowHours(f.start_Time, f.end_Time),
           // El servidor la rechaza si el usuario no tiene el acceso.
           Is_Manual: f.is_Manual,
+          Comment: f.comment.trim() || null,
           // En una HE Manual el reparto ya trae el tramo de la jornada al 25%:
           // el procedimiento guarda estos conceptos tal cual.
           Concepts: f.breakdown
@@ -984,6 +1004,7 @@ export default function CrearSolicitudHoraExtraScreen() {
             onEditar={editarFila}
             onAplicarHorario={aplicarHorarioATodos}
             onAplicarMotivo={aplicarMotivoATodos}
+            onAplicarComentario={aplicarComentarioATodos}
             puedeManual={puedeManual}
             onAlternarManual={alternarManual}
             onAlternarManualATodos={alternarManualATodos}
@@ -1508,6 +1529,7 @@ function PasoHoras({
   onEditar,
   onAplicarHorario,
   onAplicarMotivo,
+  onAplicarComentario,
   puedeManual,
   onAlternarManual,
   onAlternarManualATodos,
@@ -1526,6 +1548,7 @@ function PasoHoras({
   onEditar: (code: string, cambios: Partial<Fila>) => void
   onAplicarHorario: () => void
   onAplicarMotivo: () => void
+  onAplicarComentario: () => void
   /** Tiene el acceso 'CrearHorasExtraManuales': sin él no hay botón. */
   puedeManual: boolean
   onAlternarManual: (code: string) => void
@@ -1581,6 +1604,7 @@ function PasoHoras({
   const editables = filas.filter(f => !f.isLocked)
   const hayHorario = editables.some(f => !!f.end_Time)
   const hayMotivo = editables.some(f => !!f.category_Id)
+  const hayComentario = editables.some(f => !!f.comment.trim())
 
   // La barra existe con al menos dos filas editables: con una sola no hay a
   // quién copiarle nada, y la marca de HE Manual se pone desde la propia fila.
@@ -1629,6 +1653,12 @@ function PasoHoras({
               habilitado={hayMotivo}
               onPress={onAplicarMotivo}
             />
+            <BotonLote
+              icono={<MessageSquare size={13} color={theme.text?.val as string} />}
+              texto="Comentario"
+              habilitado={hayComentario}
+              onPress={onAplicarComentario}
+            />
 
             {/* Separado de los otros dos: no copia un dato, cambia las reglas
                 de las filas. Si ya están todas marcadas, desmarca. */}
@@ -1644,9 +1674,9 @@ function PasoHoras({
             )}
           </XStack>
 
-          {!hayHorario && !hayMotivo && (
+          {!hayHorario && !hayMotivo && !hayComentario && (
             <Text fontSize={10} color="$textMuted">
-              Capturá el horario o el motivo de un empleado para poder copiarlo.
+              Capturá el horario, el motivo o el comentario de un empleado para poder copiarlo.
             </Text>
           )}
         </YStack>
@@ -1746,23 +1776,12 @@ function PasoHoras({
               )}
 
               <XStack justifyContent="space-between" alignItems="center" gap="$2">
-                <Text fontSize={14} fontWeight="700" color="$text" flex={1} numberOfLines={1}>
+                {/* Hasta dos líneas: el nombre completo es lo que identifica a
+                    quién se le piden las horas, y cortarlo con puntos
+                    suspensivos confunde a los homónimos. */}
+                <Text fontSize={14} fontWeight="700" color="$text" flex={1} numberOfLines={2}>
                   {nombreConCodigo(f.employee_Name, f.employee_Code)}
                 </Text>
-
-                {/* HE Manual de este empleado. Con el acceso es un botón que
-                    prende y apaga; sin él, o con la fila firmada, solo se
-                    muestra si ya venía marcada, para que se sepa. */}
-                {puedeManual && !f.isLocked ? (
-                  <MarcaManual
-                    activa={f.is_Manual}
-                    texto="HE Manual"
-                    compacta
-                    onPress={() => onAlternarManual(f.employee_Code)}
-                  />
-                ) : f.is_Manual ? (
-                  <MarcaManual activa texto="HE Manual" compacta />
-                ) : null}
 
                 <XStack
                   alignItems="center"
@@ -1782,6 +1801,25 @@ function PasoHoras({
                   </Text>
                 </XStack>
               </XStack>
+
+              {/* HE Manual en su propio renglón, debajo del nombre: en la línea
+                  del nombre le quitaba espacio y lo cortaba. Con el acceso es un
+                  botón que prende y apaga; sin él, o con la fila firmada, solo
+                  se muestra si ya venía marcada, para que se sepa. */}
+              {(puedeManual && !f.isLocked) || f.is_Manual ? (
+                <XStack>
+                  {puedeManual && !f.isLocked ? (
+                    <MarcaManual
+                      activa={f.is_Manual}
+                      texto="HE Manual"
+                      compacta
+                      onPress={() => onAlternarManual(f.employee_Code)}
+                    />
+                  ) : (
+                    <MarcaManual activa texto="HE Manual" compacta />
+                  )}
+                </XStack>
+              ) : null}
 
               {/* Por qué la hora de inicio está abierta. Solo se afirma que
                   el día no es laborable cuando el horario SÍ se pudo consultar;
@@ -1817,6 +1855,11 @@ function PasoHoras({
                     {opcionesMotivo.find(o => o.value === String(f.category_Id))?.label
                       ?? 'Sin motivo'}
                   </Text>
+                  {!!f.comment && (
+                    <Text fontSize={11} color="$textSecondary" numberOfLines={3}>
+                      {f.comment}
+                    </Text>
+                  )}
                 </YStack>
               ) : (
                 <>
@@ -1894,6 +1937,18 @@ function PasoHoras({
                       onEditar(f.employee_Code, { category_Id: v ? Number(v) : null })
                     }
                   />
+
+                  {/* Opcional: el motivo dice la razón con una palabra del
+                      catálogo, y esto deja escribir lo que el catálogo no cubre. */}
+                  <AppInput
+                    label="Comentario"
+                    value={f.comment}
+                    onChangeText={t => onEditar(f.employee_Code, { comment: t })}
+                    multiline
+                    minLines={2}
+                    maxLength={500}
+                    placeholder="Detalle de por qué se queda…"
+                  />
                 </>
               )}
 
@@ -1959,10 +2014,9 @@ function PasoHoras({
       )}
 
       {/* Autorizar de una vez.
-          Marcado por omisión porque es el caso normal —se pide y se manda— y
-          la casilla existe para el que quiere dejarla guardada y revisarla
-          antes. La advertencia es honesta: sin autorizar, terminarla solo se
-          puede desde la web. */}
+          Sin marcar al crear: autorizar cierra la edición, así que se marca a
+          propósito. La advertencia es honesta: sin autorizar, terminarla solo
+          se puede desde la web. */}
       <Card
         backgroundColor={autorizar ? '$primaryOpacity2' : '$backgroundElevated'}
         borderRadius={12}
@@ -1994,7 +2048,7 @@ function PasoHoras({
             <Text fontSize={11} color="$textSecondary">
               {autorizar
                 ? 'La solicitud sale con tu autorización y arranca el flujo. Después ya no se puede editar.'
-                : 'Queda guardada sin enviar y todavía se puede editar, pero solo desde la pantalla web de PayWeb.'}
+                : 'Queda guardada sin enviar y todavía se puede editar.'}
             </Text>
           </YStack>
         </XStack>

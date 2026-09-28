@@ -2,6 +2,7 @@ import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
   IPaseSalida, IPaseSalidaDetalle, IPaseSalidaGuardar, IFirmaUsuario, IPaseSalidaAuth,
+  IRetornoLinea,
   IPaseSalidaEstado, IPaseSalidaManual, BandejaFirma, BandejaPorteria, IPaseSalidaFirmar,
 } from './pases.types'
 import { IMaterial } from './pasesSalida.types'
@@ -113,9 +114,9 @@ export const pasesService = {
    * por planta?" se queda sin respuesta. El portón sale de los accesos del
    * guardia, no viaja desde acá.
    */
-  registrarCruce: (id: number) =>
-    httpClient.post<ExecutionResponse<null>, { Id: number }>(
-      `${schema}/RegistrarCruce`, { Id: id }),
+  registrarCruce: (id: number, accion: 'VERIFICO' | 'PASO' = 'VERIFICO') =>
+    httpClient.post<ExecutionResponse<null>, { Id: number; Accion: string }>(
+      `${schema}/RegistrarCruce`, { Id: id, Accion: accion }),
 
   /**
    * Registra el regreso de un pase que estaba afuera. Es el SEGUNDO escaneo del
@@ -149,6 +150,19 @@ export const pasesService = {
   // La fila nunca se borra.
   eliminar: (id: number) =>
     httpClient.post<ExecutionResponse<null>, { Id: number }>(`${schema}/Eliminar`, { Id: id }),
+
+  // Portería: cuánto vuelve de cada línea. Si con eso se completa todo el pase
+  // se cierra; si falta, queda en Regreso parcial y sigue en la bandeja.
+  registrarRetornoParcial: (id: number, lineas: IRetornoLinea[]) =>
+    httpClient.post<ExecutionResponse<null> & { Estado?: string; LineasPendientes?: number },
+      { Id: number; Lineas: IRetornoLinea[] }>(
+      `${schema}/RegistrarRetornoParcial`, { Id: id, Lineas: lineas }),
+
+  // Pone o quita la marca de regreso parcial de UNA línea. Es la única edición
+  // que se admite con el pase ya aprobado; el resto del pase no se toca.
+  cambiarRegresoParcial: (detalleId: number, valor: boolean) =>
+    httpClient.post<ExecutionResponse<null>, { Detalle_Id: number; RegresoParcial: boolean }>(
+      `${schema}/RegresoParcial`, { Detalle_Id: detalleId, RegresoParcial: valor }),
 
   anular: (id: number, comentario?: string) =>
     httpClient.post<ExecutionResponse<null>, { Id: number; Comentario?: string }>(

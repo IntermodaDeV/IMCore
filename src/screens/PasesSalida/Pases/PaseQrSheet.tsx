@@ -24,7 +24,7 @@ import { IPaseSalida } from '../../../api/modules/pasesSalida/pases.types'
  * su cadena la hoja explica que falta aprobarlo en vez de mostrar algo.
  * Qué estados ya lo tienen lo decide `tieneQr`, compartido con el detalle.
  *
- * Lo que codifica es el CORRELATIVO: es lo único que portería necesita para
+ * Lo que codifica es el CORRELATIVO: es lo único que seguridad necesita para
  * levantar el pase completo, y no expone nada que no esté ya impreso.
  * Cuando exista PaseSalidaEnc.QrToken, se cambia el contenido por el token y
  * todo lo demás de esta pantalla sigue igual.
@@ -73,7 +73,7 @@ export default function PaseQrSheet({ pase, onCerrar }: Props) {
     try {
       const uri = await capturarQr()
       if (!uri) {
-        showToast('error', 'Error', 'No se pudo generar la imagen del QR', 4000, 'bottom')
+        showToast('error', 'Error', 'No se pudo generar la imagen del QR')
         return
       }
       const message =
@@ -95,16 +95,16 @@ export default function PaseQrSheet({ pase, onCerrar }: Props) {
       if (Platform.OS === 'android' && Number(Platform.Version) <= 29) {
         const permiso = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE)
         if (permiso !== PermissionsAndroid.RESULTS.GRANTED) {
-          showToast('error', 'Permiso', 'No se otorgó permiso para guardar', 4000, 'bottom')
+          showToast('error', 'Permiso', 'No se otorgó permiso para guardar')
           return
         }
       }
       const uri = await capturarQr()
       if (!uri) throw new Error('No se pudo generar la imagen')
       await CameraRoll.save(uri, { type: 'photo', album: 'INTERMODA' })
-      showToast('success', 'Guardado', 'Pase guardado en la galería', 4000, 'bottom')
+      showToast('success', 'Guardado', 'Pase guardado en la galería')
     } catch (e: any) {
-      showToast('error', 'Error', 'No se pudo guardar: ' + (e?.message ?? ''), 5000, 'bottom')
+      showToast('error', 'Error', 'No se pudo guardar: ' + (e?.message ?? ''), 5000)
     } finally {
       setBusy(null)
     }
@@ -144,6 +144,14 @@ export default function PaseQrSheet({ pase, onCerrar }: Props) {
                   <YStack backgroundColor="#fff" padding="$4" borderRadius="$4" alignItems="center" gap="$3">
                     <Text fontSize={11} fontWeight="900" color="#1A1A2E" letterSpacing={1}>
                       {(pase?.Empresa ?? 'Intermoda').toUpperCase()}
+                    </Text>
+                    {/* Qué ES esto, en la imagen. El guardia recibe la foto por
+                        WhatsApp o la ve impresa, fuera de cualquier pantalla que
+                        dé contexto: sin título es un QR suelto entre los muchos
+                        que circulan. NO va dentro del código — ese sigue siendo
+                        solo el correlativo. */}
+                    <Text fontSize={13} fontWeight="900" color="#1A1A2E" letterSpacing={0.5}>
+                      PASE DE SALIDA
                     </Text>
                     {/* El logo es el de la empresa DEL PASE, no el de quien mira:
                         quien aprueba y comparte el QR puede ser de la otra

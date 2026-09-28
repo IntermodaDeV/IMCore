@@ -299,7 +299,7 @@ export default function GrupoDetalleScreen() {
             <Text flex={1} fontSize={11} color="$textMuted">
               {grupo?.HoraSalidaDesde
                 ? 'Horario propio de este grupo.'
-                : 'Usa el horario general de portería. Editar lo convierte en una excepción solo para este grupo.'}
+                : 'Usa el horario general de seguridad. Editar lo convierte en una excepción solo para este grupo.'}
             </Text>
           </XStack>
         </YStack>
@@ -439,7 +439,7 @@ export default function GrupoDetalleScreen() {
           <YStack width="100%" maxWidth={460} backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3">
             <Text fontSize="$5" fontWeight="900" color="$text">Horario de salida</Text>
             <Text fontSize={11} color="$textMuted">
-              Portería solo puede dar salida a los pases de este grupo dentro de este horario.
+              Seguridad solo puede dar salida a los pases de este grupo dentro de este horario.
             </Text>
 
             {/* La decisión de fondo va primero: heredar o ser una excepción. Con

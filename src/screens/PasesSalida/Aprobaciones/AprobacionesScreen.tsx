@@ -599,8 +599,13 @@ export default function AprobacionesScreen() {
 
                       <XStack alignItems="flex-start" gap="$2">
                         <Text flex={1} fontSize={12} fontWeight="800" color="$text">{d.Material}</Text>
-                        <Text fontSize={12} fontWeight="900" color="$primary">
-                          {fmtCantidad(d.Cantidad)}{d.UnidadMedida ? ` ${d.UnidadMedida}` : ''}
+                        {/* Sin cantidad lo que sale es un camión: se dice, para
+                            que no parezca un dato que falta. */}
+                        <Text fontSize={d.Cantidad == null ? 11 : 12} fontWeight="900"
+                          color={d.Cantidad == null ? '$textMuted' : '$primary'}>
+                          {d.Cantidad == null
+                            ? 'Camión'
+                            : `${fmtCantidad(d.Cantidad)}${d.UnidadMedida ? ` ${d.UnidadMedida}` : ''}`}
                         </Text>
                       </XStack>
 
