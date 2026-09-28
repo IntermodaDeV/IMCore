@@ -11,7 +11,7 @@ import { handleError } from '../../../utils/errorHandler'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 
 /**
- * El atajo de portería: entrar y tener la cámara ya apuntando.
+ * El atajo de seguridad: entrar y tener la cámara ya apuntando.
  *
  * POR QUÉ EXISTE SI CONTROL DE SALIDA YA ESCANEA
  *   Son dos usos distintos. Control de salida es una pantalla de trabajo —la

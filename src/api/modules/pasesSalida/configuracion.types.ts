@@ -141,6 +141,12 @@ export interface ISolicitante {
   Email: string | null
   /** Cuántos materiales puede pedir. Cero = no puede crear pases. */
   Materiales: number
+  /**
+   * Con cuántos tipos de salida puede sacarlos. Cero también lo bloquea: el
+   * alcance son las dos mitades y las dos tienen que estar puestas. Solo cuenta
+   * los tipos activos.
+   */
+  Tipos: number
 }
 
 export interface IMaterialSolicitante {
@@ -150,10 +156,26 @@ export interface IMaterialSolicitante {
   Asignado: boolean
 }
 
-/** La lista COMPLETA del solicitante; lo que no venga se quita. */
-export interface ISolicitanteMateriales {
+export interface ITipoSalidaSolicitante {
+  Id: number
+  Name: string
+  /** El tipo implica que lo que sale debe volver. */
+  Retorna: boolean
+  Status_Id: number
+  Asignado: boolean
+}
+
+/**
+ * El alcance COMPLETO del solicitante; lo que no venga se quita.
+ *
+ * Las dos listas viajan juntas porque el servidor las guarda en una sola
+ * transacción: mandarlas por separado podría dejar a alguien con materiales y
+ * sin tipos —o sea, sin poder crear nada— si la segunda llamada falla.
+ */
+export interface ISolicitanteAlcance {
   User_Code: string
   Materiales: number[]
+  Tipos: number[]
 }
 
 // ── Vista armada en el cliente a partir de IReglaFila ────────────────────────

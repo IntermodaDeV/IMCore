@@ -5,6 +5,7 @@ import CrearSolicitudHoraExtraScreen from './CrearSolicitudHoraExtraScreen'
 import RevisionHorasExtraScreen from './RevisionHorasExtraScreen'
 import HistorialHorasExtraScreen from './HistorialHorasExtraScreen'
 import DashboardHorasExtraScreen from './DashboardHorasExtraScreen'
+import DashboardSolicitanteScreen from './DashboardSolicitanteScreen'
 
 export const ScreensOvertime: TScreens = {
   // Primer flujo: aprobar las horas que se solicitaron
@@ -20,6 +21,9 @@ export const ScreensOvertime: TScreens = {
       // El formulario va como hijo, igual que nuevaSolicitudCoo en Cooperativa:
       // el botón del listado navega acá y "atrás" regresa a él.
       crearSolicitudHE: CrearSolicitudHoraExtraScreen,
+      // El tablero del solicitante: lo propio en números. Hijo por lo mismo
+      // que el formulario: se entra desde el listado y "atrás" vuelve a él.
+      dashboardSolicitanteHE: DashboardSolicitanteScreen,
     },
   },
   // Segundo flujo: autorizar la diferencia entre lo solicitado y el marcaje

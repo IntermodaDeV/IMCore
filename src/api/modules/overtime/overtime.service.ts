@@ -29,6 +29,11 @@ import {
   IOvertimeParameter,
   IOvertimeReason,
   IOvertimeRequestPermissions,
+  IRequesterWeekSummary,
+  IRequesterWeekDay,
+  IRequesterWeekModule,
+  IRequesterDayEmployee,
+  IRequesterTopEmployee,
   IOvertimeShiftSchedule,
   IOvertimeUserParameter,
   IPayWebWeek,
@@ -132,6 +137,54 @@ export const overtimeService = {
    * como manuales. El acceso vive en PayWeb; el servidor lo vuelve a validar
    * al guardar, así que esto solo decide si se muestra el botón.
    */
+  /** Tablero del solicitante: lo que el usuario pidió en la semana. */
+  getRequesterWeekSummary: (companyCode: string, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IRequesterWeekSummary>>(`${schema}/RequesterWeekSummary`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /** Tablero del solicitante: las horas pedidas por día de la semana. */
+  getRequesterWeekDays: (companyCode: string, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IRequesterWeekDay[]>>(`${schema}/RequesterWeekDays`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /** Tablero del solicitante: las horas pedidas por módulo. */
+  getRequesterWeekModules: (companyCode: string, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IRequesterWeekModule[]>>(`${schema}/RequesterWeekModules`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /** Tablero del solicitante: los empleados de un día (al tocar una columna). */
+  getRequesterDayEmployees: (companyCode: string, date: string) =>
+    httpClient.get<ExecutionResponse<IRequesterDayEmployee[]>>(`${schema}/RequesterDayEmployees`, {
+      companyCode,
+      date,
+    }),
+
+  /** Tablero del solicitante: los empleados de un módulo (al tocar su barra). */
+  getRequesterModuleEmployees: (companyCode: string, startDate: string, finalDate: string, modulo: string) =>
+    httpClient.get<ExecutionResponse<IRequesterDayEmployee[]>>(`${schema}/RequesterModuleEmployees`, {
+      companyCode,
+      startDate,
+      finalDate,
+      modulo,
+    }),
+
+  /** Tablero del solicitante: los 8 empleados con más horas en la semana. */
+  getRequesterTopEmployees: (companyCode: string, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IRequesterTopEmployee[]>>(`${schema}/RequesterTopEmployees`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
   getRequestPermissions: (companyCode: string) =>
     httpClient.get<ExecutionResponse<IOvertimeRequestPermissions>>(
       `${schema}/RequestPermissions`,

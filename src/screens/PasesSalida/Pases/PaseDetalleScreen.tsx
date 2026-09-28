@@ -3,7 +3,7 @@ import { RefreshControl, ScrollView } from 'react-native'
 import { Text, XStack, YStack, View, useTheme } from 'tamagui'
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
 import {
-  ArrowLeft, Package, RotateCcw, Send, QrCode, Stamp, User, Clock, CalendarDays,
+  ArrowLeft, Check, Package, RotateCcw, Send, QrCode, Stamp, User, Clock, CalendarDays,
   // `History` se renombra: choca con el tipo global History del DOM y TS resuelve ese.
   MessageSquare, LogOut, Ban, IdCard, History as HistoryIcon,
 } from 'lucide-react-native'
@@ -14,8 +14,11 @@ import ErrorState from '../../AdmSys/ErrorState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
 import {
-  ACCENT, ACCENT_BG, estadoVisual, fmtCantidad, fmtFecha, fmtFechaHora, situacionQr,
+  ACCENT, ACCENT_BG, ACCESO_REGRESO_PARCIAL, ESTADOS_ABIERTOS, estadoVisual,
+  fmtCantidad, fmtFecha, fmtFechaHora, situacionQr, tieneAcceso,
 } from '../pasesSalida.helpers'
+import { useAuth } from '../../../context/AuthContext'
+import { useShowToast } from '../../../utils/useShowToast'
 import LineaFirmas from './LineaFirmas'
 import LineaEstados from './LineaEstados'
 import PaseQrSheet from './PaseQrSheet'
@@ -93,6 +96,50 @@ export default function PaseDetalleScreen() {
   const [refrescando, setRefrescando] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
   const [qrAbierto, setQrAbierto] = useState(false)
+  /** El Id de la línea que se está guardando, para bloquear solo esa. */
+  const [guardandoParcial, setGuardandoParcial] = useState<number | null>(null)
+
+  const { user } = useAuth()
+  const { showToast } = useShowToast()
+
+  /**
+   * Si acá se puede poner y quitar la marca de regreso parcial.
+   *
+   * Es la ÚNICA edición que se admite con el pase ya aprobado, y por eso las
+   * cuatro condiciones: la decisión de si algo puede volver de a poco aparece
+   * cuando ya está afuera, pero eso no abre la puerta a editar lo demás.
+   *
+   * El servidor revalida exactamente lo mismo; esto solo decide qué se dibuja.
+   */
+  const puedeEditarParcial =
+    !!pase
+    && tieneAcceso(user?.Access, ACCESO_REGRESO_PARCIAL)
+    && pase.Retorna
+    && ESTADOS_ABIERTOS.includes(pase.Estado)
+    && (pase.Create_By ?? '') === (user?.Code ?? '\u0000')
+
+  /**
+   * Guarda al instante, sin botón: es un solo dato y ya se está mirando el
+   * pase, no una pantalla de edición.
+   *
+   * No hay estado optimista: se espera la respuesta y se recarga. Si el
+   * servidor rechaza —el pase cerró mientras tanto, se revocó el acceso—, la
+   * casilla no debe quedar marcada mostrando algo que no se guardó.
+   */
+  const alternarParcial = async (detalleId: number, valor: boolean) => {
+    setGuardandoParcial(detalleId)
+    try {
+      const r = await pasesService.cambiarRegresoParcial(detalleId, valor)
+      if (r.Success) {
+        showToast('success', 'Listo', r.SuccessMessage || 'Marca actualizada')
+        await cargar()
+      } else {
+        showToast('error', 'No se pudo cambiar', r.ErrorMessage || 'Intente de nuevo')
+      }
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo cambiar')
+    } finally { setGuardandoParcial(null) }
+  }
 
   const cargar = useCallback(async () => {
     try {
@@ -215,7 +262,7 @@ export default function PaseDetalleScreen() {
             {/* Es la fecha en que SE PLANEA sacarlo, no un hecho: el pase todavía
                 no ha salido. Decir solo "Salida" se leía como que ya ocurrió. */}
             <Dato icon={CalendarDays} label="Fecha prevista de salida" value={fmtFecha(pase.FechaSalida)} />
-            {/* La salida REAL, con hora, la escribe portería al dejarlo pasar.
+            {/* La salida REAL, con hora, la escribe seguridad al dejarlo pasar.
                 Va junto a la prevista para que se vea si salió cuando tocaba. */}
             <Dato
               icon={LogOut}
@@ -260,16 +307,40 @@ export default function PaseDetalleScreen() {
 
               <XStack alignItems="flex-start" gap="$2">
                 <Text flex={1} fontSize={14} fontWeight="800" color="$text">{d.Material}</Text>
-                <View backgroundColor={ACCENT_BG} borderWidth={1} borderColor={ACCENT}
-                  borderRadius="$3" paddingHorizontal="$2.5" paddingVertical={3}>
-                  <Text fontSize={12} fontWeight="900" color={ACCENT}>
-                    {fmtCantidad(d.Cantidad)}{d.UnidadMedida ? ` ${d.UnidadMedida}` : ''}
-                  </Text>
-                </View>
+                {/* Sin cantidad lo que sale es un camión: se dice, en vez de
+                    pintar un badge vacío que parecería un dato perdido. */}
+                {d.Cantidad == null ? (
+                  <View borderWidth={1} borderColor="$border"
+                    borderRadius="$3" paddingHorizontal="$2.5" paddingVertical={3}>
+                    <Text fontSize={11} fontWeight="800" color="$textMuted">Camión</Text>
+                  </View>
+                ) : (
+                  <View backgroundColor={ACCENT_BG} borderWidth={1} borderColor={ACCENT}
+                    borderRadius="$3" paddingHorizontal="$2.5" paddingVertical={3}>
+                    <Text fontSize={12} fontWeight="900" color={ACCENT}>
+                      {fmtCantidad(d.Cantidad)}{d.UnidadMedida ? ` ${d.UnidadMedida}` : ''}
+                    </Text>
+                  </View>
+                )}
               </XStack>
 
               {d.Descripcion ? (
                 <Text fontSize={12} color="$text">{d.Descripcion}</Text>
+              ) : null}
+
+              {/* Si algo de esta línea ya volvió, el badge de arriba dice la
+                  cantidad que SALIÓ y por sí solo daría a entender que sigue
+                  todo afuera. Acá se dice cuánto volvió y cuánto falta. */}
+              {(d.CantidadRetornada ?? 0) > 0 ? (
+                <XStack alignItems="center" gap="$1.5" marginTop={2}>
+                  <RotateCcw size={12} color={(d.CantidadPendiente ?? 0) > 0 ? ACCENT : '#22c55e'} />
+                  <Text flex={1} fontSize={11} fontWeight="800"
+                    color={(d.CantidadPendiente ?? 0) > 0 ? ACCENT : '#22c55e'}>
+                    {(d.CantidadPendiente ?? 0) > 0
+                      ? `Regresaron ${fmtCantidad(d.CantidadRetornada)} · faltan ${fmtCantidad(d.CantidadPendiente)}`
+                      : 'Regresó completo'}
+                  </Text>
+                </XStack>
               ) : null}
 
               {d.Marca || d.Modelo || d.Serie ? (
@@ -277,6 +348,34 @@ export default function PaseDetalleScreen() {
                   <Ficha label="Marca" value={d.Marca} />
                   <Ficha label="Modelo" value={d.Modelo} />
                   <Ficha label="Serie" value={d.Serie} />
+                </XStack>
+              ) : null}
+
+              {/* Editable si se puede; si no, se muestra igual cuando está
+                  marcada. Un firmante o quien mire un pase ajeno necesita ver
+                  que esa línea puede volver de a poco, aunque no pueda
+                  cambiarlo. */}
+              {puedeEditarParcial ? (
+                <XStack alignItems="center" gap="$2.5" marginTop={4}
+                  opacity={guardandoParcial === d.Id ? 0.5 : 1}
+                  onPress={guardandoParcial === d.Id
+                    ? undefined
+                    : () => alternarParcial(d.Id, d.RegresoParcial !== true)}
+                  pressStyle={{ opacity: 0.6 }} hitSlop={6}>
+                  <View width={18} height={18} borderRadius="$1" borderWidth={1.5}
+                    borderColor={d.RegresoParcial === true ? ACCENT : '$border'}
+                    backgroundColor={d.RegresoParcial === true ? ACCENT : 'transparent'}
+                    alignItems="center" justifyContent="center">
+                    {d.RegresoParcial === true ? <Check size={12} color="#fff" /> : null}
+                  </View>
+                  <Text fontSize={12} fontWeight="800" color="$text">Puede regresar por partes</Text>
+                </XStack>
+              ) : d.RegresoParcial === true ? (
+                <XStack alignItems="center" gap="$1.5" marginTop={4}>
+                  <RotateCcw size={12} color={ACCENT} />
+                  <Text fontSize={11} fontWeight="800" color={ACCENT}>
+                    Puede regresar por partes
+                  </Text>
                 </XStack>
               ) : null}
             </YStack>

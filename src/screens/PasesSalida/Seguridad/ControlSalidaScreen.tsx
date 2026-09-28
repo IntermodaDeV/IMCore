@@ -56,7 +56,7 @@ const etiquetaMes = (mes: string) => {
 }
 
 /**
- * Portería: qué está autorizado a salir.
+ * Seguridad: qué está autorizado a salir.
  *
  * SOLO APROBADOS, y eso lo decide el servidor. Un pase sin firmas no llega
  * acá ni en gris: si apareciera, tarde o temprano alguien lo deja salir
@@ -101,7 +101,7 @@ export default function ControlSalidaScreen() {
   const { showToast } = useShowToast()
 
   // Registrar sin escanear es una excepción y se concede aparte: el menú de
-  // portería no alcanza.
+  // seguridad no alcanza.
   const puedeManual = tieneAcceso(user?.Access, ACCESO_SALIDA_MANUAL)
 
   const [escaneando, setEscaneando] = useState(false)
@@ -474,7 +474,7 @@ export default function ControlSalidaScreen() {
                   ) : null}
                   {/* En Pendientes las tarjetas ya NO son todas del día
                       elegido: un pase aprobado para ayer sigue vigente mientras
-                      le duren las horas de gracia, y portería tiene que poder
+                      le duren las horas de gracia, y seguridad tiene que poder
                       sacarlo. Cuando la fecha prevista no es la del día que se
                       está mirando se dice, en ámbar: para el guardia no es lo
                       mismo uno de hoy que uno en su último día. */}
@@ -540,10 +540,27 @@ export default function ControlSalidaScreen() {
 
                         <XStack alignItems="flex-start" gap="$2">
                           <Text flex={1} fontSize={12} fontWeight="800" color="$text">{d.Material}</Text>
-                          <Text fontSize={12} fontWeight="900" color="$primary">
-                            {fmtCantidad(d.Cantidad)}{d.UnidadMedida ? ` ${d.UnidadMedida}` : ''}
+                          {/* Sin cantidad lo que sale es un camión: se dice,
+                              para que no parezca un dato que falta.
+
+                              Con algo ya devuelto manda lo que FALTA: es el
+                              número contra el que el guardia va a contar, y
+                              mostrar el original acá lo haría contar de más. */}
+                          <Text fontSize={d.Cantidad == null ? 11 : 12} fontWeight="900"
+                            color={d.Cantidad == null ? '$textMuted' : '$primary'}>
+                            {d.Cantidad == null
+                              ? 'Camión'
+                              : `${fmtCantidad((d.CantidadRetornada ?? 0) > 0 ? d.CantidadPendiente : d.Cantidad)}${d.UnidadMedida ? ` ${d.UnidadMedida}` : ''}`}
                           </Text>
                         </XStack>
+
+                        {(d.CantidadRetornada ?? 0) > 0 ? (
+                          <Text fontSize={10} fontWeight="700" color="$textMuted">
+                            {(d.CantidadPendiente ?? 0) > 0
+                              ? `Falta esto · salieron ${fmtCantidad(d.Cantidad)}, ya volvieron ${fmtCantidad(d.CantidadRetornada)}`
+                              : `Ya regresó completo (${fmtCantidad(d.Cantidad)})`}
+                          </Text>
+                        ) : null}
 
                         {d.Descripcion ? (
                           <Text fontSize={11} color="$text">{d.Descripcion}</Text>

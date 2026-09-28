@@ -84,7 +84,7 @@ export const CLAVE_HORAS_GRACIA = 'PasesSalida.HorasGraciaSalida'
  *
  * NO ES "HOY". Un pase no vence al terminar su día de salida: vence al final de
  * ese día MÁS las horas de gracia. Con las 24 h configuradas, uno fechado ayer
- * sigue siendo perfectamente válido durante todo el día de hoy — portería lo
+ * sigue siendo perfectamente válido durante todo el día de hoy — seguridad lo
  * deja salir. Bloquear ayer en el formulario le impedía al solicitante corregir
  * un pase que el sistema todavía acepta, que es justo lo contrario de lo que la
  * validación quería evitar.
@@ -114,7 +114,7 @@ export const fechaMinimaSalida = (horasGracia?: number | null): string => {
  * Acceso que habilita registrar salidas y regresos SIN escanear el QR.
  *
  * Saltarse el QR es saltarse la prueba de que quien llegó traía el pase, así
- * que no alcanza con tener el menú de portería: es una excepción y se concede
+ * que no alcanza con tener el menú de seguridad: es una excepción y se concede
  * aparte. Sin el acceso la opción ni se muestra.
  */
 export const ACCESO_SALIDA_MANUAL = 'PSSalidaManual'
@@ -122,6 +122,26 @@ export const ACCESO_SALIDA_MANUAL = 'PSSalidaManual'
 /** `user.Access` viene como una lista separada por comas. */
 export const tieneAcceso = (access: string | null | undefined, key: string) =>
   (access ?? '').split(',').map(s => s.trim()).includes(key)
+
+/**
+ * Acceso que permite marcar un pase como de UNIDAD GENERAL: las líneas se
+ * capturan con descripción y marca, sin cantidad ni unidad de medida.
+ *
+ * El KeyVar no lleva el prefijo PS de los demás accesos del módulo; así se
+ * definió. Como todo lo demás, el SP lo revalida al guardar.
+ */
+export const ACCESO_UNIDAD_GENERAL = 'GeneralUnit'
+
+/**
+ * Acceso que permite marcar líneas con REGRESO PARCIAL: lo que sale en esa
+ * línea puede volver por partes en vez de todo de una vez.
+ *
+ * Se marca por línea y no por pase: en un pase con un torno y diez brocas, el
+ * torno vuelve entero o no vuelve, y las brocas pueden ir volviendo de a poco.
+ *
+ * Solo tiene sentido con tipos de salida que exigen retorno.
+ */
+export const ACCESO_REGRESO_PARCIAL = 'PSRegresoParcial'
 
 /**
  * Unidades que se ofrecen al capturar una línea.
@@ -145,6 +165,9 @@ export const COLOR_ESTADO: Record<EstadoPase, string> = {
   PSAPR:  '#22c55e',
   PSREJ:  '#ef4444',
   PSSAL:  '#3b82f6',
+  // Regreso parcial: sigue afuera, pero ya se movio algo. Indigo para que no
+  // se confunda ni con "salio" ni con los finales buenos: no es ninguno de los dos.
+  PSREPA: '#6366f1',
   // Finalizado y Retornado son los dos finales buenos: comparten familia con
   // Salió (azul-verde) porque son la continuación de lo mismo, no otra cosa.
   PSFIN:  '#0ea5e9',
@@ -173,6 +196,7 @@ export const BG_ESTADO: Record<EstadoPase, string> = {
   PSAPR:  'rgba(34, 197, 94, 0.18)',
   PSREJ:  'rgba(239, 68, 68, 0.18)',
   PSSAL:  'rgba(59, 130, 246, 0.18)',
+  PSREPA: 'rgba(99, 102, 241, 0.18)',
   PSFIN:  'rgba(14, 165, 233, 0.18)',
   PSRET:  'rgba(20, 184, 166, 0.18)',
   PSVEN:  'rgba(180, 83, 9, 0.18)',
@@ -186,6 +210,7 @@ export const ETIQUETA_ESTADO: Record<EstadoPase, string> = {
   PSAPR:  'Aprobado',
   PSREJ:  'Rechazado',
   PSSAL:  'Salió',
+  PSREPA: 'Regreso parcial',
   PSFIN:  'Finalizado',
   PSRET:  'Retornado',
   PSVEN:  'Vencido',
@@ -201,7 +226,15 @@ export const ETIQUETA_ESTADO: Record<EstadoPase, string> = {
  * filtro sería ofrecer una búsqueda que siempre sale vacía.
  */
 export const ESTADOS_FILTRO: EstadoPase[] =
-  ['PSPEND', 'PSEAPR', 'PSAPR', 'PSREJ', 'PSSAL', 'PSFIN', 'PSRET', 'PSVEN', 'PSANU']
+  ['PSPEND', 'PSEAPR', 'PSAPR', 'PSREJ', 'PSSAL', 'PSREPA', 'PSFIN', 'PSRET', 'PSVEN', 'PSANU']
+
+/**
+ * Los estados en que el pase todavía tiene algo por delante: espera firmas,
+ * espera salir, o ya salió y tiene que volver.
+ *
+ * Es lo que separa "todavía se puede intervenir" de "esto ya es historia".
+ */
+export const ESTADOS_ABIERTOS: EstadoPase[] = ['PSPEND', 'PSEAPR', 'PSAPR', 'PSSAL', 'PSREPA']
 
 /**
  * Los tres valores visuales de un estado, con respaldo gris si el servidor
@@ -227,7 +260,7 @@ export const estadoVisual = (estado?: string | null) => {
  *     escaneándolo,
  *   · y muere cuando el pase se cierra. Un código que sigue funcionando después
  *     de que el trámite terminó es un código que alguien puede volver a
- *     presentar en portería.
+ *     presentar en seguridad.
  *
  * Los tres casos necesitan mensajes DISTINTOS. Con un solo booleano, un pase
  * rechazado decía "estará disponible cuando se apruebe" — una espera que nunca
@@ -244,10 +277,12 @@ const MOTIVO_QR: Record<string, string> = {
 }
 
 export const situacionQr = (estado?: string | null): { situacion: SituacionQr; motivo: string } => {
-  if (estado === 'PSAPR' || estado === 'PSSAL') {
+  /* El parcial sigue necesitando su codigo: lo que falta todavia tiene que
+     volver, y vuelve escaneando el mismo QR. */
+  if (estado === 'PSAPR' || estado === 'PSSAL' || estado === 'PSREPA') {
     return {
       situacion: 'disponible',
-      motivo: 'Portería escanea este código para dejar salir lo que va en el pase.',
+      motivo: 'Seguridad escanea este código para dejar salir lo que va en el pase.',
     }
   }
   const cerrado = MOTIVO_QR[estado ?? '']

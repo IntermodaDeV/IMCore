@@ -4,6 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { FlatList, RefreshControl, ScrollView } from 'react-native'
 import { YStack, XStack, Text, Card, View, Button, useTheme } from 'tamagui'
 import {
+  BarChart3,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -36,7 +37,7 @@ import {
   IPayWebWeek,
   IUserEntity,
 } from '../../api/modules/overtime/overtime.types'
-import { fmtFecha, fmtHora, fmtHoras, nombreConCodigo, tieneFirma } from './Overtime.utils'
+import { fmtHora, fmtHoras, nombreConCodigo, tieneFirma } from './Overtime.utils'
 
 // Las solicitudes de horas extra que el usuario PIDIÓ, semana por semana.
 //
@@ -57,6 +58,8 @@ type NavParams = {
    * nuevo del otro lado obligaría a saber en qué semana cae la solicitud.
    */
   crearSolicitudHE: { requestId?: number; detalles?: IOvertimeRequestDetail[] } | undefined
+  /** El tablero del solicitante: lo propio en números. */
+  dashboardSolicitanteHE: undefined
 }
 
 /**
@@ -182,6 +185,20 @@ const claveDia = (valor: string | null | undefined): string => {
 }
 
 const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+const DIAS_COMPLETOS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+/**
+ * 'Miércoles 24': el día completo en español y el número, sin mes ni horario.
+ * En la lista semanal el mes ya lo da el filtro de arriba, y el horario de cada
+ * empleado está en el detalle.
+ */
+const fechaCorta = (iso: string | null | undefined): string => {
+  const clave = claveDia(iso)
+  if (!clave) return ''
+  const d = dayjs(clave)
+  return `${DIAS_COMPLETOS[(d.day() + 6) % 7]} ${d.date()}`
+}
 
 /**
  * Los días de una semana, para el filtro.
@@ -546,6 +563,25 @@ export default function MisSolicitudesHorasExtraScreen() {
             />
           </YStack>
 
+          {/* El resumen del solicitante. Botón de ícono con borde y no lleno:
+              es consulta, no la acción principal, y no le puede quitar peso a
+              "Crear". Mismo alto y margen que el selector, por la alineación. */}
+          <Button
+            height={44}
+            width={44}
+            marginBottom="$2"
+            borderRadius="$3"
+            padding={0}
+            backgroundColor="$backgroundElevated"
+            borderWidth={1}
+            borderColor="$border"
+            pressStyle={{ opacity: 0.7 }}
+            onPress={() => navigation.navigate('dashboardSolicitanteHE')}
+            accessibilityLabel="Ver mi resumen de horas extra"
+          >
+            <BarChart3 size={19} color={theme.primary?.val as string} />
+          </Button>
+
           {/* Mismo alto que el selector (44) y el mismo margen de abajo que él
               trae: sin el margen, alineados por abajo, el botón quedaría unos
               píxeles más abajo que el campo. */}
@@ -849,12 +885,31 @@ function SolicitudCard({
         <XStack alignItems="center" gap="$2">
           <CalendarDays size={12} color={theme.textMuted?.val as string} />
           <Text fontSize={12} color="$textMuted">
-            {fmtFecha(item.fecha) || '—'}
-            {item.detalles[0]?.Start_Time
-              ? ` · ${fmtHora(item.detalles[0].Start_Time)} - ${fmtHora(item.detalles[0].End_Time)}`
-              : ''}
+            {fechaCorta(item.fecha) || '—'}
           </Text>
         </XStack>
+
+        {/* En qué quedó cada renglón, cuando no todos están igual. Va arriba,
+            junto al estado: es lo primero que hay que saber de la tarjeta. */}
+        {mixta && (
+          <XStack gap="$3" flexWrap="wrap">
+            {item.aprobados > 0 && (
+              <Text fontSize={11} color="$textMuted">
+                <Text fontSize={11} fontWeight="700" color="$success">{item.aprobados}</Text> aprobado(s)
+              </Text>
+            )}
+            {item.pendientes > 0 && (
+              <Text fontSize={11} color="$textMuted">
+                <Text fontSize={11} fontWeight="700" color="$warning">{item.pendientes}</Text> en proceso
+              </Text>
+            )}
+            {item.rechazados > 0 && (
+              <Text fontSize={11} color="$textMuted">
+                <Text fontSize={11} fontWeight="700" color="$error">{item.rechazados}</Text> rechazado(s)
+              </Text>
+            )}
+          </XStack>
+        )}
 
         {/* Cuánta gente y cuántas horas: es lo que se pidió */}
         <XStack
@@ -876,6 +931,58 @@ function SolicitudCard({
           </Text>
         </XStack>
 
+        {!!item.comentario && (
+          <Text fontSize={12} color="$textSecondary" numberOfLines={2}>
+            {item.comentario}
+          </Text>
+        )}
+
+        {/* ── Acciones ───────────────────────────────────────────────────
+            Sutiles y al pie: la tarjeta se viene a LEER, y con botones grandes
+            la lista se convertía en una fila de botones con datos alrededor.
+
+            Editar solo mientras NADIE haya firmado: en cuanto una entidad se
+            pronuncia la solicitud ya no es del solicitante. Firmar solo lo que
+            esta entidad todavía puede firmar. Cuando no queda ninguna de las
+            dos, la tarjeta no muestra nada — que es el caso de una solicitud ya
+            resuelta por todos. */}
+        {(puedeEditar || puedeDecidir) && (
+          <XStack
+            gap="$2"
+            justifyContent="flex-end"
+            borderTopWidth={1}
+            borderTopColor="$border"
+            paddingTop="$2.5"
+          >
+            {puedeEditar && (
+              <AccionSutil
+                Icono={Pencil}
+                texto="Editar"
+                color={theme.textSecondary?.val as string}
+                onPress={onEditar}
+              />
+            )}
+
+            {puedeDecidir && (
+              <>
+                <AccionSutil
+                  Icono={X}
+                  texto={firmables.length > 1 ? `Rechazar ${firmables.length}` : 'Rechazar'}
+                  color={theme.error?.val as string}
+                  onPress={() => onDecidir(firmables, false)}
+                />
+                <AccionSutil
+                  Icono={Check}
+                  texto={firmables.length > 1 ? `Aprobar ${firmables.length}` : 'Aprobar'}
+                  color={theme.success?.val as string}
+                  onPress={() => onDecidir(firmables, true)}
+                />
+              </>
+            )}
+          </XStack>
+        )}
+
+        {/* El detalle por empleado va SIEMPRE al final de la tarjeta. */}
         {/* El detalle por empleado, desplegable.
             Cerrado se ven los motivos del lote sin repetir, que es el resumen;
             abierto, un renglón por empleado con SU motivo y SUS horas. En una
@@ -935,6 +1042,13 @@ function SolicitudCard({
                     {(d.Category_Name ?? '').trim() || 'Sin motivo'}
                   </Text>
 
+                  {/* El comentario del renglón, cuando lo escribieron. */}
+                  {!!(d.Detail_Comment ?? '').trim() && (
+                    <Text fontSize={11} color="$textMuted" fontStyle="italic" numberOfLines={3}>
+                      {d.Detail_Comment}
+                    </Text>
+                  )}
+
                   <XStack justifyContent="space-between" alignItems="center" gap="$2">
                     <Text fontSize={11} color="$textMuted">
                       {fmtHora(d.Start_Time)} - {fmtHora(d.End_Time)}
@@ -974,76 +1088,8 @@ function SolicitudCard({
           </YStack>
         ) : null}
 
-        {!!item.comentario && (
-          <Text fontSize={12} color="$textSecondary" numberOfLines={2}>
-            {item.comentario}
-          </Text>
-        )}
 
-        {/* ── Acciones ───────────────────────────────────────────────────
-            Sutiles y al pie: la tarjeta se viene a LEER, y con botones grandes
-            la lista se convertía en una fila de botones con datos alrededor.
 
-            Editar solo mientras NADIE haya firmado: en cuanto una entidad se
-            pronuncia la solicitud ya no es del solicitante. Firmar solo lo que
-            esta entidad todavía puede firmar. Cuando no queda ninguna de las
-            dos, la tarjeta no muestra nada — que es el caso de una solicitud ya
-            resuelta por todos. */}
-        {(puedeEditar || puedeDecidir) && (
-          <XStack
-            gap="$2"
-            justifyContent="flex-end"
-            borderTopWidth={1}
-            borderTopColor="$border"
-            paddingTop="$2.5"
-          >
-            {puedeEditar && (
-              <AccionSutil
-                Icono={Pencil}
-                texto="Editar"
-                color={theme.textSecondary?.val as string}
-                onPress={onEditar}
-              />
-            )}
-
-            {puedeDecidir && (
-              <>
-                <AccionSutil
-                  Icono={X}
-                  texto={firmables.length > 1 ? `Rechazar ${firmables.length}` : 'Rechazar'}
-                  color={theme.error?.val as string}
-                  onPress={() => onDecidir(firmables, false)}
-                />
-                <AccionSutil
-                  Icono={Check}
-                  texto={firmables.length > 1 ? `Aprobar ${firmables.length}` : 'Aprobar'}
-                  color={theme.success?.val as string}
-                  onPress={() => onDecidir(firmables, true)}
-                />
-              </>
-            )}
-          </XStack>
-        )}
-
-        {mixta && (
-          <XStack gap="$3" borderTopWidth={1} borderTopColor="$border" paddingTop="$2">
-            {item.aprobados > 0 && (
-              <Text fontSize={11} color="$textMuted">
-                <Text fontSize={11} fontWeight="700" color="$success">{item.aprobados}</Text> aprobado(s)
-              </Text>
-            )}
-            {item.pendientes > 0 && (
-              <Text fontSize={11} color="$textMuted">
-                <Text fontSize={11} fontWeight="700" color="$warning">{item.pendientes}</Text> en proceso
-              </Text>
-            )}
-            {item.rechazados > 0 && (
-              <Text fontSize={11} color="$textMuted">
-                <Text fontSize={11} fontWeight="700" color="$error">{item.rechazados}</Text> rechazado(s)
-              </Text>
-            )}
-          </XStack>
-        )}
       </YStack>
     </Card>
   )

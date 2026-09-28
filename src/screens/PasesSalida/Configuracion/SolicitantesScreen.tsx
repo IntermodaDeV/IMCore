@@ -15,21 +15,28 @@ import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
 import { ACCENT, PRESS_CARD } from '../pasesSalida.helpers'
 import { pasesSalidaConfigService } from '../../../api/modules/pasesSalida/configuracion.service'
-import { ISolicitante, IMaterialSolicitante } from '../../../api/modules/pasesSalida/configuracion.types'
+import {
+  ISolicitante, IMaterialSolicitante, ITipoSalidaSolicitante,
+} from '../../../api/modules/pasesSalida/configuracion.types'
 
 /**
- * Qué materiales puede pedir cada solicitante.
+ * El ALCANCE de cada solicitante, que son dos preguntas distintas:
+ *   · qué MATERIALES puede pedir
+ *   · con qué TIPOS DE SALIDA puede sacarlos
  *
- * La lista no se administra acá: sale de quien tenga el acceso PSSolicitante,
- * concedido por usuario o por rol desde la pantalla de accesos. Acá solo se
- * define el ALCANCE de cada uno.
+ * La lista de personas no se administra acá: sale de quien tenga el acceso
+ * PSSolicitante, concedido por usuario o por rol desde la pantalla de accesos.
  *
- * El alcance va por material y no por grupo: el grupo existe para configurar
- * firmas, y que dos materiales compartan firmas no implica que la misma persona
- * deba poder pedir los dos.
+ * El alcance de materiales va por material y no por grupo: el grupo existe para
+ * configurar firmas, y que dos materiales compartan firmas no implica que la
+ * misma persona deba poder pedir los dos.
  *
- * Sin materiales asignados el usuario no puede crear ningún pase, y la tarjeta
- * lo avisa para que no parezca que quedó bien configurado.
+ * LAS DOS MITADES SE GUARDAN JUNTAS, en una sola llamada y una sola transacción.
+ * Separadas, la segunda podría fallar y dejar a alguien con materiales y sin
+ * tipos —o sea, sin poder crear nada— sin que la pantalla se enterara.
+ *
+ * Cualquiera de las dos vacía bloquea a la persona, y la tarjeta lo avisa para
+ * que no parezca que quedó bien configurada.
  */
 export default function SolicitantesScreen() {
   const theme = useTheme()
@@ -44,11 +51,15 @@ export default function SolicitantesScreen() {
   // Un fallo de la API no es una lista vacía: se muestra como error con reintento.
   const [error, setError] = useState<AppError | null>(null)
 
-  // Modal de materiales
+  // Modal del alcance
   const [sel, setSel] = useState<ISolicitante | null>(null)
   const [materiales, setMateriales] = useState<IMaterialSolicitante[]>([])
   const [matFiltrados, setMatFiltrados] = useState<IMaterialSolicitante[]>([])
   const [marcados, setMarcados] = useState<number[]>([])
+  const [tipos, setTipos] = useState<ITipoSalidaSolicitante[]>([])
+  const [marcadosTipo, setMarcadosTipo] = useState<number[]>([])
+  /** Qué mitad del alcance se está viendo. */
+  const [tab, setTab] = useState<'mat' | 'tipo'>('mat')
   const [cargandoMat, setCargandoMat] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
@@ -65,14 +76,31 @@ export default function SolicitantesScreen() {
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
   const onRefresh = useCallback(async () => { setRefrescando(true); await cargar(); setRefrescando(false) }, [cargar])
 
+  /* Las dos listas se piden juntas. Si alguna fallara y se guardara igual, esa
+     mitad viajaría vacía y le borraría el alcance a la persona sin que nadie lo
+     tocara — por eso `fallo` bloquea el botón de guardar. */
+  const [fallo, setFallo] = useState(false)
+
   const abrir = async (s: ISolicitante) => {
-    setSel(s); setMateriales([]); setMatFiltrados([]); setMarcados([]); setCargandoMat(true)
+    setSel(s); setTab('mat'); setFallo(false)
+    setMateriales([]); setMatFiltrados([]); setMarcados([])
+    setTipos([]); setMarcadosTipo([])
+    setCargandoMat(true)
     try {
-      const r = await pasesSalidaConfigService.getMaterialesDeSolicitante(s.User_Code)
-      const data = r.Data ?? []
-      setMateriales(data); setMatFiltrados(data)
-      setMarcados(data.filter(m => m.Asignado).map(m => m.Id))
-    } catch { setMateriales([]); setMatFiltrados([]) }
+      const [rMat, rTipo] = await Promise.all([
+        pasesSalidaConfigService.getMaterialesDeSolicitante(s.User_Code),
+        pasesSalidaConfigService.getTiposDeSolicitante(s.User_Code),
+      ])
+      const mats = rMat.Data ?? []
+      setMateriales(mats); setMatFiltrados(mats)
+      setMarcados(mats.filter(m => m.Asignado).map(m => m.Id))
+
+      const tps = rTipo.Data ?? []
+      setTipos(tps)
+      setMarcadosTipo(tps.filter(t => t.Asignado).map(t => t.Id))
+    } catch {
+      setMateriales([]); setMatFiltrados([]); setTipos([]); setFallo(true)
+    }
     finally { setCargandoMat(false) }
   }
 
@@ -80,16 +108,17 @@ export default function SolicitantesScreen() {
     if (!sel) return
     setGuardando(true)
     try {
-      const res = await pasesSalidaConfigService.asignarMaterialesSolicitante({
-        User_Code: sel.User_Code, Materiales: marcados,
+      const res = await pasesSalidaConfigService.guardarAlcanceSolicitante({
+        User_Code: sel.User_Code, Materiales: marcados, Tipos: marcadosTipo,
       })
-      if (res.Success) { showToast('success', 'Guardado', res.SuccessMessage || 'Materiales actualizados'); setSel(null); await cargar() }
+      if (res.Success) { showToast('success', 'Guardado', res.SuccessMessage || 'Alcance actualizado'); setSel(null); await cargar() }
       else showToast('error', 'No se pudo guardar', res.ErrorMessage || 'Intente de nuevo')
     } catch (e: any) { showToast('error', 'Error', e?.message || 'No se pudo guardar') }
     finally { setGuardando(false) }
   }
 
   const todosMarcados = materiales.length > 0 && marcados.length === materiales.length
+  const todosTipos = tipos.length > 0 && marcadosTipo.length === tipos.length
 
   usePageHeader({ center: <Text fontSize="$4" fontWeight="700" color="$text">Solicitantes</Text> })
 
@@ -136,24 +165,33 @@ export default function SolicitantesScreen() {
               />
             }
             renderItem={({ item: s }) => {
-              const sinAlcance = s.Materiales === 0
+              /* Las dos mitades hacen falta: con materiales pero sin tipos
+                 tampoco puede crear nada, y decir solo "5 materiales" haría
+                 parecer que está configurado. */
+              const falta = [
+                s.Materiales === 0 ? 'materiales' : null,
+                s.Tipos === 0 ? 'tipos de salida' : null,
+              ].filter(Boolean)
               return (
                 <XStack backgroundColor="$backgroundElevated" borderRadius="$4"
-                  borderLeftWidth={4} borderLeftColor={sinAlcance ? '#f59e0b' : '$primary'}
+                  borderLeftWidth={4} borderLeftColor={falta.length ? '#f59e0b' : '$primary'}
                   borderWidth={1} borderColor="$border"
                   paddingVertical="$3" paddingHorizontal="$4" alignItems="center" gap="$3" {...shadows.sm}
                   onPress={() => abrir(s)} pressStyle={PRESS_CARD}>
                   <YStack flex={1} gap={3}>
                     <Text fontSize={14} fontWeight="800" color="$text">{s.Nombre || s.User_Code}</Text>
                     <Text fontSize={11} color="$textMuted">{s.User_Code}{s.Email ? ` · ${s.Email}` : ''}</Text>
-                    {sinAlcance ? (
+                    {falta.length ? (
                       <XStack alignItems="center" gap="$1.5" marginTop={2}>
                         <TriangleAlert size={12} color="#f59e0b" />
-                        <Text fontSize={11} color="#f59e0b" fontWeight="700">Sin materiales: no puede crear pases</Text>
+                        <Text flex={1} fontSize={11} color="#f59e0b" fontWeight="700">
+                          Sin {falta.join(' ni ')}: no puede crear pases
+                        </Text>
                       </XStack>
                     ) : (
                       <Text fontSize={11} color="$textMuted">
-                        Puede pedir {s.Materiales} {s.Materiales === 1 ? 'material' : 'materiales'}
+                        {s.Materiales} {s.Materiales === 1 ? 'material' : 'materiales'} ·{' '}
+                        {s.Tipos} {s.Tipos === 1 ? 'tipo de salida' : 'tipos de salida'}
                       </Text>
                     )}
                   </YStack>
@@ -170,61 +208,151 @@ export default function SolicitantesScreen() {
           <YStack width="100%" maxWidth={480} maxHeight="88%" backgroundColor="$background" borderRadius="$6" padding="$4" gap="$3">
             <YStack>
               <Text fontSize="$5" fontWeight="900" color="$text">{sel?.Nombre || sel?.User_Code}</Text>
-              <Text fontSize={11} color="$textMuted">Materiales que puede solicitar</Text>
+              <Text fontSize={11} color="$textMuted">Qué puede pedir y con qué motivos</Text>
             </YStack>
 
-            <SearchInput
-              data={materiales}
-              searchKeys={['Name']}
-              onResults={setMatFiltrados}
-              placeholder="Buscar..."
-            />
-
-            <XStack alignItems="center" gap="$2">
-              <Text flex={1} fontSize={11} color="$textMuted">
-                {marcados.length} de {materiales.length} seleccionados
-              </Text>
-              <View onPress={() => setMarcados(todosMarcados ? [] : materiales.map(m => m.Id))} pressStyle={{ opacity: 0.7 }} hitSlop={8}>
-                <Text fontSize={11} fontWeight="800" color="$primary">
-                  {todosMarcados ? 'Quitar todos' : 'Marcar todos'}
-                </Text>
-              </View>
+            {/* Un solo botón de guardar para las dos listas: son el mismo
+                alcance y viajan juntas. El número en cada pestaña deja ver que
+                falta la otra mitad sin tener que entrar a mirarla. */}
+            <XStack backgroundColor="$backgroundPage" borderRadius="$4" padding={3} gap={3}>
+              {([
+                { k: 'mat' as const,  label: 'Materiales',      n: marcados.length },
+                { k: 'tipo' as const, label: 'Tipos de salida', n: marcadosTipo.length },
+              ]).map(t => {
+                const on = tab === t.k
+                return (
+                  <View key={t.k} flex={1} onPress={() => setTab(t.k)} pressStyle={{ opacity: 0.8 }}
+                    backgroundColor={on ? '$backgroundElevated' : 'transparent'}
+                    borderRadius="$3" paddingVertical="$2.5" alignItems="center"
+                    flexDirection="row" justifyContent="center" gap="$2"
+                    {...(on ? shadows.sm : {})}>
+                    <Text fontSize={12} fontWeight="800" color={on ? '$text' : '$textMuted'}>
+                      {t.label}
+                    </Text>
+                    <View minWidth={20} height={20} borderRadius={10} paddingHorizontal={6}
+                      alignItems="center" justifyContent="center"
+                      backgroundColor={t.n === 0 ? 'rgba(245, 158, 11, 0.18)' : 'rgba(255, 85, 26, 0.14)'}>
+                      <Text fontSize={10} fontWeight="900" color={t.n === 0 ? '#f59e0b' : ACCENT}>
+                        {t.n}
+                      </Text>
+                    </View>
+                  </View>
+                )
+              })}
             </XStack>
 
             {cargandoMat ? (
               <YStack paddingVertical="$6" alignItems="center"><Spinner color={ACCENT} /></YStack>
+            ) : tab === 'mat' ? (
+              <>
+                <SearchInput
+                  data={materiales}
+                  searchKeys={['Name']}
+                  onResults={setMatFiltrados}
+                  placeholder="Buscar..."
+                />
+
+                <XStack alignItems="center" gap="$2">
+                  <Text flex={1} fontSize={11} color="$textMuted">
+                    {marcados.length} de {materiales.length} seleccionados
+                  </Text>
+                  <View onPress={() => setMarcados(todosMarcados ? [] : materiales.map(m => m.Id))} pressStyle={{ opacity: 0.7 }} hitSlop={8}>
+                    <Text fontSize={11} fontWeight="800" color="$primary">
+                      {todosMarcados ? 'Quitar todos' : 'Marcar todos'}
+                    </Text>
+                  </View>
+                </XStack>
+
+                <FlatList
+                  data={matFiltrados}
+                  keyExtractor={(m) => String(m.Id)}
+                  style={{ maxHeight: 300 }}
+                  ItemSeparatorComponent={() => <View height={6} />}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item: m }) => {
+                    const on = marcados.includes(m.Id)
+                    return (
+                      <XStack alignItems="center" gap="$3" paddingVertical="$2" paddingHorizontal="$2"
+                        borderRadius="$3" backgroundColor={on ? 'rgba(255, 85, 26, 0.08)' : 'transparent'}
+                        onPress={() => setMarcados(prev => on ? prev.filter(x => x !== m.Id) : [...prev, m.Id])}
+                        pressStyle={{ opacity: 0.7 }}>
+                        <View width={20} height={20} borderRadius="$2" borderWidth={1.5}
+                          borderColor={on ? ACCENT : '$border'} backgroundColor={on ? ACCENT : 'transparent'}
+                          alignItems="center" justifyContent="center">
+                          {on ? <Check size={13} color="#fff" /> : null}
+                        </View>
+                        <Text flex={1} fontSize={13} fontWeight="700" color="$text">{m.Name}</Text>
+                      </XStack>
+                    )
+                  }}
+                  ListEmptyComponent={<Text fontSize={12} color="$textMuted" paddingVertical="$4">Sin materiales activos.</Text>}
+                />
+              </>
             ) : (
-              <FlatList
-                data={matFiltrados}
-                keyExtractor={(m) => String(m.Id)}
-                style={{ maxHeight: 340 }}
-                ItemSeparatorComponent={() => <View height={6} />}
-                keyboardShouldPersistTaps="handled"
-                renderItem={({ item: m }) => {
-                  const on = marcados.includes(m.Id)
-                  return (
-                    <XStack alignItems="center" gap="$3" paddingVertical="$2" paddingHorizontal="$2"
-                      borderRadius="$3" backgroundColor={on ? 'rgba(255, 85, 26, 0.08)' : 'transparent'}
-                      onPress={() => setMarcados(prev => on ? prev.filter(x => x !== m.Id) : [...prev, m.Id])}
-                      pressStyle={{ opacity: 0.7 }}>
-                      <View width={20} height={20} borderRadius="$2" borderWidth={1.5}
-                        borderColor={on ? ACCENT : '$border'} backgroundColor={on ? ACCENT : 'transparent'}
-                        alignItems="center" justifyContent="center">
-                        {on ? <Check size={13} color="#fff" /> : null}
-                      </View>
-                      <Text flex={1} fontSize={13} fontWeight="700" color="$text">{m.Name}</Text>
-                    </XStack>
-                  )
-                }}
-                ListEmptyComponent={<Text fontSize={12} color="$textMuted" paddingVertical="$4">Sin materiales activos.</Text>}
-              />
+              <>
+                {/* Sin buscador: los tipos de salida son cuatro o cinco, no un
+                    catálogo. Un campo de búsqueda acá sería ruido. */}
+                <XStack alignItems="center" gap="$2">
+                  <Text flex={1} fontSize={11} color="$textMuted">
+                    {marcadosTipo.length} de {tipos.length} seleccionados
+                  </Text>
+                  <View onPress={() => setMarcadosTipo(todosTipos ? [] : tipos.map(t => t.Id))} pressStyle={{ opacity: 0.7 }} hitSlop={8}>
+                    <Text fontSize={11} fontWeight="800" color="$primary">
+                      {todosTipos ? 'Quitar todos' : 'Marcar todos'}
+                    </Text>
+                  </View>
+                </XStack>
+
+                <FlatList
+                  data={tipos}
+                  keyExtractor={(t) => String(t.Id)}
+                  style={{ maxHeight: 300 }}
+                  ItemSeparatorComponent={() => <View height={6} />}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item: t }) => {
+                    const on = marcadosTipo.includes(t.Id)
+                    return (
+                      <XStack alignItems="center" gap="$3" paddingVertical="$2" paddingHorizontal="$2"
+                        borderRadius="$3" backgroundColor={on ? 'rgba(255, 85, 26, 0.08)' : 'transparent'}
+                        onPress={() => setMarcadosTipo(prev => on ? prev.filter(x => x !== t.Id) : [...prev, t.Id])}
+                        pressStyle={{ opacity: 0.7 }}>
+                        <View width={20} height={20} borderRadius="$2" borderWidth={1.5}
+                          borderColor={on ? ACCENT : '$border'} backgroundColor={on ? ACCENT : 'transparent'}
+                          alignItems="center" justifyContent="center">
+                          {on ? <Check size={13} color="#fff" /> : null}
+                        </View>
+                        <Text flex={1} fontSize={13} fontWeight="700" color="$text">{t.Name}</Text>
+                        {/* Que el tipo exija retorno cambia lo que pasa después
+                            en seguridad, así que conviene verlo al decidir quién
+                            puede usarlo. */}
+                        {t.Retorna ? (
+                          <View backgroundColor="rgba(255, 85, 26, 0.14)" borderRadius="$10"
+                            paddingHorizontal="$2" paddingVertical={2}>
+                            <Text fontSize={9} fontWeight="900" color={ACCENT}>DEBE REGRESAR</Text>
+                          </View>
+                        ) : null}
+                      </XStack>
+                    )
+                  }}
+                  ListEmptyComponent={<Text fontSize={12} color="$textMuted" paddingVertical="$4">Sin tipos de salida activos.</Text>}
+                />
+              </>
             )}
 
-            {marcados.length === 0 && !cargandoMat ? (
+            {/* Guardar con una lista vacía es válido —así se le quita el alcance
+                a alguien— pero es una decisión, no un descuido: se avisa antes,
+                y se dice CUÁL falta porque la otra pestaña puede estar sin
+                mirar. */}
+            {!cargandoMat && (marcados.length === 0 || marcadosTipo.length === 0) ? (
               <XStack alignItems="center" gap="$2" backgroundColor="rgba(245, 158, 11, 0.12)" borderRadius="$4" paddingHorizontal="$3" paddingVertical="$2.5">
                 <TriangleAlert size={14} color="#f59e0b" />
                 <Text flex={1} fontSize={11} color="#f59e0b" fontWeight="700">
-                  Si se guarda sin marcar nada, este usuario no podrá crear ningún pase.
+                  {marcados.length === 0 && marcadosTipo.length === 0
+                    ? 'No hay materiales ni tipos de salida marcados.'
+                    : marcados.length === 0
+                      ? 'No hay materiales marcados.'
+                      : 'No hay tipos de salida marcados.'}
+                  {' '}Si se guarda así, este usuario no podrá crear ningún pase.
                 </Text>
               </XStack>
             ) : null}
@@ -234,8 +362,11 @@ export default function SolicitantesScreen() {
                 borderWidth={1.5} borderColor="$border" borderRadius="$4" height={46} alignItems="center" justifyContent="center">
                 <Text color="$text" fontWeight="800" fontSize="$3">Cancelar</Text>
               </View>
-              <View flex={1} onPress={guardando ? undefined : guardar} pressStyle={{ opacity: 0.85 }}
-                opacity={guardando ? 0.6 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
+              {/* Bloqueado mientras cargan las listas o si alguna falló: guardar
+                  ahí mandaría esa mitad vacía y borraría el alcance sin que
+                  nadie lo tocara. */}
+              <View flex={1} onPress={guardando || cargandoMat || fallo ? undefined : guardar} pressStyle={{ opacity: 0.85 }}
+                opacity={guardando || cargandoMat || fallo ? 0.6 : 1} backgroundColor={ACCENT} borderRadius="$4" height={46}
                 alignItems="center" justifyContent="center" flexDirection="row" gap="$2">
                 {guardando ? <Spinner color="#fff" /> : null}
                 <Text color="#fff" fontWeight="800" fontSize="$3">Guardar</Text>

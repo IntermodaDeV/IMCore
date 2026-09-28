@@ -10,6 +10,10 @@ export const pasesSalidaService = {
   // ── Tipos de salida ─────────────────────────────────────────────────────────
   getTiposSalida: (onlyActive = false) =>
     httpClient.get<ExecutionResponse<ITipoSalida[]>>(`${schema}/TiposSalida`, { onlyActive }),
+  // Los tipos que YO puedo usar. Vive en el otro controlador porque el alcance
+  // lo resuelve el backend con el token, igual que MisMateriales.
+  getMisTiposSalida: () =>
+    httpClient.get<ExecutionResponse<ITipoSalida[]>>('PasesSalida/MisTiposSalida'),
   crearTipoSalida: (data: ITipoSalidaManage) =>
     httpClient.post<ExecutionResponse<null>, ITipoSalidaManage>(`${schema}/TiposSalida`, data),
   editarTipoSalida: (data: ITipoSalidaManage) =>

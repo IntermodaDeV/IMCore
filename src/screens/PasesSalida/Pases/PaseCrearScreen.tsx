@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal, ScrollView, SectionList } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
 // `Lock` se renombra: choca con el tipo global Lock del DOM y TS resuelve ese.
-import { ArrowLeft, Plus, Trash2, Package, TriangleAlert, Boxes, Lock as LockIcon } from 'lucide-react-native'
+import { ArrowLeft, Check, Plus, Trash2, Package, TriangleAlert, Boxes, Lock as LockIcon } from 'lucide-react-native'
 import dayjs from 'dayjs'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -19,8 +19,10 @@ import EmptyState from '../../AdmSys/EmptyState'
 import { AppError, handleError } from '../../../utils/errorHandler'
 import { shadows } from '../../../theme/shadows'
 import {
-  ACCENT, ACCENT_BG, CLAVE_HORAS_GRACIA, UNIDADES, fechaMinimaSalida,
+  ACCENT, ACCENT_BG, ACCESO_REGRESO_PARCIAL, ACCESO_UNIDAD_GENERAL,
+  CLAVE_HORAS_GRACIA, UNIDADES, fechaMinimaSalida, tieneAcceso,
 } from '../pasesSalida.helpers'
+import { useAuth } from '../../../context/AuthContext'
 import { configuracionService } from '../../../api/modules/configuracion/configuracion.service'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import { pasesSalidaService } from '../../../api/modules/pasesSalida/pasesSalida.service'
@@ -63,6 +65,12 @@ type Linea = {
   Marca: string
   Modelo: string
   Serie: string
+  /**
+   * Esta línea puede volver por partes. Solo se pregunta cuando el tipo de
+   * salida exige retorno y el solicitante tiene el acceso; en cualquier otro
+   * caso viaja como null y el servidor lo ignora.
+   */
+  RegresoParcial: boolean
 }
 
 const LINEA_VACIA = (m: IMaterial): Linea => ({
@@ -77,6 +85,7 @@ const LINEA_VACIA = (m: IMaterial): Linea => ({
   Marca: '',
   Modelo: '',
   Serie: '',
+  RegresoParcial: false,
 })
 
 /** Alto del footer fijo: el scroll reserva ese espacio para no quedar tapado. */
@@ -84,11 +93,18 @@ const FOOTER_H = 108
 
 const HOY = () => dayjs().format('YYYY-MM-DD')
 
-/** Devuelve el problema de la línea, o null si está bien. */
-const validarLinea = (l: Linea): string | null => {
+/**
+ * Devuelve el problema de la línea, o null si está bien.
+ *
+ * Con unidad general la cantidad no se pide: lo que se quita es la medida, no
+ * la identificación de lo que sale.
+ */
+const validarLinea = (l: Linea, unidadGeneral: boolean): string | null => {
   if (!l.Descripcion.trim()) return 'Falta la descripción del producto'
-  const cant = Number(l.Cantidad.replace(',', '.'))
-  if (!l.Cantidad.trim() || isNaN(cant) || cant <= 0) return 'La cantidad tiene que ser mayor que cero'
+  if (!unidadGeneral) {
+    const cant = Number(l.Cantidad.replace(',', '.'))
+    if (!l.Cantidad.trim() || isNaN(cant) || cant <= 0) return 'La cantidad tiene que ser mayor que cero'
+  }
   if (!l.Marca.trim()) return 'Falta la marca'
   if (l.EsEquipo && !l.Modelo.trim()) return 'Es equipo: falta el modelo'
   if (l.EsEquipo && !l.Serie.trim()) return 'Es equipo: falta la serie'
@@ -100,10 +116,16 @@ export default function PaseCrearScreen() {
   const navigation = useNavigation<any>()
   const route = useRoute<any>()
   const { showToast } = useShowToast()
+  const { user } = useAuth()
 
   // Con id se está EDITANDO un pase pendiente; sin id se está creando.
   const paseId: number | undefined = route.params?.id
   const esEdicion = typeof paseId === 'number' && paseId > 0
+
+  /* Sin el acceso el checkbox ni se dibuja. El SP lo revalida: mandar la
+     bandera en true sin tenerlo no habilita nada. */
+  const conUnidadGeneral = tieneAcceso(user?.Access, ACCESO_UNIDAD_GENERAL)
+  const conRegresoParcial = tieneAcceso(user?.Access, ACCESO_REGRESO_PARCIAL)
 
   const [tipos, setTipos] = useState<ITipoSalida[]>([])
   // Qué grupo puede salir con qué tipo. Tabla chica: se trae entera y se
@@ -133,21 +155,57 @@ export default function PaseCrearScreen() {
   // usuario en IMCore, así que va a mano.
   const [responsable, setResponsable] = useState('')
   const [comentario, setComentario] = useState('')
+  /**
+   * El pase se captura sin cantidad ni unidad. Es del PASE entero, no de la
+   * línea: un pase donde unas líneas tienen cantidad y otras no deja al guardia
+   * sin saber si eso es la regla o un dato que falta.
+   */
+  const [unidadGeneral, setUnidadGeneral] = useState(false)
 
   // Detalle
   const [lineas, setLineas] = useState<Linea[]>([])
+  /**
+   * Los índices de las líneas que rebotaron al guardar, para pintarlas en rojo
+   * unos segundos.
+   *
+   * El toast nombra UNA línea, pero si faltan campos en tres se marcan las
+   * tres: decir "Línea 1" y que al arreglarla vuelva a rebotar en la 2 es
+   * hacerle descubrir el trabajo de a poco.
+   */
+  const [lineasMalas, setLineasMalas] = useState<number[]>([])
+  /* El temporizador va en una ref y no en el efecto de `lineasMalas`: la
+     limpieza de un efecto corre en CADA cambio de la dependencia, así que
+     tocar un campo mientras la marca está puesta cancelaría el borrado y el
+     rojo se quedaría pegado. */
+  const marcaRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const marcarLineas = useCallback((indices: number[]) => {
+    if (marcaRef.current) clearTimeout(marcaRef.current)
+    setLineasMalas(indices)
+    marcaRef.current = setTimeout(() => setLineasMalas([]), 4000)
+  }, [])
+
+  useEffect(() => () => { if (marcaRef.current) clearTimeout(marcaRef.current) }, [])
   const [matOpen, setMatOpen] = useState(false)
   const [confirmEliminar, setConfirmEliminar] = useState(false)
 
   const cargar = useCallback(async () => {
     try {
       const [rTipos, rMat, rReglas, rConfig] = await Promise.all([
-        pasesSalidaService.getTiposSalida(true),
+        /* Los tipos del USUARIO, no el catálogo entero: cada solicitante tiene
+           configurado con qué motivos puede sacar. Si acá se ofreciera todo, el
+           rebote llegaría recién al guardar. */
+        pasesSalidaService.getMisTiposSalida(),
         pasesService.getMisMateriales(),
         pasesService.getReglas(),
         configuracionService.getAll(),
       ])
-      setTipos(rTipos.Data ?? [])
+      const tps = rTipos.Data ?? []
+      setTipos(tps)
+      /* Con una sola opción no hay nada que elegir: se deja puesta. En edición
+         no, porque el pase trae la suya y pisarla sería cambiarle el tipo al
+         usuario sin que lo pida. */
+      if (!esEdicion && tps.length === 1) setTipoId(String(tps[0].Id))
       setReglas(rReglas.Data ?? [])
       /* Las horas de gracia son globales (no hay override por grupo: eso es el
          horario). Si la lectura falla, `fechaMinimaSalida` cae en hoy. */
@@ -175,7 +233,13 @@ export default function PaseCrearScreen() {
         setResponsable(p.Responsable ?? '')
         setComentario(p.Comentario ?? '')
       }
-      setLineas((rDet.Data ?? []).map(d => ({
+      const det = rDet.Data ?? []
+      /* Si las líneas vienen sin cantidad, el pase se creó con unidad general.
+         No hace falta guardar la bandera aparte: la ausencia de cantidad ES el
+         dato. */
+      setUnidadGeneral(det.length > 0 && det.every(d => d.Cantidad == null))
+
+      setLineas(det.map(d => ({
         Material_Id: d.Material_Id,
         Material: d.Material,
         // El grupo se toma del catálogo del usuario; si el material dejó de
@@ -189,6 +253,8 @@ export default function PaseCrearScreen() {
         Marca: d.Marca ?? '',
         Modelo: d.Modelo ?? '',
         Serie: d.Serie ?? '',
+        // null = no aplicaba; para el formulario es lo mismo que "no marcada".
+        RegresoParcial: d.RegresoParcial === true,
       })))
       setError(null)
     } catch (e) {
@@ -209,6 +275,11 @@ export default function PaseCrearScreen() {
 
   const tipoIdNum = tipoId ? Number(tipoId) : null
   const tipoNombre = tipos.find(t => String(t.Id) === tipoId)?.Name ?? ''
+  /* Marcar regreso parcial solo tiene sentido si lo que sale tiene que volver.
+     Con el tipo equivocado la casilla ni aparece, y el servidor limpia lo que
+     hubiera quedado marcado de antes. */
+  const preguntarParcial =
+    conRegresoParcial && tipos.find(t => String(t.Id) === tipoId)?.Retorna === true
 
   /**
    * Por qué un material no se puede agregar, o null si sí se puede.
@@ -260,8 +331,17 @@ export default function PaseCrearScreen() {
     setMatOpen(false)
   }
 
-  const cambiar = (i: number, campo: keyof Linea, valor: string) =>
+  /** Igual que `cambiar`, para el único campo de la línea que no es texto. */
+  const cambiarParcial = (i: number, valor: boolean) =>
+    setLineas(prev => prev.map((l, j) => (j === i ? { ...l, RegresoParcial: valor } : l)))
+
+  const cambiar = (i: number, campo: keyof Linea, valor: string) => {
     setLineas(prev => prev.map((l, j) => (j === i ? { ...l, [campo]: valor } : l)))
+    /* Tocar la línea le quita el rojo sin esperar los 4 segundos: se está
+       corrigiendo, y seguir señalándola es ruido. Devolver `prev` cuando no
+       estaba marcada evita un render por cada tecla. */
+    setLineasMalas(prev => (prev.includes(i) ? prev.filter(x => x !== i) : prev))
+  }
 
   const guardar = async () => {
     if (!tipoId) { showToast('warning', 'Falta el tipo', 'Seleccione el tipo de salida'); return }
@@ -271,7 +351,7 @@ export default function PaseCrearScreen() {
        la fecha puede venir de antes sin que nadie la toque. Se valida igual. */
     if (fechaSalida < fechaMinima) {
       showToast('warning', 'Fecha vencida',
-        'Un pase con esa fecha ya estaría vencido y portería no lo dejaría salir. Elija una fecha válida.')
+        'Un pase con esa fecha ya estaría vencido y seguridad no lo dejaría salir. Elija una fecha válida.')
       return
     }
 
@@ -300,9 +380,25 @@ export default function PaseCrearScreen() {
       return
     }
 
-    for (let i = 0; i < lineas.length; i++) {
-      const problema = validarLinea(lineas[i])
-      if (problema) { showToast('warning', `Línea ${i + 1} · ${lineas[i].Material}`, problema); return }
+    /* Se revisan TODAS las líneas antes de rebotar, no se corta en la primera:
+       con tres líneas a medias, avisar de a una obliga a guardar tres veces
+       para enterarse de todo lo que falta. Se marcan las tres en rojo y el
+       toast cuenta la primera. */
+    const malas = lineas
+      .map((l, i) => ({ i, problema: validarLinea(l, unidadGeneral) }))
+      .filter(x => x.problema !== null)
+
+    if (malas.length) {
+      marcarLineas(malas.map(x => x.i))
+      const { i, problema } = malas[0]
+      showToast(
+        'warning',
+        `Línea ${i + 1} · ${lineas[i].Material}`,
+        malas.length > 1
+          ? `${problema} (y ${malas.length - 1} línea${malas.length > 2 ? 's' : ''} más con datos pendientes)`
+          : problema!,
+      )
+      return
     }
 
     setGuardando(true)
@@ -314,12 +410,21 @@ export default function PaseCrearScreen() {
         EnviadoA: enviadoA.trim(),
         Responsable: responsable.trim(),
         Comentario: comentario.trim() || null,
+        /* Sin el acceso no se manda nunca en true, aunque el estado hubiera
+           quedado puesto: el SP lo rechazaría y el error no diría nada útil. */
+        UnidadGeneral: conUnidadGeneral && unidadGeneral,
         FechaSalida: fechaSalida,
         Detalle: lineas.map(l => ({
           Material_Id: l.Material_Id,
           Descripcion: l.Descripcion.trim() || null,
-          Cantidad: Number(l.Cantidad.replace(',', '.')),
-          UnidadMedida: l.UnidadMedida,
+          // Con unidad general van en null: el SP los normaliza igual, pero
+          // mandar un 1 desde acá sería inventar una cantidad que nadie escribió.
+          Cantidad: unidadGeneral ? null : Number(l.Cantidad.replace(',', '.')),
+          UnidadMedida: unidadGeneral ? null : l.UnidadMedida,
+          // null cuando la pregunta no se hizo. El servidor normaliza igual,
+          // pero mandar false desde acá diría "se decidió que vuelve completo"
+          // en un pase donde nunca se preguntó.
+          RegresoParcial: preguntarParcial ? l.RegresoParcial : null,
           Marca: l.Marca.trim() || null,
           Modelo: l.Modelo.trim() || null,
           Serie: l.Serie.trim() || null,
@@ -399,13 +504,21 @@ export default function PaseCrearScreen() {
     )
   }
 
-  // Sin materiales en el alcance no hay nada que pedir: se dice y se sale.
-  if (!materiales.length) {
+  /* El alcance son dos mitades —qué materiales y con qué motivos— y sin
+     cualquiera de las dos no hay pase posible. Se dice CUÁL falta: sin eso los
+     dos casos se veían igual y no se sabía qué pedirle al administrador. */
+  if (!materiales.length || !tipos.length) {
     return (
       <View flex={1} backgroundColor="$background">
         <EmptyState
-          title="Sin materiales habilitados"
-          message="Solicite al administrador del módulo que le asigne materiales en la pantalla de Solicitantes."
+          title="Todavía no puede crear pases"
+          message={`${
+            !materiales.length && !tipos.length
+              ? 'No tiene materiales ni tipos de salida asignados.'
+              : !materiales.length
+                ? 'No tiene materiales asignados.'
+                : 'No tiene ningún tipo de salida asignado: no hay con qué motivo sacarlos.'
+          } Solicite al administrador del módulo que le configure el alcance en la pantalla de Solicitantes.`}
           onAction={async () => { setLoading(true); await cargar(); setLoading(false) }}
         />
       </View>
@@ -421,10 +534,13 @@ export default function PaseCrearScreen() {
 
         {/* ── Encabezado. Tipo y fecha comparten línea: en un teléfono cada uno
              solo necesita media pantalla y así el detalle sube. ── */}
+        {/* gap 0 a propósito: AppInput, AppSelect y AppDatePicker ya traen su
+            propio marginBottom. Con gap encima el espacio salía doble y los
+            campos quedaban nadando. */}
         <YStack backgroundColor="$backgroundElevated" borderRadius="$4" borderWidth={1} borderColor="$border"
-          padding="$3.5" gap="$2" {...shadows.sm}>
+          padding="$3" paddingBottom="$1.5" gap="$0" {...shadows.sm}>
 
-          <XStack gap="$2.5">
+          <XStack gap="$2">
             <YStack flex={1}>
               <AppSelect
                 label="Tipo de salida"
@@ -436,7 +552,7 @@ export default function PaseCrearScreen() {
             </YStack>
             <YStack flex={1}>
               {/* No se puede pedir un pase para ayer: el plazo se cuenta desde
-                  esa fecha, así que uno con fecha pasada nace vencido y portería
+                  esa fecha, así que uno con fecha pasada nace vencido y seguridad
                   lo rebota. `minDate` deja los días anteriores sin tocar en el
                   calendario, que explica la regla mejor que un error después. */}
               <AppDatePicker
@@ -451,14 +567,48 @@ export default function PaseCrearScreen() {
           <AppInput label="Enviado a" value={enviadoA} onChangeText={setEnviadoA}
             placeholder="Persona, empresa o lugar de destino" />
 
-          {/* Quién RETIRA, que no es quién pide: portería compara este nombre
-              contra el documento de quien se para en la puerta. */}
+          {/* Quién RETIRA, que no es quién pide: seguridad compara este nombre
+              contra el documento de quien se para en la puerta.
+
+              Estos dos llevan un respiro extra —el responsable es el dato que
+              se revisa en la puerta y el comentario es un área de varias
+              líneas—, y como AppInput no acepta márgenes propios, el aire se
+              pone con un separador. */}
+          <View height={7} />
           <AppInput label="Responsable de retirar" value={responsable} onChangeText={setResponsable}
             placeholder="Nombre y apellido de quien lo lleva"
             autoCapitalize="words" />
 
+          <View height={7} />
           <AppInput label="Comentario" value={comentario} onChangeText={setComentario}
             placeholder="Opcional" multiline />
+
+          {/* Va en el encabezado y no en cada línea porque aplica al pase
+              completo. Solo aparece con el acceso GeneralUnit.
+
+              En pantalla se llama «Camión» porque ese es el caso real: lo que
+              sale es un camión y contarlo por unidades no significa nada. El
+              acceso y el campo del API siguen diciendo GeneralUnit —renombrarlos
+              obligaría a rehacer el script y el contrato—, pero el usuario nunca
+              ve ese nombre.
+
+              Un renglón y nada más: es una opción que casi nunca se toca, así
+              que no puede pesar más que los campos que sí se llenan siempre. La
+              consecuencia se ve sola al marcarlo —desaparecen cantidad y
+              unidad—, no hace falta un párrafo explicándola. */}
+          {conUnidadGeneral ? (
+            <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5" marginBottom="$1.5"
+              onPress={() => setUnidadGeneral(v => !v)} pressStyle={{ opacity: 0.6 }} hitSlop={6}>
+              <View width={18} height={18} borderRadius="$1" borderWidth={1.5}
+                borderColor={unidadGeneral ? ACCENT : '$border'}
+                backgroundColor={unidadGeneral ? ACCENT : 'transparent'}
+                alignItems="center" justifyContent="center">
+                {unidadGeneral ? <Check size={12} color="#fff" /> : null}
+              </View>
+              <Text fontSize={12} fontWeight="800" color="$text">Camión</Text>
+              <Text flex={1} fontSize={10} color="$textMuted">sin cantidad ni unidad</Text>
+            </XStack>
+          ) : null}
         </YStack>
 
         <View height={14} />
@@ -503,14 +653,37 @@ export default function PaseCrearScreen() {
         ) : null}
 
         <YStack gap="$2.5">
-          {lineas.map((l, i) => (
-            <YStack key={`${l.Material_Id}-${i}`} backgroundColor="$backgroundElevated" borderRadius="$4"
-              borderWidth={1} borderColor="$border" padding="$4" gap="$2.5" {...shadows.sm}>
+          {lineas.map((l, i) => {
+            // Rebotó al guardar y todavía está dentro de los 4 segundos.
+            const mala = lineasMalas.includes(i)
+            return (
+            // Mismo criterio que el encabezado: gap 0, porque cada campo ya trae
+            // su marginBottom. El único que necesita aire propio es el título,
+            // que no es un campo.
+            //
+            // Solo el BORDE cambia de color. Ni fondo teñido ni grosor: el
+            // fondo ensucia la tarjeta y pasar el borde de 1 a 2 movería el
+            // contenido de todas las de abajo durante esos segundos. El ícono y
+            // la leyenda de adentro terminan de decirlo.
+            <YStack key={`${l.Material_Id}-${i}`} borderRadius="$4"
+              backgroundColor="$backgroundElevated"
+              borderWidth={1} borderColor={mala ? '#ef4444' : '$border'}
+              padding="$3" paddingBottom="$1.5"
+              gap="$0" {...shadows.sm}>
 
-              <XStack alignItems="center" gap="$2">
+              <XStack alignItems="center" gap="$2" marginBottom="$2">
                 <YStack flex={1}>
-                  <Text fontSize={14} fontWeight="800" color="$text">{l.Material}</Text>
-                  {l.EsEquipo ? (
+                  <XStack alignItems="center" gap="$1.5">
+                    <Text fontSize={14} fontWeight="800" color="$text">{l.Material}</Text>
+                    {/* El borde rojo dice CUÁL línea; esto dice QUÉ pasa, para
+                        quien no relacione el color con el aviso que ya se fue. */}
+                    {mala ? <TriangleAlert size={13} color="#ef4444" /> : null}
+                  </XStack>
+                  {mala ? (
+                    <Text fontSize={10} color="#ef4444" fontWeight="700">
+                      Faltan datos en esta línea
+                    </Text>
+                  ) : l.EsEquipo ? (
                     <Text fontSize={10} color="$textMuted">Equipo: pide marca, modelo y serie</Text>
                   ) : null}
                 </YStack>
@@ -521,32 +694,45 @@ export default function PaseCrearScreen() {
               </XStack>
 
               {/* La descripción va primero: es lo que dice QUÉ salió. El nombre
-                  del material es la categoría, no identifica el producto. */}
-              <AppInput label="Descripción del producto" value={l.Descripcion}
-                placeholder="Ej. Juego de llaves mixtas"
-                onChangeText={(v: string) => cambiar(i, 'Descripcion', v)} />
+                  del material es la categoría, no identifica el producto.
 
-              {/* Cantidad y unidad son cortas: el resto de la línea es para la marca. */}
+                  El margen negativo recorta el marginBottom propio de AppInput:
+                  descripción y marca son los dos campos que se llenan siempre y
+                  van juntos, no separados como bloques distintos. */}
+              <View marginBottom={-7}>
+                <AppInput label="Descripción del producto" value={l.Descripcion}
+                  placeholder="Ej. Juego de llaves mixtas"
+                  onChangeText={(v: string) => cambiar(i, 'Descripcion', v)} />
+              </View>
+
+              {/* Cantidad y unidad son cortas: el resto de la línea es para la
+                  marca. Con unidad general los dos campos desaparecen y la
+                  marca se queda con la fila entera — deshabilitarlos en gris
+                  invitaría a preguntarse por qué no se puede escribir ahí. */}
               <XStack gap="$2">
-                <YStack flex={1.1}>
-                  <AppInput label="Cant." value={l.Cantidad} keyboardType="numeric"
-                    onChangeText={(v: string) => cambiar(i, 'Cantidad', v)} />
-                </YStack>
-                <YStack flex={1.5}>
-                  <AppSelect
-                    label="Unidad"
-                    value={l.UnidadMedida}
-                    onValueChange={(v) => cambiar(i, 'UnidadMedida', String(v))}
-                    options={UNIDADES.map(u => ({ label: u, value: u }))}
-                  />
-                </YStack>
+                {!unidadGeneral ? (
+                  <YStack flex={1.1}>
+                    <AppInput label="Cant." value={l.Cantidad} keyboardType="numeric"
+                      onChangeText={(v: string) => cambiar(i, 'Cantidad', v)} />
+                  </YStack>
+                ) : null}
+                {!unidadGeneral ? (
+                  <YStack flex={1.5}>
+                    <AppSelect
+                      label="Unidad"
+                      value={l.UnidadMedida}
+                      onValueChange={(v) => cambiar(i, 'UnidadMedida', String(v))}
+                      options={UNIDADES.map(u => ({ label: u, value: u }))}
+                    />
+                  </YStack>
+                ) : null}
                 <YStack flex={2.4}>
                   <AppInput label="Marca" value={l.Marca} onChangeText={(v: string) => cambiar(i, 'Marca', v)} />
                 </YStack>
               </XStack>
 
               {l.EsEquipo ? (
-                <XStack gap="$2.5">
+                <XStack gap="$2">
                   <YStack flex={1}>
                     <AppInput label="Modelo" value={l.Modelo} onChangeText={(v: string) => cambiar(i, 'Modelo', v)} />
                   </YStack>
@@ -555,8 +741,29 @@ export default function PaseCrearScreen() {
                   </YStack>
                 </XStack>
               ) : null}
+
+              {/* Por línea y no por pase: en un pase con un torno y diez
+                  brocas, el torno vuelve entero o no vuelve, y las brocas
+                  pueden ir volviendo de a poco.
+
+                  Aparece solo si el tipo exige retorno y el solicitante tiene
+                  el acceso. Sin las dos cosas la pregunta no existe. */}
+              {preguntarParcial ? (
+                <XStack alignItems="center" gap="$2.5" paddingVertical="$1.5" marginBottom="$1"
+                  onPress={() => cambiarParcial(i, !l.RegresoParcial)}
+                  pressStyle={{ opacity: 0.6 }} hitSlop={6}>
+                  <View width={18} height={18} borderRadius="$1" borderWidth={1.5}
+                    borderColor={l.RegresoParcial ? ACCENT : '$border'}
+                    backgroundColor={l.RegresoParcial ? ACCENT : 'transparent'}
+                    alignItems="center" justifyContent="center">
+                    {l.RegresoParcial ? <Check size={12} color="#fff" /> : null}
+                  </View>
+                  <Text fontSize={12} fontWeight="800" color="$text">Se permite regreso parcial</Text>
+                </XStack>
+              ) : null}
             </YStack>
-          ))}
+            )
+          })}
 
           {lineas.length === 0 ? (
             <YStack alignItems="center" paddingVertical="$8" gap="$2">
