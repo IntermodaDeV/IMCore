@@ -94,6 +94,21 @@ export const fmtFechaLarga = (iso: string | null) => {
   return `${DIAS_LARGOS_ES[d.day()]} ${d.format('DD')} ${MESES_ES[d.month()]}`
 }
 
+/**
+ * 'Sem. 28/09 – 04/10': la semana del presupuesto que muestra un confirm. El
+ * presupuesto es el de la semana de ESAS horas, que puede no ser la que se ve
+ * en el tablero; sin decirla, los dos números parecían contradecirse.
+ */
+export const fmtSemanaCorta = (inicio: string | null | undefined, fin: string | null | undefined) => {
+  const dm = (v: string | null | undefined) => {
+    const t = String(v ?? '').substring(0, 10)
+    return /^\d{4}-\d{2}-\d{2}$/.test(t) ? `${t.substring(8, 10)}/${t.substring(5, 7)}` : ''
+  }
+  const a = dm(inicio)
+  const b = dm(fin)
+  return a && b ? `Sem. ${a} – ${b}` : ''
+}
+
 export const fmtFechaHora = (iso: string | null) =>
   iso ? dayjs(iso).format('DD/MM/YYYY HH:mm') : '—'
 

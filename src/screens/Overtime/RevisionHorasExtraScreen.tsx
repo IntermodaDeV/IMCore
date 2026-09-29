@@ -30,6 +30,7 @@ import {
   fmtFechaHora,
   fmtHora,
   fmtHoras,
+  fmtSemanaCorta,
   nombreConCodigo,
 } from './Overtime.utils'
 
@@ -1591,7 +1592,12 @@ function ImpactoResolver({ filas }: { filas: IOvertimeReviewImpact[] }) {
       backgroundColor={excedido ? '#FEF2F2' : '#F8FAFC'}
     >
       {[
-        { label: 'Presupuesto de la semana', valor: fmtDinero(presupuesto), fuerte: false },
+        {
+          // La semana de ESAS horas, que puede no ser la que se ve en el tablero.
+          label: `Presupuesto de la semana${total.Semana_Inicio ? ` (${fmtSemanaCorta(total.Semana_Inicio, total.Semana_Fin).replace('Sem. ', '')})` : ''}`,
+          valor: fmtDinero(presupuesto),
+          fuerte: false,
+        },
         { label: 'Cuesta resolver esto', valor: fmtDinero(cuesta), fuerte: false },
         {
           label: excedido ? 'Se excede en' : 'Quedarían',

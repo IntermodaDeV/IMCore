@@ -66,9 +66,10 @@ export const timeToSeconds = (value: string | null | undefined): number | null =
 }
 
 /**
- * '13:30' → '1:30 PM'. Solo para MOSTRAR: el valor de la fila sigue en 24 h,
- * que es con lo que se calcula y lo que viaja al servidor. '00:00' y '24:00'
- * son medianoche. Lo que no se pueda interpretar se devuelve tal cual.
+ * La hora para MOSTRAR, en 24 h: '13:30', '07:00'. Todo el módulo va en 24 h
+ * para que ninguna tarjeta diga '1:30 PM' al lado de otra que dice '13:30'.
+ * '24:00' es medianoche ('00:00'). Lo que no se pueda interpretar se devuelve
+ * tal cual. Conserva el nombre para no tocar a quienes la usan.
  */
 export const hora12 = (value: string | null | undefined): string => {
   const sec = timeToSeconds(value)
@@ -77,10 +78,8 @@ export const hora12 = (value: string | null | undefined): string => {
   const totalMin = Math.floor(sec / 60) % (24 * 60)
   const h24 = Math.floor(totalMin / 60)
   const m = totalMin % 60
-  const sufijo = h24 < 12 ? 'AM' : 'PM'
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
 
-  return `${h12}:${String(m).padStart(2, '0')} ${sufijo}`
+  return `${String(h24).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
 /** Segundos desde la medianoche a 'HH:mm'. */

@@ -30,6 +30,7 @@ import {
   DistribucionHoras,
   fmtFecha,
   fmtFechaLarga,
+  fmtSemanaCorta,
   fmtHora,
   fmtHoras,
   nombreConCodigo,
@@ -1332,9 +1333,15 @@ function ImpactoPresupuesto({ filas }: { filas: IOvertimeApprovalImpact[] }) {
       padding="$3"
       gap="$2"
     >
-      <Text fontSize={10} fontWeight="700" color={excedido ? '#991B1B' : '#166534'} letterSpacing={0.4}>
-        TU PRESUPUESTO
-      </Text>
+      <XStack justifyContent="space-between" alignItems="center" gap="$2">
+        <Text fontSize={10} fontWeight="700" color={excedido ? '#991B1B' : '#166534'} letterSpacing={0.4}>
+          TU PRESUPUESTO
+        </Text>
+        {/* De qué semana: la de esas horas, no necesariamente la del tablero. */}
+        <Text fontSize={10} fontWeight="700" color="$textMuted">
+          {fmtSemanaCorta(total.Semana_Inicio, total.Semana_Fin)}
+        </Text>
+      </XStack>
 
       <XStack justifyContent="space-between" alignItems="center" gap="$2">
         <Text fontSize={12} color="$textSecondary">Asignado</Text>

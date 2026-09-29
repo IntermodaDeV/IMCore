@@ -828,28 +828,16 @@ export function GraficoModulos({
 
 const DIAS_LARGOS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
-/**
- * El horario corto: '1 – 5 PM' en lugar de '1:00 PM - 5:00 PM'.
- *
- * El AM/PM va UNA vez si los dos extremos lo comparten, y los ':00' se omiten.
- * Con el día, el motivo y el reparto por banda en el mismo renglón, el horario
- * completo cargaba la lista más que ningún otro dato.
- */
+/** El horario en 24 h, igual que el resto del módulo: '13:00 – 17:00'. */
 const horarioCorto = (inicio: string | null | undefined, fin: string | null | undefined): string => {
-  const partir = (iso: string | null | undefined) => {
-    const hhmm = String(iso ?? '').substring(11, 16)
-    const [h, m] = hhmm.split(':').map(Number)
-    if (isNaN(h) || isNaN(m)) return null
-    const sufijo = h < 12 ? 'AM' : 'PM'
-    const h12 = h % 12 === 0 ? 12 : h % 12
-    return { texto: m === 0 ? `${h12}` : `${h12}:${String(m).padStart(2, '0')}`, sufijo }
+  const hhmm = (iso: string | null | undefined) => {
+    const t = String(iso ?? '').substring(11, 16)
+    return /^\d{2}:\d{2}$/.test(t) ? t : null
   }
-  const a = partir(inicio)
-  const b = partir(fin)
+  const a = hhmm(inicio)
+  const b = hhmm(fin)
   if (!a || !b) return ''
-  return a.sufijo === b.sufijo
-    ? `${a.texto} – ${b.texto} ${b.sufijo}`
-    : `${a.texto} ${a.sufijo} – ${b.texto} ${b.sufijo}`
+  return `${a} – ${b}`
 }
 
 /** 'yyyy-mm-dd' a 'Miércoles 23/09', con partes locales. */
