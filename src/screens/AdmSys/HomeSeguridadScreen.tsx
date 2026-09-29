@@ -230,9 +230,7 @@ function EsqueletoInicio() {
 export default function HomeSeguridadScreen() {
   const theme = useTheme()
   const navigation = useNavigation<any>()
-  const { user } = useAuth()
-  /* El menú ES el dato de esta pantalla: de él salen las opciones que se
-     muestran. Así que recargar acá es recargar el menú, no otra cosa. */
+  const { user, refreshUser } = useAuth()
   const { menu, refreshMenu, loading } = useMenu()
   const [refrescando, setRefrescando] = React.useState(false)
 
@@ -247,14 +245,34 @@ export default function HomeSeguridadScreen() {
   const escaneos = ESCANEOS.filter(d => misRutas.has(d.ruta))
   const tableros = TABLEROS.filter(d => misRutas.has(d.ruta))
 
-  /* El gesto ya muestra su propio spinner, así que no se toca el loader global:
-     dos indicadores a la vez para lo mismo se ve como que algo se trabó. */
+  /**
+   * Deslizar recarga LAS DOS COSAS que deciden qué se ve acá:
+   *
+   *   el USUARIO   trae los accesos. De ahí sale si a esta persona le toca el
+   *                inicio de seguridad. Si se lo quitan, al deslizar vuelve al
+   *                inicio general sin tener que cerrar sesión.
+   *   el MENÚ      trae las rutas. De ahí sale cuáles de las seis tarjetas se
+   *                muestran.
+   *
+   * Recargar solo una dejaba la mitad vieja: le daban acceso a un módulo y la
+   * tarjeta no aparecía hasta el siguiente ingreso.
+   *
+   * Cada una atrapa su propio error: si una falla, la otra igual se aplica, y
+   * lo que no se pudo recargar queda con el valor anterior. Quedarse con las
+   * dos viejas porque una llamada no respondió es peor.
+   *
+   * El gesto ya muestra su propio spinner, así que no se toca el loader global:
+   * dos indicadores a la vez para lo mismo se ve como que algo se trabó.
+   */
   const alDeslizar = React.useCallback(async () => {
     if (!user?.User_Code) return
     setRefrescando(true)
-    try { await refreshMenu(user.User_Code) } catch { /* el menú anterior sigue sirviendo */ }
-    finally { setRefrescando(false) }
-  }, [refreshMenu, user?.User_Code])
+    await Promise.all([
+      refreshUser().catch(() => undefined),
+      refreshMenu(user.User_Code).catch(() => undefined),
+    ])
+    setRefrescando(false)
+  }, [refreshUser, refreshMenu, user?.User_Code])
 
   /* El header lo fija HomeScreen, que es quien decide cuál de los dos inicios
      mostrar. Si esta pantalla también lo fijara, los dos se pisarían — y los
