@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react'
-import { YStack, Text, XStack, View, useThemeName, styled } from 'tamagui'
+import React, { useState } from 'react'
+import { YStack, Text, XStack, View, styled } from 'tamagui'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from 'tamagui'
 import { AppError, handleError } from '../../utils/errorHandler'
 import { IQuickActions } from '../../api/modules/security/security.types'
 import { ExecutionResponse } from '../../api/modules/response.type'
 import { securityService } from '../../api/modules/security/security.service'
-import { ScrollView, ImageBackground, RefreshControl } from 'react-native'
+import { ScrollView, RefreshControl } from 'react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import * as Icons from 'lucide-react-native'
 import { Pressable } from 'react-native'
@@ -17,13 +17,17 @@ import { TouchableOpacity, Animated, Easing, StyleSheet, View as RNView, Image a
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useLoader } from '../../providers/LoaderProvider'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
+import CardSaludo from './CardSaludo'
+import HomeSeguridadScreen from './HomeSeguridadScreen'
 
-function getGreeting() {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'BUENOS DÍAS'
-  if (hour < 19) return 'BUENAS TARDES'
-  return 'BUENAS NOCHES'
-}
+/**
+ * Acceso que cambia el inicio por el de seguridad.
+ *
+ * Se resuelve acá y no en la navegación a propósito: la ruta 'inicio' sigue
+ * siendo una sola, así que el menú, el botón de atrás y los enlaces de las
+ * notificaciones no tienen que saber nada de esto.
+ */
+const ACCESO_HOME_SEGURIDAD = 'HomeSeguridad'
 
 export default function HomeScreen() {
   const loader = useLoader();
@@ -33,8 +37,11 @@ export default function HomeScreen() {
   })
   const { user } = useAuth()
   const theme = useTheme()
-  const themeName = useThemeName();
-  const greeting = getGreeting()
+  /* `user.Access` viene como lista separada por comas, igual que en el resto de
+     la app. Si el usuario tiene el acceso, esta pantalla cede el paso a la de
+     seguridad — más abajo, después de los hooks, para no romper su orden. */
+  const esSeguridad = (user?.Access ?? '')
+    .split(',').map(s => s.trim()).includes(ACCESO_HOME_SEGURIDAD)
   const navigation = useNavigation<any>()
   const { height } = useWindowDimensions()
   const { menu } = useMenu()
@@ -42,7 +49,6 @@ export default function HomeScreen() {
   const [error, setError] = useState<AppError | null>(null)
   const [data, setData] = useState<IQuickActions[]>([])
   const [menus, setMenus] = useState<any[]>([])
-  const [urlBanner, setUrlBanner] = useState(require('../../assets/Banner.png'))
 
   usePageHeader({
     center: (
@@ -55,11 +61,20 @@ export default function HomeScreen() {
       />
     ),
 
+    /* El header lo fija SOLO esta pantalla, aunque muestre la de seguridad.
+       Las dos llamaban a usePageHeader y los efectos del padre corren DESPUÉS
+       de los del hijo, así que el header de acá pisaba al de seguridad y el
+       ícono de perfil volvía a aparecer.
+
+       A seguridad no se le ofrece el perfil: el teléfono del portón es
+       compartido entre turnos y ahí no hay nada personal que configurar. */
     right: (
       <XStack gap="$3">
-        <View>
-          <UserRoundStyled onPress={() => navigation.navigate('Perfil')} size={20} />
-        </View>
+        {esSeguridad ? null : (
+          <View>
+            <UserRoundStyled onPress={() => navigation.navigate('Perfil')} size={20} />
+          </View>
+        )}
         <NotificationBell size={20} />
       </XStack>
     ),
@@ -101,14 +116,13 @@ export default function HomeScreen() {
     }, [getInfo])
   )
 
-  useEffect(() => {
-    if (themeName === 'dark') {
-      setUrlBanner(require('../../assets/banner-dark.png'))
-    } else {
-      setUrlBanner(require('../../assets/Banner.png'))
-    }
-  }, [themeName])
+  /* El banner y el saludo se fueron a CardSaludo: el efecto que los sincronizaba
+     con el tema vive ahí ahora, y acá sobraba. */
 
+
+  /* Va DESPUÉS de todos los hooks: React exige que se llamen siempre en el
+     mismo orden, y una salida temprana arriba los saltearía. */
+  if (esSeguridad) return <HomeSeguridadScreen />
 
   return (
     <ScrollView
@@ -131,37 +145,9 @@ export default function HomeScreen() {
         alignItems="center"
       >
 
-        <ImageBackground
-          source={urlBanner}
-          style={{ width: '100%', borderRadius: 16, overflow: 'hidden' }}
-          imageStyle={{ borderRadius: 16 }}
-          resizeMode="cover"
-        >
-          <YStack padding={20}>
-
-            <Text
-              fontSize={16}
-              fontWeight="700"
-              color={theme.primary?.val}
-              letterSpacing={1.2}
-              textTransform="uppercase"
-              marginBottom="$1"
-            >
-              {greeting},
-            </Text>
-
-            <XStack alignItems="center" marginBottom="$2">
-              <Text fontSize={25} fontWeight="700" color={theme.text?.val}>
-                Hola, {user?.Name ?? 'Usuario'}
-              </Text>
-              <Text fontSize={22} marginLeft="$2">👋</Text>
-            </XStack>
-
-            <Text fontSize={14} color={theme.textMuted?.val} lineHeight={22}>
-              Tu centro de operaciones IMCORE está listo. Aquí tienes lo más importante para hoy.
-            </Text>
-          </YStack>
-        </ImageBackground>
+        {/* La misma card que usa el inicio de seguridad. Compartida para que el
+            saludo no se desincronice entre las dos pantallas. */}
+        <CardSaludo mensaje="Tu centro de operaciones IMCore está listo. Aquí tienes lo más importante para hoy." />
 
         <YStack width="100%" marginTop="$4">
           <Text fontSize={18} fontWeight="700" marginBottom="$3" color={theme.text?.val}>

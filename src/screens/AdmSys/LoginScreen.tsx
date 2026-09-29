@@ -451,7 +451,7 @@ export default function LoginScreen() {
                 </XStack>
               )}
 
-              <XStack
+              {/* <XStack
                 justifyContent="center"
                 alignItems="center"
                 marginBottom="$4"
@@ -473,7 +473,7 @@ export default function LoginScreen() {
                 >
                   Crear una
                 </Text>
-              </XStack>
+              </XStack> */}
 
               <XStack justifyContent="center" alignItems="center" marginBottom="$4">
                 <Text
