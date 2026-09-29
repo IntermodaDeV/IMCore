@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Modal, ScrollView, SectionList } from 'react-native'
+import {
+  Dimensions, Keyboard, KeyboardAvoidingView, Modal, Platform,
+  ScrollView as RNScrollView, SectionList, TextInput,
+} from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { useNavigation, useRoute } from '@react-navigation/native'
 // `Lock` se renombra: choca con el tipo global Lock del DOM y TS resuelve ese.
@@ -91,6 +94,92 @@ const LINEA_VACIA = (m: IMaterial): Linea => ({
 /** Alto del footer fijo: el scroll reserva ese espacio para no quedar tapado. */
 const FOOTER_H = 108
 
+/** Aire entre el campo y el borde del teclado, para que no quede pegado. */
+const HOLGURA = 24
+
+/**
+ * El teclado, resuelto para ESTA pantalla.
+ *
+ * ── POR QUÉ NO SE USA KeyboardAwareForm ────────────────────────────────────
+ * El componente común hace bien la parte difícil —medir el campo y subir solo
+ * el solape— pero fija dos props que acá estorban:
+ *
+ *   keyboardDismissMode="on-drag"        arrastrar para ver un campo tapado
+ *                                        CIERRA el teclado. En Android, que es
+ *                                        donde más se arrastra, deja al usuario
+ *                                        peleando contra la pantalla.
+ *   keyboardShouldPersistTaps="handled"  tocar fuera de un campo también lo
+ *                                        cierra.
+ *
+ * En un formulario de dos campos eso no se nota. Acá hay hasta seis campos por
+ * línea y varias líneas: el teclado tiene que quedarse abierto mientras se
+ * llena, y el usuario se mueve tocando el campo siguiente, no arrastrando.
+ *
+ * Por eso esta pantalla lleva su propia versión, con la misma mecánica y otras
+ * dos props. El componente común NO se toca: lo usan Repuestos, Cooperativa,
+ * Gastos de viaje y Usuarios, y ahí las dos props que acá molestan son las
+ * correctas.
+ *
+ * ── LA MECÁNICA, QUE ES LA MISMA ───────────────────────────────────────────
+ * iOS  KeyboardAvoidingView con behavior="padding".
+ * Android  padding dinámico igual al alto del teclado: con edge-to-edge el
+ *          teclado se dibuja ENCIMA y la ventana no se achica, así que sin ese
+ *          padding no hay a dónde desplazarse.
+ * Los dos  al enfocar un campo se mide dónde quedó y se sube SOLO el solape.
+ *          Un scrollToEnd se iría hasta el final del padding y dejaría un hueco.
+ */
+const useTecladoDelFormulario = () => {
+  const scrollRef = useRef<RNScrollView>(null)
+  const scrollY = useRef(0)
+  /* Borde superior del teclado. Se guarda porque al saltar de un campo a otro
+     con el teclado YA abierto no vuelve a llegar ningún evento. */
+  const bordeTeclado = useRef(0)
+  const [kbAlto, setKbAlto] = useState(0)
+
+  const subir = useCallback((borde?: number) => {
+    const b = borde ?? bordeTeclado.current
+    if (b <= 0) return
+    /* El padding dinámico entra en el mismo render que kbAlto; el retraso le da
+       tiempo a que el scroll tenga a dónde ir. */
+    setTimeout(() => {
+      let node: any = null
+      try { node = (TextInput as any)?.State?.currentlyFocusedInput?.() } catch { node = null }
+      if (!node?.measureInWindow) return
+      node.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+        const solape = y + h + HOLGURA - b
+        if (solape > 0) {
+          scrollRef.current?.scrollTo({ y: scrollY.current + solape, animated: true })
+        }
+      })
+    }, 120)
+  }, [])
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      const alto = e.endCoordinates?.height ?? 0
+      setKbAlto(alto)
+      const borde = e.endCoordinates?.screenY ?? Dimensions.get('window').height - alto
+      bordeTeclado.current = borde
+      subir(borde)
+    })
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      setKbAlto(0)
+      bordeTeclado.current = 0
+    })
+    return () => { show.remove(); hide.remove() }
+  }, [subir])
+
+  return {
+    scrollRef,
+    /** Para el onScroll: hace falta saber dónde está para sumarle el solape. */
+    onScroll: (e: any) => { scrollY.current = e.nativeEvent.contentOffset.y },
+    /** Espacio extra al fondo. Solo Android lo necesita. */
+    paddingTeclado: Platform.OS === 'android' ? kbAlto : 0,
+    /** Para el onFocus de cada campo: cubre el salto con el teclado ya abierto. */
+    subirCampo: useCallback(() => subir(), [subir]),
+  }
+}
+
 const HOY = () => dayjs().format('YYYY-MM-DD')
 
 /**
@@ -117,6 +206,12 @@ export default function PaseCrearScreen() {
   const route = useRoute<any>()
   const { showToast } = useShowToast()
   const { user } = useAuth()
+  /* `subirCampo` va en el onFocus de cada campo: con el teclado YA abierto,
+     saltar a otro campo no vuelve a disparar el evento del teclado, así que sin
+     esto el campo nuevo puede quedar debajo. En un pase con varias líneas eso
+     pasa todo el tiempo — se va de Descripción a Cantidad a Marca sin cerrar el
+     teclado nunca. */
+  const { scrollRef, onScroll, paddingTeclado, subirCampo } = useTecladoDelFormulario()
 
   // Con id se está EDITANDO un pase pendiente; sin id se está creando.
   const paseId: number | undefined = route.params?.id
@@ -527,9 +622,38 @@ export default function PaseCrearScreen() {
 
   return (
     <View flex={1} backgroundColor="$background">
-      <ScrollView
-        contentContainerStyle={{ padding: 12, paddingBottom: FOOTER_H + 16 }}
-        keyboardShouldPersistTaps="handled"
+      {/* Las dos props que cambian todo en esta pantalla:
+
+          keyboardShouldPersistTaps="always"  tocar fuera de un campo NO cierra
+            el teclado. Con "handled" —lo habitual— cada toque en blanco lo
+            cerraba, y en un formulario de varias líneas eso pasa todo el tiempo.
+
+          keyboardDismissMode="none"  arrastrar tampoco lo cierra. Con "on-drag",
+            intentar ver un campo tapado cerraba el teclado justo cuando se lo
+            necesitaba, que es lo que rompía el flujo en Android.
+
+          El teclado se cierra con el botón atrás o con la tecla del teclado, que
+          es cuando el usuario de verdad terminó de escribir. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+      <RNScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="none"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={{
+          padding: 12,
+          flexGrow: 1,
+          /* El espacio del footer fijo MÁS el del teclado en Android: ahí el
+             teclado se dibuja encima y sin este padding no hay a dónde
+             desplazarse. */
+          paddingBottom: FOOTER_H + 16 + paddingTeclado,
+        }}
       >
 
         {/* ── Encabezado. Tipo y fecha comparten línea: en un teléfono cada uno
@@ -564,7 +688,7 @@ export default function PaseCrearScreen() {
             </YStack>
           </XStack>
 
-          <AppInput label="Enviado a" value={enviadoA} onChangeText={setEnviadoA}
+          <AppInput label="Enviado a" value={enviadoA} onChangeText={setEnviadoA} onFocus={subirCampo}
             placeholder="Persona, empresa o lugar de destino" />
 
           {/* Quién RETIRA, que no es quién pide: seguridad compara este nombre
@@ -575,12 +699,12 @@ export default function PaseCrearScreen() {
               líneas—, y como AppInput no acepta márgenes propios, el aire se
               pone con un separador. */}
           <View height={7} />
-          <AppInput label="Responsable de retirar" value={responsable} onChangeText={setResponsable}
+          <AppInput label="Responsable de retirar" value={responsable} onChangeText={setResponsable} onFocus={subirCampo}
             placeholder="Nombre y apellido de quien lo lleva"
             autoCapitalize="words" />
 
           <View height={7} />
-          <AppInput label="Comentario" value={comentario} onChangeText={setComentario}
+          <AppInput label="Comentario" value={comentario} onChangeText={setComentario} onFocus={subirCampo}
             placeholder="Opcional" multiline />
 
           {/* Va en el encabezado y no en cada línea porque aplica al pase
@@ -702,7 +826,7 @@ export default function PaseCrearScreen() {
               <View marginBottom={-7}>
                 <AppInput label="Descripción del producto" value={l.Descripcion}
                   placeholder="Ej. Juego de llaves mixtas"
-                  onChangeText={(v: string) => cambiar(i, 'Descripcion', v)} />
+                  onChangeText={(v: string) => cambiar(i, 'Descripcion', v)} onFocus={subirCampo} />
               </View>
 
               {/* Cantidad y unidad son cortas: el resto de la línea es para la
@@ -713,7 +837,7 @@ export default function PaseCrearScreen() {
                 {!unidadGeneral ? (
                   <YStack flex={1.1}>
                     <AppInput label="Cant." value={l.Cantidad} keyboardType="numeric"
-                      onChangeText={(v: string) => cambiar(i, 'Cantidad', v)} />
+                      onChangeText={(v: string) => cambiar(i, 'Cantidad', v)} onFocus={subirCampo} />
                   </YStack>
                 ) : null}
                 {!unidadGeneral ? (
@@ -727,17 +851,17 @@ export default function PaseCrearScreen() {
                   </YStack>
                 ) : null}
                 <YStack flex={2.4}>
-                  <AppInput label="Marca" value={l.Marca} onChangeText={(v: string) => cambiar(i, 'Marca', v)} />
+                  <AppInput label="Marca" value={l.Marca} onChangeText={(v: string) => cambiar(i, 'Marca', v)} onFocus={subirCampo} />
                 </YStack>
               </XStack>
 
               {l.EsEquipo ? (
                 <XStack gap="$2">
                   <YStack flex={1}>
-                    <AppInput label="Modelo" value={l.Modelo} onChangeText={(v: string) => cambiar(i, 'Modelo', v)} />
+                    <AppInput label="Modelo" value={l.Modelo} onChangeText={(v: string) => cambiar(i, 'Modelo', v)} onFocus={subirCampo} />
                   </YStack>
                   <YStack flex={1}>
-                    <AppInput label="Serie" value={l.Serie} onChangeText={(v: string) => cambiar(i, 'Serie', v)} />
+                    <AppInput label="Serie" value={l.Serie} onChangeText={(v: string) => cambiar(i, 'Serie', v)} onFocus={subirCampo} />
                   </YStack>
                 </XStack>
               ) : null}
@@ -773,9 +897,10 @@ export default function PaseCrearScreen() {
           ) : null}
         </YStack>
 
-      </ScrollView>
+      </RNScrollView>
+      </KeyboardAvoidingView>
 
-      {/* Footer fijo al fondo. No se mueve con el teclado: el ScrollView ya deja
+      {/* Footer fijo al fondo. No se mueve con el teclado: el formulario ya deja
           espacio y subirlo tapaba el campo que se está escribiendo. */}
       <YStack position="absolute" left={0} right={0} bottom={0}
         backgroundColor="$background" borderTopWidth={1} borderTopColor="$border"
