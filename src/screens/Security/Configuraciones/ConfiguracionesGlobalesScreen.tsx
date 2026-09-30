@@ -24,6 +24,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
   CooInter: 'Cooperativa',
   PasesSalida: 'Pases de salida de material',
   App: 'App móvil · versiones',
+  InventarioClientes: 'Inventario Clientes',
 }
 const CATEGORIA_ORDEN = ['Mtto', 'Repuestos', 'Visitas', 'RH', 'Gira', 'CooInter', 'PasesSalida', 'App']
 
@@ -313,6 +314,19 @@ const CONFIG_META: Record<
     min: 1,
     max: 366,
     ayudaRango: 'Por debajo de esto el pase es normal y avisa cada movimiento.',
+  },
+  // ── Inventario Clientes ── (también se cambian desde el web de Inventarios, por sus admin)
+  'InventarioClientes.PermitirReabrirCerrados': {
+    label: 'Se puede pedir reabrir un inventario que ya cerró la oficina',
+    kind: 'bool',
+  },
+  'InventarioClientes.DiasCerrado': {
+    label: 'Días después del cierre para pedir reabrir o desactivar',
+    kind: 'number',
+    unidad: 'días',
+    min: 0,
+    max: 365,
+    ayudaRango: '0 = sin límite. Los admin de inventarios reabren y reactivan siempre.',
   },
   'Visitas.LargaDuracionMaxDias': {
     label: 'Vigencia máxima de un pase de larga duración',

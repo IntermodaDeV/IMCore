@@ -50,6 +50,13 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
+  // Inventario Clientes: le aprobaron o rechazaron reabrir su parte -> Mis inventarios
+  // (si la aprobaron, el inventario ya aparece en «Por hacer»).
+  if (category === 'inventario_reapertura_resultado') {
+    navigateWhenReady('invImpMisInventarios')
+    return true
+  }
+
   if (category === 'mantenimiento_ticket') {
     const id = Number(data.ticketId ?? data.TicketId)
     if (id > 0) {

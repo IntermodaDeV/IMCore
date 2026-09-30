@@ -1,5 +1,7 @@
 import Config from 'react-native-config'
+import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { gzipSync, strToU8 } from 'fflate'
 import { refreshAccessToken } from '../auth/refreshToken'
 import { sessionManager } from './sessionManager'
 
@@ -19,12 +21,16 @@ type RequestOptions<TBody = any> = {
   // Tiempo máximo de espera en ms. Por defecto DEFAULT_TIMEOUT.
   // Usar 0 para desactivar el timeout (peticiones largas tipo SharePoint).
   timeoutMs?: number
+  // Manda el cuerpo JSON comprimido (Content-Encoding: gzip). Solo para rutas cuyo
+  // servidor lo acepta (IMCoreApi con UseRequestDecompression).
+  gzip?: boolean
 }
 
 // Opciones extra por petición (ej. timeout). Permite que llamadas largas
 // (SharePoint) suban el tiempo de espera sin afectar al resto de la app.
 export type RequestConfig = {
   timeoutMs?: number
+  gzip?: boolean
 }
 
 // Timeout por defecto: una petición normal nunca debería tardar más de esto.
@@ -136,12 +142,16 @@ class HttpClient {
     params,
     headers,
     timeoutMs,
+    gzip,
   }: RequestOptions<TBody>): Promise<TResponse> {
     const fullUrl =
       `${this.baseUrl}${url}${this.buildQuery(params)}`
 
     const token =
       await AsyncStorage.getItem('accessToken')
+
+    const json = body ? JSON.stringify(body) : undefined
+    const comprimir = gzip === true && json !== undefined
 
     const options: RequestInit = {
       method,
@@ -152,6 +162,7 @@ class HttpClient {
                 'application/json',
             }
           : {}),
+        ...(comprimir ? { 'Content-Encoding': 'gzip' } : {}),
         ...(headers || {}),
         ...(token
           ? {
@@ -159,9 +170,13 @@ class HttpClient {
             }
           : {}),
       },
-      body: body
-        ? JSON.stringify(body)
-        : undefined,
+      // iOS: se comprime aquí y fetch manda el Uint8Array como bytes.
+      // Android: el módulo nativo BORRA Content-Encoding si el cuerpo no es texto
+      // (NetworkingModule.kt) y, si es texto con esa cabecera, lo comprime él mismo.
+      // Por eso allá va el JSON tal cual y la cabecera se respeta.
+      body: comprimir && Platform.OS !== 'android'
+        ? (gzipSync(strToU8(json!)) as any)
+        : json,
     }
 
     try {
@@ -276,6 +291,7 @@ class HttpClient {
       url,
       body,
       timeoutMs: config?.timeoutMs,
+      gzip: config?.gzip,
     })
   }
 

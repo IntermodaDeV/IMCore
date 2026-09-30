@@ -21,6 +21,9 @@ import { AppHeader } from '../components/commons/AppHeader'
 import { puedeCrearTickets } from '../screens/Mantenimiento/mantenimiento.helpers'
 import DeviceInfo from 'react-native-device-info'
 import LoadingScreen from '../components/Skeletons/LoadingScreen'
+import { Alert } from 'react-native'
+import { motorEnvio } from '../services/inventarioImpulsadoras/motorEnvio'
+import { pendientesDelUsuario } from '../services/inventarioImpulsadoras/baseLocal'
 
 const Drawer = createDrawerNavigator()
 
@@ -157,7 +160,37 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
   const MENU = buildMenuTree([...baseMenu, ...inject])
   const insets = useSafeAreaInsets()
 
+  // Inventario de impulsadoras: solo quien tiene la opción de la app abre la base local.
+  const escaneaInventarios = baseMenu.some(m => m.Route === 'invImpMisInventarios')
+
+  // Si quedaron lecturas sin enviar (la app se cerró, se apagó la PDA), el envío arranca
+  // solo al abrir la app, sin esperar a que la impulsadora entre a la pantalla.
+  useEffect(() => {
+    if (!user?.Code || !escaneaInventarios) return
+    try {
+      if (pendientesDelUsuario(user.Code) > 0) motorEnvio.iniciar(user.Code)
+    } catch (e) {
+      console.log('[InventarioImpulsadoras] no se pudo abrir la base local', e)
+    }
+  }, [user?.Code, escaneaInventarios])
+
   const logoutUser = async () => {
+    let pendientes = 0
+    try { if (user?.Code && escaneaInventarios) pendientes = pendientesDelUsuario(user.Code) } catch { /* sin base local */ }
+    if (pendientes > 0) {
+      // No se pierden: quedan en el equipo a nombre de esta persona y se envían cuando
+      // vuelva a entrar. Pero si entrega la PDA a otra, tiene que saberlo.
+      const seguir = await new Promise<boolean>(resolve => Alert.alert(
+        'Tienes lecturas sin enviar',
+        `Quedan ${pendientes} lecturas de inventario guardadas en este equipo sin enviar. ` +
+        'No se borran: se enviarán cuando vuelvas a entrar con tu usuario en este mismo equipo.',
+        [
+          { text: 'Intentar enviar', onPress: () => { void motorEnvio.disparar('manual'); resolve(false) } },
+          { text: 'Cerrar sesión', style: 'destructive', onPress: () => resolve(true) },
+        ]))
+      if (!seguir) return
+    }
+    motorEnvio.detener()
     await logout()
   }
 
