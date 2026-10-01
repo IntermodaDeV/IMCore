@@ -328,6 +328,10 @@ const CONFIG_META: Record<
     max: 365,
     ayudaRango: '0 = sin límite. Los admin de inventarios reabren y reactivan siempre.',
   },
+  'InventarioClientes.HistoricoPorCierre': {
+    label: 'Reporte «Histórico»: los cerrados en el mes, por fecha de cierre (apagado: por fecha programada)',
+    kind: 'bool',
+  },
   'Visitas.LargaDuracionMaxDias': {
     label: 'Vigencia máxima de un pase de larga duración',
     kind: 'number',
