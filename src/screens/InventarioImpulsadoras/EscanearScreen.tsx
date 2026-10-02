@@ -16,7 +16,9 @@ import {
   resumenCodigos, totales, ultimasLecturas,
 } from '../../services/inventarioImpulsadoras/baseLocal'
 import { motorEnvio } from '../../services/inventarioImpulsadoras/motorEnvio'
+import { IMiHistorico } from '../../api/modules/inventarioImpulsadoras/inventarioImpulsadoras.types'
 import { ACCENT, BarraEnvio, ERR, OK, WARN, fmtN, textoCodigo, useEstadoMotor } from './components'
+import Reapertura from './Reapertura'
 
 // Escanear un inventario. Reglas que salen de lo que fallaba en la app vieja:
 //  - Cada lectura se guarda en el equipo ANTES de vibrar: si vibró, está guardada.
@@ -29,7 +31,7 @@ const MENSAJE_ESTADO: Record<string, string> = {
   CERRADO: 'Este inventario ya se cerró desde la oficina. Lo que tengas guardado se envía igual.',
   DESACTIVADO: 'Este inventario se desactivó. Lo que tengas guardado se envía igual.',
   QUITADA: 'Te quitaron de este inventario. Lo que tengas guardado se envía igual y la oficina lo ve.',
-  FINALIZADA: 'Ya finalizaste tu parte. Si hace falta seguir, pide que la reabran.',
+  FINALIZADA: 'Ya finalizaste tu parte. Si te faltó algo, pide que la reabran (necesita señal).',
 }
 
 type Aviso = { ok: boolean; texto: string; deshacer?: boolean; conflicto?: ConflictoQrBarra; danadoRepetido?: DanadoRepetido } | null
@@ -106,6 +108,19 @@ export default function EscanearScreen() {
   useEffect(() => { recargar() }, [estadoMotor.ultimoEnvioOk]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const puedeEscanear = !!a && a.puede_escanear === 1 && a.finalizar_pedido !== 1
+
+  // Ya finalizada (o cerrada): aquí mismo se puede pedir que la reabran. Lo que se ofrece lo
+  // decide el servidor (PuedeSolicitar, el mismo dato del histórico); sin señal no se muestra.
+  const finalizadaOCerrada = !!a && a.finalizar_pedido !== 1 && (a.estado === 'FINALIZADA' || a.estado === 'CERRADO')
+  const [hist, setHist] = useState<IMiHistorico | null>(null)
+  useEffect(() => {
+    if (!finalizadaOCerrada) { setHist(null); return }
+    let vivo = true
+    api.historico(90)
+      .then(r => { if (vivo) setHist((r.Data ?? []).find(h => h.InventarioUsuario_Id === iu) ?? null) })
+      .catch(() => { if (vivo) setHist(null) })
+    return () => { vivo = false }
+  }, [finalizadaOCerrada, iu])
   const aceptaQR = !!a?.tipo_escaneo.includes('QR')
 
   const trasAjuste = () => {
@@ -352,6 +367,8 @@ export default function EscanearScreen() {
             </Text>
           </View>
         )}
+
+        {!!hist && <Reapertura item={hist} onCambio={setHist} margen={0} />}
 
         {puedeRecuperar && (
           <View onPress={recuperar} pressStyle={{ opacity: 0.85 }} borderRadius="$4" padding="$3" backgroundColor="rgba(59,130,246,0.12)">

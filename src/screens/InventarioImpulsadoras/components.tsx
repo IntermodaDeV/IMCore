@@ -51,6 +51,8 @@ export const fmtFecha = (iso?: string | null) => {
   return `${d}/${m}/${y}`
 }
 
+export const fmtFechaHora = (iso?: string | null) => (iso ? `${fmtFecha(iso)} ${iso.slice(11, 16)}` : '')
+
 export const haceCuanto = (ms: number | null) => {
   if (!ms) return 'nunca'
   const s = Math.round((Date.now() - ms) / 1000)
