@@ -8,7 +8,7 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { shadows } from '../../theme/shadows'
 import { inventarioImpulsadorasService as api, mensajeDeError } from '../../api/modules/inventarioImpulsadoras/inventarioImpulsadoras.service'
 import {
-  IDashboard, IDashboardEnCurso, IDashboardInventario, IDashboardSucursal,
+  IDashboard, IDashboardEnCurso, IDashboardInventario, IDashboardSucursal, IProximoInventario,
 } from '../../api/modules/inventarioImpulsadoras/inventarioImpulsadoras.types'
 import { ACCENT, BarraAvance, ERR, OK, WARN, fmtFecha, fmtN } from './components'
 
@@ -56,6 +56,8 @@ const AYUDA = {
   Ahora: 'Lo abierto hoy, sin importar el mes elegido. Toca un número para ver su lista abajo.',
   PorPais: 'Programados, cerrados y pendientes del mes por empresa. La barra es el avance contra la meta, o contra lo programado si no hay meta. Vencido = su fecha ya pasó y no está listo.',
   Meses: 'Inventarios programados por mes: en verde lo cerrado y en ámbar lo que sigue abierto. El número de arriba es el total del mes.',
+  Proximos: 'Los inventarios que tocan en los próximos días según la periodicidad de cada cliente (último cierre + su ciclo): '
+    + 'los ya creados, los que faltan crear y los atrasados (último cierre en el último año). Se programan solo desde el web, en Programación.',
 } as const
 const AYUDA_AHORA: Record<string, string> = {
   'Listos para cerrar': 'Todas las personas finalizaron su parte: falta que alguien lo cierre en el web.',
@@ -79,6 +81,15 @@ const LEYENDA_LISTA: Record<Lista, string> = {
   sinSeguimiento: 'Sucursales que se quedaron sin inventario abierto ni programado.',
 }
 
+// Próximos inventarios: ventana, y qué se cuenta como atrasado (los muy viejos son sucursales que se dejaron de visitar).
+const VENTANAS = [30, 60, 90] as const
+const ATRASO_MAX_DIAS = 365
+const ESTADO_PROXIMO: Record<'PROGRAMADO' | 'POR_PROGRAMAR' | 'ATRASADO', { t: string; c: string }> = {
+  PROGRAMADO: { t: 'Programado', c: OK },
+  POR_PROGRAMAR: { t: 'Por programar', c: '#2563eb' },
+  ATRASADO: { t: 'Atrasado', c: WARN },
+}
+
 export default function DashboardScreen() {
   const theme = useTheme()
   const { width, height } = useWindowDimensions()
@@ -94,6 +105,9 @@ export default function DashboardScreen() {
   const [lista, setLista] = useState<Lista>('listos')
   // Explicaciones abiertas (por clave). Nada abierto al entrar: la pantalla queda limpia.
   const [ayuda, setAyuda] = useState<Record<string, boolean>>({})
+  const [ventana, setVentana] = useState<(typeof VENTANAS)[number]>(30)
+  const [proximos, setProximos] = useState<IProximoInventario[] | null>(null)
+  const [errorProximos, setErrorProximos] = useState<string | null>(null)
   const alternar = (k: string) => setAyuda(a => ({ ...a, [k]: !a[k] }))
   const pedido = useRef(0)
 
@@ -112,6 +126,22 @@ export default function DashboardScreen() {
   }, [companyId, mes])
 
   useEffect(() => { setCargando(true); void cargar() }, [cargar])
+
+  // Próximos: aparte del dashboard (otra ventana de tiempo) y sin bloquearlo si tarda o falla.
+  const pedidoProx = useRef(0)
+  const cargarProximos = useCallback(async () => {
+    const n = ++pedidoProx.current
+    try {
+      const r = await api.proximos({ companyId, dias: ventana })
+      if (n !== pedidoProx.current) return
+      setProximos((r.Data ?? []).filter(x => x.Estado !== 'SIN_HISTORIAL'
+        && (x.Estado !== 'ATRASADO' || (x.DiasDesdeCierre ?? 0) <= ATRASO_MAX_DIAS)))
+      setErrorProximos(null)
+    } catch (e) {
+      if (n === pedidoProx.current) setErrorProximos(mensajeDeError(e))
+    }
+  }, [companyId, ventana])
+  useEffect(() => { void cargarProximos() }, [cargarProximos])
   // Mientras la pantalla está al frente, se pone al día sola cada minuto.
   useFocusEffect(useCallback(() => {
     const t = setInterval(() => { void cargar() }, REFRESCO_MS)
@@ -278,7 +308,7 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView flex={1} backgroundColor="$background" showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); void cargar() }} colors={[ACCENT]} tintColor={ACCENT} />}>
+      refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); void cargar(); void cargarProximos() }} colors={[ACCENT]} tintColor={ACCENT} />}>
       <YStack paddingHorizontal={pad} paddingTop={compacto ? 8 : 12} paddingBottom={60} gap="$2.5"
         width="100%" maxWidth={1000} alignSelf="center">
 
@@ -393,6 +423,57 @@ export default function DashboardScreen() {
                 fontWeight={t.Mes.slice(0, 10) === mes ? '800' : '400'}>{mesCorto(t.Mes)}</Text>
             ))}
           </XStack>
+        </YStack>
+
+        {/* Próximos inventarios según la periodicidad (solo consulta; se programan en el web) */}
+        <YStack {...tarjeta} gap="$2">
+          <Encabezado k="Proximos" titulo="PRÓXIMOS INVENTARIOS" texto={AYUDA.Proximos} />
+          <XStack gap="$2">
+            {VENTANAS.map(v => <Chip key={v} on={ventana === v} texto={`${v} días`} onPress={() => setVentana(v)} />)}
+          </XStack>
+          {proximos === null
+            ? (errorProximos
+                ? <Text fontSize="$2" color={WARN}>{errorProximos}</Text>
+                : <Spinner color={ACCENT} />)
+            : (() => {
+                const cuenta = (e: keyof typeof ESTADO_PROXIMO) => proximos.filter(x => x.Estado === e).length
+                const fecha = (x: IProximoInventario) => (x.Estado === 'PROGRAMADO' ? x.ProgramadoFecha : x.FechaSugerida) ?? ''
+                const orden = [...proximos].sort((a, b) => fecha(a).localeCompare(fecha(b)) || a.ClienteNombre.localeCompare(b.ClienteNombre))
+                return (
+                  <>
+                    <XStack gap="$2">
+                      {(Object.keys(ESTADO_PROXIMO) as (keyof typeof ESTADO_PROXIMO)[]).map(e => (
+                        <YStack key={e} flex={1} alignItems="center" paddingVertical="$1.5" borderRadius="$3" backgroundColor={`${ESTADO_PROXIMO[e].c}18`}>
+                          <Text fontSize="$6" fontWeight="900" color={ESTADO_PROXIMO[e].c}>{fmtN(cuenta(e))}</Text>
+                          <Text fontSize="$1" color="$textMuted" textAlign="center">{ESTADO_PROXIMO[e].t}</Text>
+                        </YStack>
+                      ))}
+                    </XStack>
+                    {orden.length === 0
+                      ? <Text color="$textMuted" textAlign="center" paddingVertical="$2">Nada en los próximos {ventana} días.</Text>
+                      : orden.slice(0, MAX_FILAS).map(x => {
+                          const est = ESTADO_PROXIMO[x.Estado as keyof typeof ESTADO_PROXIMO]
+                          return (
+                            <YStack key={x.Sucursal_Id} gap={1} paddingVertical="$1.5" borderTopWidth={1} borderTopColor="$border">
+                              <XStack justifyContent="space-between" alignItems="center" gap="$2">
+                                <Text fontSize="$2" fontWeight="800" color="$text" flex={1} numberOfLines={1}>{x.ClienteNombre}</Text>
+                                <Etiqueta texto={x.Estado === 'PROGRAMADO' ? x.ProgramadoCorrelativo ?? est.t : est.t} color={est.c} />
+                              </XStack>
+                              <Text fontSize="$1" color="$textMuted" numberOfLines={1}>
+                                {x.SucursalNombre && x.SucursalNombre !== x.ClienteNombre ? `${x.SucursalNombre} · ` : ''}{x.Empresa}
+                                {` · ${fmtFecha(fecha(x))} · cada ${x.CicloDias ?? 30} días`}
+                                {x.UltimoCierre ? ` · último ${fmtFecha(x.UltimoCierre)}` : ''}
+                              </Text>
+                            </YStack>
+                          )
+                        })}
+                    {orden.length > MAX_FILAS && (
+                      <Text fontSize="$1" color="$textMuted" textAlign="center">y {fmtN(orden.length - MAX_FILAS)} más (en el web, Programación)</Text>
+                    )}
+                    <Text fontSize="$1" color="$textMuted">Para crear los que faltan: web › Inventario Clientes › Programación.</Text>
+                  </>
+                )
+              })()}
         </YStack>
 
         {/* Listas de hoy */}

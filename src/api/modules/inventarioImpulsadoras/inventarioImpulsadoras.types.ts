@@ -228,3 +228,22 @@ export interface IDashboard {
   SinSeguimiento: IDashboardSucursal[]
   Alertas: IDashboardAlertas
 }
+
+// ── Dashboard › Próximos inventarios (el cálculo de Programación del web, solo consulta) ──
+/** PROGRAMADO = ya creado · POR_PROGRAMAR = toca en el periodo y falta crearlo · ATRASADO = ya le tocaba. */
+export type EstadoProximo = 'PROGRAMADO' | 'POR_PROGRAMAR' | 'ATRASADO' | 'SIN_HISTORIAL'
+export interface IProximoInventario {
+  Sucursal_Id: number
+  SucursalNombre: string
+  ClienteNombre: string
+  Empresa: string
+  CicloDias: number | null
+  Linea: string | null
+  UltimoCorrelativo: string | null
+  UltimoCierre: string | null
+  ProgramadoCorrelativo: string | null
+  ProgramadoFecha: string | null
+  Estado: EstadoProximo
+  FechaSugerida: string | null
+  DiasDesdeCierre: number | null
+}

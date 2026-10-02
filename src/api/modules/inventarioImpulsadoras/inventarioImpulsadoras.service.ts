@@ -1,8 +1,8 @@
 import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
-  IDashboard, IFinalizarResult, ILecturaServidor, ILote, ILoteResult, IMiAsignacion, IMiHistorico, IResumenCodigo,
-  ISolicitudReapertura,
+  IDashboard, IFinalizarResult, ILecturaServidor, ILote, ILoteResult, IMiAsignacion, IMiHistorico, IProximoInventario,
+  IResumenCodigo, ISolicitudReapertura,
 } from './inventarioImpulsadoras.types'
 
 // Consume api/InventarioImpulsadoras/App/*. El usuario sale del token: nunca se manda.
@@ -66,6 +66,11 @@ export const inventarioImpulsadorasService = {
   dashboard: (f: { companyId?: number | null; mes?: string }) =>
     httpClient.get<ExecutionResponse<IDashboard>>('InventarioImpulsadoras/Dashboard',
       { empresa: f.companyId ?? undefined, mes: f.mes }, { timeoutMs: 60000 }),
+
+  /** Próximos inventarios en 30/60/90 días según la periodicidad (solo consulta: se programan en el web). */
+  proximos: (f: { companyId?: number | null; dias: number }) =>
+    httpClient.get<ExecutionResponse<IProximoInventario[]>>('InventarioImpulsadoras/Dashboard/Proximos',
+      { empresa: f.companyId ?? undefined, dias: f.dias }, { timeoutMs: 60000 }),
 }
 
 /** Mensaje legible de un error de la API (el HttpError de la app solo trae «HTTP 409»). */

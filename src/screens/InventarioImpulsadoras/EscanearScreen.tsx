@@ -76,7 +76,6 @@ export default function EscanearScreen() {
   // si en ese momento se leyera el estado (`texto`), puede no tener aún las últimas letras
   // (la pantalla no alcanzó a actualizarse) y se procesaría un código vacío o cortado.
   const textoRef = useRef('')
-  const ultimoEvento = useRef(0)
   const contador = useRef(0)
 
   usePageHeader({
@@ -170,7 +169,6 @@ export default function EscanearScreen() {
     const codigo = limpiarCodigo(crudo)
     if (!codigo) return
     const r = await registrarLectura(iu, userCode, codigo, forzarModo ?? modo, a.tipo_escaneo, { otraPiezaDanada })
-    console.log(`[InvScan] resultado ${r.ok ? `OK ${r.lectura.tipo}` : `NO: ${r.motivo}`} len=${codigo.length}`)
     if (r.ok) {
       Vibration.vibrate(35)
       // «QR dañado» vale para UNA pieza: sin serie no se distingue la misma pieza escaneada dos veces,
@@ -209,14 +207,6 @@ export default function EscanearScreen() {
 
   const ponerTexto = (t: string) => { textoRef.current = t; setTexto(t) }
 
-  // Diagnóstico temporal del lector (adb logcat -s ReactNativeJS): qué llega y con qué pausas.
-  const diag = (evento: string, t: string) => {
-    const ahora = Date.now()
-    const pausa = ultimoEvento.current ? ahora - ultimoEvento.current : 0
-    ultimoEvento.current = ahora
-    console.log(`[InvScan] ${evento} +${pausa}ms len=${t.length} fin=${JSON.stringify(t.slice(-4))}`)
-  }
-
   // Cuánto esperar sin letras nuevas para dar el código por completo (si no llega ENTER).
   // Un QR a medias (con comas pero sin sus 8 campos) espera más: el lector sigue escribiendo.
   const esperaMs = (t: string) => (t.includes(',') && t.split(',').length < 8 ? 900 : 300)
@@ -230,7 +220,6 @@ export default function EscanearScreen() {
 
   // Lector en modo teclado: si trae ENTER se procesa ya; si no, al terminar la ráfaga.
   const onChangeText = (t: string) => {
-    diag('letras', t)
     if (/[\r\n]/.test(t)) {
       if (debounce.current) clearTimeout(debounce.current)
       t.split(/[\r\n]+/).filter(Boolean).forEach(c => { void procesar(c) })
@@ -240,11 +229,10 @@ export default function EscanearScreen() {
     ponerTexto(t)
     if (teclado) return   // escribiendo a mano: se procesa con el botón de enviar del teclado
     if (debounce.current) clearTimeout(debounce.current)
-    debounce.current = setTimeout(() => { diag('espera', textoRef.current); procesarCampo() }, esperaMs(t))
+    debounce.current = setTimeout(procesarCampo, esperaMs(t))
   }
 
   const onSubmit = () => {
-    diag('enter', textoRef.current)
     procesarCampo()
     setTimeout(() => inputRef.current?.focus(), 50)
   }
