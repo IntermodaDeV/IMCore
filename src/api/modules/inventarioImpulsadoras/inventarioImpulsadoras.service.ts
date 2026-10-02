@@ -75,6 +75,8 @@ export const inventarioImpulsadorasService = {
 
 /** Mensaje legible de un error de la API (el HttpError de la app solo trae «HTTP 409»). */
 export function mensajeDeError(e: any): string {
+  // Un 500 trae el texto técnico (SQL, red interna): a la persona solo le sirve saber que se reintenta.
+  if (e instanceof HttpError && e.status >= 500) return 'El servidor tuvo un problema; intenta de nuevo en un momento'
   try {
     const body = e?.response ? JSON.parse(e.response) : null
     if (body?.ErrorMessage) return body.ErrorMessage

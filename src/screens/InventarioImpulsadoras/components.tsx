@@ -53,6 +53,10 @@ export const fmtFecha = (iso?: string | null) => {
 
 export const fmtFechaHora = (iso?: string | null) => (iso ? `${fmtFecha(iso)} ${iso.slice(11, 16)}` : '')
 
+/** Para buscar sin importar mayúsculas ni tildes. */
+export const normal = (t?: string | null) => (t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+export const coincide = (q: string, ...campos: (string | null | undefined)[]) => !q || campos.some(c => normal(c).includes(q))
+
 export const haceCuanto = (ms: number | null) => {
   if (!ms) return 'nunca'
   const s = Math.round((Date.now() - ms) / 1000)

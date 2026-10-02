@@ -235,8 +235,11 @@ export type EstadoProximo = 'PROGRAMADO' | 'POR_PROGRAMAR' | 'ATRASADO' | 'SIN_H
 export interface IProximoInventario {
   Sucursal_Id: number
   SucursalNombre: string
+  ClienteCodigo: string
   ClienteNombre: string
   Empresa: string
+  Ruta: string | null
+  Asesor: string | null
   CicloDias: number | null
   Linea: string | null
   UltimoCorrelativo: string | null

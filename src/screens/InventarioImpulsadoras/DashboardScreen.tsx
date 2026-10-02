@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshControl, useWindowDimensions } from 'react-native'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FlatList, RefreshControl, TextInput, useWindowDimensions } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
-import { ChevronLeft, ChevronRight, CircleHelp } from 'lucide-react-native'
+import { ChevronLeft, ChevronRight, CircleHelp, Search, X } from 'lucide-react-native'
 import { useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -10,11 +10,12 @@ import { inventarioImpulsadorasService as api, mensajeDeError } from '../../api/
 import {
   IDashboard, IDashboardEnCurso, IDashboardInventario, IDashboardSucursal, IProximoInventario,
 } from '../../api/modules/inventarioImpulsadoras/inventarioImpulsadoras.types'
-import { ACCENT, BarraAvance, ERR, OK, WARN, fmtFecha, fmtN } from './components'
+import { ACCENT, BarraAvance, ERR, OK, WARN, coincide, fmtFecha, fmtN, normal } from './components'
 
 // Inventario Clientes › Dashboard (el mismo del web, en pantalla de teléfono).
 // El permiso ES la opción de menú invImpDashboard: la API la valida contra la BD.
 // El mes cuenta por la fecha programada; «Ahora» es lo abierto hoy. Lo desactivado no cuenta.
+// Pestaña «Próximos»: lo que toca según la periodicidad, en lista larga (solo consulta: se programa en el web).
 
 const REFRESCO_MS = 60_000
 const AZUL = '#2563eb'
@@ -39,6 +40,23 @@ const haceMin = (min: number | null | undefined) => {
   return h < 48 ? `hace ${h} h` : `hace ${Math.round(h / 24)} días`
 }
 const dias = (v: number) => `${v} ${v === 1 ? 'día' : 'días'}`
+const dosDigitos = (n: number) => String(n).padStart(2, '0')
+const aFecha = (iso: string) => {
+  const [y, m, dd] = iso.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, dd)
+}
+const sumarDias = (iso: string, n: number) => {
+  const f = aFecha(iso)
+  f.setDate(f.getDate() + n)
+  return `${f.getFullYear()}-${dosDigitos(f.getMonth() + 1)}-${dosDigitos(f.getDate())}`
+}
+/** Días de calendario de hoy a la fecha: negativo si ya pasó. */
+const diasHasta = (iso: string) => {
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+  return Math.round((aFecha(iso).getTime() - hoy.getTime()) / 86_400_000)
+}
+const cuando = (n: number) => (n === 0 ? 'hoy' : n === 1 ? 'mañana' : n > 0 ? `en ${dias(n)}` : `hace ${dias(-n)}`)
 const plural = (v: number, uno: string, varios: string) => `${fmtN(v)} ${v === 1 ? uno : varios}`
 /** % contra meta o programado (igual que el web): no llega a 100 mientras falte algo y puede pasar de 100. */
 const pct = (a: number, b: number) => (b <= 0 ? 0 : a >= b ? Math.round((a * 100) / b) : Math.min(99, Math.floor((a * 100) / b)))
@@ -57,7 +75,8 @@ const AYUDA = {
   PorPais: 'Programados, cerrados y pendientes del mes por empresa. La barra es el avance contra la meta, o contra lo programado si no hay meta. Vencido = su fecha ya pasó y no está listo.',
   Meses: 'Inventarios programados por mes: en verde lo cerrado y en ámbar lo que sigue abierto. El número de arriba es el total del mes.',
   Proximos: 'Los inventarios que tocan en los próximos días según la periodicidad de cada cliente (último cierre + su ciclo): '
-    + 'los ya creados, los que faltan crear y los atrasados (último cierre en el último año). Se programan solo desde el web, en Programación.',
+    + 'los ya creados, los que faltan crear y los atrasados (último cierre en el último año). Toca un número o «Ver lista» para verlos. '
+    + 'Se programan solo desde el web, en Programación.',
 } as const
 const AYUDA_AHORA: Record<string, string> = {
   'Listos para cerrar': 'Todas las personas finalizaron su parte: falta que alguien lo cierre en el web.',
@@ -84,11 +103,19 @@ const LEYENDA_LISTA: Record<Lista, string> = {
 // Próximos inventarios: ventana, y qué se cuenta como atrasado (los muy viejos son sucursales que se dejaron de visitar).
 const VENTANAS = [30, 60, 90] as const
 const ATRASO_MAX_DIAS = 365
-const ESTADO_PROXIMO: Record<'PROGRAMADO' | 'POR_PROGRAMAR' | 'ATRASADO', { t: string; c: string }> = {
-  PROGRAMADO: { t: 'Programado', c: OK },
-  POR_PROGRAMAR: { t: 'Por programar', c: '#2563eb' },
-  ATRASADO: { t: 'Atrasado', c: WARN },
+type Pestana = 'resumen' | 'proximos'
+type Grupo = 'porProgramar' | 'programados'
+const ESTADO_PROXIMO: Record<'PROGRAMADO' | 'POR_PROGRAMAR' | 'ATRASADO', { t: string; c: string; g: Grupo }> = {
+  PROGRAMADO: { t: 'Programados', c: OK, g: 'programados' },
+  POR_PROGRAMAR: { t: 'Por programar', c: AZUL, g: 'porProgramar' },
+  ATRASADO: { t: 'Atrasados', c: WARN, g: 'porProgramar' },
 }
+const cicloDe = (x: IProximoInventario) => x.CicloDias ?? 30
+/** La fecha que le toca: a un atrasado, la de su ciclo (ya pasó); al resto, la sugerida (fin de semana → lunes). */
+const tocaEl = (x: IProximoInventario) =>
+  (x.Estado === 'ATRASADO' && x.UltimoCierre ? sumarDias(x.UltimoCierre, cicloDe(x)) : x.FechaSugerida) ?? ''
+const porFecha = (f: (x: IProximoInventario) => string) => (a: IProximoInventario, b: IProximoInventario) =>
+  f(a).localeCompare(f(b)) || a.ClienteNombre.localeCompare(b.ClienteNombre)
 
 export default function DashboardScreen() {
   const theme = useTheme()
@@ -108,6 +135,11 @@ export default function DashboardScreen() {
   const [ventana, setVentana] = useState<(typeof VENTANAS)[number]>(30)
   const [proximos, setProximos] = useState<IProximoInventario[] | null>(null)
   const [errorProximos, setErrorProximos] = useState<string | null>(null)
+  const [cargandoProx, setCargandoProx] = useState(true)
+  const [refrescandoProx, setRefrescandoProx] = useState(false)
+  const [pestana, setPestana] = useState<Pestana>('resumen')
+  const [grupo, setGrupo] = useState<Grupo>('porProgramar')
+  const [buscar, setBuscar] = useState('')
   const alternar = (k: string) => setAyuda(a => ({ ...a, [k]: !a[k] }))
   const pedido = useRef(0)
 
@@ -131,6 +163,7 @@ export default function DashboardScreen() {
   const pedidoProx = useRef(0)
   const cargarProximos = useCallback(async () => {
     const n = ++pedidoProx.current
+    setCargandoProx(true)
     try {
       const r = await api.proximos({ companyId, dias: ventana })
       if (n !== pedidoProx.current) return
@@ -139,9 +172,22 @@ export default function DashboardScreen() {
       setErrorProximos(null)
     } catch (e) {
       if (n === pedidoProx.current) setErrorProximos(mensajeDeError(e))
+    } finally {
+      if (n === pedidoProx.current) { setCargandoProx(false); setRefrescandoProx(false) }
     }
   }, [companyId, ventana])
   useEffect(() => { void cargarProximos() }, [cargarProximos])
+
+  // Los dos grupos de la pestaña, por la fecha que toca: los atrasados quedan primero (su fecha ya pasó).
+  const q = normal(buscar.trim())
+  const { porProgramar, programados } = useMemo(() => {
+    const todos = (proximos ?? []).filter(x => coincide(q, x.ClienteNombre, x.SucursalNombre, x.ClienteCodigo,
+      x.ProgramadoCorrelativo, x.UltimoCorrelativo, x.Ruta, x.Asesor))
+    return {
+      porProgramar: todos.filter(x => x.Estado !== 'PROGRAMADO').sort(porFecha(tocaEl)),
+      programados: todos.filter(x => x.Estado === 'PROGRAMADO').sort(porFecha(x => x.ProgramadoFecha ?? '')),
+    }
+  }, [proximos, q])
   // Mientras la pantalla está al frente, se pone al día sola cada minuto.
   useFocusEffect(useCallback(() => {
     const t = setInterval(() => { void cargar() }, REFRESCO_MS)
@@ -246,6 +292,60 @@ export default function DashboardScreen() {
       <Text fontSize="$1" fontWeight="800" color={color}>{texto}</Text>
     </View>
   )
+  /** Pestañas en una barra (las mismas de «Mis inventarios»). */
+  const Segmentos = <T extends string,>({ valor, opciones, onCambio }: {
+    valor: T; opciones: readonly (readonly [T, string])[]; onCambio: (v: T) => void
+  }) => (
+    <XStack borderWidth={1} borderColor="$border" borderRadius="$4" padding="$1" backgroundColor="$backgroundElevated" gap="$1">
+      {opciones.map(([v, t]) => (
+        <View key={v} flex={1} onPress={() => onCambio(v)} pressStyle={{ opacity: 0.85 }}
+          backgroundColor={valor === v ? ACCENT : 'transparent'} borderRadius="$3" height={compacto ? 30 : 34}
+          alignItems="center" justifyContent="center">
+          <Text fontWeight="800" fontSize="$2" color={valor === v ? '#fff' : '$textMuted'}>{t}</Text>
+        </View>
+      ))}
+    </XStack>
+  )
+  const verProximos = (g: Grupo) => { setGrupo(g); setPestana('proximos') }
+
+  /** Un renglón de la pestaña Próximos: cliente, sucursal y la fecha que toca (o la programada). */
+  const filaProximo = (x: IProximoInventario) => {
+    const prog = x.Estado === 'PROGRAMADO'
+    const atrasado = x.Estado === 'ATRASADO'
+    const fecha = prog ? x.ProgramadoFecha ?? '' : tocaEl(x)
+    const n = fecha ? diasHasta(fecha) : 0
+    return (
+      <YStack {...tarjeta} gap={2} marginBottom="$2">
+        <XStack justifyContent="space-between" alignItems="center" gap="$2">
+          <Text fontSize="$3" fontWeight="800" color="$text" flex={1} numberOfLines={1}>{x.ClienteNombre}</Text>
+          {prog
+            ? <Etiqueta texto={x.ProgramadoCorrelativo ?? 'Programado'} color={OK} />
+            : atrasado
+              ? <Etiqueta texto={`atrasado ${dias(Math.max(1, -n))}`} color={WARN} />
+              : <Etiqueta texto={cuando(n)} color={AZUL} />}
+        </XStack>
+        <Text fontSize="$1" color="$textMuted" numberOfLines={1}>
+          {x.SucursalNombre && x.SucursalNombre !== x.ClienteNombre ? `${x.SucursalNombre} · ` : ''}{x.Empresa}{x.Linea ? ` · ${x.Linea}` : ''}
+        </Text>
+        <Text fontSize="$1" color="$textMuted" numberOfLines={2}>
+          {prog
+            ? <>{fmtFecha(fecha)} <Text fontSize="$1" color={n < 0 ? WARN : '$textMuted'} fontWeight={n < 0 ? '800' : '400'}>({cuando(n)})</Text></>
+            : `${atrasado ? 'Tocaba' : 'Toca'} el ${fmtFecha(fecha)}`}
+          {` · cada ${dias(cicloDe(x))}`}
+          {x.UltimoCorrelativo ? ` · último ${x.UltimoCorrelativo}${x.UltimoCierre ? ` (${fmtFecha(x.UltimoCierre)})` : ''}` : ''}
+        </Text>
+      </YStack>
+    )
+  }
+  const LEYENDA_PROX: Record<Grupo, string> = {
+    porProgramar: `Sin inventario creado y le toca en los próximos ${ventana} días según su periodicidad. Primero los atrasados `
+      + '(su último cierre fue hace menos de un año).',
+    programados: `Ya creados, con fecha en los próximos ${ventana} días o vencidos y todavía abiertos.`,
+  }
+  const VACIO_PROX: Record<Grupo, string> = {
+    porProgramar: `Todo lo que toca en los próximos ${ventana} días ya está programado.`,
+    programados: `No hay inventarios programados en los próximos ${ventana} días.`,
+  }
 
   const filasLista = (): React.ReactNode[] => {
     switch (lista) {
@@ -306,14 +406,14 @@ export default function DashboardScreen() {
     sinSeguimiento: 'Todas las sucursales tienen un inventario abierto o programado.',
   }
 
-  return (
-    <ScrollView flex={1} backgroundColor="$background" showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); void cargar(); void cargarProximos() }} colors={[ACCENT]} tintColor={ACCENT} />}>
-      <YStack paddingHorizontal={pad} paddingTop={compacto ? 8 : 12} paddingBottom={60} gap="$2.5"
-        width="100%" maxWidth={1000} alignSelf="center">
+  const ancho = { width: '100%' as const, maxWidth: 1000, alignSelf: 'center' as const }
 
-        {/* Empresa y mes */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+  return (
+    <View flex={1} backgroundColor="$background">
+      {/* Pestañas y empresa: fijos arriba, valen para las dos pestañas */}
+      <YStack paddingHorizontal={pad} paddingTop={compacto ? 8 : 12} paddingBottom="$2" gap="$2" {...ancho}>
+        <Segmentos valor={pestana} onCambio={setPestana} opciones={[['resumen', 'Resumen'], ['proximos', 'Próximos']] as const} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} flexGrow={0}>
           <XStack gap="$2">
             <Chip on={companyId === null} texto="Todas" onPress={() => setCompanyId(null)} />
             {d.Empresas.map(e => (
@@ -321,177 +421,228 @@ export default function DashboardScreen() {
             ))}
           </XStack>
         </ScrollView>
-        <XStack alignItems="center" justifyContent="space-between" {...tarjeta} padding="$1.5">
-          <View onPress={() => setMes(moverMes(mes, -1))} padding="$2" hitSlop={8}><ChevronLeft size={20} color={theme.text?.val} /></View>
-          <View onPress={() => setMes(primeroDeMes())} flex={1} alignItems="center">
-            <Text fontSize="$4" fontWeight="800" color="$text">{nombreMes(mes)}</Text>
-            {cargando && <Text fontSize="$1" color="$textMuted">Actualizando…</Text>}
-          </View>
-          <View onPress={() => setMes(moverMes(mes, 1))} padding="$2" hitSlop={8}><ChevronRight size={20} color={theme.text?.val} /></View>
-        </XStack>
-        {!!error && <Text fontSize="$2" color={WARN}>{error} (se muestra lo último que llegó)</Text>}
+      </YStack>
 
-        {/* KPIs del mes */}
-        <XStack flexWrap="wrap" gap="$2">
-          {kpis.map(k => (
-            <YStack key={k.t} {...tarjeta} width={`${(100 - 3) / 2}%` as any} gap={1}
-              onPress={() => alternar(k.t)} pressStyle={{ opacity: 0.85 }}>
-              <XStack justifyContent="space-between" alignItems="center">
-                <Titulo>{k.t.toUpperCase()}</Titulo>
-                <Interrogacion />
-              </XStack>
-              <Text fontSize={compacto ? '$7' : '$8'} fontWeight="900" color={k.c}>{k.v}</Text>
-              <Text fontSize="$1" color="$textMuted" numberOfLines={2}>{k.h}</Text>
-              {ayuda[k.t] && (
-                <Text fontSize="$1" color="$textMuted" lineHeight={15} marginTop={4} paddingTop={4}
-                  borderTopWidth={1} borderTopColor="$border">{AYUDA[k.t as keyof typeof AYUDA]}</Text>
-              )}
-            </YStack>
-          ))}
-        </XStack>
-        <Text fontSize="$1" color="$textMuted">
-          {fmtN(r.PiezasCerradas)} piezas contadas en lo cerrado del mes. El mes cuenta por la fecha programada.
-        </Text>
-
-        {/* Ahora */}
-        <YStack {...tarjeta} gap="$1.5">
-          {/* Con la ayuda abierta, cada renglón lleva su explicación debajo (uno por fila para que quepa). */}
-          <Encabezado k="Ahora" titulo="AHORA" texto={AYUDA.Ahora} />
-          <XStack flexWrap="wrap" rowGap="$1.5">
-            {ahora.map(x => (
-              <YStack key={x.t} width={ayuda.Ahora ? '100%' : '50%'} paddingRight="$1" gap={1}
-                onPress={x.l ? () => setLista(x.l!) : undefined} pressStyle={x.l ? { opacity: 0.7 } : undefined}>
-                <XStack alignItems="center" gap="$2">
-                  <View minWidth={36} paddingHorizontal={6} height={24} borderRadius={12} alignItems="center" justifyContent="center"
-                    backgroundColor={x.v ? x.c : `${GRIS}22`}>
-                    <Text fontSize="$2" fontWeight="900" color={x.v ? '#fff' : '$textMuted'}>{fmtN(x.v)}</Text>
-                  </View>
-                  <Text fontSize="$2" color="$text" flex={1} numberOfLines={2}>{x.t}</Text>
-                </XStack>
-                {ayuda.Ahora && (
-                  <Text fontSize="$1" color="$textMuted" lineHeight={15} paddingLeft={44}>{AYUDA_AHORA[x.t]}</Text>
-                )}
-              </YStack>
-            ))}
-          </XStack>
-        </YStack>
-
-        {/* Por país */}
-        <YStack {...tarjeta} gap="$2">
-          <Encabezado k="PorPais" titulo={`POR PAÍS · ${nombreMes(mes).toUpperCase()}`} texto={AYUDA.PorPais} />
-          {d.PorPais.map(p => {
-            const v = pct(p.Cerrados, p.Meta ?? p.Programados)
-            return (
-              <YStack key={p.Company_Id} gap={2}>
-                <XStack justifyContent="space-between" alignItems="baseline">
-                  <Text fontSize="$3" fontWeight="800" color="$text">{p.Empresa} <Text fontSize="$1" color="$textMuted" fontWeight="400">{p.Nombre}</Text></Text>
-                  <Text fontSize="$2" color="$text">{fmtN(p.Cerrados)} de {fmtN(p.Meta ?? p.Programados)}</Text>
-                </XStack>
-                <BarraAvance pct={Math.min(100, v)} color={v >= 100 ? OK : AZUL} />
-                <Text fontSize="$1" color="$textMuted">
-                  {plural(p.Abiertos, 'pendiente', 'pendientes')}{p.Listos ? ` · ${plural(p.Listos, 'listo', 'listos')}` : ''}
-                  {p.Vencidos ? <Text fontSize="$1" color={WARN} fontWeight="700">{` · ${plural(p.Vencidos, 'vencido', 'vencidos')}`}</Text> : null}
-                  {p.Meta == null ? ' · sin meta' : ''}
-                </Text>
-              </YStack>
-            )
-          })}
-        </YStack>
-
-        {/* Últimos 12 meses: columnas apiladas cerrados (verde) + abiertos (ámbar) */}
-        <YStack {...tarjeta} gap="$2">
-          <Encabezado k="Meses" titulo="ÚLTIMOS 12 MESES" texto={AYUDA.Meses} derecha={
+      {pestana === 'proximos' ? (
+        <YStack flex={1}>
+          <YStack paddingHorizontal={pad} paddingBottom="$2" gap="$2" {...ancho}>
             <XStack gap="$2" alignItems="center">
-              <View width={8} height={8} borderRadius={4} backgroundColor={OK} /><Text fontSize="$1" color="$textMuted">cerrados</Text>
-              <View width={8} height={8} borderRadius={4} backgroundColor={WARN} /><Text fontSize="$1" color="$textMuted">abiertos</Text>
+              {VENTANAS.map(v => <Chip key={v} on={ventana === v} texto={`${v} días`} onPress={() => setVentana(v)} />)}
+              {cargandoProx && proximos !== null && <Spinner size="small" color={ACCENT} />}
             </XStack>
-          } />
-          <XStack height={110} alignItems="flex-end" gap={3}>
-            {d.Tendencia.map(t => (
-              <YStack key={t.Mes} flex={1} alignItems="center" justifyContent="flex-end" height="100%">
-                <Text fontSize={9} color="$textMuted">{t.Programados || ''}</Text>
-                <View width="80%" height={`${(t.Abiertos / maxMes) * 80}%` as any} backgroundColor={WARN}
-                  borderTopLeftRadius={3} borderTopRightRadius={3} />
-                <View width="80%" height={`${(t.Cerrados / maxMes) * 80}%` as any} backgroundColor={OK}
-                  borderTopLeftRadius={t.Abiertos ? 0 : 3} borderTopRightRadius={t.Abiertos ? 0 : 3} />
-              </YStack>
-            ))}
-          </XStack>
-          <XStack gap={3}>
-            {d.Tendencia.map(t => (
-              <Text key={t.Mes} flex={1} textAlign="center" fontSize={9} color={t.Mes.slice(0, 10) === mes ? '$text' : '$textMuted'}
-                fontWeight={t.Mes.slice(0, 10) === mes ? '800' : '400'}>{mesCorto(t.Mes)}</Text>
-            ))}
-          </XStack>
-        </YStack>
-
-        {/* Próximos inventarios según la periodicidad (solo consulta; se programan en el web) */}
-        <YStack {...tarjeta} gap="$2">
-          <Encabezado k="Proximos" titulo="PRÓXIMOS INVENTARIOS" texto={AYUDA.Proximos} />
-          <XStack gap="$2">
-            {VENTANAS.map(v => <Chip key={v} on={ventana === v} texto={`${v} días`} onPress={() => setVentana(v)} />)}
-          </XStack>
-          {proximos === null
-            ? (errorProximos
-                ? <Text fontSize="$2" color={WARN}>{errorProximos}</Text>
-                : <Spinner color={ACCENT} />)
-            : (() => {
-                const cuenta = (e: keyof typeof ESTADO_PROXIMO) => proximos.filter(x => x.Estado === e).length
-                const fecha = (x: IProximoInventario) => (x.Estado === 'PROGRAMADO' ? x.ProgramadoFecha : x.FechaSugerida) ?? ''
-                const orden = [...proximos].sort((a, b) => fecha(a).localeCompare(fecha(b)) || a.ClienteNombre.localeCompare(b.ClienteNombre))
-                return (
-                  <>
-                    <XStack gap="$2">
-                      {(Object.keys(ESTADO_PROXIMO) as (keyof typeof ESTADO_PROXIMO)[]).map(e => (
-                        <YStack key={e} flex={1} alignItems="center" paddingVertical="$1.5" borderRadius="$3" backgroundColor={`${ESTADO_PROXIMO[e].c}18`}>
-                          <Text fontSize="$6" fontWeight="900" color={ESTADO_PROXIMO[e].c}>{fmtN(cuenta(e))}</Text>
-                          <Text fontSize="$1" color="$textMuted" textAlign="center">{ESTADO_PROXIMO[e].t}</Text>
-                        </YStack>
-                      ))}
-                    </XStack>
-                    {orden.length === 0
-                      ? <Text color="$textMuted" textAlign="center" paddingVertical="$2">Nada en los próximos {ventana} días.</Text>
-                      : orden.slice(0, MAX_FILAS).map(x => {
-                          const est = ESTADO_PROXIMO[x.Estado as keyof typeof ESTADO_PROXIMO]
-                          return (
-                            <YStack key={x.Sucursal_Id} gap={1} paddingVertical="$1.5" borderTopWidth={1} borderTopColor="$border">
-                              <XStack justifyContent="space-between" alignItems="center" gap="$2">
-                                <Text fontSize="$2" fontWeight="800" color="$text" flex={1} numberOfLines={1}>{x.ClienteNombre}</Text>
-                                <Etiqueta texto={x.Estado === 'PROGRAMADO' ? x.ProgramadoCorrelativo ?? est.t : est.t} color={est.c} />
-                              </XStack>
-                              <Text fontSize="$1" color="$textMuted" numberOfLines={1}>
-                                {x.SucursalNombre && x.SucursalNombre !== x.ClienteNombre ? `${x.SucursalNombre} · ` : ''}{x.Empresa}
-                                {` · ${fmtFecha(fecha(x))} · cada ${x.CicloDias ?? 30} días`}
-                                {x.UltimoCierre ? ` · último ${fmtFecha(x.UltimoCierre)}` : ''}
-                              </Text>
-                            </YStack>
-                          )
-                        })}
-                    {orden.length > MAX_FILAS && (
-                      <Text fontSize="$1" color="$textMuted" textAlign="center">y {fmtN(orden.length - MAX_FILAS)} más (en el web, Programación)</Text>
-                    )}
-                    <Text fontSize="$1" color="$textMuted">Para crear los que faltan: web › Inventario Clientes › Programación.</Text>
-                  </>
-                )
-              })()}
-        </YStack>
-
-        {/* Listas de hoy */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <XStack gap="$2">
-            {LISTAS.map(x => <Chip key={x.k} on={lista === x.k} texto={`${x.t} (${x.n})`} onPress={() => setLista(x.k)} />)}
-          </XStack>
-        </ScrollView>
-        <Text fontSize="$1" color="$textMuted" marginTop={-4}>{LEYENDA_LISTA[lista]}</Text>
-        <YStack>
-          {filas.length === 0
-            ? <Text color="$textMuted" textAlign="center" paddingVertical="$4">{vacio[lista]}</Text>
-            : filas.slice(0, MAX_FILAS)}
-          {filas.length > MAX_FILAS && (
-            <Text fontSize="$1" color="$textMuted" textAlign="center">y {fmtN(filas.length - MAX_FILAS)} más (en el web se ven todos)</Text>
+            <Segmentos valor={grupo} onCambio={setGrupo} opciones={[
+              ['porProgramar', `Por programar (${fmtN(porProgramar.length)})`],
+              ['programados', `Programados (${fmtN(programados.length)})`],
+            ] as const} />
+            <XStack alignItems="center" gap="$2" borderWidth={1} borderColor="$border" borderRadius="$4" paddingHorizontal="$3"
+              backgroundColor="$backgroundElevated" height={compacto ? 38 : 42}>
+              <Search size={16} color={theme.textMuted?.val} />
+              <TextInput
+                value={buscar}
+                onChangeText={setBuscar}
+                placeholder="Buscar cliente, sucursal, código, ruta o número"
+                placeholderTextColor={theme.textMuted?.val}
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="search"
+                style={{ flex: 1, fontSize: compacto ? 14 : 15, color: theme.text?.val, paddingVertical: 0 }}
+              />
+              {!!buscar && <View onPress={() => setBuscar('')} hitSlop={10}><X size={16} color={theme.textMuted?.val} /></View>}
+            </XStack>
+          </YStack>
+          {proximos === null ? (
+            <YStack flex={1} alignItems="center" justifyContent="center" padding="$6" gap="$3">
+              {errorProximos && !cargandoProx ? (
+                <>
+                  <Text color={ERR} textAlign="center">{errorProximos}</Text>
+                  <View onPress={() => void cargarProximos()} pressStyle={{ opacity: 0.85 }}
+                    backgroundColor={ACCENT} borderRadius="$4" paddingHorizontal="$4" paddingVertical="$2">
+                    <Text color="#fff" fontWeight="800">Reintentar</Text>
+                  </View>
+                </>
+              ) : <Spinner size="large" color={ACCENT} />}
+            </YStack>
+          ) : (
+            <FlatList
+              data={grupo === 'porProgramar' ? porProgramar : programados}
+              keyExtractor={x => String(x.Sucursal_Id)}
+              renderItem={({ item }) => filaProximo(item)}
+              contentContainerStyle={{ paddingHorizontal: pad, paddingBottom: 60, ...ancho }}
+              refreshControl={<RefreshControl refreshing={refrescandoProx}
+                onRefresh={() => { setRefrescandoProx(true); void cargarProximos() }} colors={[ACCENT]} tintColor={ACCENT} />}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              initialNumToRender={12}
+              ListHeaderComponent={
+                <YStack paddingBottom="$2" gap={4}>
+                  {!!errorProximos && <Text fontSize="$2" color={WARN}>{errorProximos} (se muestra lo último que llegó)</Text>}
+                  <Text fontSize="$1" color="$textMuted">{LEYENDA_PROX[grupo]}</Text>
+                </YStack>
+              }
+              ListEmptyComponent={
+                <Text color="$textMuted" textAlign="center" paddingVertical="$6">
+                  {q ? `Nada coincide con «${buscar.trim()}».` : VACIO_PROX[grupo]}
+                </Text>
+              }
+              ListFooterComponent={
+                <Text fontSize="$1" color="$textMuted" textAlign="center" paddingTop="$2">
+                  Para crear los que faltan: web › Inventario Clientes › Programación.
+                </Text>
+              }
+            />
           )}
         </YStack>
-      </YStack>
-    </ScrollView>
+      ) : (
+        <ScrollView flex={1} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); void cargar(); void cargarProximos() }} colors={[ACCENT]} tintColor={ACCENT} />}>
+          <YStack paddingHorizontal={pad} paddingBottom={60} gap="$2.5" {...ancho}>
+
+            {/* Mes */}
+            <XStack alignItems="center" justifyContent="space-between" {...tarjeta} padding="$1.5">
+              <View onPress={() => setMes(moverMes(mes, -1))} padding="$2" hitSlop={8}><ChevronLeft size={20} color={theme.text?.val} /></View>
+              <View onPress={() => setMes(primeroDeMes())} flex={1} alignItems="center">
+                <Text fontSize="$4" fontWeight="800" color="$text">{nombreMes(mes)}</Text>
+                {cargando && <Text fontSize="$1" color="$textMuted">Actualizando…</Text>}
+              </View>
+              <View onPress={() => setMes(moverMes(mes, 1))} padding="$2" hitSlop={8}><ChevronRight size={20} color={theme.text?.val} /></View>
+            </XStack>
+            {!!error && <Text fontSize="$2" color={WARN}>{error} (se muestra lo último que llegó)</Text>}
+
+            {/* KPIs del mes */}
+            <XStack flexWrap="wrap" gap="$2">
+              {kpis.map(k => (
+                <YStack key={k.t} {...tarjeta} width={`${(100 - 3) / 2}%` as any} gap={1}
+                  onPress={() => alternar(k.t)} pressStyle={{ opacity: 0.85 }}>
+                  <XStack justifyContent="space-between" alignItems="center">
+                    <Titulo>{k.t.toUpperCase()}</Titulo>
+                    <Interrogacion />
+                  </XStack>
+                  <Text fontSize={compacto ? '$7' : '$8'} fontWeight="900" color={k.c}>{k.v}</Text>
+                  <Text fontSize="$1" color="$textMuted" numberOfLines={2}>{k.h}</Text>
+                  {ayuda[k.t] && (
+                    <Text fontSize="$1" color="$textMuted" lineHeight={15} marginTop={4} paddingTop={4}
+                      borderTopWidth={1} borderTopColor="$border">{AYUDA[k.t as keyof typeof AYUDA]}</Text>
+                  )}
+                </YStack>
+              ))}
+            </XStack>
+            <Text fontSize="$1" color="$textMuted">
+              {fmtN(r.PiezasCerradas)} piezas contadas en lo cerrado del mes. El mes cuenta por la fecha programada.
+            </Text>
+
+            {/* Ahora */}
+            <YStack {...tarjeta} gap="$1.5">
+              {/* Con la ayuda abierta, cada renglón lleva su explicación debajo (uno por fila para que quepa). */}
+              <Encabezado k="Ahora" titulo="AHORA" texto={AYUDA.Ahora} />
+              <XStack flexWrap="wrap" rowGap="$1.5">
+                {ahora.map(x => (
+                  <YStack key={x.t} width={ayuda.Ahora ? '100%' : '50%'} paddingRight="$1" gap={1}
+                    onPress={x.l ? () => setLista(x.l!) : undefined} pressStyle={x.l ? { opacity: 0.7 } : undefined}>
+                    <XStack alignItems="center" gap="$2">
+                      <View minWidth={36} paddingHorizontal={6} height={24} borderRadius={12} alignItems="center" justifyContent="center"
+                        backgroundColor={x.v ? x.c : `${GRIS}22`}>
+                        <Text fontSize="$2" fontWeight="900" color={x.v ? '#fff' : '$textMuted'}>{fmtN(x.v)}</Text>
+                      </View>
+                      <Text fontSize="$2" color="$text" flex={1} numberOfLines={2}>{x.t}</Text>
+                    </XStack>
+                    {ayuda.Ahora && (
+                      <Text fontSize="$1" color="$textMuted" lineHeight={15} paddingLeft={44}>{AYUDA_AHORA[x.t]}</Text>
+                    )}
+                  </YStack>
+                ))}
+              </XStack>
+            </YStack>
+
+            {/* Por país */}
+            <YStack {...tarjeta} gap="$2">
+              <Encabezado k="PorPais" titulo={`POR PAÍS · ${nombreMes(mes).toUpperCase()}`} texto={AYUDA.PorPais} />
+              {d.PorPais.map(p => {
+                const v = pct(p.Cerrados, p.Meta ?? p.Programados)
+                return (
+                  <YStack key={p.Company_Id} gap={2}>
+                    <XStack justifyContent="space-between" alignItems="baseline">
+                      <Text fontSize="$3" fontWeight="800" color="$text">{p.Empresa} <Text fontSize="$1" color="$textMuted" fontWeight="400">{p.Nombre}</Text></Text>
+                      <Text fontSize="$2" color="$text">{fmtN(p.Cerrados)} de {fmtN(p.Meta ?? p.Programados)}</Text>
+                    </XStack>
+                    <BarraAvance pct={Math.min(100, v)} color={v >= 100 ? OK : AZUL} />
+                    <Text fontSize="$1" color="$textMuted">
+                      {plural(p.Abiertos, 'pendiente', 'pendientes')}{p.Listos ? ` · ${plural(p.Listos, 'listo', 'listos')}` : ''}
+                      {p.Vencidos ? <Text fontSize="$1" color={WARN} fontWeight="700">{` · ${plural(p.Vencidos, 'vencido', 'vencidos')}`}</Text> : null}
+                      {p.Meta == null ? ' · sin meta' : ''}
+                    </Text>
+                  </YStack>
+                )
+              })}
+            </YStack>
+
+            {/* Últimos 12 meses: columnas apiladas cerrados (verde) + abiertos (ámbar) */}
+            <YStack {...tarjeta} gap="$2">
+              <Encabezado k="Meses" titulo="ÚLTIMOS 12 MESES" texto={AYUDA.Meses} derecha={
+                <XStack gap="$2" alignItems="center">
+                  <View width={8} height={8} borderRadius={4} backgroundColor={OK} /><Text fontSize="$1" color="$textMuted">cerrados</Text>
+                  <View width={8} height={8} borderRadius={4} backgroundColor={WARN} /><Text fontSize="$1" color="$textMuted">abiertos</Text>
+                </XStack>
+              } />
+              <XStack height={110} alignItems="flex-end" gap={3}>
+                {d.Tendencia.map(t => (
+                  <YStack key={t.Mes} flex={1} alignItems="center" justifyContent="flex-end" height="100%">
+                    <Text fontSize={9} color="$textMuted">{t.Programados || ''}</Text>
+                    <View width="80%" height={`${(t.Abiertos / maxMes) * 80}%` as any} backgroundColor={WARN}
+                      borderTopLeftRadius={3} borderTopRightRadius={3} />
+                    <View width="80%" height={`${(t.Cerrados / maxMes) * 80}%` as any} backgroundColor={OK}
+                      borderTopLeftRadius={t.Abiertos ? 0 : 3} borderTopRightRadius={t.Abiertos ? 0 : 3} />
+                  </YStack>
+                ))}
+              </XStack>
+              <XStack gap={3}>
+                {d.Tendencia.map(t => (
+                  <Text key={t.Mes} flex={1} textAlign="center" fontSize={9} color={t.Mes.slice(0, 10) === mes ? '$text' : '$textMuted'}
+                    fontWeight={t.Mes.slice(0, 10) === mes ? '800' : '400'}>{mesCorto(t.Mes)}</Text>
+                ))}
+              </XStack>
+            </YStack>
+
+            {/* Próximos inventarios: aquí solo los conteos; la lista va en su pestaña */}
+            <YStack {...tarjeta} gap="$2">
+              <Encabezado k="Proximos" titulo={`PRÓXIMOS ${ventana} DÍAS`} texto={AYUDA.Proximos} derecha={
+                <XStack alignItems="center" gap={2} onPress={() => setPestana('proximos')} hitSlop={8} pressStyle={{ opacity: 0.7 }}>
+                  <Text fontSize="$2" fontWeight="800" color={ACCENT}>Ver lista</Text>
+                  <ChevronRight size={16} color={ACCENT} />
+                </XStack>
+              } />
+              {proximos === null
+                ? (errorProximos ? <Text fontSize="$2" color={WARN}>{errorProximos}</Text> : <Spinner color={ACCENT} />)
+                : (
+                  <XStack gap="$2">
+                    {(Object.keys(ESTADO_PROXIMO) as (keyof typeof ESTADO_PROXIMO)[]).map(e => (
+                      <YStack key={e} flex={1} alignItems="center" paddingVertical="$1.5" borderRadius="$3" backgroundColor={`${ESTADO_PROXIMO[e].c}18`}
+                        onPress={() => verProximos(ESTADO_PROXIMO[e].g)} pressStyle={{ opacity: 0.7 }}>
+                        <Text fontSize="$6" fontWeight="900" color={ESTADO_PROXIMO[e].c}>{fmtN(proximos.filter(x => x.Estado === e).length)}</Text>
+                        <Text fontSize="$1" color="$textMuted" textAlign="center">{ESTADO_PROXIMO[e].t}</Text>
+                      </YStack>
+                    ))}
+                  </XStack>
+                )}
+            </YStack>
+
+            {/* Listas de hoy */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <XStack gap="$2">
+                {LISTAS.map(x => <Chip key={x.k} on={lista === x.k} texto={`${x.t} (${x.n})`} onPress={() => setLista(x.k)} />)}
+              </XStack>
+            </ScrollView>
+            <Text fontSize="$1" color="$textMuted" marginTop={-4}>{LEYENDA_LISTA[lista]}</Text>
+            <YStack>
+              {filas.length === 0
+                ? <Text color="$textMuted" textAlign="center" paddingVertical="$4">{vacio[lista]}</Text>
+                : filas.slice(0, MAX_FILAS)}
+              {filas.length > MAX_FILAS && (
+                <Text fontSize="$1" color="$textMuted" textAlign="center">y {fmtN(filas.length - MAX_FILAS)} más (en el web se ven todos)</Text>
+              )}
+            </YStack>
+          </YStack>
+        </ScrollView>
+      )}
+    </View>
   )
 }

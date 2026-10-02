@@ -13,7 +13,9 @@ import {
   AsignacionLocal, asignacionesLocales, guardarAsignaciones, idsLocales, limpiarViejas,
 } from '../../services/inventarioImpulsadoras/baseLocal'
 import { motorEnvio } from '../../services/inventarioImpulsadoras/motorEnvio'
-import { ACCENT, BarraAvance, BarraEnvio, ERR, ESTADO_ASIG, OK, WARN, fmtFecha, fmtFechaHora, fmtN, pctDe, textoCodigo, useEstadoMotor } from './components'
+import {
+  ACCENT, BarraAvance, BarraEnvio, ERR, ESTADO_ASIG, OK, WARN, coincide, fmtFecha, fmtFechaHora, fmtN, normal, pctDe, textoCodigo, useEstadoMotor,
+} from './components'
 import Reapertura from './Reapertura'
 
 // Inventario Clientes › Mis inventarios.
@@ -25,10 +27,6 @@ import Reapertura from './Reapertura'
 //   guardado en ese equipo). Sin señal se muestra lo que el equipo aún tenga guardado.
 
 type Pestana = 'porHacer' | 'historico'
-
-/** Para buscar sin importar mayúsculas ni tildes. */
-const normal = (t?: string | null) => (t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-const coincide = (q: string, ...campos: (string | null | undefined)[]) => !q || campos.some(c => normal(c).includes(q))
 
 /** Lo más reciente arriba: fecha del inventario (la que se ve en la tarjeta) y, a igual fecha, el número mayor. */
 const masRecientePrimero = <T,>(fecha: (x: T) => string, corr: (x: T) => string) => (a: T, b: T) =>
