@@ -392,10 +392,14 @@ export default function DiarioDetailScreen() {
       // no hace falta la consulta.
       try {
         const res = await repuestosService.diariosAbiertos(journalId)
-        setAbiertos((res.Data ?? []).map(d => ({
+        const opciones = (res.Data ?? []).map(d => ({
           id: d.JournalId,
           etiqueta: `${d.JournalId} · ${d.Descripcion || 'sin descripción'} · ${d.NumeroLineas} línea(s)`,
-        })))
+        }))
+        setAbiertos(opciones)
+        // Si hay abiertos ya no se ofrece «uno nuevo», así que se deja marcado el
+        // primero: es el que va a usar el servidor igual si no se elige nada.
+        if (opciones.length > 0) setDestino(opciones[0].id)
       } catch { setAbiertos([]) }
       return
     }

@@ -295,7 +295,12 @@ export function BloqueadasModal({
               <Text fontSize="$2" fontWeight="700" color={colores.texto}>
                 {n === 1 ? 'Mover la línea trabada a' : 'Mover las líneas trabadas a'}
               </Text>
-              {[{ id: '', etiqueta: 'Un diario nuevo' }, ...opcionesDestino].map(o => {
+              {/* «Un diario nuevo» SOLO si no hay ninguno abierto (regla del 5-oct).
+                  El 2-oct crear uno por intento dejó TRES abiertos a la vez y ninguno
+                  se podía postear: uno de ellos ni siquiera recibió una línea, y un
+                  diario de AX no se puede borrar. */}
+              {[...(opcionesDestino.length === 0 ? [{ id: '', etiqueta: 'Un diario nuevo' }] : []),
+                ...opcionesDestino].map(o => {
                 const sel = destino === o.id
                 return (
                   <View key={o.id || 'nuevo'} onPress={() => onDestino(o.id)}
@@ -310,11 +315,11 @@ export function BloqueadasModal({
                   </View>
                 )
               })}
-              {opcionesDestino.length === 0 && (
-                <Text fontSize="$1" color={colores.tenue}>
-                  No tenés otro diario abierto, así que se creará uno.
-                </Text>
-              )}
+              <Text fontSize="$1" color={colores.tenue}>
+                {opcionesDestino.length === 0
+                  ? 'No tenés otro diario abierto, así que se creará uno.'
+                  : 'Van a uno de los que ya tenés abiertos: crear otro los acumula y después no se puede postear ninguno.'}
+              </Text>
             </YStack>
           )}
 
@@ -338,7 +343,7 @@ export function BloqueadasModal({
                   </Text>
                   <Text color="#fff" opacity={0.9} fontSize="$1" marginTop={2}>
                     {n === 1 ? 'la pieza pasa' : 'las piezas pasan'}{' '}
-                    {destino ? `a ${destino}` : 'a un diario nuevo'}
+                    {destino ? `a ${destino}` : opcionesDestino.length === 0 ? 'a un diario nuevo' : `a ${opcionesDestino[0]?.id ?? 'el abierto'}`}
                   </Text>
                 </View>
               )}
