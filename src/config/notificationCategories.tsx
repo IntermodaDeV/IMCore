@@ -1,4 +1,4 @@
-import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck, PackageSearch,Stamp, CalendarX, ClockAlert, Undo2, Trash2 } from 'lucide-react-native'
+import { DoorOpen, ShoppingCart, Bell, CheckCheck, Clock, CircleX, CircleCheck, Scale, HandCoins, PackageCheck, PackageSearch,Stamp, CalendarX, ClockAlert, Undo2, Trash2, ClipboardList, ClipboardCheck, RotateCcw } from 'lucide-react-native'
 import type { NotificationCategory } from '../api/modules/notifications/notifications.service'
 
 /**
@@ -170,6 +170,34 @@ export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
   pase_salida_retorno: {
     label: 'Pase sin regresar',
     Icon: ClockAlert,
+    color: '#D97706',
+    bg: 'rgba(217,119,6,0.12)',
+  },
+  // Inventario Clientes. A la impulsadora: le asignaron un inventario (naranja de
+  // la marca: le toca hacer algo) o le resolvieron la reapertura.
+  inventario_asignado: {
+    label: 'Inventario asignado',
+    Icon: ClipboardList,
+    color: '#FF551A',
+    bg: 'rgba(255,85,26,0.12)',
+  },
+  inventario_reapertura_resultado: {
+    label: 'Reapertura de inventario',
+    Icon: RotateCcw,
+    color: '#2563EB',
+    bg: 'rgba(37,99,235,0.12)',
+  },
+  // A quien administra: alguien terminó su parte (verde: informa, no pide nada) o
+  // pide que le reabran (ámbar: hay que resolverlo).
+  inventario_finalizado: {
+    label: 'Inventario finalizado',
+    Icon: ClipboardCheck,
+    color: '#15803D',
+    bg: 'rgba(34,197,94,0.12)',
+  },
+  inventario_reapertura_solicitada: {
+    label: 'Piden reabrir un inventario',
+    Icon: RotateCcw,
     color: '#D97706',
     bg: 'rgba(217,119,6,0.12)',
   },

@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, CircleHelp, Search, X } from 'lucide-react-n
 import { useFocusEffect } from '@react-navigation/native'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
+import { NotificationBell } from '../../components/notifications/NotificationBell'
 import { shadows } from '../../theme/shadows'
 import { inventarioImpulsadorasService as api, mensajeDeError } from '../../api/modules/inventarioImpulsadoras/inventarioImpulsadoras.service'
 import {
@@ -121,7 +122,11 @@ export default function DashboardScreen() {
   const theme = useTheme()
   const { width, height } = useWindowDimensions()
   const compacto = height < 720 || width < 370
-  usePageHeader({ center: <Text fontSize="$4" fontWeight="700" color="$text">Dashboard</Text> })
+  // Los admin reciben aquí los avisos del módulo (finalizaron, piden reabrir): campanita a mano.
+  usePageHeader({
+    center: <Text fontSize="$4" fontWeight="700" color="$text">Dashboard</Text>,
+    right: <NotificationBell size={20} />,
+  })
 
   const [companyId, setCompanyId] = useState<number | null>(null)
   const [mes, setMes] = useState(() => primeroDeMes())

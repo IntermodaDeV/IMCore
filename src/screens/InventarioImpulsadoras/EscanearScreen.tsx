@@ -6,6 +6,7 @@ import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { ArrowLeft, Camera as CameraIcon, CloudDownload, Flag, Keyboard as KeyboardIcon, Minus, Plus, QrCode, ScanLine, X } from 'lucide-react-native'
 import { Camera } from 'react-native-camera-kit'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
@@ -540,6 +541,7 @@ export default function EscanearScreen() {
 function CamaraContinua({ abierta, aviso, onCerrar, onLeer }: {
   abierta: boolean; aviso: Aviso; onCerrar: () => void; onLeer: (c: string) => Promise<void>
 }) {
+  const insets = useSafeAreaInsets()   // a pantalla completa: la X no debe quedar bajo la isla/notch
   const [perm, setPerm] = useState<boolean | null>(null)
   const ultimo = useRef<{ c: string; t: number }>({ c: '', t: 0 })
 
@@ -572,10 +574,11 @@ function CamaraContinua({ abierta, aviso, onCerrar, onLeer }: {
             <Text color="#fff" textAlign="center">Sin permiso de cámara. Habilítalo en los ajustes o usa el lector.</Text>
           </YStack>
         )}
-        <YStack position="absolute" top={0} left={0} right={0} paddingTop="$8" paddingHorizontal="$4" gap="$2">
+        <YStack position="absolute" top={0} left={0} right={0} paddingTop={insets.top + 12} paddingHorizontal="$4" gap="$2">
           <XStack alignItems="center" justifyContent="space-between">
             <Text color="#fff" fontSize="$5" fontWeight="800">Escaneo con cámara</Text>
-            <View onPress={onCerrar} width={40} height={40} borderRadius={20} alignItems="center" justifyContent="center" backgroundColor="rgba(0,0,0,0.5)">
+            <View onPress={onCerrar} hitSlop={12} width={44} height={44} borderRadius={22} alignItems="center" justifyContent="center"
+              backgroundColor="rgba(0,0,0,0.5)" pressStyle={{ opacity: 0.6 }} accessibilityRole="button" accessibilityLabel="Cerrar">
               <X size={24} color="#fff" />
             </View>
           </XStack>

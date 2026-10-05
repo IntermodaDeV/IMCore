@@ -52,8 +52,15 @@ export function routeNotification(data: any): boolean {
 
   // Inventario Clientes: le aprobaron o rechazaron reabrir su parte -> Mis inventarios
   // (si la aprobaron, el inventario ya aparece en «Por hacer»).
-  if (category === 'inventario_reapertura_resultado') {
+  if (category === 'inventario_reapertura_resultado' || category === 'inventario_asignado') {
     navigateWhenReady('invImpMisInventarios')
+    return true
+  }
+
+  // A quien administra: terminaron su parte o piden reabrir -> el Dashboard del módulo
+  // (sus tarjetas «Listos para cerrar» y «Piden reabrir»; el detalle está en el web).
+  if (category === 'inventario_finalizado' || category === 'inventario_reapertura_solicitada') {
+    navigateWhenReady('invImpDashboard')
     return true
   }
 

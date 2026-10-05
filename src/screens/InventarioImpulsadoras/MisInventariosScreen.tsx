@@ -3,6 +3,8 @@ import { Alert, FlatList, Modal, RefreshControl, TextInput, useWindowDimensions 
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
 import { ChevronRight, ScanLine, ClipboardList, History, QrCode, Search, X } from 'lucide-react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { NotificationBell } from '../../components/notifications/NotificationBell'
 
 import { usePageHeader } from '../../hooks/usePageHeader'
 import { useAuth } from '../../context/AuthContext'
@@ -51,7 +53,11 @@ export default function MisInventariosScreen() {
   const { height, width } = useWindowDimensions()
   const compacto = height < 720 || width < 370
 
-  usePageHeader({ center: <Text fontSize="$4" fontWeight="700" color="$text">Mis inventarios</Text> })
+  // La campanita aquí: los inventarios avisan (asignación, reapertura) y no hay que volver al Home para verlos.
+  usePageHeader({
+    center: <Text fontSize="$4" fontWeight="700" color="$text">Mis inventarios</Text>,
+    right: <NotificationBell size={20} />,
+  })
 
   const [pestana, setPestana] = useState<Pestana>('porHacer')
   const [lista, setLista] = useState<AsignacionLocal[]>([])
@@ -326,6 +332,9 @@ function DetalleHistorico({ item, onCerrar, onCambio }: {
   item: IMiHistorico | null; onCerrar: () => void; onCambio: (nuevo: IMiHistorico) => void
 }) {
   const theme = useTheme()
+  // El Modal ocupa toda la pantalla: sin el área segura el encabezado queda debajo de la
+  // isla/notch y la X dentro de la barra de estado, donde casi no se puede tocar.
+  const insets = useSafeAreaInsets()
   const [filas, setFilas] = useState<IResumenCodigo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const iu = item?.InventarioUsuario_Id
@@ -344,13 +353,17 @@ function DetalleHistorico({ item, onCerrar, onCambio }: {
   return (
     <Modal visible={!!item} animationType="slide" onRequestClose={onCerrar}>
       <View flex={1} backgroundColor="$background">
-        <XStack alignItems="center" justifyContent="space-between" paddingHorizontal={16} paddingTop="$6" paddingBottom="$3"
-          borderBottomWidth={1} borderColor="$border">
+        <XStack alignItems="center" justifyContent="space-between" gap="$3" paddingHorizontal={16}
+          paddingTop={insets.top + 8} paddingBottom="$3" borderBottomWidth={1} borderColor="$border">
           <YStack flex={1}>
             <Text fontSize="$5" fontWeight="900" color="$text">{item?.Correlativo}</Text>
             <Text fontSize="$2" color="$textMuted" numberOfLines={1}>{item?.ClienteNombre} · {item?.SucursalNombre}</Text>
           </YStack>
-          <View onPress={onCerrar} hitSlop={10} padding="$2"><X size={24} color={theme.text?.val} /></View>
+          <View onPress={onCerrar} hitSlop={12} width={44} height={44} borderRadius={22} borderWidth={1} borderColor="$border"
+            alignItems="center" justifyContent="center" pressStyle={{ opacity: 0.6 }}
+            accessibilityRole="button" accessibilityLabel="Cerrar">
+            <X size={24} color={theme.text?.val} />
+          </View>
         </XStack>
         {!!item && (
           <XStack paddingHorizontal={16} paddingVertical="$2" gap="$3">
@@ -368,7 +381,7 @@ function DetalleHistorico({ item, onCerrar, onCambio }: {
           <FlatList
             data={filas}
             keyExtractor={r => `${r.Tipo}|${r.Codigo}`}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 + insets.bottom }}
             renderItem={({ item: r }) => (
               <XStack paddingVertical="$2" borderBottomWidth={1} borderColor="$border" alignItems="center" gap="$2">
                 {r.Tipo === 'QR' ? <QrCode size={16} color={ACCENT} /> : <ScanLine size={16} color={r.Tipo === 'NOENCONTRADO' ? WARN : ACCENT} />}
