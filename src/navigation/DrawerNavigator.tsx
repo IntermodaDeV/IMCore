@@ -24,6 +24,8 @@ import LoadingScreen from '../components/Skeletons/LoadingScreen'
 import { Alert } from 'react-native'
 import { motorEnvio } from '../services/inventarioImpulsadoras/motorEnvio'
 import { pendientesDelUsuario } from '../services/inventarioImpulsadoras/baseLocal'
+import { motorAsistencia } from '../services/inventarioImpulsadoras/motorAsistencia'
+import { pendientes as pendientesAsistencia } from '../services/inventarioImpulsadoras/asistenciaLocal'
 
 const Drawer = createDrawerNavigator()
 
@@ -174,9 +176,35 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
     }
   }, [user?.Code, escaneaInventarios])
 
+  // Asistencia: igual que el inventario. Si quedaron marcas o fotos sin subir (se marcó sin
+  // señal y se cerró la app), el envío arranca solo al abrir la app; además baja la agenda
+  // para que la impulsadora pueda marcar aunque mañana abra la app sin señal.
+  const marcaAsistencia = baseMenu.some(m => m.Route === 'invImpMiAsistencia')
+  useEffect(() => {
+    if (!user?.Code || !marcaAsistencia) return
+    try {
+      motorAsistencia.iniciar(user.Code)
+    } catch (e) {
+      console.log('[Asistencia] no se pudo abrir la base local', e)
+    }
+  }, [user?.Code, marcaAsistencia])
+
   const logoutUser = async () => {
     let pendientes = 0
     try { if (user?.Code && escaneaInventarios) pendientes = pendientesDelUsuario(user.Code) } catch { /* sin base local */ }
+    let marcas = 0
+    try { if (user?.Code && marcaAsistencia) { const p = pendientesAsistencia(user.Code); marcas = p.marcas + p.fotos } } catch { /* sin base local */ }
+    if (marcas > 0) {
+      const seguir = await new Promise<boolean>(resolve => Alert.alert(
+        'Tienes marcas de asistencia sin enviar',
+        `Quedan ${marcas} ${marcas === 1 ? 'marca (o foto)' : 'marcas o fotos'} de asistencia guardadas en este teléfono. ` +
+        'No se borran: se enviarán cuando vuelvas a entrar con tu usuario en este mismo teléfono.',
+        [
+          { text: 'Intentar enviar', onPress: () => { void motorAsistencia.disparar('manual'); resolve(false) } },
+          { text: 'Cerrar sesión', style: 'destructive', onPress: () => resolve(true) },
+        ]))
+      if (!seguir) return
+    }
     if (pendientes > 0) {
       // No se pierden: quedan en el equipo a nombre de esta persona y se envían cuando
       // vuelva a entrar. Pero si entrega la PDA a otra, tiene que saberlo.
@@ -191,6 +219,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps & { setTheme: an
       if (!seguir) return
     }
     motorEnvio.detener()
+    motorAsistencia.detener()
     await logout()
   }
 

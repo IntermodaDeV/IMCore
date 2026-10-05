@@ -38,9 +38,9 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>IMCore necesita la cámara para escanear los códigos QR de las visitas.</string>
+	<string>IMCore necesita la cámara para escanear códigos (visitas e inventarios) y para la foto al marcar tu asistencia.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>IMCore usa tu ubicación solo en el momento en que marcas tu asistencia en la tienda, para registrar dónde marcaste. No sigue tu ubicación en segundo plano.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>IMCore necesita acceso para guardar el pase QR en tus fotos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

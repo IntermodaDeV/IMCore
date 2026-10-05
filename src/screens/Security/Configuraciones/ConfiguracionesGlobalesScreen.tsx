@@ -332,6 +332,33 @@ const CONFIG_META: Record<
     label: 'Reporte «Histórico»: los cerrados en el mes, por fecha de cierre (apagado: por fecha programada)',
     kind: 'bool',
   },
+  // Asistencia de impulsadoras (mismas claves que el web; las evalúa el servidor al recibir cada marca).
+  'InventarioClientes.AsistenciaActiva': { label: 'Asistencia de impulsadoras encendida (apagada: la app no deja marcar)', kind: 'bool' },
+  'InventarioClientes.AsistenciaRadioMetros': {
+    label: 'Distancia máxima a la tienda para que la marca sea válida', kind: 'number', unidad: 'm', min: 10, max: 10000,
+    ayudaRango: 'Cada tienda puede tener su propio radio. Más lejos = por revisar.',
+  },
+  'InventarioClientes.AsistenciaPrecisionMaxM': {
+    label: 'Precisión mínima del GPS al marcar', kind: 'number', unidad: 'm', min: 0, max: 5000, ayudaRango: '0 = no se mide.',
+  },
+  'InventarioClientes.AsistenciaFotoObligatoria': { label: 'Pedir foto en cada marca (también se puede pedir solo en algunos turnos)', kind: 'bool' },
+  'InventarioClientes.AsistenciaToleranciaMin': {
+    label: 'Minutos de gracia antes de contar tardanza', kind: 'number', unidad: 'min', min: 0, max: 180, ayudaRango: '0 = no se mide tardanza.',
+  },
+  'InventarioClientes.AsistenciaPermitirSinTurno': { label: 'Se puede marcar en una tienda sin turno programado (queda por revisar)', kind: 'bool' },
+  'InventarioClientes.AsistenciaHorasBase': {
+    label: 'Horas trabajadas contra: PROGRAMADO (el turno) o FIJO (jornada fija, como el sistema anterior)', kind: 'texto',
+  },
+  'InventarioClientes.AsistenciaJornadaHoras': { label: 'Horas de la jornada fija (cuando la base es FIJO)', kind: 'number', unidad: 'h', min: 1, max: 24 },
+  'InventarioClientes.AsistenciaRelojMaxMin': {
+    label: 'Desvío máximo del reloj del teléfono antes de marcar la hora como dudosa', kind: 'number', unidad: 'min', min: 0, max: 240,
+    ayudaRango: '0 = no se mide.',
+  },
+  'InventarioClientes.AsistenciaEsperaGpsSeg': {
+    label: 'Segundos que la app espera el GPS al marcar', kind: 'number', unidad: 's', min: 5, max: 120,
+    ayudaRango: 'Si no llega, la marca se guarda sin ubicación (por revisar).',
+  },
+  'InventarioClientes.AsistenciaRevisarSimulada': { label: 'Mandar a revisión las marcas con ubicación simulada (Android)', kind: 'bool' },
   'Visitas.LargaDuracionMaxDias': {
     label: 'Vigencia máxima de un pase de larga duración',
     kind: 'number',
