@@ -25,6 +25,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
   PasesSalida: 'Pases de salida de material',
   App: 'App móvil · versiones',
   InventarioClientes: 'Inventario Clientes',
+  Presupuesto: 'Presupuesto',
 }
 const CATEGORIA_ORDEN = ['Mtto', 'Repuestos', 'Visitas', 'RH', 'Gira', 'CooInter', 'PasesSalida', 'App']
 
@@ -468,6 +469,23 @@ const CONFIG_META: Record<
     unidad: 'días de haber salido',
     min: 1,
     max: 90,
+  },
+
+  // ── Presupuesto: recordatorios antes de la fecha límite de revisión (Presupuesto_01_Esquema) ──
+  // Los manda RecordatorioPresupuestoService a quien tiene centros sin confirmar, solo de 7:00 a 19:00.
+  'Presupuesto.RecordatorioDiasAntes': {
+    label: 'Empezar a recordar la fecha límite',
+    kind: 'number',
+    unidad: 'días antes',
+    min: 0,
+    max: 30,
+    ayudaRango: '0 = sin recordatorios. También es desde cuándo el gerente ve la etiqueta «Vence en N días».',
+  },
+  'Presupuesto.RecordatorioCadaHoras': {
+    label: 'Repetir el recordatorio cada',
+    kind: 'options',
+    options: [6, 12, 24, 48],
+    unidadOpcion: 'h',
   },
 
   // ── App móvil: versión publicada en cada tienda (script Security_10) ─────
