@@ -1,7 +1,9 @@
 import React from 'react'
+import { useWindowDimensions } from 'react-native'
 import { AlertDialog, Button, XStack, YStack, Text, Spinner  } from 'tamagui'
 import { TriangleAlert } from 'lucide-react-native'
 import { shadows } from '../../theme/shadows'
+import { useKeyboardInset } from '../../hooks/useKeyboardInset'
 
 interface ConfirmDialogProps {
     open: boolean
@@ -43,6 +45,31 @@ export default function ConfirmDialog({
     onSecondary,
     extra,
 }: ConfirmDialogProps) {
+    /* ── El teclado y el diálogo ──────────────────────────────────────────
+       `extra` admite un input —el motivo de un rechazo, el de un cierre con
+       faltante— y este diálogo vive centrado en la pantalla COMPLETA, así que
+       al abrirse el teclado la mitad de abajo deja de verse.
+
+       Se resuelve como en FormDialog y en el rechazo de gastos: `paddingBottom`
+       en el Portal, que es el contenedor full-screen donde el diálogo se
+       centra. Reducir esa área lo sube SOLO LO NECESARIO, sin medir nodos ni
+       acumular translates — y es idempotente si el teclado vuelve a avisar.
+
+       POR QUÉ NO SE CALCULA A MANO. Subir «la mitad del teclado» parece
+       equivalente y no lo es: en los equipos donde el sistema YA achica la
+       ventana, eso compensa dos veces y el diálogo se va de más. `useKeyboardInset`
+       mide el contenedor y descuenta lo que el sistema ya subió por su cuenta.
+
+       SIN INPUT NO HAY TECLADO, así que para los diálogos que no pasan `extra`
+       —la mayoría— el inset es 0 y nada se mueve. */
+    const { inset: keyboardInset, onLayout } = useKeyboardInset()
+    const { height: windowHeight } = useWindowDimensions()
+
+    // El Portal ya descuenta el teclado, así que el contenido no debe pasar de
+    // lo que queda: con un campo de varios renglones, si no se acota, el
+    // diálogo crece hasta tapar lo que acabamos de destapar.
+    const maxContentHeight = Math.max(240, windowHeight - keyboardInset - 48)
+
     return (
         <AlertDialog 
             open={open}   
@@ -51,7 +78,7 @@ export default function ConfirmDialog({
                 onOpenChange(value)
             }
         }}>
-            <AlertDialog.Portal>
+            <AlertDialog.Portal paddingBottom={keyboardInset} onLayout={onLayout}>
                 <AlertDialog.Overlay
                     key="overlay"
                     enterStyle={{ opacity: 0 }}
@@ -71,6 +98,7 @@ export default function ConfirmDialog({
                         paddingHorizontal="$5"
                         paddingVertical="$5"
                         marginHorizontal="$5"
+                        maxHeight={maxContentHeight}
                         x={0} y={0} scale={1} opacity={1}
                         {...shadows.lg}
                     >

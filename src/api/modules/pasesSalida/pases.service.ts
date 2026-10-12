@@ -2,7 +2,7 @@ import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
   IPaseSalida, IPaseSalidaDetalle, IPaseSalidaGuardar, IFirmaUsuario, IPaseSalidaAuth,
-  IRetornoLinea,
+  IRetornoLinea, IPaseBitacora, IPaseRecibido,
   IPaseSalidaEstado, IPaseSalidaManual, BandejaFirma, BandejaPorteria, IPaseSalidaFirmar,
 } from './pases.types'
 import { IMaterial } from './pasesSalida.types'
@@ -121,13 +121,50 @@ export const pasesService = {
   /**
    * Registra el regreso de un pase que estaba afuera. Es el SEGUNDO escaneo del
    * mismo QR: qué significa cada escaneo lo decide el estado del pase, no el
-   * guardia. El pase termina en Finalizado.
+   * guardia.
+   *
+   * El pase NO termina acá: queda en Retornado, esperando que el solicitante lo
+   * dé por recibido. El guardia responde por el portón; por la bodega responde
+   * quien pidió el material.
    */
   registrarRetorno: (id: number) =>
     httpClient.post<
       ExecutionResponse<null> & { Estado?: string; FechaRetorno?: string },
       { Id: number }
     >(`${schema}/RegistrarRetorno`, { Id: id }),
+
+  /**
+   * El solicitante —o quien firmó el pase— da por recibido lo que el guardia
+   * dejó entrar, y con eso lo cierra.
+   *
+   * Recibe TODAS las entregas pendientes de una vez: si se acumularon dos, las
+   * tiene las dos enfrente. Solo funciona si el material ya pasó por el portón;
+   * un pase que sigue afuera no se puede recibir.
+   */
+  recibirPase: (id: number) =>
+    httpClient.post<ExecutionResponse<null> & IPaseRecibido, { Id: number }>(
+      `${schema}/Recibir`, { Id: id }),
+
+  /**
+   * Cierra el pase dando de baja lo que nunca volvió.
+   *
+   * Es OTRA COSA que recibir: recibir confirma lo que sí llegó y no decide nada
+   * sobre el resto; esto da por terminado lo que no llegó. El motivo es
+   * obligatorio —mínimo 10 caracteres, revalidado en el servidor— porque es el
+   * único registro de por qué faltó material.
+   */
+  cerrarConFaltante: (id: number, motivo: string) =>
+    httpClient.post<
+      ExecutionResponse<null> & { Estado?: string; UnidadesAfuera?: number; MotivoCierre?: string },
+      { Id: number; Motivo: string }
+    >(`${schema}/Cerrar`, { Id: id, Motivo: motivo }),
+
+  /**
+   * El recorrido del pase por los portones: horas, portones, guardias y
+   * entregas. Es lo que se lee antes de dar por recibido.
+   */
+  getBitacora: (id: number) =>
+    httpClient.get<ExecutionResponse<IPaseBitacora[]>>(`${schema}/${id}/Bitacora`),
 
   // ── Bandeja de aprobaciones ────────────────────────────────────────────────
   // Mis accesos de firma. Normalmente devuelve uno.

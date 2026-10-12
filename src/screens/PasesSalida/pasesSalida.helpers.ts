@@ -234,7 +234,8 @@ export const ESTADOS_FILTRO: EstadoPase[] =
  *
  * Es lo que separa "todavía se puede intervenir" de "esto ya es historia".
  */
-export const ESTADOS_ABIERTOS: EstadoPase[] = ['PSPEND', 'PSEAPR', 'PSAPR', 'PSSAL', 'PSREPA']
+export const ESTADOS_ABIERTOS: EstadoPase[] =
+  ['PSPEND', 'PSEAPR', 'PSAPR', 'PSSAL', 'PSREPA', 'PSRET']
 
 /**
  * Los tres valores visuales de un estado, con respaldo gris si el servidor
@@ -271,7 +272,7 @@ export type SituacionQr = 'disponible' | 'pendiente' | 'cerrado'
 const MOTIVO_QR: Record<string, string> = {
   PSVEN: 'Este pase venció sin usarse: se le pasó la fecha de salida y el plazo de gracia. Hay que crear uno nuevo.',
   PSFIN: 'Este pase ya finalizó: salió y no regresa, así que su código dejó de tener uso.',
-  PSRET: 'Este pase ya retornó y quedó cerrado, así que su código dejó de tener uso.',
+  PSRET: 'El material ya entró. El código sigue sirviendo para escanearlo y darlo por recibido.',
   PSREJ: 'Este pase fue rechazado, así que no llegará a tener código.',
   PSANU: 'Este pase fue anulado, así que su código ya no es válido.',
 }
@@ -283,6 +284,15 @@ export const situacionQr = (estado?: string | null): { situacion: SituacionQr; m
     return {
       situacion: 'disponible',
       motivo: 'Seguridad escanea este código para dejar salir lo que va en el pase.',
+    }
+  }
+  /* Retornado todavía tiene un escaneo por delante, pero NO es el del guardia:
+     es el del solicitante dando por recibido. El motivo lo dice para que nadie
+     lo lleve de vuelta al portón. */
+  if (estado === 'PSRET') {
+    return {
+      situacion: 'disponible',
+      motivo: 'El material ya entró. Escanee este código para darlo por recibido y cerrar el pase.',
     }
   }
   const cerrado = MOTIVO_QR[estado ?? '']

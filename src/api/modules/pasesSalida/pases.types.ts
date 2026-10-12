@@ -12,6 +12,12 @@
  * Un pase aprobado que nunca salió y se le pasó el plazo lo cierra solo un job
  * de la API en PSVEN: la condición ya la veía portería, pero sin el estado el
  * solicitante nunca se enteraba.
+ *
+ * El regreso tiene DOS actos y por eso PSRET está abierto:
+ *   · seguridad registra lo que entra        -> PSRET "Retornado"
+ *   · el solicitante lo da por recibido      -> PSFIN "Finalizado"
+ * Que el material cruce un portón no es que llegue a manos de quien lo prestó.
+ * Entre un acto y el otro el pase sigue vivo, y por eso PSRET no es un cierre.
  */
 export type EstadoPase =
   | 'PSPEND' | 'PSEAPR' | 'PSAPR' | 'PSREJ' | 'PSSAL' | 'PSREPA' | 'PSFIN' | 'PSRET'
@@ -22,9 +28,9 @@ export type EstadoPase =
  * Se define acá y no en cada pantalla para que "abierto" signifique lo mismo en
  * todas.
  */
-export const ESTADOS_ABIERTOS: EstadoPase[] = ['PSPEND', 'PSEAPR', 'PSAPR', 'PSSAL', 'PSREPA']
+export const ESTADOS_ABIERTOS: EstadoPase[] = ['PSPEND', 'PSEAPR', 'PSAPR', 'PSSAL', 'PSREPA', 'PSRET']
 
-export const ESTADOS_CERRADOS: EstadoPase[] = ['PSFIN', 'PSRET', 'PSREJ', 'PSVEN', 'PSANU']
+export const ESTADOS_CERRADOS: EstadoPase[] = ['PSFIN', 'PSREJ', 'PSVEN', 'PSANU']
 
 export interface IPaseSalida {
   Id: number
@@ -123,6 +129,31 @@ export interface IPaseSalida {
    * entrega vieja no tapa la pregunta de una nueva.
    */
   PuestosCruzadosRetorno?: string | null
+
+  /**
+   * Entregas que el guardia registró y que todavía nadie dio por recibidas.
+   * Mayor que cero = hay algo que recibir.
+   *
+   * No dice QUIÉN puede recibirlo: eso lo decide el servidor contra el
+   * solicitante y los firmantes. Acá solo se sabe si hay algo pendiente.
+   */
+  EntregasSinRecibir?: number
+  /**
+   * Cuántas unidades siguen afuera, sumando las líneas con cantidad.
+   *
+   * Va también en la LISTA para que cada fila ofrezca la acción correcta sin
+   * abrir el pase: si hay algo que recibir se recibe, y si quedó material
+   * afuera se puede cerrar dándolo de baja.
+   */
+  UnidadesAfuera?: number
+  /**
+   * Por qué se cerró el pase sin que volviera todo. No nulo = hubo faltante y
+   * alguien lo dio de baja.
+   */
+  MotivoCierre?: string | null
+  RecibidoPor?: string | null
+  RecibidoPorNombre?: string | null
+  RecibidoFecha?: string | null
 
   /**
    * Si el pase se puede usar HOY. Lo calcula el servidor con la misma función
@@ -351,6 +382,14 @@ export interface IPaseSalidaDetalle {
   /** Cuánto de esta línea ya volvió, acumulado. Null = todavía nada. */
   CantidadRetornada?: number | null
   /**
+   * Cuánto de lo que volvió ya fue dado por recibido.
+   *
+   * Distinto de CantidadRetornada desde que el regreso tiene dos actos: el
+   * guardia pudo contar 3 y el solicitante haber firmado por 2. Esa diferencia
+   * es material adentro por el que nadie respondió todavía.
+   */
+  CantidadRecibida?: number | null
+  /**
    * Cuánto falta por volver, calculado por el SERVIDOR. Es el número que decide
    * si el pase se puede cerrar; dos clientes redondeando distinto darían dos
    * verdades. Null en las líneas sin cantidad.
@@ -407,4 +446,40 @@ export interface IPaseSalidaGuardar {
 export interface IPaseGuardado {
   Id: number
   Correlativo: string
+}
+
+/**
+ * Un evento del recorrido del pase por los portones.
+ *
+ * Es contra esto que el solicitante firma el recibo: no está dando por buena
+ * una pantalla, está dando por buena una ruta con horas y nombres.
+ */
+export interface IPaseBitacora {
+  Fecha: string
+  /**
+   * SALIDA   el material salió por ese portón
+   * PASO     un guardia confirmó que cruzó por el suyo
+   * VERIFICO un guardia lo escaneó y miró, sin registrar movimiento
+   * REGRESO  entró por ese portón
+   * ENTREGA  qué y cuánto se devolvió en ese momento
+   * RECIBO   quién lo dio por recibido
+   */
+  Tipo: 'SALIDA' | 'PASO' | 'VERIFICO' | 'REGRESO' | 'ENTREGA' | 'RECIBO'
+  /** Null en los recibos: no ocurren en un portón. */
+  PuestoKey?: string | null
+  Puesto?: string | null
+  User_Code?: string | null
+  Usuario?: string | null
+  /** En las entregas, qué volvió: «Martillo 2, Taladro 1». */
+  Detalle?: string | null
+}
+
+/** Lo que devuelve dar por recibido. */
+export interface IPaseRecibido {
+  Estado: EstadoPase
+  /** Cuántas entregas se marcaron recibidas con este toque. */
+  EntregasRecibidas: number
+  /** Líneas que todavía deben material. Cero = el pase cerró. */
+  LineasPendientes: number
+  RecibidoFecha?: string | null
 }
