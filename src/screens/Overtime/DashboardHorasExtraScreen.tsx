@@ -512,7 +512,21 @@ export default function DashboardHorasExtraScreen() {
       throw new Error(res?.ErrorMessage || 'No se pudo cargar el calendario de semanas.')
     }
 
-    const lista = res.Data ?? []
+    // La semana "actual" es la del PROCESO ACTUAL de la planilla semanal, no la
+    // de la fecha de hoy. Si la configuración no responde, queda la del calendario.
+    let inicioActual = ''
+    try {
+      const cfg = await overtimeService.getDashboardSettings(companyCode)
+      inicioActual = String(cfg?.Data?.Semana_Actual_Inicio ?? '').substring(0, 10)
+    } catch {
+      inicioActual = ''
+    }
+
+    const base = res.Data ?? []
+    const lista =
+      inicioActual && base.some(w => String(w.InitialDate ?? '').substring(0, 10) === inicioActual)
+        ? base.map(w => ({ ...w, IsCurrentWeek: String(w.InitialDate ?? '').substring(0, 10) === inicioActual }))
+        : base
     setSemanas(lista)
 
     // Se conserva la semana elegida si sigue existiendo; si no, la que está en
@@ -525,6 +539,17 @@ export default function DashboardHorasExtraScreen() {
 
     return { lista, elegida }
   }, [companyCode])
+
+  // La semana elegida a mano también se recuerda: al deslizar para refrescar o
+  // al volver a la pantalla se conserva, y no regresa sola a la actual.
+  useEffect(() => {
+    if (semana) semanaCargadaRef.current = semana
+  }, [semana])
+
+  const semanaActualDelCalendario = useMemo(
+    () => semanas.find(w => w.IsCurrentWeek) ?? null,
+    [semanas],
+  )
 
   const semanaSel = useMemo(
     () => semanas.find(w => claveSemana(w) === semana) ?? null,
@@ -664,6 +689,22 @@ export default function DashboardHorasExtraScreen() {
           />
         )}
 
+        {/* Solo si se está viendo otra semana: un atajo discreto a la actual */}
+        {semanaActualDelCalendario && semanaSel && !semanaSel.IsCurrentWeek && (
+          <XStack justifyContent="flex-end" marginTop={-6}>
+            <Text
+              fontSize={11}
+              fontWeight="700"
+              color="$primary"
+              pressStyle={{ opacity: 0.6 }}
+              hitSlop={8}
+              onPress={() => setSemana(claveSemana(semanaActualDelCalendario))}
+            >
+              Volver a la actual
+            </Text>
+          </XStack>
+        )}
+
         <SelectorSeccion activo={seccion} onCambiar={cambiarSeccion} />
       </YStack>
 
@@ -706,13 +747,7 @@ export default function DashboardHorasExtraScreen() {
                   refrescoId={refrescoId}
                 />
 
-                {esHistorico ? (
-                  <GraficoNoDisponible
-                    titulo="Gasto por día"
-                    detalle="El desglose por dia sale de las solicitudes del modulo."
-                    corte={corteLegible}
-                  />
-                ) : (
+                {!esHistorico && (
                   <TarjetaDias
                     companyCode={companyCode}
                     inicio={semanaSel?.InitialDate?.substring(0, 10)}
@@ -747,13 +782,7 @@ export default function DashboardHorasExtraScreen() {
                   refrescoId={refrescoId}
                 />
 
-                {esHistorico ? (
-                  <GraficoNoDisponible
-                    titulo="Alimentación por día"
-                    detalle="El desglose por dia sale de las revisiones del modulo."
-                    corte={corteLegible}
-                  />
-                ) : (
+                {!esHistorico && (
                   <TarjetaAlimentacionDias
                     companyCode={companyCode}
                     inicio={semanaSel?.InitialDate?.substring(0, 10)}
@@ -779,13 +808,7 @@ export default function DashboardHorasExtraScreen() {
                     es el único que se ve sin moverse, y de las dos listas la
                     que se accionaba es esta: la de empleados dice quién se
                     quedó, y esta dice a quién preguntarle por qué. */}
-                {esHistorico ? (
-                  <GraficoNoDisponible
-                    titulo="Horas extra por solicitante"
-                    detalle="Quien pide las horas se sabe por la solicitud."
-                    corte={corteLegible}
-                  />
-                ) : (
+                {!esHistorico && (
                   <TarjetaSolicitantes
                     companyCode={companyCode}
                     inicio={semanaSel?.InitialDate?.substring(0, 10)}
@@ -801,13 +824,7 @@ export default function DashboardHorasExtraScreen() {
                   refrescoId={refrescoId}
                 />
 
-                {esHistorico ? (
-                  <GraficoNoDisponible
-                    titulo="Empleado con más horas extra por área"
-                    detalle="Saber quien encabeza cada area necesita el detalle por persona."
-                    corte={corteLegible}
-                  />
-                ) : (
+                {!esHistorico && (
                   <TarjetaTopPorArea
                     companyCode={companyCode}
                     inicio={semanaSel?.InitialDate?.substring(0, 10)}
@@ -816,13 +833,7 @@ export default function DashboardHorasExtraScreen() {
                   />
                 )}
 
-                {esHistorico ? (
-                  <GraficoNoDisponible
-                    titulo="Empleado con más horas extra por día"
-                    detalle="Necesita el detalle por persona Y por dia."
-                    corte={corteLegible}
-                  />
-                ) : (
+                {!esHistorico && (
                   <TarjetaTopPorDia
                     companyCode={companyCode}
                     inicio={semanaSel?.InitialDate?.substring(0, 10)}

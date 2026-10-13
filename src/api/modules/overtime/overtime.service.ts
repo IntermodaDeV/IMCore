@@ -47,6 +47,9 @@ import {
   ISaveOvertimeRequestResult,
   IShiftParameterKey,
   IUserEntity,
+  IOvertimeBandEmployee,
+  IOvertimeSplitRow,
+  IOvertimeSplit,
 } from './overtime.types'
 
 // Consume los endpoints de api/Overtime (IMCoreApi reenvía a IMCoreProxy → BD de
@@ -303,10 +306,12 @@ export const overtimeService = {
    * jornada. Un día no laborable viene con IsLaborable distinto de 'S', y ahí
    * la hora de inicio la captura el usuario.
    */
-  getShiftSchedules: (companyCode: string, scheduleDay: number) =>
+  getShiftSchedules: (companyCode: string, scheduleDay: number, date?: string) =>
     httpClient.get<ExecutionResponse<IOvertimeShiftSchedule[]>>(`${schema}/ShiftSchedules`, {
       companyCode,
       scheduleDay,
+      // Con fecha, el horario sale del calendario de turnos (cambios de un día puntual incluidos)
+      ...(date ? { date } : {}),
     }),
 
   /**
@@ -319,6 +324,24 @@ export const overtimeService = {
     httpClient.post<ExecutionResponse<IOvertimeParameter[]>, { Keys: IShiftParameterKey[] }>(
       `${schema}/OvertimeParameters?companyCode=${encodeURIComponent(companyCode)}`,
       { Keys: keys },
+    ),
+
+  /**
+   * Bandas de cada empleado el día de la hora extra (parámetros nuevos: planilla
+   * y áreas del empleado + día del turno). Solo sirven para armar las opciones
+   * de hora; el reparto lo da getOvertimeSplit.
+   */
+  getOvertimeBands: (companyCode: string, date: string, employees: IOvertimeBandEmployee[]) =>
+    httpClient.post<ExecutionResponse<IOvertimeParameter[]>, { Date: string; Employees: IOvertimeBandEmployee[] }>(
+      `${schema}/OvertimeBands?companyCode=${encodeURIComponent(companyCode)}`,
+      { Date: date, Employees: employees },
+    ),
+
+  /** Reparto por banda de los renglones, calculado en el servidor. */
+  getOvertimeSplit: (companyCode: string, date: string, rows: IOvertimeSplitRow[]) =>
+    httpClient.post<ExecutionResponse<IOvertimeSplit[]>, { Date: string; Rows: IOvertimeSplitRow[] }>(
+      `${schema}/OvertimeSplit?companyCode=${encodeURIComponent(companyCode)}`,
+      { Date: date, Rows: rows },
     ),
 
   /**
