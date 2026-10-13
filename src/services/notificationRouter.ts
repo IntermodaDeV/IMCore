@@ -232,6 +232,18 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
+  /* A QUIENES FIRMARON: el pase que autorizaron se cerró sin que volviera todo.
+     Va a la bandeja de Aprobadas y no a Mis pases: el firmante no creó ese pase,
+     así que ahí no aparece. Es el único lugar donde vuelve a encontrarlo —ya no
+     espera su firma, tampoco está en pendientes— y es donde la tarjeta muestra
+     el motivo del cierre. */
+  if (category === 'pase_salida_cierre') {
+    const paseId = Number(data.paseId ?? data.PaseId)
+    navigateWhenReady('pasesSalidaAprobaciones')
+    if (paseId > 0) requestOpenPaseSalidaFirma(paseId, 'APR')
+    return true
+  }
+
   if (category === 'pase_salida_vencido') {
     const paseId = Number(data.paseId ?? data.PaseId)
 

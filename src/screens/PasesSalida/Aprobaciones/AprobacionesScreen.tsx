@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import {
   // `History` se renombra: choca con el tipo global History del DOM y TS resuelve ese.
   Stamp, Package, User, ChevronDown, ChevronUp, CalendarDays, Check, X as Equis,
-  IdCard, History as HistoryIcon,
+  IdCard, History as HistoryIcon, Ban,
 } from 'lucide-react-native'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -548,6 +548,30 @@ export default function AprobacionesScreen() {
                   <Text flex={1} fontSize={12} color="$textMuted" numberOfLines={1}>→ {p.EnviadoA}</Text>
                 ) : null}
               </XStack>
+
+              {/* El pase se cerró sin que volviera todo, y por qué.
+                  Va en la tarjeta CERRADA y no dentro del acordeón: es el único
+                  lugar donde quien firmó esta salida se entera de en qué terminó
+                  el material que autorizó, y esconderlo detrás de un toque sería
+                  pedirle que lo busque sin saber que está. */}
+              {p.MotivoCierre ? (
+                <XStack alignItems="flex-start" gap="$2"
+                  backgroundColor="rgba(245, 158, 11, 0.10)"
+                  borderWidth={1} borderColor="#f59e0b" borderRadius="$3"
+                  paddingHorizontal="$2.5" paddingVertical="$2">
+                  <Ban size={13} color="#f59e0b" style={{ marginTop: 1 }} />
+                  <YStack flex={1} gap={2}>
+                    <Text fontSize={11} fontWeight="800" color="#f59e0b">
+                      Se cerró sin que volviera todo
+                    </Text>
+                    <Text fontSize={11} color="$text">{p.MotivoCierre}</Text>
+                    <Text fontSize={10} color="$textMuted">
+                      {[p.RecibidoPorNombre || p.RecibidoPor, fmtFechaHora(p.RecibidoFecha)]
+                        .filter(Boolean).join('  ·  ')}
+                    </Text>
+                  </YStack>
+                </XStack>
+              ) : null}
 
               {/* Quién lo pide y cuándo sale. El "creado" no va acá: es la
                   primera parada de la línea de firmas, dentro del acordeón. */}

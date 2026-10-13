@@ -5,6 +5,7 @@ import ConfiguracionScreen from './Configuracion/ConfiguracionScreen'
 import GrupoDetalleScreen from './Configuracion/GrupoDetalleScreen'
 import SolicitantesScreen from './Configuracion/SolicitantesScreen'
 import MisPasesScreen from './Pases/MisPasesScreen'
+import TodosLosPasesScreen from './Pases/TodosLosPasesScreen'
 import PaseDetalleScreen from './Pases/PaseDetalleScreen'
 import PaseCrearScreen from './Pases/PaseCrearScreen'
 import AprobacionesScreen from './Aprobaciones/AprobacionesScreen'
@@ -37,8 +38,18 @@ export const ScreensPasesSalida: TScreens = {
       // Pantallas internas: se navegan desde la lista.
       pasesSalidaPaseDetalle: PaseDetalleScreen,
       pasesSalidaPaseCrear: PaseCrearScreen,
+      /* El mismo escáner del portón, con otro destino. Va acá y no como opción
+         de menú porque el que recibe es el solicitante, y su área es Mis pases:
+         el menú de escanear está gateado por el permiso de seguridad. */
+      pasesSalidaEscanearRecibir: EscanearPaseScreen,
     },
   },
+
+  /* Consulta de los pases de todos, por rango de fechas. Solo informativa: el
+     detalle al que navega ya está registrado como hijo de Mis pases, y las
+     rutas hijas son globales (App.tsx aplana los Childs de todos los módulos),
+     así que no hace falta volver a declararlo acá. */
+  pasesSalidaTodos: { Screen: TodosLosPasesScreen, Childs: {} },
 
   // Bandeja de firmas: los pases que esperan una de mis firmas.
   pasesSalidaAprobaciones: { Screen: AprobacionesScreen, Childs: {} },

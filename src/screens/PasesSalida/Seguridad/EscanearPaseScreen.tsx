@@ -3,7 +3,7 @@ import { Platform, PermissionsAndroid, StyleSheet } from 'react-native'
 import { YStack, XStack, Text, View, Button, Spinner } from 'tamagui'
 import { Camera } from 'react-native-camera-kit'
 import { ScanLine, RotateCcw, TriangleAlert, X, QrCode } from 'lucide-react-native'
-import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native'
+import { useNavigation, useFocusEffect, useIsFocused, useRoute } from '@react-navigation/native'
 
 import Page from '../../../components/commons/Page'
 import { usePageHeader } from '../../../hooks/usePageHeader'
@@ -35,12 +35,23 @@ import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
  * — de otro modo el mismo código malo se releería en bucle.
  *
  * LO QUE PASA DESPUÉS NO CAMBIA: se resuelve el correlativo y se navega a la
- * MISMA pantalla de verificación de siempre, que es la que decide qué se puede
- * hacer con ese pase. Acá no se registra nada.
+ * pantalla que decide qué se puede hacer con ese pase. Acá no se registra nada.
+ *
+ * SIRVE PARA LOS DOS ESCANEOS DEL CICLO, y por eso el parámetro `destino`:
+ *
+ *   'verificar' (por defecto)  el guardia en el portón  -> pantalla de salida
+ *   'recibir'                  el solicitante en bodega -> detalle del pase
+ *
+ * Leer un QR y resolver el correlativo es idéntico en los dos casos; lo único
+ * distinto es a dónde se va después. Duplicar la pantalla por eso dejaría dos
+ * copias de la cámara, los permisos y el candado para mantener en paralelo.
  */
 export default function EscanearPaseScreen() {
   const navigation = useNavigation<any>()
+  const route = useRoute<any>()
   const isFocused = useIsFocused()
+
+  const paraRecibir = route.params?.destino === 'recibir'
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
   const [buscando, setBuscando] = useState(false)
@@ -50,7 +61,11 @@ export default function EscanearPaseScreen() {
   const lockRef = useRef(false)
 
   usePageHeader({
-    center: <Text fontSize="$4" fontWeight="700" color="$text">Pases de salida</Text>,
+    center: (
+      <Text fontSize="$4" fontWeight="700" color="$text">
+        {paraRecibir ? 'Recibir un pase' : 'Pases de salida'}
+      </Text>
+    ),
   })
 
   useEffect(() => {
@@ -108,7 +123,11 @@ export default function EscanearPaseScreen() {
         setFallo(`No hay ningún pase con el código "${codigo}".`)
         return
       }
-      navigation.navigate('pasesSalidaVerificarSalida', { id: p.Id, correlativo: p.Correlativo })
+      if (paraRecibir) {
+        navigation.navigate('pasesSalidaPaseDetalle', { id: p.Id, correlativo: p.Correlativo })
+      } else {
+        navigation.navigate('pasesSalidaVerificarSalida', { id: p.Id, correlativo: p.Correlativo })
+      }
     } catch (e) {
       setFallo(handleError(e).message)
     } finally { setBuscando(false) }
@@ -157,8 +176,9 @@ export default function EscanearPaseScreen() {
               Se necesita permiso de cámara para escanear los códigos QR.
             </Text>
             <Text color="$textMuted" textAlign="center" fontSize={12} maxWidth={300}>
-              Si el código no se puede leer, use «Salida manual» desde Control de
-              salida para buscar el pase por correlativo o por quién lo retira.
+              {paraRecibir
+                ? 'Si el código no se puede leer, abra el pase desde Mis pases y déle recibido desde ahí.'
+                : 'Si el código no se puede leer, use «Salida manual» desde Control de salida para buscar el pase por correlativo o por quién lo retira.'}
             </Text>
           </YStack>
         ) : (

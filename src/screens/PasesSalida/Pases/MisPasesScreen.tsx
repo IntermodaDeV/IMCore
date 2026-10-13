@@ -3,13 +3,15 @@ import { RefreshControl, FlatList, ScrollView } from 'react-native'
 import { Text, XStack, YStack, View, useTheme } from 'tamagui'
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
 import {
-  ChevronRight, RotateCcw, Package, Plus, QrCode, Trash2, IdCard, CalendarDays,
+  ChevronRight, RotateCcw, Package, Plus, QrCode, Trash2, IdCard, CalendarDays, ScanLine,
+  Check, Ban,
 } from 'lucide-react-native'
 import dayjs from 'dayjs'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
 import { useShowToast } from '../../../utils/useShowToast'
 import ConfirmDialog from '../../../components/commons/ConfirmDialog'
+import AppInput from '../../../components/commons/AppInput'
 import { NotificationBell } from '../../../components/notifications/NotificationBell'
 import { subscribeOpenMiPaseSalida } from '../../../services/pasesSalidaNavigation'
 import SearchInput from '../../../components/commons/SearchInput'
@@ -22,12 +24,15 @@ import { useAuth } from '../../../context/AuthContext'
 import { shadows } from '../../../theme/shadows'
 import {
   ACCENT, ACCENT_BG, ACCESO_SOLICITANTE, ESTADOS_FILTRO, ETIQUETA_ESTADO, PRESS_CARD,
-  estadoVisual, fmtFecha, fmtFechaHora, tieneAcceso,
+  estadoVisual, fmtCantidad, fmtFecha, fmtFechaHora, tieneAcceso,
 } from '../pasesSalida.helpers'
 import { pasesService } from '../../../api/modules/pasesSalida/pases.service'
 import {
   armarBitacora, ESTADOS_ABIERTOS, ESTADOS_CERRADOS, EstadoPase, IPaseSalida, IPasoFirma,
 } from '../../../api/modules/pasesSalida/pases.types'
+
+/** El verde de confirmar, el mismo de los vistos del detalle. */
+const VERDE = '#22c55e'
 
 /** Las dos pestañas: lo que sigue en curso y lo que ya cerró. */
 type TabPases = 'PROC' | 'FIN'
@@ -107,6 +112,75 @@ export default function MisPasesScreen() {
   const [aEliminar, setAEliminar] = useState<IPaseSalida | null>(null)
   // La bitácora de cada pase, indexada por Id. Viene con la lista.
   const [bitacoras, setBitacoras] = useState<Record<number, IPasoFirma[]>>({})
+
+  /* Cerrar un pase desde la lista. Dos estados y no uno porque son dos
+     decisiones distintas: confirmar lo que llegó y dar de baja lo que no. */
+  const [aRecibir, setARecibir] = useState<IPaseSalida | null>(null)
+  const [aCerrar, setACerrar] = useState<IPaseSalida | null>(null)
+  const [motivoCierre, setMotivoCierre] = useState('')
+  const [cerrando, setCerrando] = useState(false)
+
+  /**
+   * Qué acción le toca a una fila, o null si ninguna.
+   *
+   * EXCLUYENTES Y EN ESTE ORDEN. Mientras haya algo que confirmar, eso va
+   * primero: dar de baja material sin haber revisado lo que acaba de entrar es
+   * declarar perdido algo que puede estar en la bodega desde ayer. Cuando ya no
+   * queda nada por confirmar y sigue faltando material, ahí sí hay una decisión
+   * que tomar.
+   *
+   * El servidor revalida las dos; esto solo decide qué se dibuja.
+   */
+  const accionDeFila = (p: IPaseSalida): 'recibir' | 'cerrar' | null => {
+    if (!p.Retorna) return null
+    if (!['PSSAL', 'PSREPA', 'PSRET'].includes(p.Estado)) return null
+    if ((p.EntregasSinRecibir ?? 0) > 0) return 'recibir'
+    if ((p.UnidadesAfuera ?? 0) > 0) return 'cerrar'
+    return null
+  }
+
+  const abrirCierre = (p: IPaseSalida) => { setMotivoCierre(''); setACerrar(p) }
+
+  const confirmarRecibo = async () => {
+    if (!aRecibir) return
+    setCerrando(true)
+    try {
+      const r = await pasesService.recibirPase(aRecibir.Id)
+      if (r.Success) {
+        showToast('success', 'Listo', r.SuccessMessage || 'Pase recibido')
+        setARecibir(null)
+        await cargar()
+      } else {
+        showToast('error', 'No se pudo recibir', r.ErrorMessage || 'Intente de nuevo')
+      }
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo recibir')
+    } finally { setCerrando(false) }
+  }
+
+  const confirmarCierre = async () => {
+    if (!aCerrar) return
+    /* El mínimo se revisa acá para no gastar un viaje, pero el servidor lo
+       revalida: es el único registro de por qué faltó material. */
+    if (motivoCierre.trim().length < 10) {
+      showToast('warning', 'Falta el motivo',
+        'Explique por qué se cierra sin que vuelva todo. Al menos 10 caracteres.')
+      return
+    }
+    setCerrando(true)
+    try {
+      const r = await pasesService.cerrarConFaltante(aCerrar.Id, motivoCierre.trim())
+      if (r.Success) {
+        showToast('success', 'Pase cerrado', r.SuccessMessage || 'Quedó registrado el motivo')
+        setACerrar(null); setMotivoCierre('')
+        await cargar()
+      } else {
+        showToast('error', 'No se pudo cerrar', r.ErrorMessage || 'Intente de nuevo')
+      }
+    } catch (e: any) {
+      showToast('error', 'Error', e?.message || 'No se pudo cerrar')
+    } finally { setCerrando(false) }
+  }
 
   // Los tres filtros se encadenan, no corren en paralelo: buscador, luego
   // pestaña, luego chip. Si fueran paralelos, uno pisaría al otro.
@@ -244,6 +318,21 @@ export default function MisPasesScreen() {
               placeholder="Buscar..."
             />
           </YStack>
+
+          {/* Escanear para RECIBIR. Al lado de «Nuevo» porque son las dos cosas
+              que se vienen a hacer acá: abrir un pase y cerrarlo. Va en gris y
+              no en naranja —el color de la acción principal— para que crear
+              siga siendo lo primero que encuentra el ojo.
+
+              Sin texto: con el material enfrente se busca el ícono, y «Nuevo»
+              necesita el ancho. */}
+          <View onPress={() => navigation.navigate('pasesSalidaEscanearRecibir', { destino: 'recibir' })}
+            pressStyle={{ opacity: 0.7 }}
+            backgroundColor="$backgroundElevated" borderWidth={1} borderColor="$border"
+            borderRadius="$3" height={42} width={40}
+            alignItems="center" justifyContent="center">
+            <ScanLine size={18} color={theme.text?.val} />
+          </View>
 
           {puedeCrear ? (
             <View flex={1} onPress={() => navigation.navigate('pasesSalidaPaseCrear')} pressStyle={{ opacity: 0.85 }}
@@ -448,6 +537,55 @@ export default function MisPasesScreen() {
                   ) : null}
                 </XStack>
 
+                {/* Cerrar el pase, desde la lista.
+
+                    Los dos botones son EXCLUYENTES y en ese orden a propósito:
+                    primero se confirma lo que llegó, y solo cuando no queda
+                    nada por confirmar se decide sobre lo que no llegó. Al revés
+                    se daría de baja material que quizá está en la bodega desde
+                    ayer y nadie lo ha revisado.
+
+                    Desde acá y no solo desde el detalle porque el caso normal
+                    —volvió todo, hay que firmarlo— no necesita abrir nada. */}
+                {accionDeFila(p) ? (
+                  <XStack marginTop="$2.5" paddingTop="$2.5" borderTopWidth={1}
+                    borderTopColor="$border" gap="$2" alignItems="center">
+                    {accionDeFila(p) === 'recibir' ? (
+                      <>
+                        <Text flex={1} fontSize={11} color="$textMuted">
+                          {(p.EntregasSinRecibir ?? 0) >= 2
+                            ? `${p.EntregasSinRecibir} entradas sin confirmar`
+                            : 'Entró material sin confirmar'}
+                        </Text>
+                        <View onPress={(e: any) => { e?.stopPropagation?.(); setARecibir(p) }}
+                          pressStyle={{ opacity: 0.85 }}
+                          backgroundColor={VERDE} borderRadius="$3"
+                          paddingHorizontal="$3" height={32}
+                          alignItems="center" justifyContent="center"
+                          flexDirection="row" gap="$1.5">
+                          <Check size={13} color="#fff" />
+                          <Text color="#fff" fontWeight="800" fontSize={12}>Recibir</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <Text flex={1} fontSize={11} color="$textMuted">
+                          Faltan {fmtCantidad(p.UnidadesAfuera)} sin volver
+                        </Text>
+                        <View onPress={(e: any) => { e?.stopPropagation?.(); abrirCierre(p) }}
+                          pressStyle={{ opacity: 0.85 }}
+                          backgroundColor="transparent" borderWidth={1} borderColor="#f59e0b"
+                          borderRadius="$3" paddingHorizontal="$3" height={32}
+                          alignItems="center" justifyContent="center"
+                          flexDirection="row" gap="$1.5">
+                          <Ban size={13} color="#f59e0b" />
+                          <Text color="#f59e0b" fontWeight="800" fontSize={12}>Cerrar pase</Text>
+                        </View>
+                      </>
+                    )}
+                  </XStack>
+                ) : null}
+
                 {/* La ruta del pase: dónde nació y por qué firmas va. Es el dato
                     que el solicitante consulta —"¿quién me falta?"— y que el
                     contador "0 de 2" no respondía. */}
@@ -470,6 +608,52 @@ export default function MisPasesScreen() {
       )}
 
       <PaseQrSheet pase={qrPase} onCerrar={() => setQrPase(null)} />
+
+      {/* Recibir: no pide nada porque no hay nada que decidir — se confirma lo
+          que ya está adentro. */}
+      <ConfirmDialog
+        open={!!aRecibir}
+        onOpenChange={(o: boolean) => { if (!o) setARecibir(null) }}
+        title="Recibir"
+        message={`¿Confirmar que tiene el material de ${aRecibir?.Correlativo ?? 'este pase'}?${
+          (aRecibir?.UnidadesAfuera ?? 0) > 0
+            ? ' Lo que sigue afuera no se toca: el pase queda abierto.'
+            : ' Con esto el pase queda finalizado.'}`}
+        confirmLabel="Dar por recibido"
+        confirmColor={VERDE}
+        loading={cerrando}
+        onConfirm={confirmarRecibo}
+      />
+
+      {/* Cerrar con faltante: esto SÍ decide algo —dar por perdido material— y
+          por eso el motivo va dentro del mismo diálogo. */}
+      <ConfirmDialog
+        open={!!aCerrar}
+        onOpenChange={(o: boolean) => { if (!o) { setACerrar(null); setMotivoCierre('') } }}
+        title="Cerrar el pase"
+        message={`A ${aCerrar?.Correlativo ?? 'este pase'} le faltan ${
+          fmtCantidad(aCerrar?.UnidadesAfuera)} unidades por volver. Al cerrarlo se dan por no devueltas.`}
+        extra={
+          <YStack gap="$1.5">
+            <AppInput
+              label="¿Por qué no volvió?"
+              value={motivoCierre}
+              onChangeText={setMotivoCierre}
+              // placeholder="Ej: se donaron 3 de los 5 pantalones en la feria"
+              multiline
+            />
+            <Text fontSize={10} color={motivoCierre.trim().length < 10 ? '#f59e0b' : '$textMuted'}>
+              {motivoCierre.trim().length < 10
+                ? `Faltan ${10 - motivoCierre.trim().length} caracteres.`
+                : 'Queda guardado con su nombre y la fecha.'}
+            </Text>
+          </YStack>
+        }
+        confirmLabel="Cerrar pase"
+        confirmColor="#f59e0b"
+        loading={cerrando}
+        onConfirm={confirmarCierre}
+      />
 
       <ConfirmDialog
         open={!!aEliminar}
