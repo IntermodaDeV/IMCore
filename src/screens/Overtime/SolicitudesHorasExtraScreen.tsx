@@ -178,7 +178,8 @@ export default function SolicitudesHorasExtraScreen() {
   const [aprobando, setAprobando] = useState<IOvertimeRequestDetail[] | null>(null)
   const [rechazando, setRechazando] = useState<IOvertimeRequestDetail[] | null>(null)
   // Devolver al solicitante: un solo empleado, y solo el jefe (Order 1).
-  const [devolviendo, setDevolviendo] = useState<IOvertimeRequestDetail | null>(null)
+  // Puede ser uno (desde la tarjeta) o varios (desde la barra de lote).
+  const [devolviendo, setDevolviendo] = useState<IOvertimeRequestDetail[] | null>(null)
   // El módulo de cada detalle (Id → nombre). Llega después de la lista.
   const [modulos, setModulos] = useState<Map<number, string>>(new Map())
 
@@ -524,7 +525,7 @@ export default function SolicitudesHorasExtraScreen() {
    * igual que al firmar: sin la firma del solicitante ya no le toca al jefe.
    */
   const confirmarDevolucion = useCallback(async () => {
-    if (!devolviendo) return
+    if (!devolviendo || devolviendo.length === 0) return
     const texto = motivo.trim()
     if (texto.length < 10) {
       setMotivoError('Indica qué hay que corregir (al menos 10 caracteres)')
@@ -535,22 +536,32 @@ export default function SolicitudesHorasExtraScreen() {
       setEnviando(true)
       loader.show()
 
-      const res = await overtimeService.returnRequestDetail(companyCode, {
-        RequestDetails_Id: devolviendo.Id,
-        SystemEntities_Id: Number(entidad),
-        Comment: texto,
-      })
-
-      if (!res.Success) {
-        showToast('error', 'Error', res.ErrorMessage || 'No se pudo devolver el registro', 5000, 'top')
-        return
+      // El endpoint devuelve un empleado por llamada: se recorren en orden y se
+      // quitan de la bandeja solo los que sí se devolvieron.
+      const devueltos = new Set<number>()
+      let error = ''
+      for (const d of devolviendo) {
+        const res = await overtimeService.returnRequestDetail(companyCode, {
+          RequestDetails_Id: d.Id,
+          SystemEntities_Id: Number(entidad),
+          Comment: texto,
+        })
+        if (res.Success) devueltos.add(d.Id)
+        else if (!error) error = res.ErrorMessage || 'No se pudo devolver el registro'
       }
 
-      const quitar = (lista: IOvertimeRequestDetail[]) => lista.filter(d => d.Id !== devolviendo.Id)
-      setData(quitar)
-      setFiltered(quitar)
-      setSeleccionados(prev => new Set([...prev].filter(id => id !== devolviendo.Id)))
-      pedirImpactoBandeja(data.filter(d => d.Id !== devolviendo.Id))
+      if (devueltos.size > 0) {
+        const quitar = (lista: IOvertimeRequestDetail[]) => lista.filter(d => !devueltos.has(d.Id))
+        setData(quitar)
+        setFiltered(quitar)
+        setSeleccionados(prev => new Set([...prev].filter(id => !devueltos.has(id))))
+        pedirImpactoBandeja(data.filter(d => !devueltos.has(d.Id)))
+      }
+
+      if (error) {
+        showToast('error', 'Error', devueltos.size > 0 ? `Se devolvieron ${devueltos.size}. ${error}` : error, 5000, 'top')
+        return
+      }
 
       setDevolviendo(null)
       setMotivo('')
@@ -558,7 +569,7 @@ export default function SolicitudesHorasExtraScreen() {
       showToast(
         'success',
         'Devuelto al solicitante',
-        `Horas extra de ${nombreConCodigo(devolviendo.Employee_Name, devolviendo.Employee_Code)}`,
+        `Horas extra de ${resumenLote(devolviendo)}`,
         3000,
         'top',
       )
@@ -948,6 +959,25 @@ export default function SolicitudesHorasExtraScreen() {
               </Text>
             </YStack>
 
+            {/* Devolver al solicitante, en lote: solo el jefe */}
+            {esJefe && (
+              <Button
+                height={36} borderRadius={10} paddingHorizontal="$2.5"
+                backgroundColor="$backgroundSurface"
+                borderWidth={1} borderColor="$border"
+                pressStyle={{ opacity: 0.7 }}
+                disabled={seleccionValida.length === 0}
+                accessibilityLabel="Devolver los seleccionados al solicitante"
+                onPress={() => {
+                  setMotivo('')
+                  setMotivoError('')
+                  setDevolviendo(seleccionValida)
+                }}
+              >
+                <Undo2 size={16} color={theme.warning?.val as string} />
+              </Button>
+            )}
+
             <Button
               height={36} borderRadius={10} paddingHorizontal="$3"
               backgroundColor="$backgroundSurface"
@@ -963,19 +993,16 @@ export default function SolicitudesHorasExtraScreen() {
               <X size={16} color={theme.error?.val as string} />
             </Button>
 
+            {/* Mismo formato que los otros dos: solo el ícono */}
             <Button
               height={36} borderRadius={10} paddingHorizontal="$3"
               backgroundColor="$success"
               pressStyle={{ opacity: 0.85 }}
               disabled={seleccionValida.length === 0}
+              accessibilityLabel="Aprobar los seleccionados"
               onPress={() => abrirAprobacion(seleccionValida)}
             >
-              <XStack alignItems="center" gap="$1.5">
-                <Check size={16} color="white" />
-                <Text fontSize={13} fontWeight="700" color="white">
-                  Aprobar
-                </Text>
-              </XStack>
+              <Check size={16} color="white" />
             </Button>
           </XStack>
         )}
@@ -1076,7 +1103,7 @@ export default function SolicitudesHorasExtraScreen() {
               onDevolver={esJefe ? d => {
                 setMotivo('')
                 setMotivoError('')
-                setDevolviendo(d)
+                setDevolviendo([d])
               } : undefined}
             />
           ) : (
@@ -1085,6 +1112,7 @@ export default function SolicitudesHorasExtraScreen() {
               modulo={modulos.get(item.Id)}
               resaltada={item.Request_Id === resaltadaId}
               seleccionada={seleccionados.has(item.Id)}
+              enLote={seleccionados.size > 0}
               firmable={puedeAutorizar(item, nombreEntidad)}
               onSeleccionar={() => alternarSeleccion(item.Id)}
               onAprobar={() => abrirAprobacion([item])}
@@ -1096,7 +1124,7 @@ export default function SolicitudesHorasExtraScreen() {
               onDevolver={esJefe ? () => {
                 setMotivo('')
                 setMotivoError('')
-                setDevolviendo(item)
+                setDevolviendo([item])
               } : undefined}
             />
           )
@@ -1172,7 +1200,7 @@ export default function SolicitudesHorasExtraScreen() {
                 </Text>
                 <Text fontSize={13} color="$textMuted" marginBottom="$3">
                   {devolviendo
-                    ? `Vas a devolverle ${resumenLote([devolviendo])} al solicitante. Indica qué tiene que corregir: le llegará una notificación y podrá editarlo una vez.`
+                    ? `Vas a devolverle ${resumenLote(devolviendo)} al solicitante. Indica qué tiene que corregir: le llegará una notificación y podrá editarlo una vez.`
                     : rechazando ? `Vas a rechazar ${resumenLote(rechazando)}. Indica por qué.` : ''}
                 </Text>
               </YStack>
@@ -1706,6 +1734,7 @@ function SolicitudCard({
   modulo,
   resaltada,
   seleccionada,
+  enLote = false,
   firmable = true,
   onSeleccionar,
   onAprobar,
@@ -1713,6 +1742,8 @@ function SolicitudCard({
   onDevolver,
 }: {
   item: IOvertimeRequestDetail
+  /** Hay tarjetas marcadas: se firma desde la barra de lote, no desde aquí. */
+  enLote?: boolean
   /** El módulo del empleado ese día, si ya llegó del cubo. */
   modulo?: string
   /** Llegó por notificación: se marca un momento para poder ubicarla. */
@@ -1845,8 +1876,10 @@ function SolicitudCard({
         </YStack>
       </XStack>
 
-      {/* ── Las ACCIONES: botones dentro de la tarjeta, en una fila. */}
-      <XStack gap="$2" padding="$2.5" paddingTop="$2" borderTopWidth={1} borderTopColor="$border">
+      {/* ── Las ACCIONES: botones dentro de la tarjeta, en una fila. Con
+          tarjetas marcadas se ocultan: la acción es general, en la barra. */}
+      <XStack gap="$2" padding="$2.5" paddingTop="$2" borderTopWidth={1} borderTopColor="$border"
+        display={enLote ? 'none' : 'flex'}>
         {onDevolver && (
           <Button
             flex={1} height={36} borderRadius={10} paddingHorizontal="$1"

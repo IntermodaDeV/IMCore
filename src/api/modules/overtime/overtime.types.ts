@@ -673,6 +673,8 @@ export interface IOvertimeDashboardSettings {
   /** Hasta este dia inclusive el tablero se arma con datos previos al modulo. */
   Fecha_Corte_Historico: string
   Valor_Alimentacion: number
+  /** Inicio (yyyy-MM-dd) de la semana del proceso actual de la planilla semanal. */
+  Semana_Actual_Inicio?: string
 }
 
 export interface IOvertimeBudgetTotals {
@@ -979,9 +981,38 @@ export interface IOvertimeParameter {
   cod_tip_planilla: string
   porcentaje: number | null
   tiempoAjuste: number | null
-  /** A qué combinación de turno pertenece la banda. Lo rellena el servidor. */
-  TurnoId: number
-  TurnoDetalleId: number
+  /** A qué combinación de turno pertenece la banda (endpoint viejo). */
+  TurnoId?: number
+  TurnoDetalleId?: number
+  /** Parámetros nuevos: la banda es del empleado ese día. */
+  Employee_Code?: string
+  Shift_Id?: number
+}
+
+/** Empleado del que se piden las bandas del día (parámetros nuevos). */
+export interface IOvertimeBandEmployee {
+  Employee_Code: string
+  Shift_Id: number
+}
+
+/** Renglón que se manda a repartir al servidor. */
+export interface IOvertimeSplitRow {
+  Employee_Code: string
+  Shift_Id: number | null
+  /** yyyy-MM-ddTHH:mm:ss */
+  Start_Time: string
+  End_Time: string
+  Is_Manual: boolean
+}
+
+/** Reparto por banda que devuelve el servidor (SP_Get_OvertimeSplit). */
+export interface IOvertimeSplit {
+  Employee_Code: string
+  ParametroId: number | null
+  concepto: string
+  descripcion: string
+  porcentaje: number | null
+  hours: number
 }
 
 /** Planilla + turno + detalle de turno: la llave con la que se piden las bandas. */

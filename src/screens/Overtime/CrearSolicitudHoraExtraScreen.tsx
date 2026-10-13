@@ -10,7 +10,6 @@ import {
   Clock,
   Lock,
   MessageSquare,
-  Pencil,
   Search,
   Send,
   Undo2,
@@ -36,8 +35,9 @@ import {
   IOvertimeReason,
   IOvertimeRequestDetail,
   IOvertimeShiftSchedule,
+  IOvertimeParameter,
+  IOvertimeSplit,
   ISaveOvertimeDetail,
-  IShiftParameterKey,
   IUserEntity,
 } from '../../api/modules/overtime/overtime.types'
 import { etiquetaFirma, fmtHoras, nombreConCodigo, tieneFirma } from './Overtime.utils'
@@ -45,7 +45,6 @@ import {
   OvertimeBand,
   TimeBand,
   bandsFrom,
-  computeBreakdown,
   cruzaMedianoche,
   fechaHoraISO,
   hora12,
@@ -53,7 +52,6 @@ import {
   normalizeTime,
   opcionesFin,
   opcionesInicio,
-  parameterKey,
   rowHours,
   seEncimaConJornada,
 } from './Overtime.calc'
@@ -498,7 +496,7 @@ export default function CrearSolicitudHoraExtraScreen() {
     setErrorHorarios('')
 
     Promise.all([
-      overtimeService.getShiftSchedules(companyCode, dia),
+      overtimeService.getShiftSchedules(companyCode, dia, fecha),
       // La solicitud que se edita se EXCLUYE: sus propios empleados no están
       // tomados desde su punto de vista.
       overtimeService.getEmployeesWithRequest(companyCode, fecha, editandoId || undefined),
@@ -660,79 +658,140 @@ export default function CrearSolicitudHoraExtraScreen() {
   }, [elegidos, todos, horarios, semilla, bloqueados, devueltos, corrigiendo])
 
   /**
-   * Las bandas de recargo de las combinaciones que hay en pantalla.
+   * Las bandas de cada empleado el día de la hora extra.
    *
-   * Se piden por combinación distinta y no por empleado: varios comparten turno
-   * y planilla, y con veinte empleados serían veinte viajes por lo mismo.
+   * Con los parámetros nuevos la banda depende del EMPLEADO (su planilla y sus
+   * áreas) y de la FECHA (el día de su turno), así que la llave es el código
+   * de empleado. Solo se usan para armar las horas posibles; el reparto lo
+   * calcula el servidor.
    */
   const cargarBandas = useCallback(
     async (lista: Fila[]) => {
-      if (!companyCode || lista.length === 0) return
+      if (!companyCode || !fecha || lista.length === 0) return
 
-      const vistas = new Set<string>()
-      const keys: IShiftParameterKey[] = []
+      const employees = lista
+        .filter(f => f.shift_Id != null && !!llaveEmpleado(f.employee_Code))
+        .map(f => ({ Employee_Code: llaveEmpleado(f.employee_Code), Shift_Id: f.shift_Id as number }))
 
-      for (const f of lista) {
-        const llave = parameterKey(f.cod_Planilla, f.shift_Id, f.shift_ScheduleId)
-        if (vistas.has(llave)) continue
-        vistas.add(llave)
-
-        keys.push({
-          Planilla: f.cod_Planilla,
-          TurnoId: f.shift_Id ?? 0,
-          TurnoDetalleId: f.shift_ScheduleId ?? 0,
-        })
-      }
-
-      if (keys.length === 0) return
+      if (employees.length === 0) return
 
       setCargandoBandas(true)
 
       try {
-        const res = await overtimeService.getOvertimeParameters(companyCode, keys)
+        const res = await overtimeService.getOvertimeBands(companyCode, fecha, employees)
         if (!res?.Success) return
 
-        const agrupadas = new Map<string, TimeBand[]>()
-        const porLlave = new Map<string, typeof res.Data>()
+        const porEmpleado = new Map<string, IOvertimeParameter[]>()
 
         for (const p of res.Data ?? []) {
-          const llave = parameterKey(p.cod_tip_planilla, p.TurnoId, p.TurnoDetalleId)
-          const actual = porLlave.get(llave) ?? []
-          actual.push(p)
-          porLlave.set(llave, actual)
+          const llave = llaveEmpleado(p.Employee_Code)
+          porEmpleado.set(llave, [...(porEmpleado.get(llave) ?? []), p])
         }
 
-        for (const [llave, params] of porLlave) agrupadas.set(llave, bandsFrom(params ?? []))
+        const agrupadas = new Map<string, TimeBand[]>()
+        for (const [llave, params] of porEmpleado) agrupadas.set(llave, bandsFrom(params))
 
         setBandas(agrupadas)
       } finally {
         setCargandoBandas(false)
       }
     },
-    [companyCode],
+    [companyCode, fecha],
   )
 
-  // El reparto se recalcula cuando cambian las horas o llegan las bandas.
+  // El reparto lo calcula el SERVIDOR (SP_Get_OvertimeSplit →
+  // FN_SplitOvertimeByBandManual) con la planilla y las áreas del empleado y el
+  // día del turno: es la misma función con la que se guarda, se revisa y se
+  // costea, y ya trae la regla de la HE Manual (lo de la jornada al 25%).
   //
-  // En una HE Manual se le pasa la jornada del empleado: el tramo que cae
-  // dentro de ella va a la banda del 25% en lugar de quedar fuera de banda.
+  // Se pide con un pequeño retraso para no llamar por cada hora elegida, y una
+  // respuesta que llega tarde se descarta.
+  const firmaReparto = useMemo(
+    () =>
+      JSON.stringify(
+        filas.map(f => [f.employee_Code, f.shift_Id, f.start_Time, f.end_Time, f.is_Manual]),
+      ),
+    [filas],
+  )
+
   useEffect(() => {
-    setFilas(prev => {
-      let cambio = false
+    if (!companyCode || !fecha) return
 
-      const next = prev.map(f => {
-        const llave = parameterKey(f.cod_Planilla, f.shift_Id, f.shift_ScheduleId)
-        const jornada = f.is_Manual ? horarios.find(h => h.ShiftId === f.shift_Id) : undefined
-        const nuevo = computeBreakdown(f.start_Time, f.end_Time, bandas.get(llave) ?? [], jornada)
+    const rows = filas
+      .filter(f => rowHours(f.start_Time, f.end_Time) !== null)
+      .map(f => ({
+        Employee_Code: llaveEmpleado(f.employee_Code),
+        Shift_Id: f.shift_Id ?? null,
+        Start_Time: fechaHoraISO(fecha, f.start_Time),
+        End_Time: fechaHoraISO(fecha, f.end_Time, cruzaMedianoche(f.start_Time, f.end_Time) ? 1 : 0),
+        Is_Manual: !!f.is_Manual,
+      }))
 
-        if (JSON.stringify(nuevo) === JSON.stringify(f.breakdown)) return f
-        cambio = true
-        return { ...f, breakdown: nuevo }
+    let vigente = true
+
+    const aplicar = (data: IOvertimeSplit[]) => {
+      const porEmpleado = new Map<string, IOvertimeSplit[]>()
+      for (const d of data) {
+        const llave = llaveEmpleado(d.Employee_Code)
+        porEmpleado.set(llave, [...(porEmpleado.get(llave) ?? []), d])
+      }
+
+      setFilas(prev => {
+        let cambio = false
+
+        const next = prev.map(f => {
+          const llave = llaveEmpleado(f.employee_Code)
+          // Lo que no cae en ninguna banda: o el empleado no tiene bandas ese
+          // día, o las tiene pero el rango se sale de ellas.
+          const sinBandas = (bandas.get(llave) ?? []).length === 0
+          const nuevo: OvertimeBand[] =
+            rowHours(f.start_Time, f.end_Time) === null
+              ? []
+              : (porEmpleado.get(llave) ?? [])
+                  // Lo que no cae en una banda es tema de RRHH: el solicitante no lo ve.
+                  .filter(d => !!d.concepto)
+                  .map(d => ({
+                  concepto: d.concepto ?? '',
+                  descripcion: d.concepto
+                    ? d.descripcion
+                    : sinBandas
+                      ? 'Sin parámetros del turno'
+                      : 'Fuera de banda',
+                  porcentaje: d.porcentaje,
+                  parametroId: d.ParametroId ?? null,
+                  hours: +Number(d.hours).toFixed(2),
+                }))
+
+          if (JSON.stringify(nuevo) === JSON.stringify(f.breakdown)) return f
+          cambio = true
+          return { ...f, breakdown: nuevo }
+        })
+
+        return cambio ? next : prev
       })
+    }
 
-      return cambio ? next : prev
-    })
-  }, [bandas, filas, horarios])
+    if (rows.length === 0) {
+      aplicar([])
+      return
+    }
+
+    const t = setTimeout(async () => {
+      try {
+        const res = await overtimeService.getOvertimeSplit(companyCode, fecha, rows)
+        if (!vigente) return
+        if (res?.Success) aplicar(res.Data ?? [])
+      } catch {
+        // Sin reparto la fila se ve sin bandas; el guardado lo recalcula igual.
+      }
+    }, 250)
+
+    return () => {
+      vigente = false
+      clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firmaReparto, bandas, companyCode, fecha])
 
   const editarFila = useCallback((code: string, cambios: Partial<Fila>) => {
     setFilas(prev => prev.map(f => (f.employee_Code === code ? { ...f, ...cambios } : f)))
@@ -953,20 +1012,9 @@ export default function CrearSolicitudHoraExtraScreen() {
           // El servidor la rechaza si el usuario no tiene el acceso.
           Is_Manual: f.is_Manual,
           Comment: f.comment.trim() || null,
-          // En una HE Manual el reparto ya trae el tramo de la jornada al 25%:
-          // el procedimiento guarda estos conceptos tal cual.
-          Concepts: f.breakdown
-            // Las horas sin banda no son pagables y el procedimiento las
-            // descarta; no se mandan para que el payload diga lo mismo que se
-            // va a guardar.
-            .filter(b => !!b.concepto && b.hours > 0)
-            .map(b => ({
-              Concepto: b.concepto,
-              Descripcion: b.descripcion,
-              Porcentaje: b.porcentaje,
-              Hours: b.hours,
-              ParametroId: b.parametroId,
-            })),
+          // El reparto por banda lo calcula el procedimiento al guardar
+          // (FN_SplitOvertimeByBandManual), el mismo que se ve en pantalla.
+          Concepts: [],
         }
       })
 
@@ -1688,7 +1736,7 @@ function PasoHoras({
 
   /** Las bandas de la fila, que son las que definen sus horas posibles. */
   const bandasDe = (f: Fila) =>
-    bandas.get(parameterKey(f.cod_Planilla, f.shift_Id, f.shift_ScheduleId)) ?? []
+    bandas.get(llaveEmpleado(f.employee_Code)) ?? []
 
   /**
    * Las opciones de fin de una fila.
@@ -1730,6 +1778,14 @@ function PasoHoras({
   const hayMotivo = editables.some(f => !!f.category_Id)
   const hayComentario = editables.some(f => !!f.comment.trim())
 
+  // Aplicado = todos los editables tienen el MISMO valor (y no vacío). Así se
+  // ve cuál de los botones ya está aplicado al lote.
+  const todosIguales = (valor: (f: Fila) => string) =>
+    editables.length > 1 && !!valor(editables[0]) && editables.every(f => valor(f) === valor(editables[0]))
+  const horarioAplicado = todosIguales(f => (f.end_Time ? `${f.start_Time}|${f.end_Time}` : ''))
+  const motivoAplicado = todosIguales(f => (f.category_Id ? String(f.category_Id) : ''))
+  const comentarioAplicado = todosIguales(f => f.comment.trim())
+
   // La barra existe con al menos dos filas editables: con una sola no hay a
   // quién copiarle nada, y la marca de HE Manual se pone desde la propia fila.
   const mostrarBarra = editables.length > 1
@@ -1747,34 +1803,37 @@ function PasoHoras({
           no hay qué copiar. */}
       {mostrarBarra && (
         <YStack
-          gap="$2"
-          padding="$2.5"
-          borderRadius={12}
+          gap="$1.5"
+          padding="$2"
+          borderRadius={10}
           backgroundColor="$backgroundSurface"
           borderWidth={1}
           borderColor="$border"
         >
-          <Text fontSize={10} fontWeight="800" color="$textMuted" letterSpacing={0.5}>
+          <Text fontSize={9} fontWeight="800" color="$textMuted" letterSpacing={0.5}>
             APLICAR A TODOS
           </Text>
 
-          <XStack gap="$2" flexWrap="wrap" alignItems="center">
+          <XStack gap="$1.5" flexWrap="wrap" alignItems="center">
             <BotonLote
-              icono={<Clock size={13} color={theme.text?.val as string} />}
+              icono={<Clock size={11} color={theme.text?.val as string} />}
               texto="Horario"
               habilitado={hayHorario}
+              aplicado={horarioAplicado}
               onPress={onAplicarHorario}
             />
             <BotonLote
-              icono={<Check size={13} color={theme.text?.val as string} />}
+              icono={<Check size={11} color={theme.text?.val as string} />}
               texto="Motivo"
               habilitado={hayMotivo}
+              aplicado={motivoAplicado}
               onPress={onAplicarMotivo}
             />
             <BotonLote
-              icono={<MessageSquare size={13} color={theme.text?.val as string} />}
+              icono={<MessageSquare size={11} color={theme.text?.val as string} />}
               texto="Comentario"
               habilitado={hayComentario}
+              aplicado={comentarioAplicado}
               onPress={onAplicarComentario}
             />
 
@@ -1782,7 +1841,7 @@ function PasoHoras({
                 de las filas. Si ya están todas marcadas, desmarca. */}
             {puedeManual && (
               <>
-                <View width={1} height={22} backgroundColor="$border" marginHorizontal="$1" />
+                <View width={1} height={18} backgroundColor="$border" marginHorizontal="$1" />
                 <MarcaManual
                   activa={todasManual}
                   texto={cuantasManual > 0 ? `HE Manual · ${cuantasManual}` : 'HE Manual'}
@@ -1793,7 +1852,7 @@ function PasoHoras({
           </XStack>
 
           {!hayHorario && !hayMotivo && !hayComentario && (
-            <Text fontSize={10} color="$textMuted">
+            <Text fontSize={9} color="$textMuted">
               Capturá el horario, el motivo o el comentario de un empleado para poder copiarlo.
             </Text>
           )}
@@ -1950,7 +2009,7 @@ function PasoHoras({
                   botón que prende y apaga; sin él, o con la fila firmada, solo
                   se muestra si ya venía marcada, para que se sepa. */}
               {(puedeManual && !f.isLocked) || f.is_Manual ? (
-                <XStack>
+                <XStack justifyContent="flex-end">
                   {puedeManual && !f.isLocked ? (
                     <MarcaManual
                       activa={f.is_Manual}
@@ -2058,18 +2117,6 @@ function PasoHoras({
                       onValueChange={v => onEditar(f.employee_Code, { end_Time: String(v) })}
                     />
 
-                    {/* Sin bandas las opciones son un tope genérico y no lo que
-                        está configurado: se avisa, porque esas horas pueden
-                        terminar sin concepto con el que pagarse. */}
-                    {bandasDe(f).length === 0 && !cargandoBandas && (
-                      <XStack alignItems="center" gap="$1.5">
-                        <AlertTriangle size={11} color={theme.warning?.val as string} />
-                        <Text fontSize={10} color="$warning" flex={1}>
-                          Su turno no tiene bandas de recargo configuradas para
-                          este día: las horas podrían quedar sin concepto.
-                        </Text>
-                      </XStack>
-                    )}
                   </YStack>
                 )}
                   <AppSelect
@@ -2211,29 +2258,34 @@ function BotonLote({
   icono,
   texto,
   habilitado,
+  aplicado = false,
   onPress,
 }: {
   icono: React.ReactNode
   texto: string
   habilitado: boolean
+  /** Todos los empleados ya tienen el mismo valor: se marca en verde con un check. */
+  aplicado?: boolean
   onPress: () => void
 }) {
+  const verde = '#16A34A'
+
   return (
     <Button
-      height={32}
-      borderRadius="$3"
-      paddingHorizontal="$2.5"
-      backgroundColor="$backgroundElevated"
+      height={26}
+      borderRadius="$2"
+      paddingHorizontal="$2"
+      backgroundColor={aplicado ? '#F0FDF4' : '$backgroundElevated'}
       borderWidth={1}
-      borderColor="$border"
+      borderColor={aplicado ? verde : '$border'}
       opacity={habilitado ? 1 : 0.45}
       disabled={!habilitado}
       pressStyle={{ opacity: 0.7 }}
       onPress={onPress}
     >
-      <XStack alignItems="center" gap="$1.5">
-        {icono}
-        <Text fontSize={12} fontWeight="700" color="$text">
+      <XStack alignItems="center" gap="$1">
+        {aplicado ? <Check size={11} color={verde} /> : icono}
+        <Text fontSize={11} fontWeight="700" color={aplicado ? verde : '$text'}>
           {texto}
         </Text>
       </XStack>
@@ -2242,7 +2294,7 @@ function BotonLote({
 }
 
 /**
- * La marca de HE Manual, en naranja para que se distinga de todo lo demás.
+ * La marca de HE Manual: una casilla en el color del texto.
  *
  * Sin onPress es solo una etiqueta: la fila ya venía marcada y el usuario no la
  * puede cambiar (está firmada, o no tiene el acceso).
@@ -2258,27 +2310,41 @@ function MarcaManual({
   compacta?: boolean
   onPress?: () => void
 }) {
-  const naranja = '#F97316'
-  const colorTexto = activa ? '#FFFFFF' : '#C2410C'
+  const theme = useTheme()
+  const negro = (theme.text?.val as string) ?? '#111827'
+  const fondo = (theme.background?.val as string) ?? '#FFFFFF'
+  const caja = compacta ? 14 : 16
 
   return (
     <XStack
       alignItems="center"
-      gap="$1"
-      height={compacta ? 24 : 32}
-      paddingHorizontal={compacta ? 8 : 10}
-      borderRadius={compacta ? 20 : 8}
-      borderWidth={1}
-      borderColor={activa ? naranja : '#FDBA74'}
-      backgroundColor={activa ? naranja : '#FFF7ED'}
+      gap="$1.5"
+      height={compacta ? 22 : 26}
       pressStyle={onPress ? { opacity: 0.7 } : undefined}
       onPress={onPress}
       hitSlop={onPress ? 6 : undefined}
     >
-      <Pencil size={compacta ? 10 : 12} color={colorTexto} />
-      <Text fontSize={compacta ? 10 : 12} fontWeight="800" color={colorTexto}>
+      {/* Casilla: marcada en negro (color del texto del tema) con un check */}
+      <View
+        width={caja}
+        height={caja}
+        borderRadius={3}
+        borderWidth={1.5}
+        borderColor={negro}
+        backgroundColor={activa ? negro : 'transparent'}
+        alignItems="center"
+        justifyContent="center"
+      >
+        {activa && <Check size={caja - 4} color={fondo} strokeWidth={3} />}
+      </View>
+      <Text fontSize={compacta ? 10 : 11} fontWeight="700" color="$text">
         {texto}
       </Text>
     </XStack>
   )
+}
+
+/** Llave de las bandas y del reparto: el código de empleado, sin espacios. */
+function llaveEmpleado(code: string | null | undefined): string {
+  return (code ?? '').toString().trim()
 }
