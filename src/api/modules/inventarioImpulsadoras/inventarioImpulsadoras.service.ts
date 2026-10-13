@@ -1,7 +1,7 @@
 import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
-  IDashboard, IFinalizarResult, ILecturaServidor, ILote, ILoteResult, IMiAsignacion, IMiHistorico, IProximoInventario,
+  IDashboard, IDashboardAsesores, IFinalizarResult, ILecturaServidor, ILote, ILoteResult, IMiAsignacion, IMiHistorico, IProximoInventario,
   IResumenCodigo, ISolicitudReapertura,
 } from './inventarioImpulsadoras.types'
 
@@ -71,6 +71,11 @@ export const inventarioImpulsadorasService = {
   proximos: (f: { companyId?: number | null; dias: number }) =>
     httpClient.get<ExecutionResponse<IProximoInventario[]>>('InventarioImpulsadoras/Dashboard/Proximos',
       { empresa: f.companyId ?? undefined, dias: f.dias }, { timeoutMs: 60000 }),
+
+  /** Dashboard › Por asesor: lo abierto hasta hoy y lo del mes, con su asesor y sus personas. */
+  asesores: (f: { companyId?: number | null; mes?: string }) =>
+    httpClient.get<ExecutionResponse<IDashboardAsesores>>('InventarioImpulsadoras/Dashboard/Asesores',
+      { empresa: f.companyId ?? undefined, mes: f.mes }, { timeoutMs: 60000 }),
 }
 
 /** Mensaje legible de un error de la API (el HttpError de la app solo trae «HTTP 409»). */

@@ -286,6 +286,9 @@ export function registrarLectura(iu: number, userCode: string, crudo: string, mo
 const barrasContadas = (iu: number, barra: string) => Number(base().executeSync(
   `SELECT cantidad FROM resumen WHERE iu = ? AND tipo = 'BARRA' AND codigo = ?`, [iu, barra]).rows[0]?.cantidad ?? 0)
 
+/** Piezas contadas de una barra suelta en esta asignación. */
+export const cantidadBarra = (iu: number, barra: string) => barrasContadas(iu, barra)
+
 /** Piezas por QR cuya barra (4.º campo) es ésta. La coma a los dos lados la ubica en ese campo. */
 const qrsConEsaBarra = (iu: number, barra: string) => Number(base().executeSync(
   `SELECT COALESCE(SUM(cantidad), 0) AS n FROM resumen
@@ -325,6 +328,21 @@ export function ajustarCantidad(iu: number, userCode: string, tipo: TipoLectura,
     const delta = Math.max(0, Math.floor(nueva)) - actual
     if (delta === 0) return null
     return insertar(iu, userCode, tipo, codigo, delta, true)
+  })
+}
+
+/**
+ * Tecla de volumen sobre la última barra: suma o resta UNA pieza como lectura de ajuste
+ * nueva (con su uuid; nunca se modifica una ya guardada, así el envío no la pierde ni la
+ * duplica). Solo BARRA. No suma a una barra que ya no está contada, y restar no baja de 1:
+ * para quitarla completa está «Quitar línea».
+ */
+export function sumarABarra(iu: number, userCode: string, codigo: string, delta: 1 | -1) {
+  return enSerie(async () => {
+    const actual = barrasContadas(iu, codigo)
+    if (actual <= 0 || (delta < 0 && actual <= 1)) return { ok: false as const, cantidad: actual }
+    const lectura = await insertar(iu, userCode, 'BARRA', codigo, delta, true)
+    return { ok: true as const, cantidad: actual + delta, lectura }
   })
 }
 

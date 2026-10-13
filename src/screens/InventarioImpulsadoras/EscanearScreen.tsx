@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Alert, FlatList, Modal, PermissionsAndroid, Platform, StyleSheet, TextInput, Vibration, useWindowDimensions,
+  Alert, AppState, FlatList, Modal, PermissionsAndroid, Platform, StyleSheet, TextInput, Vibration, useWindowDimensions,
 } from 'react-native'
 import { Text, XStack, YStack, View, Spinner, useTheme } from 'tamagui'
-import { ArrowLeft, Camera as CameraIcon, CloudDownload, Flag, Keyboard as KeyboardIcon, Minus, Plus, QrCode, ScanLine, X } from 'lucide-react-native'
+import { ArrowLeft, Camera as CameraIcon, CloudDownload, Flag, Keyboard as KeyboardIcon, Minus, Plus, QrCode, ScanLine, Volume2, X } from 'lucide-react-native'
 import { Camera } from 'react-native-camera-kit'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -13,9 +13,12 @@ import { useAuth } from '../../context/AuthContext'
 import { inventarioImpulsadorasService as api, mensajeDeError } from '../../api/modules/inventarioImpulsadoras/inventarioImpulsadoras.service'
 import {
   AsignacionLocal, ConflictoQrBarra, DanadoRepetido, LecturaLocal, ModoEscaneo, ResumenCodigo, ajustarCantidad, asignacion,
-  cambiarBarraPorQR, doblesConteos, importarDelServidor, limpiarCodigo, modoInicial, pedirFinalizar, registrarLectura,
-  resumenCodigos, totales, ultimasLecturas,
+  cambiarBarraPorQR, cantidadBarra, doblesConteos, importarDelServidor, limpiarCodigo, modoInicial, pedirFinalizar, registrarLectura,
+  resumenCodigos, sumarABarra, totales, ultimasLecturas,
 } from '../../services/inventarioImpulsadoras/baseLocal'
+import {
+  TeclaVolumen, armarTeclasVolumen, escucharTeclasVolumen, hayTeclasVolumen,
+} from '../../services/inventarioImpulsadoras/teclasVolumen'
 import { motorEnvio } from '../../services/inventarioImpulsadoras/motorEnvio'
 import { IMiHistorico } from '../../api/modules/inventarioImpulsadoras/inventarioImpulsadoras.types'
 import { ACCENT, BarraEnvio, ERR, OK, WARN, fmtN, textoCodigo, useEstadoMotor } from './components'
@@ -27,6 +30,10 @@ import Reapertura from './Reapertura'
 //    escaneaba mientras el aviso estaba abierto): vibra distinto y queda en la franja.
 //  - El lector de la PDA escribe como teclado: el campo tiene el teclado en pantalla
 //    APAGADO y conserva el foco; el botón del teclado lo activa para escribir a mano.
+//  - Teclas de volumen (Android): después de leer una BARRA, Volumen + suma una pieza de esa
+//    barra y Volumen − resta una (no baja de 1). Cada toque es una lectura de ajuste nueva.
+//    Se suelta al leer otra cosa, cambiar de modo, abrir una ventana, salir de la pantalla
+//    o tras 2 min sin usarla; fuera de eso el volumen funciona normal.
 
 const MENSAJE_ESTADO: Record<string, string> = {
   CERRADO: 'Este inventario ya se cerró desde la oficina. Lo que tengas guardado se envía igual.',
@@ -41,6 +48,10 @@ const MODOS: Record<'QR' | 'BARRA' | 'NOENCONTRADO', string> = { QR: 'QR', BARRA
 
 // Cuánto se ofrece «Deshacer» después de quitar una línea.
 const DESHACER_MS = 10000
+// La barra lista para las teclas de volumen se suelta sola si nadie la usa.
+const BARRA_LISTA_MS = 2 * 60_000
+// Manteniendo presionada la tecla: una pieza cada tanto (unas 5 por segundo).
+const REPETIR_TECLA_MS = 200
 
 export default function EscanearScreen() {
   const theme = useTheme()
@@ -70,6 +81,11 @@ export default function EscanearScreen() {
   // Lo último que se quitó, para «Deshacer» (vuelve a la cantidad de antes, como otro ajuste).
   const quitado = useRef<{ tipo: ResumenCodigo['tipo']; codigo: string; cantidad: number } | null>(null)
   const timerDeshacer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Teclas de volumen: la última BARRA leída bien y cuántas lleva.
+  const [barraLista, setBarraLista] = useState<{ codigo: string; cantidad: number } | null>(null)
+  const [enfocada, setEnfocada] = useState(true)
+  const [appActiva, setAppActiva] = useState(AppState.currentState === 'active')
+  const ultimaRepeticion = useRef(0)
 
   const inputRef = useRef<TextInput>(null)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -100,14 +116,34 @@ export default function EscanearScreen() {
   useFocusEffect(useCallback(() => {
     if (userCode) motorEnvio.iniciar(userCode)
     recargar()
+    setEnfocada(true)
     const t = setTimeout(() => inputRef.current?.focus(), 350)
-    return () => clearTimeout(t)
+    return () => { clearTimeout(t); setEnfocada(false) }
   }, [recargar, userCode]))
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', e => setAppActiva(e === 'active'))
+    return () => sub.remove()
+  }, [])
 
   // Después de un envío cambian los pendientes y, a veces, el estado (lo cerraron).
   useEffect(() => { recargar() }, [estadoMotor.ultimoEnvioOk]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const puedeEscanear = !!a && a.puede_escanear === 1 && a.finalizar_pedido !== 1
+
+  // Volumen armado solo con todo esto; si no, el volumen del equipo funciona normal.
+  const volumenArmado = hayTeclasVolumen && !!barraLista && puedeEscanear && enfocada && appActiva && !ajuste && !camara
+  useEffect(() => {
+    armarTeclasVolumen(volumenArmado)
+    return () => armarTeclasVolumen(false)
+  }, [volumenArmado])
+  // Sin usarla un rato, se suelta (que no sume en la bolsa a un código de hace media hora).
+  useEffect(() => {
+    if (!barraLista) return
+    const t = setTimeout(() => setBarraLista(null), BARRA_LISTA_MS)
+    return () => clearTimeout(t)
+  }, [barraLista])
+  const teclaVolumen = useRef<(e: TeclaVolumen) => void>(() => {})
+  useEffect(() => escucharTeclasVolumen(e => teclaVolumen.current(e)), [])
 
   // Ya finalizada (o cerrada): aquí mismo se puede pedir que la reabran. Lo que se ofrece lo
   // decide el servidor (PuedeSolicitar, el mismo dato del histórico); sin señal no se muestra.
@@ -122,6 +158,20 @@ export default function EscanearScreen() {
     return () => { vivo = false }
   }, [finalizadaOCerrada, iu])
   const aceptaQR = !!a?.tipo_escaneo.includes('QR')
+
+  // «Últimas lecturas» es el historial (+1, −1…): junto a cada una, con cuántas quedó ese código
+  // después de ella. Se calcula hacia atrás desde el total de hoy (lo que cuenta al cerrar).
+  const quedaDespues = useMemo(() => {
+    const total = new Map(resumenCodigos(iu).map(r => [`${r.tipo}|${r.codigo}`, r.cantidad]))
+    const m = new Map<string, number>()
+    for (const l of ultimas) {
+      const k = `${l.tipo}|${l.codigo}`
+      const v = total.get(k) ?? 0
+      m.set(l.uuid, v)
+      total.set(k, v - l.delta)
+    }
+    return m
+  }, [ultimas, iu])
 
   const trasAjuste = () => {
     motorEnvio.avisarLectura()
@@ -170,6 +220,9 @@ export default function EscanearScreen() {
     const codigo = limpiarCodigo(crudo)
     if (!codigo) return
     const r = await registrarLectura(iu, userCode, codigo, forzarModo ?? modo, a.tipo_escaneo, { otraPiezaDanada })
+    // Las teclas de volumen quedan sobre esta barra; leer cualquier otra cosa (o un error) las suelta.
+    setBarraLista(r.ok && r.lectura.tipo === 'BARRA'
+      ? { codigo: r.lectura.codigo, cantidad: cantidadBarra(iu, r.lectura.codigo) } : null)
     if (r.ok) {
       Vibration.vibrate(35)
       // «QR dañado» vale para UNA pieza: sin serie no se distingue la misma pieza escaneada dos veces,
@@ -204,6 +257,33 @@ export default function EscanearScreen() {
       setAviso({ ok: false, texto: r.motivo })
     }
     inputRef.current?.focus()
+  }
+
+  // Volumen + / − sobre la barra lista: una pieza por toque, en la misma cola que las lecturas.
+  teclaVolumen.current = async (e: TeclaVolumen) => {
+    const b = barraLista
+    if (!b || !volumenArmado) return
+    const ahora = Date.now()
+    if (e.repeticion > 0 && ahora - ultimaRepeticion.current < REPETIR_TECLA_MS) return
+    ultimaRepeticion.current = ahora
+    const sube = e.tecla === 'subir'
+    const r = await sumarABarra(iu, userCode, b.codigo, sube ? 1 : -1)
+    if (!r.ok) {
+      Vibration.vibrate([0, 160, 90, 160])
+      if (r.cantidad <= 0) {
+        setBarraLista(null)
+        setAviso({ ok: false, texto: `Esa barra ya no está contada: escanéala otra vez · ${textoCodigo('BARRA', b.codigo)}` })
+      } else if (e.repeticion === 0) {
+        setAviso({ ok: false, texto: 'Queda en 1 pieza. Para quitarla, tócala en «Por código»' })
+      }
+      return
+    }
+    Vibration.vibrate(15)
+    setBarraLista(x => (x && x.codigo === b.codigo ? { ...x, cantidad: r.cantidad } : x))
+    setTot(t => ({ ...t, lecturas: t.lecturas + 1, piezas: t.piezas + (sube ? 1 : -1), pendientes: t.pendientes + 1 }))
+    setUltimas(u => [r.lectura, ...u].slice(0, 30))
+    motorEnvio.avisarLectura()
+    if (vista === 'resumen') verResumen()
   }
 
   const ponerTexto = (t: string) => { textoRef.current = t; setTexto(t) }
@@ -250,6 +330,7 @@ export default function EscanearScreen() {
       ])
 
   const finalizar = () => {
+    setBarraLista(null)
     const pend = totales(iu).pendientes
     if (pend > 0) return avisarPendientes(pend)
     // La misma talla/color contada por barra suelta Y por QR: casi siempre son las mismas piezas.
@@ -378,7 +459,7 @@ export default function EscanearScreen() {
                 {(a.tipo_escaneo.includes('Barra') ? (['QR', 'BARRA', 'NOENCONTRADO'] as const) : (['QR', 'NOENCONTRADO'] as const)).map(m => {
                   const activo = modo === m || (modo === 'AUTO' && m === 'QR')
                   return (
-                    <View key={m} flex={1} onPress={() => { setModo(m); setAviso(null); inputRef.current?.focus() }} pressStyle={{ opacity: 0.85 }}
+                    <View key={m} flex={1} onPress={() => { setModo(m); setAviso(null); setBarraLista(null); inputRef.current?.focus() }} pressStyle={{ opacity: 0.85 }}
                       backgroundColor={activo ? (m === 'NOENCONTRADO' ? WARN : ACCENT) : 'transparent'} borderRadius="$3" height={compacto ? 30 : 34}
                       alignItems="center" justifyContent="center">
                       <Text fontWeight="800" fontSize="$2" color={activo ? '#fff' : '$textMuted'}>{MODOS[m]}</Text>
@@ -416,6 +497,22 @@ export default function EscanearScreen() {
                 <CameraIcon size={22} color={theme.textMuted?.val} />
               </View>
             </XStack>
+
+            {hayTeclasVolumen && !!barraLista && (
+              <XStack borderRadius="$3" paddingHorizontal="$3" paddingVertical={compacto ? '$1' : '$1.5'} alignItems="center" gap="$2"
+                backgroundColor="rgba(37,99,235,0.10)" borderWidth={1} borderColor="rgba(37,99,235,0.35)">
+                <Volume2 size={18} color="#2563eb" />
+                <YStack flex={1}>
+                  <Text fontSize={compacto ? '$2' : '$3'} fontWeight="900" color="#2563eb" numberOfLines={1}>
+                    {textoCodigo('BARRA', barraLista.codigo)} · {fmtN(barraLista.cantidad)} {barraLista.cantidad === 1 ? 'pieza' : 'piezas'}
+                  </Text>
+                  <Text fontSize="$1" color="$textMuted" numberOfLines={1}>Volumen + suma una · Volumen − resta una</Text>
+                </YStack>
+                <View onPress={() => { setBarraLista(null); inputRef.current?.focus() }} hitSlop={10} padding="$1">
+                  <X size={16} color={theme.textMuted?.val} />
+                </View>
+              </XStack>
+            )}
 
             {!!aviso && (
               <XStack borderRadius="$3" paddingHorizontal="$3" paddingVertical={compacto ? '$1.5' : '$2'} alignItems="center" gap="$2"
@@ -479,14 +576,19 @@ export default function EscanearScreen() {
                 {l.es_ajuste ? 'AJUSTE' : l.tipo === 'NOENCONTRADO' ? 'QR DAÑADO' : l.tipo}
               </Text>
               <Text flex={1} fontSize="$2" color="$text" numberOfLines={1}>{textoCodigo(l.tipo, l.codigo)}</Text>
-              <Text fontSize="$2" fontWeight="700" color="$text">{l.delta > 0 ? `+${l.delta}` : l.delta}</Text>
+              <Text fontSize="$2" fontWeight="700" color="$text">
+                {l.delta > 0 ? `+${l.delta}` : l.delta}
+                <Text fontSize="$1" fontWeight="400" color="$textMuted">{` → ${fmtN(quedaDespues.get(l.uuid) ?? 0)}`}</Text>
+              </Text>
               <Text width={54} textAlign="right" fontSize="$1" color={l.rechazo ? ERR : l.enviada ? OK : '$textMuted'}>
                 {l.rechazo ? 'rechaz.' : l.enviada ? 'enviada' : l.fecha_equipo.slice(11, 16)}
               </Text>
             </XStack>
           )}
           ListHeaderComponent={puedeEscanear && ultimas.length
-            ? <Text fontSize="$1" color="$textMuted" paddingBottom="$1">Mantén presionada una lectura para corregirla o quitarla.</Text> : null}
+            ? <Text fontSize="$1" color="$textMuted" paddingBottom="$1">
+                La flecha dice con cuántas quedó ese código. Mantén presionada una lectura para corregirla o quitarla.
+              </Text> : null}
           ListEmptyComponent={<Text color="$textMuted" textAlign="center" paddingTop="$6">Todavía no hay lecturas.</Text>}
         />
       ) : (
@@ -606,7 +708,12 @@ function LineaModal({ item, onCerrar, onGuardar, onQuitar }: {
   const [n, setN] = useState(0)
   const [confirmar, setConfirmar] = useState(false)
   const [ocupado, setOcupado] = useState(false)
-  useEffect(() => { setN(item?.cantidad ?? 0); setConfirmar(false); setOcupado(false) }, [item])
+  // Mantener presionado + o − cuenta solo (para 200 piezas no hay que tocar 200 veces).
+  const repetir = useRef<ReturnType<typeof setInterval> | null>(null)
+  const fueLargo = useRef(false)
+  const parar = () => { if (repetir.current) clearInterval(repetir.current); repetir.current = null }
+  useEffect(() => parar, [])
+  useEffect(() => { setN(item?.cantidad ?? 0); setConfirmar(false); setOcupado(false); parar() }, [item])
   if (!item) return null
 
   const esQR = item.tipo === 'QR'
@@ -623,9 +730,13 @@ function LineaModal({ item, onCerrar, onGuardar, onQuitar }: {
       <Text fontWeight="800" color={tono === 'normal' ? '$text' : '#fff'}>{texto}</Text>
     </View>
   )
-  const paso = (icono: React.ReactNode, onPress: () => void, deshabilitado: boolean) => (
-    <View onPress={deshabilitado ? undefined : onPress} width={52} height={52} borderRadius={26} alignItems="center" justifyContent="center"
-      borderWidth={1} borderColor="$border" opacity={deshabilitado ? 0.4 : 1}>{icono}</View>
+  const cambiar = (d: number) => setN(v => Math.max(0, v + d))
+  const paso = (icono: React.ReactNode, d: number, deshabilitado: boolean, chico = false) => (
+    <View width={chico ? 44 : 52} height={chico ? 44 : 52} borderRadius={chico ? 22 : 26} alignItems="center" justifyContent="center"
+      borderWidth={1} borderColor="$border" opacity={deshabilitado ? 0.4 : 1}
+      onPress={deshabilitado ? undefined : () => { if (fueLargo.current) { fueLargo.current = false; return } cambiar(d) }}
+      onLongPress={deshabilitado ? undefined : () => { fueLargo.current = true; parar(); repetir.current = setInterval(() => cambiar(d), 90) }}
+      onPressOut={parar}>{icono}</View>
   )
 
   return (
@@ -660,13 +771,16 @@ function LineaModal({ item, onCerrar, onGuardar, onQuitar }: {
             </>
           ) : (
             <>
-              <XStack alignItems="center" justifyContent="center" gap="$4">
-                {paso(<Minus size={24} color={theme.text?.val} />, () => setN(v => Math.max(0, v - 1)), n <= 0)}
+              <XStack alignItems="center" justifyContent="center" gap="$2">
+                {paso(<Text fontSize="$2" fontWeight="800" color="$text">−10</Text>, -10, n <= 0, true)}
+                {paso(<Minus size={24} color={theme.text?.val} />, -1, n <= 0)}
                 <Text fontSize="$9" fontWeight="900" color={n === item.cantidad ? '$text' : ACCENT} minWidth={70} textAlign="center">{fmtN(n)}</Text>
-                {paso(<Plus size={24} color={theme.text?.val} />, () => setN(v => v + 1), false)}
+                {paso(<Plus size={24} color={theme.text?.val} />, 1, false)}
+                {paso(<Text fontSize="$2" fontWeight="800" color="$text">+10</Text>, 10, false, true)}
               </XStack>
               <Text fontSize="$1" color="$textMuted" textAlign="center">
-                Tenías {fmtN(item.cantidad)}. Se guarda como un ajuste: queda registrado quién y cuándo lo cambió.
+                Tenías {fmtN(item.cantidad)}. Mantén presionado + o − para que cuente solo. Se guarda como un ajuste:
+                queda registrado quién y cuándo lo cambió.
               </Text>
               <XStack gap="$2" alignItems="center">
                 <Text flex={1} fontSize="$2" fontWeight="700" color={ERR} onPress={() => setConfirmar(true)} paddingVertical="$2">Quitar línea</Text>

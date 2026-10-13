@@ -229,6 +229,56 @@ export interface IDashboard {
   Alertas: IDashboardAlertas
 }
 
+// ── Dashboard › Por asesor (el mismo del web) ──
+/** ASESOR = dueño de una cartera en AX o asesor en el sistema anterior; IMPULSADORA = impulsadora en el anterior
+ *  o usuario local (así se crean); INVENTARIO = personal de inventarios del anterior; OFICINA = lo demás. */
+export type TipoPersonaInventario = 'ASESOR' | 'IMPULSADORA' | 'INVENTARIO' | 'OFICINA'
+
+export interface IDashboardAsesorPersona {
+  User_Code: string | null
+  Nombre: string | null
+  Tipo: TipoPersonaInventario
+  Finalizada: boolean
+  Lecturas: number
+  Piezas: number
+  SinEnviar: number
+  UltimoContacto: string | null
+}
+
+/** Un inventario abierto (fecha hasta hoy) o del mes, con su asesor de cartera y sus personas. */
+export interface IDashboardAsesorInventario {
+  Inventario_Id: number
+  Correlativo: string
+  Company_Id: number
+  Empresa: string
+  ClienteCodigo: string | null
+  Cliente: string | null
+  Sucursal: string | null
+  Linea: string | null
+  Fecha: string
+  Abierto: boolean
+  FechaCerrado: string | null
+  DelMes: boolean
+  Estado: 'CERRADO' | 'LISTO' | 'EN_PROCESO' | 'SIN_INICIAR' | 'SIN_PERSONAS'
+  DiasAtraso: number
+  Asignadas: number
+  Finalizadas: number
+  Lecturas: number
+  Piezas: number
+  SinEnviar: number
+  UltimoContacto: string | null
+  AnteriorCorrelativo: string | null
+  AnteriorFecha: string | null
+  PiezasAnterior: number | null
+  AsesorId: number | null
+  AsesorCodigoAx: string | null
+  AsesorUsuario: string | null
+  Asesor: string | null
+  Personas: IDashboardAsesorPersona[]
+}
+
+export interface IDashboardAsesores { Mes: string; Hoy: string; Inventarios: IDashboardAsesorInventario[] }
+
 // ── Dashboard › Próximos inventarios (el cálculo de Programación del web, solo consulta) ──
 /** PROGRAMADO = ya creado · POR_PROGRAMAR = toca en el periodo y falta crearlo · ATRASADO = ya le tocaba. */
 export type EstadoProximo = 'PROGRAMADO' | 'POR_PROGRAMAR' | 'ATRASADO' | 'SIN_HISTORIAL'

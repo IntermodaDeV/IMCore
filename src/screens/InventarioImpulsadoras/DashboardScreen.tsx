@@ -12,11 +12,14 @@ import {
   IDashboard, IDashboardEnCurso, IDashboardInventario, IDashboardSucursal, IProximoInventario,
 } from '../../api/modules/inventarioImpulsadoras/inventarioImpulsadoras.types'
 import { ACCENT, BarraAvance, ERR, OK, WARN, coincide, fmtFecha, fmtN, normal } from './components'
+import { PorAsesor } from './PorAsesor'
 
 // Inventario Clientes › Dashboard (el mismo del web, en pantalla de teléfono).
 // El permiso ES la opción de menú invImpDashboard: la API la valida contra la BD.
 // El mes cuenta por la fecha programada; «Ahora» es lo abierto hoy. Lo desactivado no cuenta.
 // Pestaña «Próximos»: lo que toca según la periodicidad, en lista larga (solo consulta: se programa en el web).
+// Pestaña «Por asesor»: lo abierto y lo del mes por asesor de cartera o por persona (PorAsesor.tsx).
+// Todo solo con las empresas del usuario (lo filtra la API).
 
 const REFRESCO_MS = 60_000
 const AZUL = '#2563eb'
@@ -104,7 +107,7 @@ const LEYENDA_LISTA: Record<Lista, string> = {
 // Próximos inventarios: ventana, y qué se cuenta como atrasado (los muy viejos son sucursales que se dejaron de visitar).
 const VENTANAS = [30, 60, 90] as const
 const ATRASO_MAX_DIAS = 365
-type Pestana = 'resumen' | 'proximos'
+type Pestana = 'resumen' | 'proximos' | 'asesores'
 type Grupo = 'porProgramar' | 'programados'
 const ESTADO_PROXIMO: Record<'PROGRAMADO' | 'POR_PROGRAMAR' | 'ATRASADO', { t: string; c: string; g: Grupo }> = {
   PROGRAMADO: { t: 'Programados', c: OK, g: 'programados' },
@@ -412,12 +415,23 @@ export default function DashboardScreen() {
   }
 
   const ancho = { width: '100%' as const, maxWidth: 1000, alignSelf: 'center' as const }
+  const selectorMes = (
+    <XStack alignItems="center" justifyContent="space-between" {...tarjeta} padding="$1.5">
+      <View onPress={() => setMes(moverMes(mes, -1))} padding="$2" hitSlop={8}><ChevronLeft size={20} color={theme.text?.val} /></View>
+      <View onPress={() => setMes(primeroDeMes())} flex={1} alignItems="center">
+        <Text fontSize="$4" fontWeight="800" color="$text">{nombreMes(mes)}</Text>
+        {cargando && <Text fontSize="$1" color="$textMuted">Actualizando…</Text>}
+      </View>
+      <View onPress={() => setMes(moverMes(mes, 1))} padding="$2" hitSlop={8}><ChevronRight size={20} color={theme.text?.val} /></View>
+    </XStack>
+  )
 
   return (
     <View flex={1} backgroundColor="$background">
       {/* Pestañas y empresa: fijos arriba, valen para las dos pestañas */}
       <YStack paddingHorizontal={pad} paddingTop={compacto ? 8 : 12} paddingBottom="$2" gap="$2" {...ancho}>
-        <Segmentos valor={pestana} onCambio={setPestana} opciones={[['resumen', 'Resumen'], ['proximos', 'Próximos']] as const} />
+        <Segmentos valor={pestana} onCambio={setPestana}
+          opciones={[['resumen', 'Resumen'], ['proximos', 'Próximos'], ['asesores', 'Por asesor']] as const} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} flexGrow={0}>
           <XStack gap="$2">
             <Chip on={companyId === null} texto="Todas" onPress={() => setCompanyId(null)} />
@@ -428,7 +442,9 @@ export default function DashboardScreen() {
         </ScrollView>
       </YStack>
 
-      {pestana === 'proximos' ? (
+      {pestana === 'asesores' ? (
+        <PorAsesor companyId={companyId} mes={mes} selectorMes={selectorMes} pad={pad} compacto={compacto} ancho={ancho} />
+      ) : pestana === 'proximos' ? (
         <YStack flex={1}>
           <YStack paddingHorizontal={pad} paddingBottom="$2" gap="$2" {...ancho}>
             <XStack gap="$2" alignItems="center">
@@ -503,14 +519,7 @@ export default function DashboardScreen() {
           <YStack paddingHorizontal={pad} paddingBottom={60} gap="$2.5" {...ancho}>
 
             {/* Mes */}
-            <XStack alignItems="center" justifyContent="space-between" {...tarjeta} padding="$1.5">
-              <View onPress={() => setMes(moverMes(mes, -1))} padding="$2" hitSlop={8}><ChevronLeft size={20} color={theme.text?.val} /></View>
-              <View onPress={() => setMes(primeroDeMes())} flex={1} alignItems="center">
-                <Text fontSize="$4" fontWeight="800" color="$text">{nombreMes(mes)}</Text>
-                {cargando && <Text fontSize="$1" color="$textMuted">Actualizando…</Text>}
-              </View>
-              <View onPress={() => setMes(moverMes(mes, 1))} padding="$2" hitSlop={8}><ChevronRight size={20} color={theme.text?.val} /></View>
-            </XStack>
+            {selectorMes}
             {!!error && <Text fontSize="$2" color={WARN}>{error} (se muestra lo último que llegó)</Text>}
 
             {/* KPIs del mes */}
