@@ -64,6 +64,8 @@ export interface ICentroEncabezado {
 export interface IPlaza {
   Id: number
   Origen: 'Planilla' | 'Vacante'
+  /** Personas que representa la fila: vacantes en lote (1 a 9999); planilla siempre 1. */
+  Cantidad: number
   CodPersonal: string | null
   CodAlterno: string | null
   Nombre: string
@@ -107,6 +109,8 @@ export interface IPlazaRequest {
   SemanaInicio: number
   SemanaFin: number
   Comentario: string | null
+  /** Solo vacantes: cuántas iguales (1 a 9999). */
+  Cantidad?: number | null
 }
 
 export interface IConfirmarVariosRequest {

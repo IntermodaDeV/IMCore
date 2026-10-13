@@ -75,8 +75,9 @@ export default function CentroScreen() {
   const conteo = {
     SinSalarioRH: activas.filter(p => p.SinSalarioRH === 1).length,
     FueraDePlanilla: activas.filter(fueraDePlanilla).length,
-    VacantesSinSalario: activas.filter(p => p.Origen === 'Vacante' && !((p.Salario ?? 0) > 0)).length,
-    BajoMinimo: activas.filter(p => p.BajoMinimo === 1).length,
+    // En personas: una vacante en lote (× 1000) cuenta 1000, igual que en el web.
+    VacantesSinSalario: activas.filter(p => p.Origen === 'Vacante' && !((p.Salario ?? 0) > 0)).reduce((s, p) => s + (p.Cantidad ?? 1), 0),
+    BajoMinimo: activas.filter(p => p.BajoMinimo === 1).reduce((s, p) => s + (p.Cantidad ?? 1), 0),
     TemporalesSinFin: activas.filter(temporalSinFin).length,
   }
   const visibles = vista === 'pendientes' ? activas.filter(p => p.Revisado !== 1)
@@ -172,6 +173,7 @@ export default function CentroScreen() {
               {p.Origen === 'Vacante' ? 'Vacante' : p.CodPersonal}{p.Cargo ? ` · ${p.Cargo}` : ''}
             </Text>
             <XStack gap="$1" flexWrap="wrap" marginTop={2}>
+              {(p.Cantidad ?? 1) > 1 && <Chip texto={`× ${p.Cantidad.toLocaleString('es-HN')}`} color={ACCENT} />}
               {p.Revisado === 1 && <Chip texto="✓ REVISADO" color={OK} />}
               {p.SinSalarioRH === 1 && <Chip texto="SIN SALARIO DE RR. HH." color={WARN} />}
               {p.Origen === 'Vacante' && !((p.Salario ?? 0) > 0) && <Chip texto="VACANTE SIN SALARIO" color={ERR} />}
@@ -372,11 +374,13 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
   const porcInicial = p?.PorcIncremento == null ? '' : String(Number((p.PorcIncremento * 100).toFixed(4)))
   const diasInicial = p?.DiasVacaciones == null ? '' : String(p.DiasVacaciones)
   const hastaInicial = p == null || p.SemanaFin >= 52 ? '' : String(p.SemanaFin)
+  const cantidadInicial = String(p?.Cantidad ?? 1)
 
   const [salario, setSalario] = useState('')
   const [porc, setPorc] = useState('')
   const [dias, setDias] = useState('')
   const [hasta, setHasta] = useState('')
+  const [cantidad, setCantidad] = useState('1')
   const [comentario, setComentario] = useState('')
   const [quitando, setQuitando] = useState(false)
   const [motivo, setMotivo] = useState(MOTIVOS[0])
@@ -385,14 +389,16 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
 
   // Cada vez que se abre con otra persona, los campos arrancan con lo suyo.
   React.useEffect(() => {
-    setSalario(salarioInicial); setPorc(porcInicial); setDias(diasInicial); setHasta(hastaInicial)
+    setSalario(salarioInicial); setPorc(porcInicial); setDias(diasInicial); setHasta(hastaInicial); setCantidad(cantidadInicial)
     setComentario(p?.Comentario ?? ''); setQuitando(false); setMotivo(MOTIVOS[0]); setDetalle('')
   }, [p?.Id])
 
   if (!p) return null
   const cambio = salario !== salarioInicial || porc !== porcInicial || dias !== diasInicial || hasta !== hastaInicial
-    || comentario !== (p.Comentario ?? '')
+    || comentario !== (p.Comentario ?? '') || cantidad !== cantidadInicial
   const hastaNum = num(hasta)
+  const cantidadNum = num(cantidad)
+  const cantidadMal = p.Origen === 'Vacante' && (cantidadNum == null || cantidadNum < 1 || cantidadNum > 9999 || !Number.isInteger(cantidadNum))
   const hastaMal = hastaNum != null && (hastaNum < p.SemanaInicio || hastaNum > 52)
   const textoMotivo = motivo === 'Otro' ? detalle.trim() : (detalle.trim() ? `${motivo}: ${detalle.trim()}` : motivo)
 
@@ -419,6 +425,7 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
       SemanaInicio: p.SemanaInicio,
       SemanaFin: hastaNum == null || hastaNum >= 52 ? 53 : hastaNum,
       Comentario: comentario.trim() || null,
+      Cantidad: p.Origen === 'Vacante' ? cantidadNum : undefined,
     })), 'Guardado')
   }
 
@@ -459,7 +466,9 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
           <KeyboardAwareForm contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, gap: 12 }}>
             {!quitando ? (
               <>
-                {campo(etiquetaSalario(p), salario, setSalario,
+                {p.Origen === 'Vacante' && campo('Cantidad (vacantes iguales)', cantidad, setCantidad, '1')}
+                {cantidadMal && <Text fontSize="$1" color={ERR}>La cantidad va de 1 a 9999.</Text>}
+                {campo(`${etiquetaSalario(p)}${(cantidadNum ?? 1) > 1 ? ', de cada una' : ''}`, salario, setSalario,
                   p.SalarioPlanilla != null ? `Planilla: ${mostrarSalario(p, p.SalarioPlanilla)}` : 'Sin salario', { decimal: true })}
                 <XStack gap="$3">
                   <YStack flex={1}>{campo('% de incremento', porc, setPorc, `General (${p.IncrementoAplica ?? 'su clase'})`, { decimal: true })}</YStack>
@@ -472,7 +481,7 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
                 <Text fontSize="$1" color="$textMuted">Vacío = lo de planilla, el % general o los días de ley. Al guardar queda revisada.</Text>
                 <XStack gap="$2">
                   {cambio
-                    ? <Boton texto="Guardar" color={ACCENT} disabled={ocupado || hastaMal} onPress={guardar} />
+                    ? <Boton texto="Guardar" color={ACCENT} disabled={ocupado || hastaMal || cantidadMal} onPress={guardar} />
                     : p.Revisado !== 1
                       ? <Boton texto="Está bien: marcar revisada" color={OK} disabled={ocupado}
                           onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, true, [p.Id])), 'Revisada')} />
