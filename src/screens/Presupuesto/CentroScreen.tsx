@@ -122,6 +122,16 @@ export default function CentroScreen() {
       .find(c => c.Estado === 'Habilitado' && !(c.CentroCosto === cc && c.GrupoCodigo === grupo)) ?? null
   }
 
+  // Su revisor deshace la confirmación para corregir algo, mientras no venza el plazo (después, Planificación).
+  const puedeReabrir = !!enc && enc.Estado === 'Confirmado' && enc.EsRevisor === 1 && enc.CorridaEstado === 'Abierta'
+    && !!enc.FechaLimite && new Date(enc.FechaLimite.replace(' ', 'T')).getTime() > Date.now()
+  const reabrir = () => {
+    Alert.alert(`Reabrir ${cc}`, 'Vuelve a quedar habilitado para corregirlo. Después hay que confirmarlo otra vez antes de la fecha límite.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Reabrir', onPress: () => { void correr(() => exigir(api.reabrirCentro(corridaId, cc, grupo)), 'Centro reabierto') } },
+    ])
+  }
+
   const confirmar = () => {
     Alert.alert(
       `Confirmar ${cc}`,
@@ -248,7 +258,10 @@ export default function CentroScreen() {
         'Planificación todavía no habilita la revisión de este centro: ya puedes verlo, pero no editarlo ni confirmarlo.')}
       {enc.Estado === 'Vencido' && aviso(WARN, `Venció el plazo (${fmtFechaHora(enc.FechaLimite)}). Pídele a Planificación más tiempo.`)}
       {enc.Estado === 'Confirmado' && aviso(OK,
-        `Confirmado por ${enc.ConfirmadoPor} el ${fmtFechaHora(enc.FechaConfirmado)}. Si hay que corregir algo, pídele a Planificación que lo reabra.`)}
+        `Confirmado por ${enc.ConfirmadoPor} el ${fmtFechaHora(enc.FechaConfirmado)}. ${puedeReabrir
+          ? `Si hay que corregir algo, reábrelo (hasta el ${fmtFechaHora(enc.FechaLimite)}).`
+          : 'Si hay que corregir algo, pídele a Planificación que lo reabra.'}`)}
+      {puedeReabrir && <Boton texto="Reabrir para corregir" color={WARN} secundario disabled={ocupado} onPress={reabrir} />}
       <YStack gap={4}>
         <XStack justifyContent="space-between">
           <Text fontSize="$2" color="$text">{activas.length} {activas.length === 1 ? 'persona' : 'personas'}</Text>

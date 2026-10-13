@@ -22,6 +22,9 @@ export const presupuestoService = {
   /** Ids vacío = todas las personas del centro. */
   marcarRevisado: (corridaId: number, cc: string, grupo: number, revisado: boolean, ids: number[]): R<number> =>
     httpClient.post(`${centro(corridaId, cc, grupo)}/Revisado`, { Revisado: revisado, Ids: ids }),
+  /** El revisor deshace su confirmación, antes de que venza el plazo. */
+  reabrirCentro: (corridaId: number, cc: string, grupo: number): R<number> =>
+    httpClient.post(`${centro(corridaId, cc, grupo)}/Reabrir`, {}),
   confirmarVarios: (corridaId: number, data: IConfirmarVariosRequest): R<number> =>
     httpClient.post(`${schema}/Corridas/${corridaId}/ConfirmarVarios`, data),
   /** Guardar una fila también la deja revisada. */
