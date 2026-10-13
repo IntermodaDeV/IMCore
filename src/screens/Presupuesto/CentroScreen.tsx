@@ -12,7 +12,7 @@ import { exigir, mensajeDeError, presupuestoService as api } from '../../api/mod
 import { ICentroEncabezado, IMiCentro, IPlaza } from '../../api/modules/presupuesto/presupuesto.types'
 import {
   ACCENT, AZUL, Barra, Chip, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, aMensual, aSemanal, esTemporal,
-  etiquetaSalario, fmtFechaHora, fueraDePlanilla, mostrarSalario, temporalSinFin, tieneObservacion,
+  etiquetaSalario, fmtFechaHora, fueraDePlanilla, lps, mostrarSalario, temporalSinFin, tieneObservacion,
 } from './comun'
 
 // Presupuesto › un centro de costo (el revisor). Igual que en el web, pero sencillo: la lista de personas, marcar
@@ -191,6 +191,12 @@ export default function CentroScreen() {
             {p.SalarioManual === 1 && p.SalarioPlanilla != null && (
               <Text fontSize="$1" color="$textMuted" numberOfLines={1}>planilla {mostrarSalario(p, p.SalarioPlanilla)}</Text>
             )}
+            {((p.ComisionMensual ?? 0) > 0 || (p.VariableMensual ?? 0) > 0) && (
+              <Text fontSize="$1" color="$textMuted" numberOfLines={1}>
+                {[(p.ComisionMensual ?? 0) > 0 ? `com. ${montoMes(p, p.ComisionMensual)}` : '',
+                  (p.VariableMensual ?? 0) > 0 ? `var. ${montoMes(p, p.VariableMensual)}` : ''].filter(Boolean).join(' · ')} /mes
+              </Text>
+            )}
           </YStack>
         </XStack>
       </View>
@@ -335,7 +341,8 @@ export default function CentroScreen() {
         </View>
       )}
 
-      <EditarPersona plaza={editando} corridaId={corridaId} cc={cc} grupo={grupo} onCerrar={() => setEditando(null)} onListo={() => { setEditando(null); void cargar() }} />
+      <EditarPersona plaza={editando} corridaId={corridaId} cc={cc} grupo={grupo} onCerrar={() => setEditando(null)} onListo={() => { setEditando(null); void cargar() }}
+        tieneComision={enc?.TieneComision === 1} tieneVariable={enc?.TieneVariable === 1} />
     </View>
   )
 }
@@ -363,8 +370,12 @@ const num = (t: string) => {
   return t.trim() === '' || Number.isNaN(v) ? null : v
 }
 
-function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
+/** Comisión o variable: siempre MENSUAL, en la moneda de su planilla (también en la semanal). */
+const montoMes = (p: IPlaza, v: number | null | undefined) => `${p.EsDolares === 1 ? 'US$ ' : ''}${lps(v, 2)}`
+
+function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tieneComision, tieneVariable }: {
   plaza: IPlaza | null; corridaId: number; cc: string; grupo: number; onCerrar: () => void; onListo: () => void
+  tieneComision: boolean; tieneVariable: boolean
 }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
@@ -375,12 +386,16 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
   const diasInicial = p?.DiasVacaciones == null ? '' : String(p.DiasVacaciones)
   const hastaInicial = p == null || p.SemanaFin >= 52 ? '' : String(p.SemanaFin)
   const cantidadInicial = String(p?.Cantidad ?? 1)
+  const comisionInicial = p?.ComisionMensual ? String(p.ComisionMensual) : ''
+  const variableInicial = p?.VariableMensual ? String(p.VariableMensual) : ''
 
   const [salario, setSalario] = useState('')
   const [porc, setPorc] = useState('')
   const [dias, setDias] = useState('')
   const [hasta, setHasta] = useState('')
   const [cantidad, setCantidad] = useState('1')
+  const [comision, setComision] = useState('')
+  const [variable, setVariable] = useState('')
   const [comentario, setComentario] = useState('')
   const [quitando, setQuitando] = useState(false)
   const [motivo, setMotivo] = useState(MOTIVOS[0])
@@ -390,16 +405,18 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
   // Cada vez que se abre con otra persona, los campos arrancan con lo suyo.
   React.useEffect(() => {
     setSalario(salarioInicial); setPorc(porcInicial); setDias(diasInicial); setHasta(hastaInicial); setCantidad(cantidadInicial)
+    setComision(comisionInicial); setVariable(variableInicial)
     setComentario(p?.Comentario ?? ''); setQuitando(false); setMotivo(MOTIVOS[0]); setDetalle('')
   }, [p?.Id])
 
   if (!p) return null
   const cambio = salario !== salarioInicial || porc !== porcInicial || dias !== diasInicial || hasta !== hastaInicial
-    || comentario !== (p.Comentario ?? '') || cantidad !== cantidadInicial
+    || comentario !== (p.Comentario ?? '') || cantidad !== cantidadInicial || comision !== comisionInicial || variable !== variableInicial
   const hastaNum = num(hasta)
   const cantidadNum = num(cantidad)
   const cantidadMal = p.Origen === 'Vacante' && (cantidadNum == null || cantidadNum < 1 || cantidadNum > 9999 || !Number.isInteger(cantidadNum))
   const hastaMal = hastaNum != null && (hastaNum < p.SemanaInicio || hastaNum > 52)
+  const montoMal = (num(comision) ?? 0) < 0 || (num(variable) ?? 0) < 0
   const textoMotivo = motivo === 'Otro' ? detalle.trim() : (detalle.trim() ? `${motivo}: ${detalle.trim()}` : motivo)
 
   const correr = async (accion: () => Promise<{ SuccessMessage: string }>, titulo: string) => {
@@ -426,6 +443,9 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
       SemanaFin: hastaNum == null || hastaNum >= 52 ? 53 : hastaNum,
       Comentario: comentario.trim() || null,
       Cantidad: p.Origen === 'Vacante' ? cantidadNum : undefined,
+      // Solo si se tocaron (vacío = 0 = quitar): si no, la base las deja como están.
+      ComisionMensual: comision !== comisionInicial ? (num(comision) ?? 0) : undefined,
+      VariableMensual: variable !== variableInicial ? (num(variable) ?? 0) : undefined,
     })), 'Guardado')
   }
 
@@ -474,6 +494,13 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
                   <YStack flex={1}>{campo('% de incremento', porc, setPorc, `General (${p.IncrementoAplica ?? 'su clase'})`, { decimal: true })}</YStack>
                   <YStack flex={1}>{campo('Días de vacaciones', dias, setDias, `Por ley: ${p.DiasVacacionesLey ?? 0}`)}</YStack>
                 </XStack>
+                {(tieneComision || tieneVariable) && (
+                  <XStack gap="$3">
+                    {tieneComision && <YStack flex={1}>{campo('Comisión al mes', comision, setComision, 'Sin comisión', { decimal: true })}</YStack>}
+                    {tieneVariable && <YStack flex={1}>{campo('Sueldo variable al mes', variable, setVariable, 'Sin variable', { decimal: true })}</YStack>}
+                  </XStack>
+                )}
+                {montoMal && <Text fontSize="$1" color={ERR}>La comisión y el variable no pueden ser negativos.</Text>}
                 {campo(esTemporal(p) ? 'Última semana del contrato' : 'Hasta la semana', hasta, setHasta,
                   `Todo el año${p.SemanaInicio > 1 ? ` (desde la ${p.SemanaInicio})` : ''}`)}
                 {hastaMal && <Text fontSize="$1" color={ERR}>La semana va de {p.SemanaInicio} a 52.</Text>}
@@ -481,7 +508,7 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo }: {
                 <Text fontSize="$1" color="$textMuted">Vacío = lo de planilla, el % general o los días de ley. Al guardar queda revisada.</Text>
                 <XStack gap="$2">
                   {cambio
-                    ? <Boton texto="Guardar" color={ACCENT} disabled={ocupado || hastaMal || cantidadMal} onPress={guardar} />
+                    ? <Boton texto="Guardar" color={ACCENT} disabled={ocupado || hastaMal || cantidadMal || montoMal} onPress={guardar} />
                     : p.Revisado !== 1
                       ? <Boton texto="Está bien: marcar revisada" color={OK} disabled={ocupado}
                           onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, true, [p.Id])), 'Revisada')} />

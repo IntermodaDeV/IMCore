@@ -59,6 +59,10 @@ export interface ICentroEncabezado {
   EsAdministrador: number
   EsRevisor: number
   DiasAviso: number
+  /** 1 = el centro lleva comisiones por persona (520103 en ESTRUCTURA). */
+  TieneComision?: number
+  /** 1 = el centro lleva sueldo variable por persona (520104 en ESTRUCTURA). */
+  TieneVariable?: number
 }
 
 export interface IPlaza {
@@ -83,6 +87,10 @@ export interface IPlaza {
   /** En fracción: 0.08 = 8 %. null = el % general de su clase. */
   PorcIncremento: number | null
   IncrementoAplica: string | null
+  /** Comisión mensual (moneda de su planilla). Suma a la base de 13.º, 14.º y preaviso. */
+  ComisionMensual?: number | null
+  /** Sueldo variable mensual. Suma a la base de 13.º, 14.º y preaviso. */
+  VariableMensual?: number | null
   DiasVacaciones: number | null
   DiasVacacionesLey: number | null
   SemanaInicio: number
@@ -111,6 +119,10 @@ export interface IPlazaRequest {
   Comentario: string | null
   /** Solo vacantes: cuántas iguales (1 a 9999). */
   Cantidad?: number | null
+  /** Sin mandar = no cambia; 0 = quitarla. */
+  ComisionMensual?: number
+  /** Sin mandar = no cambia; 0 = quitarlo. */
+  VariableMensual?: number
 }
 
 export interface IConfirmarVariosRequest {
