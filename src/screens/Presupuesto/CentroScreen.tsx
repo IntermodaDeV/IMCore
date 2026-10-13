@@ -194,6 +194,14 @@ export default function CentroScreen() {
             {p.SalarioManual === 1 && p.SalarioPlanilla != null && (
               <Text fontSize="$1" color="$textMuted" numberOfLines={1}>planilla {mostrarSalario(p, p.SalarioPlanilla)}</Text>
             )}
+            {(p.Salario ?? 0) > 0 && incrementoDe(p, p.PorcIncremento, p.SemanaFin).aplica && (() => {
+              const i = incrementoDe(p, p.PorcIncremento, p.SemanaFin)
+              return (
+                <Text fontSize="$1" color={p.PorcIncremento != null ? WARN : '$textMuted'} numberOfLines={1}>
+                  +{fmtPorc(i.efectivo)} sem. {i.desde}: {mostrarSalario(p, (p.Salario as number) * (1 + i.efectivo))}
+                </Text>
+              )
+            })()}
             {((p.ComisionMensual ?? 0) > 0 || (p.VariableMensual ?? 0) > 0) && (
               <Text fontSize="$1" color="$textMuted" numberOfLines={1}>
                 {[(p.ComisionMensual ?? 0) > 0 ? `com. ${montoMes(p, p.ComisionMensual)}` : '',
@@ -376,6 +384,14 @@ const num = (t: string) => {
 /** Comisión o variable: siempre MENSUAL, en la moneda de su planilla (también en la semanal). */
 const montoMes = (p: IPlaza, v: number | null | undefined) => `${p.EsDolares === 1 ? 'US$ ' : ''}${lps(v, 2)}`
 
+/** El incremento de una persona: su % (excepción) o el general de su clase, desde qué semana y si le alcanza a tocar. */
+function incrementoDe(p: IPlaza, porc: number | null | undefined, fin: number) {
+  const efectivo = porc ?? p.PorcGeneral ?? 0
+  const desde = p.SemanaIncremento == null ? null : Math.max(p.SemanaIncremento, p.SemanaInicio)
+  return { efectivo, desde, aplica: desde != null && desde <= Math.min(fin, 52) && efectivo > 0 }
+}
+const fmtPorc = (v: number) => `${(v * 100).toLocaleString('es-HN', { maximumFractionDigits: 2 })} %`
+
 function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tieneComision, tieneVariable }: {
   plaza: IPlaza | null; corridaId: number; cc: string; grupo: number; onCerrar: () => void; onListo: () => void
   tieneComision: boolean; tieneVariable: boolean
@@ -494,9 +510,23 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
                 {campo(`${etiquetaSalario(p)}${(cantidadNum ?? 1) > 1 ? ', de cada una' : ''}`, salario, setSalario,
                   p.SalarioPlanilla != null ? `Planilla: ${mostrarSalario(p, p.SalarioPlanilla)}` : 'Sin salario', { decimal: true })}
                 <XStack gap="$3">
-                  <YStack flex={1}>{campo('% de incremento', porc, setPorc, `General (${p.IncrementoAplica ?? 'su clase'})`, { decimal: true })}</YStack>
+                  <YStack flex={1}>{campo('% de incremento', porc, setPorc,
+                    `General: ${fmtPorc(p.PorcGeneral ?? 0)}${p.IncrementoAplica === 'Salario mínimo' ? ' (mínimo)' : ''}`, { decimal: true })}</YStack>
                   <YStack flex={1}>{campo('Días de vacaciones', dias, setDias, `Por ley: ${p.DiasVacacionesLey ?? 0}`)}</YStack>
                 </XStack>
+                {(() => {
+                  // El salario que quedaría con el incremento, mientras escribe (salario y % del formulario).
+                  const s = salario === salarioInicial ? p.Salario : (num(salario) == null ? null : (semanal ? aMensual(num(salario) as number) : num(salario)))
+                  const i = incrementoDe(p, num(porc) == null ? null : (num(porc) as number) / 100, hastaNum == null || hastaNum >= 52 ? 53 : hastaNum)
+                  if (!s || s <= 0) return null
+                  return (
+                    <Text fontSize="$2" color={num(porc) != null ? WARN : '$textMuted'}>
+                      {i.aplica
+                        ? `Con incremento (${fmtPorc(i.efectivo)}${num(porc) != null ? ', excepción' : ''}): ${mostrarSalario(p, s * (1 + i.efectivo))} desde la semana ${i.desde}`
+                        : 'Sin incremento en sus semanas.'}
+                    </Text>
+                  )
+                })()}
                 {(tieneComision || tieneVariable) && (
                   <XStack gap="$3">
                     {tieneComision && <YStack flex={1}>{campo('Comisión al mes', comision, setComision, 'Sin comisión', { decimal: true })}</YStack>}

@@ -87,6 +87,10 @@ export interface IPlaza {
   /** En fracción: 0.08 = 8 %. null = el % general de su clase. */
   PorcIncremento: number | null
   IncrementoAplica: string | null
+  /** % general que le toca (salario mínimo o indirectos), sin su excepción. */
+  PorcGeneral?: number | null
+  /** Semana desde la que entra el incremento de su clase; null = la corrida no tiene incremento. */
+  SemanaIncremento?: number | null
   /** Comisión mensual (moneda de su planilla). Suma a la base de 13.º, 14.º y preaviso. */
   ComisionMensual?: number | null
   /** Sueldo variable mensual. Suma a la base de 13.º, 14.º y preaviso. */
