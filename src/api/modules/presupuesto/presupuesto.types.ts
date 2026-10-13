@@ -135,3 +135,17 @@ export interface IConfirmarVariosRequest {
   Centros: { CentroCosto: string; GrupoCodigo: number }[]
   Comentario: string | null
 }
+
+/** Una cuenta de un centro + grupo por período: el resumen de todos los centros del revisor. */
+export interface IResumenConsolidado {
+  CentroCosto: string
+  CentroCostoNombre: string | null
+  DepartamentoNombre: string | null
+  GrupoCodigo: number
+  GrupoNombre: string | null
+  Cuenta: number
+  NombreCuenta: string | null
+  P01: number; P02: number; P03: number; P04: number; P05: number; P06: number; P07: number
+  P08: number; P09: number; P10: number; P11: number; P12: number; P13: number
+  Total: number
+}

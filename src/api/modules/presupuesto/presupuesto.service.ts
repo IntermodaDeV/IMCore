@@ -1,6 +1,6 @@
 import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IPlaza, IPlazaRequest } from './presupuesto.types'
+import { ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IPlaza, IPlazaRequest, IResumenConsolidado } from './presupuesto.types'
 
 // Consume api/Presupuesto (IMCoreApi): lo mismo que «Mis centros de costo» del web. El usuario sale del token y la
 // seguridad la hacen los SP: lo que no le toca vuelve vacío (lecturas) o con Success = false (escrituras).
@@ -14,6 +14,9 @@ const centro = (corridaId: number, cc: string, grupo: number) =>
 export const presupuestoService = {
   misCentros: (corridaId?: number): R<IMiCentro[]> =>
     httpClient.get(`${schema}/MisCentros`, corridaId ? { corridaId } : undefined),
+  /** Todos los centros del revisor por cuenta y período (el resumen de «Mis centros»). */
+  resumenConsolidado: (corridaId: number): R<IResumenConsolidado[]> =>
+    httpClient.get(`${schema}/Corridas/${corridaId}/ResumenConsolidado`, { alcance: 'Mios' }),
   encabezado: (corridaId: number, cc: string, grupo: number): R<ICentroEncabezado[]> =>
     httpClient.get(centro(corridaId, cc, grupo)),
   plazas: (corridaId: number, cc: string, grupo: number): R<IPlaza[]> => httpClient.get(`${centro(corridaId, cc, grupo)}/Plazas`),

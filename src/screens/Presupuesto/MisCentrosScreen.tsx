@@ -14,6 +14,7 @@ import {
   ACCENT, Barra, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, esConfirmable, fmtFechaHora, lps, plazoRestante,
   totalObservaciones,
 } from './comun'
+import ResumenMios from './ResumenMios'
 
 // Presupuesto › Mis centros de costo (el revisor). Lo mismo que «Mis centros» del web, pensado para resolver
 // rápido desde el teléfono: los centros sin observaciones se confirman todos de una vez y solo se abren los que
@@ -21,6 +22,9 @@ import {
 // Se llega por el menú o tocando el aviso de habilitación / recordatorio (presupuesto_revision).
 
 type Vista = 'pendientes' | 'observaciones' | 'todos'
+
+/** Centro sin personas que no se muestra salvo que se pida; habilitado (para agregar vacantes) sí se muestra. */
+const oculto = (c: IMiCentro) => c.Plazas === 0 && c.Estado !== 'Habilitado'
 
 export default function MisCentrosScreen() {
   const theme = useTheme()
@@ -41,6 +45,8 @@ export default function MisCentrosScreen() {
   const [vistaElegida, setVista] = useState<Vista | null>(null)
   const [verVacios, setVerVacios] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
+  // La lista de trabajo o el resumen de todos sus centros (por centro o por cuenta, con sus períodos).
+  const [panel, setPanel] = useState<'centros' | 'resumen'>('centros')
 
   const cargar = useCallback(async () => {
     try {
@@ -55,10 +61,11 @@ export default function MisCentrosScreen() {
 
   useFocusEffect(useCallback(() => { void cargar() }, [cargar]))
 
-  // Los centros sin personas ni vacantes no tienen nada que revisar en sueldos: ocultos salvo que los pida.
+  // Los centros sin personas ni vacantes no tienen nada que revisar en sueldos: ocultos salvo que los pida. Si
+  // Planificación habilitó uno (para agregar vacantes), sí se muestra: es trabajo pendiente (igual que el web).
   const todos = useMemo(() => centros ?? [], [centros])
-  const vacios = todos.filter(c => c.Plazas === 0).length
-  const base = useMemo(() => todos.filter(c => verVacios || c.Plazas > 0), [todos, verVacios])
+  const vacios = todos.filter(oculto).length
+  const base = useMemo(() => todos.filter(c => verVacios || !oculto(c)), [todos, verVacios])
   const pendientes = base.filter(c => c.Estado === 'Habilitado' || c.Estado === 'Vencido')
   const conObservaciones = pendientes.filter(c => totalObservaciones(c) > 0)
   const listos = base.filter(c => esConfirmable(c) && totalObservaciones(c) === 0)
@@ -158,6 +165,17 @@ export default function MisCentrosScreen() {
       <YStack paddingHorizontal={compacto ? 10 : 16} paddingTop={compacto ? 8 : 12} paddingBottom="$2" gap="$2"
         width="100%" maxWidth={1000} alignSelf="center">
         {!!error && <Text fontSize="$2" color={ERR}>{error}</Text>}
+        {todos.length > 0 && (
+          <XStack borderBottomWidth={1} borderColor="$border" gap="$4">
+            {([['centros', 'Mis centros'], ['resumen', 'Resumen por período']] as const).map(([v, t]) => (
+              <View key={v} onPress={() => setPanel(v)} paddingVertical="$2" borderBottomWidth={2}
+                borderColor={panel === v ? ACCENT : 'transparent'} marginBottom={-1}>
+                <Text fontWeight="800" fontSize="$2" color={panel === v ? '$text' : '$textMuted'}>{t}</Text>
+              </View>
+            ))}
+          </XStack>
+        )}
+        {panel === 'resumen' ? null : <>
         {sinHabilitar > 0 && (
           <XStack gap="$2" alignItems="flex-start" padding="$2.5" borderRadius="$3" backgroundColor={`${GRIS}1A`}>
             <Lock size={16} color={GRIS} />
@@ -195,7 +213,11 @@ export default function MisCentrosScreen() {
             {verVacios ? 'Ocultar centros sin personas' : `Mostrar ${vacios} ${vacios === 1 ? 'centro' : 'centros'} sin personas`}
           </Text>
         )}
+        </>}
       </YStack>
+
+      {panel === 'resumen' && todos.length > 0 && <ResumenMios corridaId={todos[0].CorridaId} compacto={compacto} />}
+      {panel === 'centros' && <>
 
       <FlatList
         data={filas}
@@ -231,6 +253,7 @@ export default function MisCentrosScreen() {
           </View>
         </View>
       )}
+      </>}
     </View>
   )
 }
