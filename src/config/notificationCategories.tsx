@@ -14,6 +14,12 @@ export type CategoryMeta = {
 }
 
 export const NOTIFICATION_CATEGORIES: Record<string, CategoryMeta> = {
+  presupuesto_revision: {
+    label: 'Presupuesto',
+    Icon: ClipboardCheck,
+    color: '#16A34A',
+    bg: 'rgba(22,163,74,0.12)',
+  },
   visita_acceso: {
     label: 'Pases',
     Icon: DoorOpen,

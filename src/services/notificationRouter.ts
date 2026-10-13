@@ -50,6 +50,13 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
+  // Presupuesto: le habilitaron centros para revisar, le dieron más plazo o le recuerdan la fecha límite ->
+  // Mis centros de costo (ahí ve lo que le falta confirmar y el plazo).
+  if (category === 'presupuesto_revision') {
+    navigateWhenReady('presupuestoMisCentros')
+    return true
+  }
+
   // Inventario Clientes: le aprobaron o rechazaron reabrir su parte -> Mis inventarios
   // (si la aprobaron, el inventario ya aparece en «Por hacer»).
   if (category === 'inventario_reapertura_resultado' || category === 'inventario_asignado') {

@@ -1,0 +1,115 @@
+// Tipos de api/Presupuesto que usa la app (la parte del revisor). Son los mismos del web
+// (IMCoreWeb/src/api/modules/presupuesto/presupuesto.types.ts): si cambia uno, cambia el otro.
+
+export type EstadoRevision = 'Sin habilitar' | 'Habilitado' | 'Vencido' | 'Confirmado' | 'Cerrado'
+
+export interface IMiCentro {
+  CorridaId: number
+  CorridaNombre: string
+  PresupuestoNombre: string
+  Anio: number
+  EmpresaNombre: string
+  CentroCosto: string
+  CentroCostoNombre: string
+  DepartamentoNombre: string | null
+  GrupoCodigo: number
+  GrupoNombre: string
+  Estado: EstadoRevision
+  FechaLimite: string | null
+  FechaConfirmado: string | null
+  /** 0 = sin acceso · 1 = solo lectura · 2 = puede editar */
+  Acceso: number
+  Plazas: number
+  Personas: number
+  Vacantes: number
+  /** Salario mensual de planilla de quienes siguen en planilla (lo que se paga hoy). */
+  PlanillaMensual: number
+  Total: number
+  SinSalarioRH: number
+  FueraDePlanilla: number
+  VacantesSinSalario: number
+  BajoMinimo: number
+  TemporalesSinFin: number
+  Ajustadas: number
+  Revisadas: number
+  /** Días antes de la fecha límite en que se avisa (configuración global Presupuesto.RecordatorioDiasAntes). */
+  DiasAviso: number
+}
+
+export interface ICentroEncabezado {
+  CorridaId: number
+  CorridaNombre: string
+  CorridaEstado: 'Abierta' | 'Cerrada'
+  PresupuestoNombre: string
+  Anio: number
+  EmpresaNombre: string
+  CentroCosto: string
+  CentroCostoNombre: string
+  DepartamentoNombre: string | null
+  GrupoCodigo: number
+  GrupoNombre: string
+  Estado: EstadoRevision
+  FechaLimite: string | null
+  Revisor: string | null
+  RevisorNombre: string | null
+  ConfirmadoPor: string | null
+  FechaConfirmado: string | null
+  Comentario: string | null
+  Acceso: number
+  EsAdministrador: number
+  EsRevisor: number
+  DiasAviso: number
+}
+
+export interface IPlaza {
+  Id: number
+  Origen: 'Planilla' | 'Vacante'
+  CodPersonal: string | null
+  CodAlterno: string | null
+  Nombre: string
+  Cargo: string | null
+  Clase: 'Directo' | 'Indirecto' | 'Administrativo'
+  TipoPlanilla: string | null
+  TipoPlanillaNombre: string | null
+  EsSemanal: number
+  EsDolares: number
+  FechaIngreso: string | null
+  /** Siempre MENSUAL (como lo guarda planilla), también en la planilla semanal. */
+  SalarioPlanilla: number | null
+  Salario: number | null
+  SalarioManual: number
+  /** En fracción: 0.08 = 8 %. null = el % general de su clase. */
+  PorcIncremento: number | null
+  IncrementoAplica: string | null
+  DiasVacaciones: number | null
+  DiasVacacionesLey: number | null
+  SemanaInicio: number
+  /** 53 = todo el año. */
+  SemanaFin: number
+  SinSalarioRH: number
+  EnPlanilla: number
+  BajoMinimo: number
+  /** 1 = quitada del presupuesto (Comentario = motivo). */
+  Excluida: number
+  Revisado: number
+  RevisadoPor: string | null
+  FechaRevisado: string | null
+  Comentario: string | null
+  Modified_By: string | null
+  Modification_Date: string | null
+}
+
+/** La fila completa: % y días en null vuelven al valor por defecto. */
+export interface IPlazaRequest {
+  Salario: number | null
+  PorcIncremento: number | null
+  DiasVacaciones: number | null
+  SemanaInicio: number
+  SemanaFin: number
+  Comentario: string | null
+}
+
+export interface IConfirmarVariosRequest {
+  Centros: { CentroCosto: string; GrupoCodigo: number }[]
+  Comentario: string | null
+}
