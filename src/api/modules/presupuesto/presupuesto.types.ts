@@ -101,6 +101,8 @@ export interface IPlaza {
   BajoMinimo: number
   /** 1 = quitada del presupuesto (Comentario = motivo). */
   Excluida: number
+  /** 1 = es el propio usuario: no puede cambiar su salario (lo corrige quien tiene el acceso a salarios). */
+  EsPropia?: number
   Revisado: number
   RevisadoPor: string | null
   FechaRevisado: string | null

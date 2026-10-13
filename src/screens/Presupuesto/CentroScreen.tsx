@@ -156,9 +156,11 @@ export default function CentroScreen() {
 
   const renderPersona = ({ item: p }: { item: IPlaza }) => {
     const marcada = sel.has(p.Id)
+    // Su propio salario no lo cambia el gerente (lo corrige quien tiene el acceso a salarios); sí lo puede marcar revisado.
+    const editable = puedeEditar && p.EsPropia !== 1
     return (
-      <View {...tarjeta} borderColor={marcada ? ACCENT : '$border'} pressStyle={puedeEditar ? { opacity: 0.85 } : undefined}
-        onPress={puedeEditar ? () => setEditando(p) : undefined}>
+      <View {...tarjeta} borderColor={marcada ? ACCENT : '$border'} pressStyle={editable ? { opacity: 0.85 } : undefined}
+        onPress={editable ? () => setEditando(p) : undefined}>
         <XStack alignItems="center" gap="$3">
           {puedeEditar && (
             <View onPress={() => alternar(p.Id)} hitSlop={12} width={26} height={26} borderRadius={13} borderWidth={2}
@@ -173,6 +175,7 @@ export default function CentroScreen() {
               {p.Origen === 'Vacante' ? 'Vacante' : p.CodPersonal}{p.Cargo ? ` · ${p.Cargo}` : ''}
             </Text>
             <XStack gap="$1" flexWrap="wrap" marginTop={2}>
+              {p.EsPropia === 1 && <Chip texto="SU SALARIO · SOLO LECTURA" color={GRIS} />}
               {(p.Cantidad ?? 1) > 1 && <Chip texto={`× ${p.Cantidad.toLocaleString('es-HN')}`} color={ACCENT} />}
               {p.Revisado === 1 && <Chip texto="✓ REVISADO" color={OK} />}
               {p.SinSalarioRH === 1 && <Chip texto="SIN SALARIO DE RR. HH." color={WARN} />}
