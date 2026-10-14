@@ -409,9 +409,13 @@ function Opciones<T extends string>({ valor, opciones, cambiar }: {
   )
 }
 
-/** Panel que sube desde abajo: título, cerrar y el formulario (el teclado no tapa los campos). */
-function Hoja({ titulo, subtitulo, onCerrar, children }: {
-  titulo: string; subtitulo?: string; onCerrar: () => void; children: React.ReactNode
+/**
+ * Panel que sube desde abajo: título, cerrar y el formulario (el teclado no tapa los campos).
+ * Alto FIJO a propósito: KeyboardAwareForm ocupa lo que le dé su contenedor (flex: 1); con solo un alto máximo se
+ * encoge a cero y del panel se ve nada más el encabezado.
+ */
+function Hoja({ titulo, subtitulo, onCerrar, alto = '85%', children }: {
+  titulo: string; subtitulo?: string; onCerrar: () => void; alto?: `${number}%`; children: React.ReactNode
 }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
@@ -419,7 +423,7 @@ function Hoja({ titulo, subtitulo, onCerrar, children }: {
     <Modal visible animationType="slide" transparent onRequestClose={onCerrar}>
       <View flex={1} backgroundColor="rgba(0,0,0,0.45)" justifyContent="flex-end">
         <View onPress={onCerrar} flex={1} />
-        <View backgroundColor="$backgroundElevated" borderTopLeftRadius={18} borderTopRightRadius={18} maxHeight="88%"
+        <View backgroundColor="$backgroundElevated" borderTopLeftRadius={18} borderTopRightRadius={18} height={alto}
           paddingBottom={insets.bottom}>
           <XStack alignItems="center" gap="$3" paddingHorizontal={16} paddingTop="$3" paddingBottom="$2"
             borderBottomWidth={1} borderColor="$border">
@@ -771,7 +775,7 @@ function ConfirmarCentro({ corridaId, cc, grupo, personas, vacantes, total, sinR
   }
 
   return (
-    <Hoja titulo={`Confirmar ${cc}`} onCerrar={onCerrar}>
+    <Hoja titulo={`Confirmar ${cc}`} onCerrar={onCerrar} alto="60%">
       <Text fontSize="$3" color="$text">
         {personas} {personas === 1 ? 'persona' : 'personas'}, {vacantes} {vacantes === 1 ? 'vacante' : 'vacantes'} y un total
         de L {lps(total)} en el año.
