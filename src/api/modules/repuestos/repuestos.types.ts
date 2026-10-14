@@ -50,6 +50,8 @@ export interface ILinea {
    *  la va a descargar ni a costear. La fila no se borra — es la única evidencia
    *  de que se entregó y contra qué ticket. */
   FaltaEnAX?: boolean
+  /** Está en AX y nadie la despachó: la dejó un intento que AX rechazó tras insertar la línea. */
+  SoloEnAX?: boolean
 }
 
 // Costo unitario de referencia (promedio AX) de un repuesto.

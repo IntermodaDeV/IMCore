@@ -822,6 +822,20 @@ export default function DiarioDetailScreen() {
                             </Text>
                           </XStack>
                         )}
+                        {/* El caso contrario: la línea está en AX y nadie la despachó.
+                            La dejó un intento que AX rechazó DESPUÉS de haber insertado
+                            la línea. Hay que marcarla porque con el diario abierto la
+                            lista la arma AX, así que se dibujaba igual que cualquier
+                            otra, solo que sin ticket: no había forma de distinguirla de
+                            un suministro. Al postear, AX descarga esa pieza igual. */}
+                        {l.SoloEnAX && (
+                          <XStack backgroundColor="rgba(239, 68, 68, 0.12)" borderRadius={8}
+                            paddingHorizontal="$2" paddingVertical="$1.5" marginTop="$1" alignSelf="flex-start">
+                            <Text fontSize="$1" color="#ef4444" fontWeight="800">
+                              No es del despacho · la dejó un intento fallido, quitala
+                            </Text>
+                          </XStack>
+                        )}
                         <XStack gap="$4" flexWrap="wrap" marginTop="$1">
                           <Text fontSize="$2" color="$text">Cant: <Text fontWeight="800">{Math.abs(l.Cantidad)}</Text></Text>
                           {!!l.Almacen && <Text fontSize="$2" color="$textMuted">Alm: {l.Almacen}</Text>}
