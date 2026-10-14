@@ -1,6 +1,8 @@
 import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IPlaza, IPlazaRequest, IResumenConsolidado } from './presupuesto.types'
+import {
+  ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IPlaza, IPlazaRequest, IResumenConsolidado, IVacanteRequest,
+} from './presupuesto.types'
 
 // Consume api/Presupuesto (IMCoreApi): lo mismo que «Mis centros de costo» del web. El usuario sale del token y la
 // seguridad la hacen los SP: lo que no le toca vuelve vacío (lecturas) o con Success = false (escrituras).
@@ -30,6 +32,7 @@ export const presupuestoService = {
     httpClient.post(`${centro(corridaId, cc, grupo)}/Reabrir`, {}),
   confirmarVarios: (corridaId: number, data: IConfirmarVariosRequest): R<number> =>
     httpClient.post(`${schema}/Corridas/${corridaId}/ConfirmarVarios`, data),
+  agregarVacante: (data: IVacanteRequest): R<number> => httpClient.post(`${schema}/Plazas`, data),
   /** Guardar una fila también la deja revisada. */
   modificarPlaza: (id: number, data: IPlazaRequest): R<number> => httpClient.put(`${schema}/Plazas/${id}`, data),
   quitarVacante: (id: number): R<number> => httpClient.delete(`${schema}/Plazas/${id}`),

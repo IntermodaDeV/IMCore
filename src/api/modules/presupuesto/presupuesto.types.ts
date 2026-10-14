@@ -63,6 +63,8 @@ export interface ICentroEncabezado {
   TieneComision?: number
   /** 1 = el centro lleva sueldo variable por persona (520104 en ESTRUCTURA). */
   TieneVariable?: number
+  /** Salario mínimo mensual de la corrida: para «usar el mínimo» al agregar una vacante. */
+  SalarioMinimo?: number | null
 }
 
 export interface IPlaza {
@@ -129,6 +131,21 @@ export interface IPlazaRequest {
   ComisionMensual?: number
   /** Sin mandar = no cambia; 0 = quitarlo. */
   VariableMensual?: number
+}
+
+/** Vacante nueva (una fila puede valer varias iguales). Salario siempre MENSUAL; sin «hasta» = 53 (todo el año). */
+export interface IVacanteRequest {
+  CorridaId: number
+  CentroCosto: string
+  GrupoCodigo: number
+  Cargo: string
+  Nombre: string | null
+  Salario: number | null
+  SemanaInicio: number
+  SemanaFin: number
+  EsSemanal: boolean
+  Comentario: string | null
+  Cantidad: number
 }
 
 export interface IConfirmarVariosRequest {

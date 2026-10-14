@@ -87,6 +87,9 @@ export function Observaciones({ c }: { c: ConteoObservaciones }) {
   )
 }
 
+/** Centro sin personas que no se muestra salvo que se pida; habilitado (para agregar vacantes) sí se muestra. */
+export const centroOculto = (c: IMiCentro) => c.Plazas === 0 && c.Estado !== 'Habilitado'
+
 /** Se puede confirmar sin abrirlo: habilitado, en plazo y sin vacantes sin salario (lo mismo que exige la base). */
 export const esConfirmable = (c: IMiCentro) => c.Acceso === 2 && c.Estado === 'Habilitado' && c.VacantesSinSalario === 0
 

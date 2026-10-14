@@ -11,8 +11,8 @@ import { shadows } from '../../theme/shadows'
 import { exigir, mensajeDeError, presupuestoService as api } from '../../api/modules/presupuesto/presupuesto.service'
 import { IMiCentro } from '../../api/modules/presupuesto/presupuesto.types'
 import {
-  ACCENT, Barra, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, esConfirmable, fmtFechaHora, lps, plazoRestante,
-  totalObservaciones,
+  ACCENT, Barra, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, centroOculto as oculto, esConfirmable, fmtFechaHora, lps,
+  plazoRestante, totalObservaciones,
 } from './comun'
 import ResumenMios from './ResumenMios'
 
@@ -22,9 +22,6 @@ import ResumenMios from './ResumenMios'
 // Se llega por el menú o tocando el aviso de habilitación / recordatorio (presupuesto_revision).
 
 type Vista = 'pendientes' | 'observaciones' | 'todos'
-
-/** Centro sin personas que no se muestra salvo que se pida; habilitado (para agregar vacantes) sí se muestra. */
-const oculto = (c: IMiCentro) => c.Plazas === 0 && c.Estado !== 'Habilitado'
 
 export default function MisCentrosScreen() {
   const theme = useTheme()
