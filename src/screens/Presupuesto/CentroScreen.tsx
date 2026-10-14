@@ -319,7 +319,7 @@ export default function CentroScreen() {
     seleccionadas.length > 0 ? (
       <XStack gap="$2">
         {selPendientes.length < seleccionadas.length && (
-          <Boton texto={`Quitar marca (${seleccionadas.length - selPendientes.length})`} color={GRIS} secundario disabled={ocupado}
+          <Boton texto={`Volver ${seleccionadas.length - selPendientes.length} a sin revisar`} color={GRIS} secundario disabled={ocupado}
             onPress={() => void marcar(false, seleccionadas.filter(p => p.Revisado === 1).map(p => p.Id))} />
         )}
         {selPendientes.length > 0 && (
@@ -620,7 +620,9 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
               : p.Revisado !== 1
                 ? <Boton texto="Está bien: marcar revisada" color={OK} disabled={ocupado}
                     onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, true, [p.Id])), 'Revisada')} />
-                : <Boton texto="Cerrar" color={GRIS} secundario onPress={onCerrar} />}
+                // Ya revisada y sin cambios: deshacer la marca (vuelve a «Sin revisar»).
+                : <Boton texto="Volver a sin revisar" color={GRIS} secundario disabled={ocupado}
+                    onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, false, [p.Id])), 'Vuelve a sin revisar')} />}
           </XStack>
           <Text fontSize="$2" color={ERR} fontWeight="700" textAlign="center" paddingVertical="$2"
             onPress={() => p.Origen === 'Vacante'
