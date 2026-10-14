@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react'
-import { Alert, FlatList, Modal, RefreshControl, TextInput, useWindowDimensions } from 'react-native'
+import { Alert, AppState, FlatList, Modal, RefreshControl, TextInput, useWindowDimensions } from 'react-native'
 import { Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
 import { ArrowLeft, Check, Lock, X } from 'lucide-react-native'
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
@@ -66,7 +66,12 @@ export default function CentroScreen() {
     }
   }, [corridaId, cc, grupo])
 
-  useFocusEffect(useCallback(() => { void cargar() }, [cargar]))
+  // Al volver la app al frente, al día con lo que cambió en otro lado (sin intervalos: se puede estar corrigiendo).
+  useFocusEffect(useCallback(() => {
+    void cargar()
+    const sub = AppState.addEventListener('change', e => { if (e === 'active') void cargar() })
+    return () => sub.remove()
+  }, [cargar]))
 
   const filas = useMemo(() => plazas ?? [], [plazas])
   const activas = filas.filter(p => p.Excluida !== 1)

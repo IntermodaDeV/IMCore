@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react'
-import { Alert, FlatList, RefreshControl, useWindowDimensions } from 'react-native'
+import { Alert, AppState, FlatList, RefreshControl, useWindowDimensions } from 'react-native'
 import { Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
 import { ChevronRight, ClipboardCheck, Lock } from 'lucide-react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
@@ -59,7 +59,14 @@ export default function MisCentrosScreen() {
     }
   }, [])
 
-  useFocusEffect(useCallback(() => { void cargar() }, [cargar]))
+  // Los conteos cambian desde otros lados (Planificación, el web): al día cada minuto mientras está a la vista y al
+  // volver la app al frente.
+  useFocusEffect(useCallback(() => {
+    void cargar()
+    const t = setInterval(() => { void cargar() }, 60_000)
+    const sub = AppState.addEventListener('change', e => { if (e === 'active') void cargar() })
+    return () => { clearInterval(t); sub.remove() }
+  }, [cargar]))
 
   // Los centros sin personas ni vacantes no tienen nada que revisar en sueldos: ocultos salvo que los pida. Si
   // Planificación habilitó uno (para agregar vacantes), sí se muestra: es trabajo pendiente (igual que el web).
