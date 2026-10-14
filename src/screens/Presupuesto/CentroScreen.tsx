@@ -107,11 +107,12 @@ export default function CentroScreen() {
     return n
   })
 
-  const correr = async (accion: () => Promise<{ SuccessMessage: string }>, titulo: string) => {
+  // titulo null = sin aviso de éxito (marcar revisada: el conteo y la etiqueta ya lo dicen). Los errores siempre avisan.
+  const correr = async (accion: () => Promise<{ SuccessMessage: string }>, titulo: string | null) => {
     setOcupado(true)
     try {
       const r = await accion()
-      showToast('success', titulo, r.SuccessMessage)
+      if (titulo) showToast('success', titulo, r.SuccessMessage)
       setSel(new Set())
       await cargar()
       return true
@@ -124,7 +125,7 @@ export default function CentroScreen() {
   }
 
   const marcar = (revisado: boolean, ids: number[]) =>
-    correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, revisado, ids)), revisado ? 'Revisado' : 'Marca quitada')
+    correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, revisado, ids)), null)
 
   // Después de confirmar, el siguiente centro por confirmar del revisor (dando la vuelta), sin volver a la lista. Los
   // mismos que muestra Mis centros: también el habilitado sin personas (para agregar vacantes).
@@ -540,11 +541,12 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
   const montoMal = (num(comision) ?? 0) < 0 || (num(variable) ?? 0) < 0
   const textoMotivo = motivo === 'Otro' ? detalle.trim() : (detalle.trim() ? `${motivo}: ${detalle.trim()}` : motivo)
 
-  const correr = async (accion: () => Promise<{ SuccessMessage: string }>, titulo: string) => {
+  // titulo null = sin aviso de éxito (marcar revisada: el conteo y la etiqueta ya lo dicen). Los errores siempre avisan.
+  const correr = async (accion: () => Promise<{ SuccessMessage: string }>, titulo: string | null) => {
     setOcupado(true)
     try {
       const r = await accion()
-      showToast('success', titulo, r.SuccessMessage)
+      if (titulo) showToast('success', titulo, r.SuccessMessage)
       onListo()
     } catch (e) {
       showToast('error', 'No se pudo', mensajeDeError(e))
@@ -619,10 +621,10 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
               ? <Boton texto="Guardar" color={ACCENT} disabled={ocupado || hastaMal || cantidadMal || montoMal} onPress={guardar} />
               : p.Revisado !== 1
                 ? <Boton texto="Está bien: marcar revisada" color={OK} disabled={ocupado}
-                    onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, true, [p.Id])), 'Revisada')} />
+                    onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, true, [p.Id])), null)} />
                 // Ya revisada y sin cambios: deshacer la marca (vuelve a «Sin revisar»).
                 : <Boton texto="Volver a sin revisar" color={GRIS} secundario disabled={ocupado}
-                    onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, false, [p.Id])), 'Vuelve a sin revisar')} />}
+                    onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, false, [p.Id])), null)} />}
           </XStack>
           <Text fontSize="$2" color={ERR} fontWeight="700" textAlign="center" paddingVertical="$2"
             onPress={() => p.Origen === 'Vacante'
