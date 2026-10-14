@@ -253,7 +253,9 @@ export default function MisCentrosScreen() {
             maxWidth={1000} width="100%" alignSelf="center">
             {confirmando
               ? <Spinner color="#fff" />
-              : <Text color="#fff" fontWeight="900">Confirmar los {listos.length} sin observaciones</Text>}
+              : <Text color="#fff" fontWeight="900">
+                {listos.length === 1 ? 'Confirmar el centro sin observaciones' : `Confirmar los ${listos.length} sin observaciones`}
+              </Text>}
           </View>
         </View>
       )}
