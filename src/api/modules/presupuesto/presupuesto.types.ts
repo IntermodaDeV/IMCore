@@ -34,6 +34,24 @@ export interface IMiCentro {
   Revisadas: number
   /** Días antes de la fecha límite en que se avisa (configuración global Presupuesto.RecordatorioDiasAntes). */
   DiasAviso: number
+  /** 1 = me lo delegó mi gerente (DelegadoPorNombre). DelegadoA / DelegadoNombre = a quién lo delegué yo. */
+  EsDelegado?: number
+  DelegadoA?: string | null
+  DelegadoNombre?: string | null
+  DelegadoPorNombre?: string | null
+  Entregado?: number
+  FechaEntregado?: string | null
+  /** 1 = este usuario lo puede confirmar (el gerente, o el delegado si la corrida lo dice). */
+  PuedeConfirmar?: number
+  /** Por qué no se puede delegar: candado de Planificación, o ahí está su propio salario. */
+  NoDelegable?: number
+  TienePropia?: number
+}
+
+/** Usuario a quien se puede delegar (activo y con «Mis centros de costo»). */
+export interface IUsuarioDelegado {
+  User_Code: string
+  UsuarioNombre: string | null
 }
 
 export interface ICentroEncabezado {
@@ -58,6 +76,17 @@ export interface ICentroEncabezado {
   Acceso: number
   EsAdministrador: number
   EsRevisor: number
+  /** 1 = me lo delegó su revisor (RevisorNombre). DelegadoA / DelegadoNombre = a quién lo delegó el revisor. */
+  EsDelegado?: number
+  DelegadoA?: string | null
+  DelegadoNombre?: string | null
+  Entregado?: number
+  FechaEntregado?: string | null
+  ComentarioEntrega?: string | null
+  /** Parámetro de la corrida: 1 = confirma el delegado; 0 = lo entrega y confirma el gerente. */
+  DelegadoConfirma?: number
+  PuedeConfirmar?: number
+  PuedeEntregar?: number
   DiasAviso: number
   /** 1 = el centro lleva comisiones por persona (520103 en ESTRUCTURA). */
   TieneComision?: number

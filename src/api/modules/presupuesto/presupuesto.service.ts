@@ -2,7 +2,7 @@ import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
   ICentroDestino, ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IMoverPersonasRequest, IPlaza, IPlazaRequest, IResumenConsolidado,
-  IVacanteRequest,
+  IUsuarioDelegado, IVacanteRequest,
 } from './presupuesto.types'
 
 // Consume api/Presupuesto (IMCoreApi): lo mismo que «Mis centros de costo» del web. El usuario sale del token y la
@@ -39,6 +39,14 @@ export const presupuestoService = {
   quitarVacante: (id: number): R<number> => httpClient.delete(`${schema}/Plazas/${id}`),
   excluirPlaza: (id: number, motivo: string): R<number> => httpClient.post(`${schema}/Plazas/${id}/Excluir`, { Comentario: motivo }),
   incluirPlaza: (id: number): R<number> => httpClient.post(`${schema}/Plazas/${id}/Incluir`, {}),
+  /** A quién se puede delegar: usuarios activos con «Mis centros de costo». */
+  buscarDelegados: (filtro: string): R<IUsuarioDelegado[]> => httpClient.get(`${schema}/Delegados`, { filtro }),
+  /** delegadoA null = quitar la delegación. */
+  delegar: (corridaId: number, delegadoA: string | null, centros: { CentroCosto: string; GrupoCodigo: number }[]): R<number> =>
+    httpClient.post(`${schema}/Corridas/${corridaId}/Delegar`, { DelegadoA: delegadoA, Centros: centros }),
+  /** El delegado se lo entrega a su gerente, que lo confirma. */
+  entregar: (corridaId: number, cc: string, grupo: number, comentario: string | null): R<number> =>
+    httpClient.post(`${centro(corridaId, cc, grupo)}/Entregar`, { Comentario: comentario }),
   /** Centros a los que se puede mover gente desde este centro (con cuenta de sueldo). */
   centrosDestino: (corridaId: number, cc: string, grupo: number): R<ICentroDestino[]> =>
     httpClient.get(`${centro(corridaId, cc, grupo)}/Destinos`),

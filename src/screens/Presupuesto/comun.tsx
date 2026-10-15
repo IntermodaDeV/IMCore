@@ -92,6 +92,11 @@ export const centroOculto = (c: IMiCentro) => c.Plazas === 0 && c.Estado !== 'Ha
 
 /** Se puede confirmar sin abrirlo: habilitado, en plazo y sin vacantes sin salario (lo mismo que exige la base). */
 export const esConfirmable = (c: IMiCentro) => c.Acceso === 2 && c.Estado === 'Habilitado' && c.VacantesSinSalario === 0
+  && (c.PuedeConfirmar ?? 1) === 1
+
+/** El gerente puede delegar este centro: suyo, habilitado, sin el candado de Planificación y sin su propio salario. */
+export const esDelegable = (c: IMiCentro) => c.EsDelegado !== 1 && c.Acceso === 2 && c.Estado === 'Habilitado'
+  && c.NoDelegable !== 1 && c.TienePropia !== 1
 
 // ---------------------------------------------------------------- fecha límite
 // «cerca» = los últimos `diasAviso` días (configuración global, la misma que manda los recordatorios).

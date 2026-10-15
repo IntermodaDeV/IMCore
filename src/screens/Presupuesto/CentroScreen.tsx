@@ -54,6 +54,7 @@ export default function CentroScreen() {
   // Mover a otro centro las personas seleccionadas (una sola se mueve desde su panel).
   const [moviendo, setMoviendo] = useState<IPlaza[] | null>(null)
   const [verMovidos, setVerMovidos] = useState(false)
+  const [entregando, setEntregando] = useState(false)
 
   const cargar = useCallback(async () => {
     try {
@@ -101,7 +102,9 @@ export default function CentroScreen() {
     : vista === 'observaciones' ? activas.filter(tieneObservacion) : activas
 
   const puedeEditar = enc?.Acceso === 2 && enc.Estado === 'Habilitado'
-  const puedeConfirmar = puedeEditar && enc?.EsRevisor === 1
+  // Confirma el revisor o, si la corrida lo dice, su delegado; si no, el delegado lo «entrega» a su gerente.
+  const puedeConfirmar = puedeEditar && (enc?.PuedeConfirmar ?? enc?.EsRevisor) === 1
+  const puedeEntregar = enc?.PuedeEntregar === 1
   const seleccionadas = activas.filter(p => sel.has(p.Id))
   const selPendientes = seleccionadas.filter(p => p.Revisado !== 1)
   // Se mueven personas de planilla (una vacante se quita aquí y se agrega allá), nunca la propia.
@@ -144,7 +147,7 @@ export default function CentroScreen() {
   })()
 
   // Su revisor deshace la confirmación para corregir algo, mientras no venza el plazo (después, Planificación).
-  const puedeReabrir = !!enc && enc.Estado === 'Confirmado' && enc.EsRevisor === 1 && enc.CorridaEstado === 'Abierta'
+  const puedeReabrir = !!enc && enc.Estado === 'Confirmado' && (enc.PuedeConfirmar ?? enc.EsRevisor) === 1 && enc.CorridaEstado === 'Abierta'
     && !!enc.FechaLimite && new Date(enc.FechaLimite.replace(' ', 'T')).getTime() > Date.now()
   const reabrir = () => {
     Alert.alert(`Reabrir ${cc}`, 'Vuelve a quedar habilitado para corregirlo. Después hay que confirmarlo otra vez antes de la fecha límite.', [
@@ -268,6 +271,12 @@ export default function CentroScreen() {
           ? `Si hay que corregir algo, reábrelo (hasta el ${fmtFechaHora(enc.FechaLimite)}).`
           : 'Si hay que corregir algo, pídele a Planificación que lo reabra.'}${enc.Comentario ? `\nComentario: ${enc.Comentario}` : ''}`)}
       {puedeReabrir && <Boton texto="Reabrir para corregir" color={WARN} secundario disabled={ocupado} onPress={reabrir} />}
+      {enc.EsDelegado === 1 && aviso(INDIGO, `Te lo delegó ${enc.RevisorNombre ?? 'tu gerente'}. ${enc.Entregado === 1
+        ? `Se lo entregaste el ${fmtFechaHora(enc.FechaEntregado)}: queda en solo lectura.`
+        : enc.DelegadoConfirma === 1 ? 'Tú lo confirmas.' : 'Al terminar, entrégaselo: tu gerente lo confirma.'}`)}
+      {enc.EsRevisor === 1 && !!enc.DelegadoA && aviso(INDIGO, `Lo delegaste a ${enc.DelegadoNombre ?? enc.DelegadoA}. ${enc.Entregado === 1
+        ? `Te lo entregó el ${fmtFechaHora(enc.FechaEntregado)}${enc.ComentarioEntrega ? `: «${enc.ComentarioEntrega}»` : ''}. Revísalo y confírmalo.`
+        : 'Todavía no te lo entrega; tú también lo puedes corregir.'}`)}
       <YStack gap={4}>
         <XStack justifyContent="space-between">
           <Text fontSize="$2" color="$text">
@@ -371,6 +380,7 @@ export default function CentroScreen() {
             onPress={() => void marcar(true, [])} />
         )}
         {puedeConfirmar && <Boton texto="Confirmar centro" color={OK} disabled={ocupado} onPress={() => setConfirmando(true)} />}
+        {puedeEntregar && <Boton texto="Entregar a mi gerente" color={INDIGO} disabled={ocupado} onPress={() => setEntregando(true)} />}
       </XStack>
     )
   ) : null
@@ -426,6 +436,12 @@ export default function CentroScreen() {
         <AgregarVacante corridaId={corridaId} cc={cc} grupo={grupo} salarioMinimo={enc.SalarioMinimo ?? null}
           onCerrar={() => setAgregando(false)} onListo={() => { setAgregando(false); void cargar() }} />
       )}
+      {entregando && (
+        <Hoja titulo={`Entregar ${cc}`} subtitulo={enc.RevisorNombre ?? undefined} onCerrar={() => setEntregando(false)} alto="50%">
+          <EntregarCentro corridaId={corridaId} cc={cc} grupo={grupo} gerente={enc.RevisorNombre} sinRevisar={activas.length - revisadas}
+            onListo={() => { setEntregando(false); void cargar() }} />
+        </Hoja>
+      )}
       {confirmando && (
         <ConfirmarCentro corridaId={corridaId} cc={cc} grupo={grupo} personas={personas} vacantes={vacantes} total={total}
           sinRevisar={activas.length - revisadas} fechaLimite={enc.FechaLimite} siguiente={siguiente}
@@ -436,7 +452,7 @@ export default function CentroScreen() {
 }
 
 /** Selector de una opción (pastillas), como el SegmentedControl del web. */
-function Opciones<T extends string>({ valor, opciones, cambiar }: {
+export function Opciones<T extends string>({ valor, opciones, cambiar }: {
   valor: T; opciones: readonly (readonly [T, string])[]; cambiar: (v: T) => void
 }) {
   return (
@@ -457,7 +473,7 @@ function Opciones<T extends string>({ valor, opciones, cambiar }: {
  * Alto FIJO a propósito: KeyboardAwareForm ocupa lo que le dé su contenedor (flex: 1); con solo un alto máximo se
  * encoge a cero y del panel se ve nada más el encabezado.
  */
-function Hoja({ titulo, subtitulo, onCerrar, alto = '85%', children }: {
+export function Hoja({ titulo, subtitulo, onCerrar, alto = '85%', children }: {
   titulo: string; subtitulo?: string; onCerrar: () => void; alto?: `${number}%`; children: React.ReactNode
 }) {
   const theme = useTheme()
@@ -490,7 +506,7 @@ function Hoja({ titulo, subtitulo, onCerrar, alto = '85%', children }: {
 
 type TipoCampo = 'entero' | 'decimal' | 'texto' | 'parrafo'
 
-function Campo({ etiqueta, valor, cambiar, ayuda, tipo = 'entero' }: {
+export function Campo({ etiqueta, valor, cambiar, ayuda, tipo = 'entero' }: {
   etiqueta: string; valor: string; cambiar: (t: string) => void; ayuda: string; tipo?: TipoCampo
 }) {
   const theme = useTheme()
@@ -510,7 +526,7 @@ function Campo({ etiqueta, valor, cambiar, ayuda, tipo = 'entero' }: {
   )
 }
 
-function Boton({ texto, color, onPress, secundario = false, disabled = false }: {
+export function Boton({ texto, color, onPress, secundario = false, disabled = false }: {
   texto: string; color: string; onPress: () => void; secundario?: boolean; disabled?: boolean
 }) {
   return (
@@ -915,6 +931,39 @@ function AgregarVacante({ corridaId, cc, grupo, salarioMinimo, onCerrar, onListo
           color={ACCENT} disabled={ocupado || !listo} onPress={() => void agregar()} />
       </XStack>
     </Hoja>
+  )
+}
+
+// ---------------------------------------------------------------- entregar al gerente (centro delegado)
+
+function EntregarCentro({ corridaId, cc, grupo, gerente, sinRevisar, onListo }: {
+  corridaId: number; cc: string; grupo: number; gerente: string | null; sinRevisar: number; onListo: () => void
+}) {
+  const { showToast } = useShowToast()
+  const [comentario, setComentario] = useState('')
+  const [ocupado, setOcupado] = useState(false)
+  const entregar = async () => {
+    setOcupado(true)
+    try {
+      const r = await exigir(api.entregar(corridaId, cc, grupo, comentario.trim() || null))
+      showToast('success', 'Entregado', r.SuccessMessage)
+      onListo()
+    } catch (e) {
+      showToast('error', 'No se pudo', mensajeDeError(e))
+      setOcupado(false)
+    }
+  }
+  return (
+    <>
+      <Text fontSize="$3" color="$text">
+        {gerente ?? 'Tu gerente'} lo revisa y lo confirma; tú lo sigues viendo en solo lectura.
+        {sinRevisar > 0 ? ` Quedan ${sinRevisar} sin marcar como revisadas.` : ''}
+      </Text>
+      <Campo etiqueta="Comentario" valor={comentario} cambiar={setComentario} ayuda="Opcional" tipo="parrafo" />
+      <XStack gap="$2">
+        <Boton texto="Entregar" color={INDIGO} disabled={ocupado} onPress={() => void entregar()} />
+      </XStack>
+    </>
   )
 }
 

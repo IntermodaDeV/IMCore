@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, AppState, FlatList, RefreshControl, useWindowDimensions } from 'react-native'
 import { Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
-import { ChevronRight, ClipboardCheck, Lock } from 'lucide-react-native'
+import { Check, ChevronRight, ClipboardCheck, Lock, Share2 } from 'lucide-react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { NotificationBell } from '../../components/notifications/NotificationBell'
@@ -9,11 +9,14 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { useShowToast } from '../../utils/useShowToast'
 import { shadows } from '../../theme/shadows'
 import { exigir, mensajeDeError, presupuestoService as api } from '../../api/modules/presupuesto/presupuesto.service'
-import { IMiCentro } from '../../api/modules/presupuesto/presupuesto.types'
+import { IMiCentro, IUsuarioDelegado } from '../../api/modules/presupuesto/presupuesto.types'
 import {
-  ACCENT, Barra, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, centroOculto as oculto, esConfirmable, fmtFechaHora, lps,
-  plazoRestante, totalObservaciones,
+  ACCENT, Barra, Chip, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, centroOculto as oculto, esConfirmable, esDelegable,
+  fmtFechaHora, lps, plazoRestante, totalObservaciones,
 } from './comun'
+import { Boton, Campo, Hoja } from './CentroScreen'
+
+const INDIGO = '#4f46e5'
 import ResumenMios from './ResumenMios'
 
 // Presupuesto › Mis centros de costo (el revisor). Lo mismo que «Mis centros» del web, pensado para resolver
@@ -44,6 +47,7 @@ export default function MisCentrosScreen() {
   const [confirmando, setConfirmando] = useState(false)
   // La lista de trabajo o el resumen de todos sus centros (por centro o por cuenta, con sus períodos).
   const [panel, setPanel] = useState<'centros' | 'resumen'>('centros')
+  const [delegando, setDelegando] = useState(false)
 
   const cargar = useCallback(async () => {
     try {
@@ -77,6 +81,8 @@ export default function MisCentrosScreen() {
   const porVencer = base.filter(c => c.Estado === 'Habilitado' && plazoRestante(c.FechaLimite, c.DiasAviso)?.cerca)
   const primerLimite = porVencer.map(c => c.FechaLimite ?? '').sort()[0]
   const variasCorridas = new Set(todos.map(c => c.CorridaId)).size > 1
+  // Delegar: el gerente pasa algunos de sus centros habilitados a otra persona (de la corrida más reciente).
+  const delegables = todos.filter(c => esDelegable(c) && c.CorridaId === todos[0]?.CorridaId)
 
   const vista: Vista = vistaElegida ?? (pendientes.length > 0 ? 'pendientes' : 'todos')
   const filas = vista === 'pendientes' ? pendientes : vista === 'observaciones' ? conObservaciones : base
@@ -144,6 +150,9 @@ export default function MisCentrosScreen() {
           </XStack>
           {c.Plazas > 0 && <Barra hechas={c.Revisadas} total={c.Plazas} />}
           {c.Estado !== 'Confirmado' && <Observaciones c={c} />}
+          {(!!c.DelegadoA || c.EsDelegado === 1) && (
+            <XStack><Chip texto={`${c.EsDelegado === 1 ? `TE LO DELEGÓ ${c.DelegadoPorNombre ?? ''}` : `DELEGADO A ${c.DelegadoNombre ?? c.DelegadoA}`}${c.Entregado === 1 ? ' · ENTREGADO' : ''}`.toUpperCase()} color={INDIGO} /></XStack>
+          )}
           <Text fontSize="$1" color="$textMuted">
             {c.Estado === 'Confirmado' ? `Confirmado ${fmtFechaHora(c.FechaConfirmado)}`
               : c.Estado === 'Sin habilitar' ? 'Todavía sin fecha límite'
@@ -212,6 +221,12 @@ export default function MisCentrosScreen() {
             </View>
           ))}
         </XStack>
+        {delegables.length > 0 && (
+          <XStack alignSelf="flex-start" alignItems="center" gap={4} onPress={() => setDelegando(true)} hitSlop={8} pressStyle={{ opacity: 0.7 }}>
+            <Share2 size={15} color={INDIGO} />
+            <Text fontSize="$2" color={INDIGO} fontWeight="800">Delegar centros</Text>
+          </XStack>
+        )}
         {vacios > 0 && (
           <Text fontSize="$2" color={ACCENT} fontWeight="700" alignSelf="flex-end" onPress={() => setVerVacios(v => !v)}>
             {verVacios ? 'Ocultar centros sin personas' : `Mostrar ${vacios} ${vacios === 1 ? 'centro' : 'centros'} sin personas`}
@@ -245,6 +260,12 @@ export default function MisCentrosScreen() {
         }
       />
 
+      {delegando && (
+        <Hoja titulo="Delegar centros" subtitulo="Por esta corrida" onCerrar={() => setDelegando(false)}>
+          <DelegarCentros centros={delegables} onListo={() => { setDelegando(false); void cargar() }} />
+        </Hoja>
+      )}
+
       {listos.length > 0 && (
         <View position="absolute" left={0} right={0} bottom={0} paddingHorizontal={compacto ? 10 : 16} paddingTop="$2"
           paddingBottom={insets.bottom + 10} backgroundColor="$background" borderTopWidth={1} borderColor="$border">
@@ -261,5 +282,94 @@ export default function MisCentrosScreen() {
       )}
       </>}
     </View>
+  )
+}
+
+/** El gerente marca centros y elige a quién delegarlos (usuarios con «Mis centros de costo»); también quita la
+ *  delegación. Volver a delegar uno que ya le entregaron se lo devuelve a la persona. */
+function DelegarCentros({ centros, onListo }: { centros: IMiCentro[]; onListo: () => void }) {
+  const { showToast } = useShowToast()
+  const [marcados, setMarcados] = useState<Set<string>>(new Set())
+  const [buscar, setBuscar] = useState('')
+  const [usuarios, setUsuarios] = useState<IUsuarioDelegado[]>([])
+  const [elegido, setElegido] = useState<IUsuarioDelegado | null>(null)
+  const [ocupado, setOcupado] = useState(false)
+  const clave = (c: IMiCentro) => `${c.CentroCosto}|${c.GrupoCodigo}`
+  const sel = centros.filter(c => marcados.has(clave(c)))
+  const selDelegados = sel.filter(c => !!c.DelegadoA)
+
+  useEffect(() => {
+    const f = buscar.trim()
+    if (f.length < 2) { setUsuarios([]); return }
+    const t = setTimeout(() => {
+      exigir(api.buscarDelegados(f)).then(r => setUsuarios(r.Data ?? [])).catch(() => setUsuarios([]))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [buscar])
+
+  const correr = async (delegadoA: string | null, lista: IMiCentro[]) => {
+    setOcupado(true)
+    try {
+      const r = await exigir(api.delegar(lista[0].CorridaId, delegadoA, lista.map(c => ({ CentroCosto: c.CentroCosto, GrupoCodigo: c.GrupoCodigo }))))
+      showToast('success', delegadoA ? 'Delegado' : 'Delegación quitada', r.SuccessMessage)
+      onListo()
+    } catch (e) {
+      showToast('error', 'No se pudo', mensajeDeError(e))
+      setOcupado(false)
+    }
+  }
+
+  return (
+    <>
+      <Text fontSize="$2" color="$textMuted">Marca los centros. No aparecen los que Planificación no deja delegar ni donde está tu salario.</Text>
+      <YStack gap="$1.5">
+        {centros.map(c => {
+          const m = marcados.has(clave(c))
+          return (
+            <XStack key={clave(c)} alignItems="center" gap="$2.5" paddingVertical="$2" paddingHorizontal="$2" borderRadius="$3" borderWidth={1}
+              borderColor={m ? ACCENT : '$border'} pressStyle={{ opacity: 0.7 }}
+              onPress={() => setMarcados(s => { const n = new Set(s); if (n.has(clave(c))) n.delete(clave(c)); else n.add(clave(c)); return n })}>
+              <View width={22} height={22} borderRadius={11} borderWidth={2} borderColor={m ? ACCENT : '$border'}
+                backgroundColor={m ? ACCENT : 'transparent'} alignItems="center" justifyContent="center">
+                {m && <Check size={14} color="#fff" />}
+              </View>
+              <YStack flex={1}>
+                <Text fontSize="$3" fontWeight="700" color="$text" numberOfLines={1}>{c.CentroCosto} · {c.CentroCostoNombre}</Text>
+                <Text fontSize="$1" color={c.DelegadoA ? INDIGO : '$textMuted'} numberOfLines={1}>
+                  {c.DelegadoA ? `Delegado a ${c.DelegadoNombre ?? c.DelegadoA}${c.Entregado === 1 ? ' · entregado' : ''}` : `${c.Personas} personas`}
+                </Text>
+              </YStack>
+            </XStack>
+          )
+        })}
+      </YStack>
+      {elegido ? (
+        <XStack borderWidth={1.5} borderColor={INDIGO} borderRadius="$4" padding="$2.5" alignItems="center" gap="$2">
+          <Text flex={1} fontSize="$3" fontWeight="800" color="$text" numberOfLines={1}>{elegido.UsuarioNombre ?? elegido.User_Code}</Text>
+          <Text fontSize="$2" color={INDIGO} fontWeight="800" onPress={() => setElegido(null)}>Cambiar</Text>
+        </XStack>
+      ) : (
+        <YStack gap="$1.5">
+          <Campo etiqueta="¿A quién?" valor={buscar} cambiar={setBuscar} ayuda="Nombre o usuario (2 letras)" tipo="texto" />
+          {usuarios.map(u => (
+            <XStack key={u.User_Code} paddingVertical="$2" paddingHorizontal="$2" borderRadius="$3" borderWidth={1} borderColor="$border"
+              pressStyle={{ opacity: 0.7 }} onPress={() => setElegido(u)}>
+              <Text fontSize="$3" color="$text" numberOfLines={1}>{u.UsuarioNombre} ({u.User_Code})</Text>
+            </XStack>
+          ))}
+          {buscar.trim().length >= 2 && usuarios.length === 0 && (
+            <Text fontSize="$1" color="$textMuted">Nadie con «Mis centros de costo» con ese nombre.</Text>
+          )}
+        </YStack>
+      )}
+      <Text fontSize="$1" color="$textMuted">Ve y corrige esos centros hasta la fecha límite. Se le avisa por correo y en IMCore.</Text>
+      <XStack gap="$2">
+        {selDelegados.length > 0 && (
+          <Boton texto={`Quitar (${selDelegados.length})`} color={INDIGO} secundario disabled={ocupado} onPress={() => void correr(null, selDelegados)} />
+        )}
+        <Boton texto={sel.length > 0 ? `Delegar ${sel.length}` : 'Delegar'} color={INDIGO} disabled={ocupado || sel.length === 0 || !elegido}
+          onPress={() => void correr(elegido!.User_Code, sel)} />
+      </XStack>
+    </>
   )
 }
