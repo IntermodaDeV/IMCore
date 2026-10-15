@@ -115,6 +115,39 @@ export interface IPlaza {
   Comentario: string | null
   Modified_By: string | null
   Modification_Date: string | null
+  /** La parte que llegó desde una semana: la fila de origen (en otro centro). */
+  PlazaOrigenId?: number | null
+  /** Movida a este centro: de dónde viene. */
+  VieneDe?: string | null
+  /** Movida todo el año a otro centro (solo en su centro de planilla, para saberlo y deshacerlo). */
+  MovidoA?: string | null
+  /** Se queda aquí hasta la semana anterior a PasaDesde; desde ahí va a PasaA (PasaAPlazaId = esa parte). */
+  PasaA?: string | null
+  PasaDesde?: number | null
+  PasaAPlazaId?: number | null
+  MovidoPor?: string | null
+  MovidoPorNombre?: string | null
+  FechaMovido?: string | null
+  MotivoMovido?: string | null
+}
+
+/** Un centro al que se puede mover gente (tiene cuenta de sueldo), con su revisor. */
+export interface ICentroDestino {
+  CentroCosto: string
+  CentroCostoNombre: string | null
+  DepartamentoNombre: string | null
+  Grupos: string | null
+  Revisores: string | null
+  Confirmado: number
+  SuspendidoAX: number
+}
+
+/** Mover personas: todo el año (SemanaDesde vacío) o desde una semana. */
+export interface IMoverPersonasRequest {
+  Ids: number[]
+  Destino: string
+  SemanaDesde: number | null
+  Motivo: string
 }
 
 /** La fila completa: % y días en null vuelven al valor por defecto. */

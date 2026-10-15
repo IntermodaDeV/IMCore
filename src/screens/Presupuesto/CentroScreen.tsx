@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, AppState, FlatList, Modal, RefreshControl, TextInput, useWindowDimensions } from 'react-native'
 import { Spinner, Text, View, XStack, YStack, useTheme } from 'tamagui'
 import { ArrowLeft, Check, Lock, Plus, X } from 'lucide-react-native'
@@ -9,7 +9,7 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { useShowToast } from '../../utils/useShowToast'
 import { shadows } from '../../theme/shadows'
 import { exigir, mensajeDeError, presupuestoService as api } from '../../api/modules/presupuesto/presupuesto.service'
-import { ICentroEncabezado, IMiCentro, IPlaza } from '../../api/modules/presupuesto/presupuesto.types'
+import { ICentroDestino, ICentroEncabezado, IMiCentro, IPlaza } from '../../api/modules/presupuesto/presupuesto.types'
 import {
   ACCENT, AZUL, Barra, Chip, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, aMensual, aSemanal, centroOculto,
   esTemporal, etiquetaSalario, fmtFechaHora, fueraDePlanilla, lps, mostrarSalario, temporalSinFin, tieneObservacion,
@@ -51,6 +51,9 @@ export default function CentroScreen() {
   const [verQuitados, setVerQuitados] = useState(false)
   const [agregando, setAgregando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
+  // Mover a otro centro las personas seleccionadas (una sola se mueve desde su panel).
+  const [moviendo, setMoviendo] = useState<IPlaza[] | null>(null)
+  const [verMovidos, setVerMovidos] = useState(false)
 
   const cargar = useCallback(async () => {
     try {
@@ -76,8 +79,10 @@ export default function CentroScreen() {
   }, [cargar]))
 
   const filas = useMemo(() => plazas ?? [], [plazas])
-  const activas = filas.filter(p => p.Excluida !== 1)
+  // Quitadas del presupuesto y movidas todo el año a otro centro (ya cuentan allá) van aparte, al final.
+  const activas = filas.filter(p => p.Excluida !== 1 && !p.MovidoA)
   const quitadas = filas.filter(p => p.Excluida === 1)
+  const movidas = filas.filter(p => !!p.MovidoA)
   const revisadas = activas.filter(p => p.Revisado === 1).length
   const personas = activas.filter(p => p.Origen === 'Planilla').length
   // En personas: una fila de 1000 vacantes cuenta 1000.
@@ -99,6 +104,8 @@ export default function CentroScreen() {
   const puedeConfirmar = puedeEditar && enc?.EsRevisor === 1
   const seleccionadas = activas.filter(p => sel.has(p.Id))
   const selPendientes = seleccionadas.filter(p => p.Revisado !== 1)
+  // Se mueven personas de planilla (una vacante se quita aquí y se agrega allá), nunca la propia.
+  const selMovibles = seleccionadas.filter(p => p.Origen === 'Planilla' && p.EsPropia !== 1)
   const todasSeleccionadas = visibles.length > 0 && visibles.every(p => sel.has(p.Id))
 
   const alternar = (id: number) => setSel(s => {
@@ -191,6 +198,8 @@ export default function CentroScreen() {
               {p.EsDolares === 1 && <Chip texto="US$" color={AZUL} />}
               {p.PorcIncremento != null && <Chip texto={`EXCEPCIÓN ${fmtPorc(p.PorcIncremento)}`} color={WARN} />}
               {(p.SemanaInicio > 1 || p.SemanaFin < 53) && <Chip texto={`SEMANAS ${p.SemanaInicio}–${Math.min(p.SemanaFin, 52)}`} color={GRIS} />}
+              {p.VieneDe && <Chip texto={`VIENE DE ${p.VieneDe}`} color={INDIGO} />}
+              {p.PasaA && <Chip texto={`PASA A ${p.PasaA} EN SEM. ${p.PasaDesde}`} color={INDIGO} />}
             </XStack>
           </YStack>
           <YStack alignItems="flex-end" maxWidth="40%">
@@ -295,11 +304,30 @@ export default function CentroScreen() {
     </YStack>
   )
 
-  const pie = quitadas.length > 0 ? (
+  const pie = quitadas.length > 0 || movidas.length > 0 ? (
     <YStack gap="$2" paddingTop="$2">
-      <Text fontSize="$2" color={ACCENT} fontWeight="700" onPress={() => setVerQuitados(v => !v)}>
+      {movidas.length > 0 && (
+        <Text fontSize="$2" color={ACCENT} fontWeight="700" onPress={() => setVerMovidos(v => !v)}>
+          {verMovidos ? 'Ocultar' : 'Ver'} movidos a otro centro ({movidas.length})
+        </Text>
+      )}
+      {verMovidos && movidas.map(p => (
+        <XStack key={p.Id} {...tarjeta} opacity={0.85} alignItems="center" gap="$3">
+          <YStack flex={1}>
+            <Text fontSize="$3" fontWeight="700" color="$text" numberOfLines={1}>{p.Nombre}</Text>
+            <Text fontSize="$2" color="$textMuted" numberOfLines={2}>
+              A {p.MovidoA} todo el año{p.MotivoMovido ? ` · ${p.MotivoMovido}` : ''}
+            </Text>
+          </YStack>
+          {puedeEditar && (
+            <Text fontSize="$2" color={ACCENT} fontWeight="800"
+              onPress={() => void correr(() => exigir(api.deshacerMovimiento(corridaId, p.Id)), 'Movimiento deshecho')}>Deshacer</Text>
+          )}
+        </XStack>
+      ))}
+      {quitadas.length > 0 && <Text fontSize="$2" color={ACCENT} fontWeight="700" onPress={() => setVerQuitados(v => !v)}>
         {verQuitados ? 'Ocultar' : 'Ver'} quitados del presupuesto ({quitadas.length})
-      </Text>
+      </Text>}
       {verQuitados && quitadas.map(p => (
         <XStack key={p.Id} {...tarjeta} opacity={0.85} alignItems="center" gap="$3">
           <YStack flex={1}>
@@ -318,6 +346,13 @@ export default function CentroScreen() {
   // Barra de abajo: con selección, marcar lo seleccionado; sin selección, marcar todo lo pendiente y confirmar.
   const botonera = puedeEditar ? (
     seleccionadas.length > 0 ? (
+      <YStack gap="$2">
+      {selMovibles.length > 0 && (
+        <XStack>
+          <Boton texto={`Mover ${selMovibles.length} a otro centro`} color={ACCENT} secundario disabled={ocupado}
+            onPress={() => setMoviendo(selMovibles)} />
+        </XStack>
+      )}
       <XStack gap="$2">
         {selPendientes.length < seleccionadas.length && (
           <Boton texto={`Volver ${seleccionadas.length - selPendientes.length} a sin revisar`} color={GRIS} secundario disabled={ocupado}
@@ -328,6 +363,7 @@ export default function CentroScreen() {
             onPress={() => void marcar(true, selPendientes.map(p => p.Id))} />
         )}
       </XStack>
+      </YStack>
     ) : (
       <XStack gap="$2">
         {revisadas < activas.length && (
@@ -379,6 +415,13 @@ export default function CentroScreen() {
 
       <EditarPersona plaza={editando} corridaId={corridaId} cc={cc} grupo={grupo} onCerrar={() => setEditando(null)} onListo={() => { setEditando(null); void cargar() }}
         tieneComision={enc?.TieneComision === 1} tieneVariable={enc?.TieneVariable === 1} />
+      {moviendo && (
+        <Hoja titulo={moviendo.length === 1 ? `Mover a ${moviendo[0].Nombre}` : `Mover ${moviendo.length} personas`} subtitulo={cc}
+          onCerrar={() => setMoviendo(null)}>
+          <FormMover plazas={moviendo} corridaId={corridaId} cc={cc} grupo={grupo}
+            onListo={() => { setMoviendo(null); setSel(new Set()); void cargar() }} />
+        </Hoja>
+      )}
       {agregando && (
         <AgregarVacante corridaId={corridaId} cc={cc} grupo={grupo} salarioMinimo={enc.SalarioMinimo ?? null}
           onCerrar={() => setAgregando(false)} onListo={() => { setAgregando(false); void cargar() }} />
@@ -483,7 +526,8 @@ function Boton({ texto, color, onPress, secundario = false, disabled = false }: 
 // Pocos campos y todos opcionales: vacío = lo que dice planilla (salario), el % general o los días de ley. Guardar
 // también deja a la persona revisada. Quitar del presupuesto pide el motivo, como en el web.
 
-const MOTIVOS = ['Ya no labora en la empresa', 'Se trasladó a otro centro de costo', 'Otro']
+const MOTIVOS = ['Ya no labora en la empresa', 'Otro']
+const INDIGO = '#4f46e5'
 
 const num = (t: string) => {
   const v = Number(t.replace(/,/g, '').trim())
@@ -524,6 +568,7 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
   const [variable, setVariable] = useState('')
   const [comentario, setComentario] = useState('')
   const [quitando, setQuitando] = useState(false)
+  const [moviendo, setMoviendo] = useState(false)
   const [motivo, setMotivo] = useState(MOTIVOS[0])
   const [detalle, setDetalle] = useState('')
   const [ocupado, setOcupado] = useState(false)
@@ -532,7 +577,7 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
   React.useEffect(() => {
     setSalario(salarioInicial); setPorc(porcInicial); setDias(diasInicial); setHasta(hastaInicial); setCantidad(cantidadInicial)
     setComision(comisionInicial); setVariable(variableInicial)
-    setComentario(p?.Comentario ?? ''); setQuitando(false); setMotivo(MOTIVOS[0]); setDetalle('')
+    setComentario(p?.Comentario ?? ''); setQuitando(false); setMoviendo(false); setMotivo(MOTIVOS[0]); setDetalle('')
   }, [p?.Id])
 
   if (!p) return null
@@ -584,7 +629,12 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
   return (
     <Hoja titulo={p.Nombre} onCerrar={onCerrar}
       subtitulo={`${p.Origen === 'Vacante' ? 'Vacante' : p.CodPersonal}${p.Cargo ? ` · ${p.Cargo}` : ''}${p.SalarioPlanilla != null ? ` · planilla ${mostrarSalario(p, p.SalarioPlanilla)}` : ''}`}>
-      {!quitando ? (
+      {moviendo ? (
+        <>
+          <FormMover plazas={[p]} corridaId={corridaId} cc={cc} grupo={grupo} onListo={onListo} />
+          <Boton texto="Volver" color={GRIS} secundario onPress={() => setMoviendo(false)} />
+        </>
+      ) : !quitando ? (
         <>
           {p.Origen === 'Vacante' && campo('Cantidad (vacantes iguales)', cantidad, setCantidad, '1')}
           {cantidadMal && <Text fontSize="$1" color={ERR}>La cantidad va de 1 a 9999.</Text>}
@@ -630,6 +680,17 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
                 : <Boton texto="Volver a sin revisar" color={GRIS} secundario disabled={ocupado}
                     onPress={() => void correr(() => exigir(api.marcarRevisado(corridaId, cc, grupo, false, [p.Id])), null)} />}
           </XStack>
+          {p.Origen === 'Planilla' && (
+            <Text fontSize="$2" color={ACCENT} fontWeight="700" textAlign="center" paddingVertical="$2" onPress={() => setMoviendo(true)}>
+              Mover a otro centro
+            </Text>
+          )}
+          {(p.VieneDe || p.PasaA) && (
+            <Text fontSize="$2" color={INDIGO} fontWeight="700" textAlign="center" paddingVertical="$2"
+              onPress={() => void correr(() => exigir(api.deshacerMovimiento(corridaId, (p.VieneDe ? p.Id : p.PasaAPlazaId) as number)), 'Movimiento deshecho')}>
+              {p.VieneDe ? `Deshacer el movimiento (vuelve a ${p.VieneDe})` : `Deshacer el paso a ${p.PasaA}`}
+            </Text>
+          )}
           <Text fontSize="$2" color={ERR} fontWeight="700" textAlign="center" paddingVertical="$2"
             onPress={() => p.Origen === 'Vacante'
               ? Alert.alert('Quitar vacante', `¿Quitar «${p.Nombre}» del presupuesto?`, [
@@ -666,6 +727,112 @@ function EditarPersona({ plaza: p, corridaId, cc, grupo, onCerrar, onListo, tien
         </>
       )}
     </Hoja>
+  )
+}
+
+// ---------------------------------------------------------------- mover a otro centro
+// Lo mismo que en el web: a cualquier centro con cuenta de sueldo, todo el año o desde una semana, con su motivo. Se le
+// avisa al revisor del otro centro. Va dentro de un panel (el de la persona o el de las seleccionadas).
+
+const MOTIVOS_MOVER = ['Trabaja en la línea de ese centro', 'Traslado previsto', 'Reorganización del área', 'Otro']
+
+function FormMover({ plazas, corridaId, cc, grupo, onListo }: {
+  plazas: IPlaza[]; corridaId: number; cc: string; grupo: number; onListo: () => void
+}) {
+  const { showToast } = useShowToast()
+  const [destinos, setDestinos] = useState<ICentroDestino[] | null>(null)
+  const [buscar, setBuscar] = useState('')
+  const [destino, setDestino] = useState<ICentroDestino | null>(null)
+  const [cuando, setCuando] = useState<'anio' | 'semana'>('anio')
+  const [semana, setSemana] = useState('')
+  const [motivo, setMotivo] = useState(MOTIVOS_MOVER[0])
+  const [detalle, setDetalle] = useState('')
+  const [ocupado, setOcupado] = useState(false)
+
+  useEffect(() => {
+    exigir(api.centrosDestino(corridaId, cc, grupo))
+      .then(r => setDestinos(r.Data ?? []))
+      .catch(e => { setDestinos([]); showToast('error', 'No se pudo', mensajeDeError(e)) })
+  }, [corridaId, cc, grupo])
+
+  const q = buscar.trim().toLowerCase()
+  const lista = (destinos ?? []).filter(d => d.CentroCosto !== cc
+    && (!q || d.CentroCosto.toLowerCase().includes(q) || (d.CentroCostoNombre ?? '').toLowerCase().includes(q)))
+  const semanaNum = num(semana)
+  const semanaMal = cuando === 'semana' && (semanaNum == null || semanaNum < 2 || semanaNum > 52 || !Number.isInteger(semanaNum))
+  const textoMotivo = motivo === 'Otro' ? detalle.trim() : (detalle.trim() ? `${motivo}: ${detalle.trim()}` : motivo)
+
+  const mover = async () => {
+    if (!destino) return
+    setOcupado(true)
+    try {
+      const r = await exigir(api.moverPersonas(corridaId, cc, grupo, {
+        Ids: plazas.map(p => p.Id), Destino: destino.CentroCosto, SemanaDesde: cuando === 'semana' ? semanaNum : null, Motivo: textoMotivo,
+      }))
+      showToast('success', 'Movido', r.SuccessMessage)
+      onListo()
+    } catch (e) {
+      showToast('error', 'No se pudo', mensajeDeError(e))
+      setOcupado(false)
+    }
+  }
+
+  return (
+    <>
+      {destino ? (
+        <XStack borderWidth={1.5} borderColor={ACCENT} borderRadius="$4" padding="$2.5" alignItems="center" gap="$2">
+          <YStack flex={1}>
+            <Text fontSize="$3" fontWeight="800" color="$text" numberOfLines={1}>{destino.CentroCosto} · {destino.CentroCostoNombre}</Text>
+            <Text fontSize="$1" color="$textMuted" numberOfLines={1}>
+              grupo {destino.Grupos}{destino.Revisores ? ` · revisa ${destino.Revisores}` : ' · sin revisor'}
+            </Text>
+          </YStack>
+          <Text fontSize="$2" color={ACCENT} fontWeight="800" onPress={() => setDestino(null)}>Cambiar</Text>
+        </XStack>
+      ) : (
+        <YStack gap="$1.5">
+          <Campo etiqueta="Centro de costo destino" valor={buscar} cambiar={setBuscar} ayuda="Buscar por código o nombre" tipo="texto" />
+          {destinos === null ? <Spinner color={ACCENT} /> : lista.slice(0, 25).map(d => (
+            <XStack key={d.CentroCosto} paddingVertical="$2" paddingHorizontal="$2" borderRadius="$3" borderWidth={1} borderColor="$border"
+              opacity={d.Confirmado === 1 ? 0.45 : 1} pressStyle={{ opacity: 0.7 }}
+              onPress={d.Confirmado === 1 ? undefined : () => setDestino(d)}>
+              <YStack flex={1}>
+                <Text fontSize="$3" fontWeight="700" color="$text" numberOfLines={1}>{d.CentroCosto} · {d.CentroCostoNombre}</Text>
+                <Text fontSize="$1" color="$textMuted" numberOfLines={1}>
+                  {d.Confirmado === 1 ? 'Confirmado: no recibe' : `grupo ${d.Grupos}${d.Revisores ? ` · ${d.Revisores}` : ''}`}
+                </Text>
+              </YStack>
+            </XStack>
+          ))}
+          {destinos !== null && lista.length > 25 && <Text fontSize="$1" color="$textMuted">Escribe para ver más ({lista.length}).</Text>}
+        </YStack>
+      )}
+      <Opciones valor={cuando} cambiar={setCuando} opciones={[['anio', 'Todo el año'], ['semana', 'Desde una semana']]} />
+      {cuando === 'semana' && (
+        <>
+          <Campo etiqueta="Desde la semana" valor={semana} cambiar={setSemana} ayuda="Hasta la anterior se queda aquí" />
+          {semanaMal && semana !== '' && <Text fontSize="$1" color={ERR}>La semana va de 2 a 52.</Text>}
+        </>
+      )}
+      <YStack gap="$1">
+        <Text fontSize="$2" fontWeight="700" color="$text">Motivo</Text>
+        {MOTIVOS_MOVER.map(m => (
+          <XStack key={m} gap="$2" alignItems="center" onPress={() => setMotivo(m)} paddingVertical="$1.5">
+            <View width={20} height={20} borderRadius={10} borderWidth={2} borderColor={motivo === m ? ACCENT : '$border'}
+              alignItems="center" justifyContent="center">
+              {motivo === m && <View width={10} height={10} borderRadius={5} backgroundColor={ACCENT} />}
+            </View>
+            <Text fontSize="$3" color="$text">{m}</Text>
+          </XStack>
+        ))}
+      </YStack>
+      <Campo etiqueta={motivo === 'Otro' ? 'Explica el motivo' : 'Detalle (opcional)'} valor={detalle} cambiar={setDetalle} ayuda="" tipo="parrafo" />
+      <Text fontSize="$1" color="$textMuted">Se le avisa al revisor del otro centro. La planilla no los regresa; se puede deshacer.</Text>
+      <XStack gap="$2">
+        <Boton texto={plazas.length > 1 ? `Mover ${plazas.length}` : 'Mover'} color={ACCENT}
+          disabled={ocupado || !destino || !textoMotivo || semanaMal} onPress={() => void mover()} />
+      </XStack>
+    </>
   )
 }
 

@@ -1,7 +1,8 @@
 import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
-  ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IPlaza, IPlazaRequest, IResumenConsolidado, IVacanteRequest,
+  ICentroDestino, ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IMoverPersonasRequest, IPlaza, IPlazaRequest, IResumenConsolidado,
+  IVacanteRequest,
 } from './presupuesto.types'
 
 // Consume api/Presupuesto (IMCoreApi): lo mismo que «Mis centros de costo» del web. El usuario sale del token y la
@@ -38,6 +39,14 @@ export const presupuestoService = {
   quitarVacante: (id: number): R<number> => httpClient.delete(`${schema}/Plazas/${id}`),
   excluirPlaza: (id: number, motivo: string): R<number> => httpClient.post(`${schema}/Plazas/${id}/Excluir`, { Comentario: motivo }),
   incluirPlaza: (id: number): R<number> => httpClient.post(`${schema}/Plazas/${id}/Incluir`, {}),
+  /** Centros a los que se puede mover gente desde este centro (con cuenta de sueldo). */
+  centrosDestino: (corridaId: number, cc: string, grupo: number): R<ICentroDestino[]> =>
+    httpClient.get(`${centro(corridaId, cc, grupo)}/Destinos`),
+  /** Todo el año (SemanaDesde null) o desde una semana; se le avisa al revisor del otro centro. */
+  moverPersonas: (corridaId: number, cc: string, grupo: number, data: IMoverPersonasRequest): R<number> =>
+    httpClient.post(`${centro(corridaId, cc, grupo)}/Mover`, data),
+  deshacerMovimiento: (corridaId: number, plazaId: number): R<number> =>
+    httpClient.post(`${schema}/Corridas/${corridaId}/Plazas/${plazaId}/DeshacerMovimiento`, {}),
 }
 
 /** La API responde 200 aunque no se haya podido: el resultado viene en Success. */
