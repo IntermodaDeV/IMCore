@@ -217,6 +217,8 @@ export interface IDashboardAlertas {
 export interface IDashboard {
   Mes: string
   Hoy: string
+  /** Abiertos del sistema anterior sin movimiento en IMCore (se cuenten o no). No viene de una API vieja. */
+  Anteriores?: number
   Empresas: IDashboardEmpresa[]
   Resumen: IDashboardResumen
   PorPais: IDashboardPais[]

@@ -62,10 +62,11 @@ export const inventarioImpulsadorasService = {
   cancelarReapertura: (solicitudId: number) =>
     httpClient.post<ExecutionResponse<{ Solicitud_Id: number; Estado: string }>>(`${schema}/Reapertura/${solicitudId}/Cancelar`),
 
-  /** Dashboard (el mismo del web). No cuelga de App/: `mes` = 'YYYY-MM-01'. Permiso = menú invImpDashboard. */
-  dashboard: (f: { companyId?: number | null; mes?: string }) =>
+  /** Dashboard (el mismo del web). No cuelga de App/: `mes` = 'YYYY-MM-01'. Permiso = menú invImpDashboard.
+   *  Sin `verAnteriores` no cuentan los abiertos del sistema anterior que nadie ha movido en IMCore. */
+  dashboard: (f: { companyId?: number | null; mes?: string; verAnteriores?: boolean }) =>
     httpClient.get<ExecutionResponse<IDashboard>>('InventarioImpulsadoras/Dashboard',
-      { empresa: f.companyId ?? undefined, mes: f.mes }, { timeoutMs: 60000 }),
+      { empresa: f.companyId ?? undefined, mes: f.mes, verAnteriores: f.verAnteriores || undefined }, { timeoutMs: 60000 }),
 
   /** Próximos inventarios en 30/60/90 días según la periodicidad (solo consulta: se programan en el web). */
   proximos: (f: { companyId?: number | null; dias: number }) =>
@@ -73,9 +74,9 @@ export const inventarioImpulsadorasService = {
       { empresa: f.companyId ?? undefined, dias: f.dias }, { timeoutMs: 60000 }),
 
   /** Dashboard › Por asesor: lo abierto hasta hoy y lo del mes, con su asesor y sus personas. */
-  asesores: (f: { companyId?: number | null; mes?: string }) =>
+  asesores: (f: { companyId?: number | null; mes?: string; verAnteriores?: boolean }) =>
     httpClient.get<ExecutionResponse<IDashboardAsesores>>('InventarioImpulsadoras/Dashboard/Asesores',
-      { empresa: f.companyId ?? undefined, mes: f.mes }, { timeoutMs: 60000 }),
+      { empresa: f.companyId ?? undefined, mes: f.mes, verAnteriores: f.verAnteriores || undefined }, { timeoutMs: 60000 }),
 }
 
 /** Mensaje legible de un error de la API (el HttpError de la app solo trae «HTTP 409»). */

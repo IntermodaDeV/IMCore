@@ -114,9 +114,11 @@ function armarGrupos(inv: IDashboardAsesorInventario[], vista: Vista, hoy: strin
     || b.abiertos - a.abiertos || b.delMes - a.delMes || a.nombre.localeCompare(b.nombre))
 }
 
-export function PorAsesor({ companyId, mes, selectorMes, pad, compacto, ancho }: {
+export function PorAsesor({ companyId, mes, verAnteriores, selectorMes, pad, compacto, ancho }: {
   companyId: number | null
   mes: string
+  /** Los abiertos del sistema anterior sin movimiento en IMCore (el mismo interruptor del resumen). */
+  verAnteriores: boolean
   /** El mismo selector de mes del resumen. */
   selectorMes: React.ReactNode
   pad: number
@@ -139,7 +141,7 @@ export function PorAsesor({ companyId, mes, selectorMes, pad, compacto, ancho }:
     const n = ++pedido.current
     setCargando(true)
     try {
-      const r = await api.asesores({ companyId, mes })
+      const r = await api.asesores({ companyId, mes, verAnteriores })
       if (n !== pedido.current) return
       setInv(r.Data?.Inventarios ?? [])
       setHoy((r.Data?.Hoy ?? '').slice(0, 10))
@@ -154,7 +156,7 @@ export function PorAsesor({ companyId, mes, selectorMes, pad, compacto, ancho }:
     } finally {
       if (n === pedido.current) { setCargando(false); setRefrescando(false) }
     }
-  }, [companyId, mes])
+  }, [companyId, mes, verAnteriores])
   useEffect(() => { void cargar() }, [cargar])
   useFocusEffect(useCallback(() => {
     const t = setInterval(() => { void cargar() }, REFRESCO_MS)

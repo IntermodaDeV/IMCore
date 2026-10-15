@@ -133,6 +133,8 @@ export default function DashboardScreen() {
 
   const [companyId, setCompanyId] = useState<number | null>(null)
   const [mes, setMes] = useState(() => primeroDeMes())
+  // Abiertos del sistema anterior sin movimiento en IMCore: fuera de Resumen y Por asesor salvo que se pidan.
+  const [verAnteriores, setVerAnteriores] = useState(false)
   const [d, setD] = useState<IDashboard | null>(null)
   const [cargando, setCargando] = useState(true)
   const [refrescando, setRefrescando] = useState(false)
@@ -154,7 +156,7 @@ export default function DashboardScreen() {
   const cargar = useCallback(async () => {
     const n = ++pedido.current
     try {
-      const r = await api.dashboard({ companyId, mes })
+      const r = await api.dashboard({ companyId, mes, verAnteriores })
       if (n !== pedido.current) return        // llegó tarde: ya se pidió otro mes/empresa
       setD(r.Data)
       setError(null)
@@ -163,7 +165,7 @@ export default function DashboardScreen() {
     } finally {
       if (n === pedido.current) { setCargando(false); setRefrescando(false) }
     }
-  }, [companyId, mes])
+  }, [companyId, mes, verAnteriores])
 
   useEffect(() => { setCargando(true); void cargar() }, [cargar])
 
@@ -438,12 +440,18 @@ export default function DashboardScreen() {
             {d.Empresas.map(e => (
               <Chip key={e.Company_Id} on={companyId === e.Company_Id} texto={e.Empresa} onPress={() => setCompanyId(e.Company_Id)} />
             ))}
+            {pestana !== 'proximos' && (verAnteriores || (d.Anteriores ?? 0) > 0) && (
+              <>
+                <View width={1} backgroundColor="$border" marginHorizontal={2} />
+                <Chip on={verAnteriores} texto={`Ver anteriores (${fmtN(d.Anteriores ?? 0)})`} onPress={() => setVerAnteriores(v => !v)} />
+              </>
+            )}
           </XStack>
         </ScrollView>
       </YStack>
 
       {pestana === 'asesores' ? (
-        <PorAsesor companyId={companyId} mes={mes} selectorMes={selectorMes} pad={pad} compacto={compacto} ancho={ancho} />
+        <PorAsesor companyId={companyId} mes={mes} verAnteriores={verAnteriores} selectorMes={selectorMes} pad={pad} compacto={compacto} ancho={ancho} />
       ) : pestana === 'proximos' ? (
         <YStack flex={1}>
           <YStack paddingHorizontal={pad} paddingBottom="$2" gap="$2" {...ancho}>
