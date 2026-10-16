@@ -201,6 +201,8 @@ const respetaJornada = (f: Fila): boolean => f.hasSchedule && !f.is_Manual
  */
 const conMarca = (f: Fila, valor: boolean): Fila => {
   if (f.isLocked || f.is_Manual === valor) return f
+  // Sin jornada ese día (domingo, descanso) no hay HE Manual: solo se puede quitar
+  if (valor && !f.hasSchedule) return f
   return {
     ...f,
     is_Manual: valor,
@@ -877,6 +879,13 @@ export default function CrearSolicitudHoraExtraScreen() {
 
       // La HE Manual es justamente la que se puede pedir dentro de la jornada.
       const horario = horarios.find(h => h.ShiftId === f.shift_Id)
+      // ...pero tiene que TOCAR la jornada: un día sin jornada (domingo) o del todo
+      // fuera de ella (sábado en la tarde) es una HE normal. Puede empezar dentro y
+      // terminar fuera: lo de fuera se paga por bandas. El SP lo valida igual.
+      if (f.is_Manual && !f.hasSchedule) return 'Día sin jornada: no puede ser HE Manual'
+      if (f.is_Manual && !seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
+        return `La HE Manual tiene que tocar la jornada ${hora12(f.shift_Start)} - ${hora12(f.shift_End)}`
+      }
       if (!f.is_Manual && seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
         return `Se encima con la jornada ${hora12(f.shift_Start)} - ${hora12(f.shift_End)}`
       }
@@ -2010,7 +2019,13 @@ function PasoHoras({
                   se muestra si ya venía marcada, para que se sepa. */}
               {(puedeManual && !f.isLocked) || f.is_Manual ? (
                 <XStack justifyContent="flex-end">
-                  {puedeManual && !f.isLocked ? (
+                  {puedeManual && !f.isLocked && !f.hasSchedule && !f.is_Manual ? (
+                    // Sin jornada ese día: se ve deshabilitada con el motivo
+                    <XStack alignItems="center" gap="$1.5" opacity={0.45}>
+                      <Text fontSize={10} color="$textMuted">Sin jornada: no puede ser manual</Text>
+                      <MarcaManual activa={false} texto="HE Manual" compacta />
+                    </XStack>
+                  ) : puedeManual && !f.isLocked ? (
                     <MarcaManual
                       activa={f.is_Manual}
                       texto="HE Manual"
