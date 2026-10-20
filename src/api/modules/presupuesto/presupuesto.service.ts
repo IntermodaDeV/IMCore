@@ -1,8 +1,8 @@
 import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
-  ICentroDestino, ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IMoverPersonasRequest, IPlaza, IPlazaRequest, IResumenConsolidado,
-  IUsuarioDelegado, IVacanteRequest,
+  ICentroDestino, ICentroEncabezado, IConfirmarVariosRequest, ICuentaCaptura, IEvento, IEventoRequest, IMiCentro, IMoverPersonasRequest,
+  IPlaza, IPlazaRequest, IResumenConsolidado, IUsuarioDelegado, IVacanteRequest,
 } from './presupuesto.types'
 
 // Consume api/Presupuesto (IMCoreApi): lo mismo que «Mis centros de costo» del web. El usuario sale del token y la
@@ -55,6 +55,14 @@ export const presupuestoService = {
     httpClient.post(`${centro(corridaId, cc, grupo)}/Mover`, data),
   deshacerMovimiento: (corridaId: number, plazaId: number): R<number> =>
     httpClient.post(`${schema}/Corridas/${corridaId}/Plazas/${plazaId}/DeshacerMovimiento`, {}),
+
+  // Otros gastos de personal: los eventos del gerente en las cuentas que captura en su centro (igual que el web).
+  cuentasCaptura: (corridaId: number, cc: string, grupo: number): R<ICuentaCaptura[]> =>
+    httpClient.get(`${centro(corridaId, cc, grupo)}/CuentasCaptura`),
+  eventos: (corridaId: number, cc: string, grupo: number): R<IEvento[]> => httpClient.get(`${centro(corridaId, cc, grupo)}/Eventos`),
+  agregarEvento: (data: IEventoRequest): R<number> => httpClient.post(`${schema}/Eventos`, data),
+  modificarEvento: (id: number, data: IEventoRequest): R<number> => httpClient.put(`${schema}/Eventos/${id}`, data),
+  quitarEvento: (id: number): R<number> => httpClient.delete(`${schema}/Eventos/${id}`),
 }
 
 /** La API responde 200 aunque no se haya podido: el resultado viene en Success. */

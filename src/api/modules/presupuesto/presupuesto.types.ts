@@ -94,6 +94,43 @@ export interface ICentroEncabezado {
   TieneVariable?: number
   /** Salario mínimo mensual de la corrida: para «usar el mínimo» al agregar una vacante. */
   SalarioMinimo?: number | null
+  /** Cuántas cuentas de «Otros gastos de personal» tiene el centro en este grupo (0 = no se muestra la sección). */
+  CuentasCaptura?: number
+}
+
+/** Una cuenta que captura el gerente en su centro, con cuántos eventos tiene y lo que suman en el año. */
+export interface ICuentaCaptura {
+  Cuenta: number
+  Nombre: string
+  Eventos: number
+  Total: number
+}
+
+/** Evento del gerente: colaboradores × valor por colaborador en cada mes marcado (Meses: bit 0 = enero). */
+export interface IEvento {
+  Id: number
+  Cuenta: number
+  CuentaNombre: string
+  Motivo: string
+  Colaboradores: number
+  Valor: number
+  Meses: number
+  /** Lo que suma en el año (meses dentro de la regla de reparto y después de la semana de corte). */
+  MontoAnio: number
+  MesesEnAnio: number
+  Modified_By: string | null
+  Modification_Date: string | null
+}
+
+export interface IEventoRequest {
+  CorridaId: number
+  CentroCosto: string
+  Cuenta: number
+  Motivo: string
+  Colaboradores: number
+  Valor: number
+  /** 1 a 12. */
+  Meses: number[]
 }
 
 export interface IPlaza {
