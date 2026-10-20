@@ -9,7 +9,7 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { useShowToast } from '../../utils/useShowToast'
 import { shadows } from '../../theme/shadows'
 import { exigir, mensajeDeError, presupuestoService as api } from '../../api/modules/presupuesto/presupuesto.service'
-import { ICentroDestino, ICentroEncabezado, ICuentaCaptura, IEvento, IMiCentro, IPlaza } from '../../api/modules/presupuesto/presupuesto.types'
+import { ICentroDestino, ICentroEncabezado, ICuentaCaptura, IEvento, IMiCentro, IPlaza, IVersion } from '../../api/modules/presupuesto/presupuesto.types'
 import {
   ACCENT, AZUL, Barra, Chip, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, aMensual, aSemanal, centroOculto,
   esTemporal, etiquetaSalario, fmtFechaHora, fueraDePlanilla, lps, mostrarSalario, temporalSinFin, tieneObservacion,
@@ -20,9 +20,10 @@ import {
 // un panel con pocos campos. El resumen por período está en Mis centros; lo de Administración se queda en el web.
 // Mis centros es la vista del REVISOR: solo se edita lo habilitado y dentro del plazo, también si es administrador.
 // Si el centro tiene cuentas que captura el gerente, arriba se cambia a «Otros gastos»: sus eventos (José, resp. 29–31).
+// Si ya se confirmó alguna vez, «Versiones»: cada confirmación con su total (el comparativo está en el web).
 
 type Vista = 'todas' | 'pendientes' | 'observaciones'
-type Seccion = 'personas' | 'otros'
+type Seccion = 'personas' | 'otros' | 'versiones'
 
 export default function CentroScreen() {
   const theme = useTheme()
@@ -62,6 +63,7 @@ export default function CentroScreen() {
   const [eventos, setEventos] = useState<IEvento[]>([])
   const [cuentas, setCuentas] = useState<ICuentaCaptura[]>([])
   const [evento, setEvento] = useState<IEvento | 'nuevo' | null>(null)
+  const [versiones, setVersiones] = useState<IVersion[]>([])
 
   const cargar = useCallback(async () => {
     try {
@@ -78,6 +80,7 @@ export default function CentroScreen() {
         setEventos(ev.Data ?? [])
         setCuentas(cu.Data ?? [])
       }
+      if ((encabezado?.Versiones ?? 0) > 0) setVersiones((await exigir(api.versiones(corridaId, cc, grupo))).Data ?? [])
       setError(null)
     } catch (e) {
       setError(mensajeDeError(e))
@@ -117,6 +120,7 @@ export default function CentroScreen() {
 
   const puedeEditar = enc?.Acceso === 2 && enc.Estado === 'Habilitado'
   const conOtros = (enc?.CuentasCaptura ?? 0) > 0
+  const conVersiones = (enc?.Versiones ?? 0) > 0 && versiones.length > 0
   const totalOtros = eventos.reduce((s, e) => s + e.MontoAnio, 0)
   // Confirma el revisor o, si la corrida lo dice, su delegado; si no, el delegado lo «entrega» a su gerente.
   const puedeConfirmar = puedeEditar && (enc?.PuedeConfirmar ?? enc?.EsRevisor) === 1
@@ -275,6 +279,32 @@ export default function CentroScreen() {
     )
   }
 
+  // Una versión: cuándo y quién la confirmó, su comentario y su total, con lo que cambió contra la anterior.
+  const renderVersion = ({ item: v, index }: { item: IVersion; index: number }) => {
+    const anterior = versiones[index + 1]
+    const dif = anterior ? v.Total - anterior.Total : 0
+    return (
+      <View {...tarjeta}>
+        <XStack alignItems="center" gap="$3">
+          <YStack flex={1} gap={2}>
+            <Text fontSize="$3" fontWeight="800" color="$text">Versión {v.Version} · {fmtFechaHora(v.Fecha)}</Text>
+            <Text fontSize="$2" color="$textMuted" numberOfLines={1}>
+              {v.UsuarioNombre || v.Usuario} · {v.Personas} {v.Personas === 1 ? 'persona' : 'personas'}
+              {v.Vacantes > 0 ? ` · ${v.Vacantes} ${v.Vacantes === 1 ? 'vacante' : 'vacantes'}` : ''}
+            </Text>
+            {!!v.Comentario && <Text fontSize="$2" color="$text" numberOfLines={3}>{v.Comentario}</Text>}
+          </YStack>
+          <YStack alignItems="flex-end" maxWidth="40%">
+            <Text fontSize="$3" fontWeight="900" color="$text" numberOfLines={1}>L {lps(v.Total)}</Text>
+            {Math.abs(dif) >= 0.5 && (
+              <Text fontSize="$1" fontWeight="700" color={dif > 0 ? ERR : OK}>{dif > 0 ? '+' : ''}{lps(dif)} vs. la {anterior.Version}</Text>
+            )}
+          </YStack>
+        </XStack>
+      </View>
+    )
+  }
+
   if (!enc || !plazas) {
     return (
       <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$background" padding="$4" gap="$3">
@@ -320,12 +350,16 @@ export default function CentroScreen() {
       {enc.EsRevisor === 1 && !!enc.DelegadoA && aviso(INDIGO, `Lo delegaste a ${enc.DelegadoNombre ?? enc.DelegadoA}. ${enc.Entregado === 1
         ? `Te lo entregó el ${fmtFechaHora(enc.FechaEntregado)}${enc.ComentarioEntrega ? `: «${enc.ComentarioEntrega}»` : ''}. Revísalo y confírmalo.`
         : 'Todavía no te lo entrega; tú también lo puedes corregir.'}`)}
-      {conOtros && (
+      {(conOtros || conVersiones) && (
         <Opciones valor={seccion} cambiar={s => { setSeccion(s); setSel(new Set()) }} opciones={[
-          ['personas', `Personas (${activas.length})`], ['otros', `Otros gastos (${eventos.length})`],
+          ['personas', `Personas (${activas.length})`] as const,
+          ...(conOtros ? [['otros', `Otros gastos (${eventos.length})`] as const] : []),
+          ...(conVersiones ? [['versiones', `Versiones (${versiones.length})`] as const] : []),
         ]} />
       )}
-      {seccion === 'otros' ? (
+      {seccion === 'versiones' ? (
+        <Text fontSize="$2" color="$textMuted">Cada confirmación guarda una versión. Para compararlas, ábrelas en el web.</Text>
+      ) : seccion === 'otros' ? (
         <YStack gap={4}>
           <XStack justifyContent="space-between" alignItems="center" gap="$2">
             <Text flex={1} fontSize="$2" color="$text">
@@ -420,7 +454,7 @@ export default function CentroScreen() {
 
   // Barra de abajo: con selección, marcar lo seleccionado; sin selección, marcar todo lo pendiente y confirmar.
   const botonera = puedeEditar ? (
-    seccion === 'otros' ? (
+    seccion !== 'personas' ? (
       puedeConfirmar || puedeEntregar ? (
         <XStack gap="$2">
           {puedeConfirmar && <Boton texto="Confirmar centro" color={OK} disabled={ocupado} onPress={() => setConfirmando(true)} />}
@@ -460,7 +494,20 @@ export default function CentroScreen() {
 
   return (
     <View flex={1} backgroundColor="$background">
-      {seccion === 'otros' ? (
+      {seccion === 'versiones' ? (
+        <FlatList
+          data={versiones}
+          keyExtractor={v => String(v.Version)}
+          renderItem={renderVersion}
+          ListHeaderComponent={encabezado}
+          contentContainerStyle={{
+            paddingHorizontal: compacto ? 10 : 16, paddingTop: compacto ? 8 : 12, paddingBottom: 100 + insets.bottom,
+            width: '100%', maxWidth: 1000, alignSelf: 'center',
+          }}
+          refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); void cargar() }}
+            colors={[ACCENT]} tintColor={ACCENT} />}
+        />
+      ) : seccion === 'otros' ? (
         <FlatList
           data={eventos}
           keyExtractor={e => String(e.Id)}

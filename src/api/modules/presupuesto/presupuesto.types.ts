@@ -96,6 +96,20 @@ export interface ICentroEncabezado {
   SalarioMinimo?: number | null
   /** Cuántas cuentas de «Otros gastos de personal» tiene el centro en este grupo (0 = no se muestra la sección). */
   CuentasCaptura?: number
+  /** Versiones guardadas (una por confirmación); 0 o sin el dato = no se muestra la sección. */
+  Versiones?: number
+}
+
+/** Una versión del centro: cada confirmación guarda una (en la app, solo la lista con sus totales). */
+export interface IVersion {
+  Version: number
+  Fecha: string | null
+  Usuario: string | null
+  UsuarioNombre: string | null
+  Comentario: string | null
+  Personas: number
+  Vacantes: number
+  Total: number
 }
 
 /** Una cuenta que captura el gerente en su centro, con cuántos eventos tiene y lo que suman en el año. */

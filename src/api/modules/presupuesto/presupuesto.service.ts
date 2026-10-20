@@ -2,7 +2,7 @@ import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
   ICentroDestino, ICentroEncabezado, IConfirmarVariosRequest, ICuentaCaptura, IEvento, IEventoRequest, IMiCentro, IMoverPersonasRequest,
-  IPlaza, IPlazaRequest, IResumenConsolidado, IUsuarioDelegado, IVacanteRequest,
+  IPlaza, IPlazaRequest, IResumenConsolidado, IUsuarioDelegado, IVacanteRequest, IVersion,
 } from './presupuesto.types'
 
 // Consume api/Presupuesto (IMCoreApi): lo mismo que «Mis centros de costo» del web. El usuario sale del token y la
@@ -63,6 +63,9 @@ export const presupuestoService = {
   agregarEvento: (data: IEventoRequest): R<number> => httpClient.post(`${schema}/Eventos`, data),
   modificarEvento: (id: number, data: IEventoRequest): R<number> => httpClient.put(`${schema}/Eventos/${id}`, data),
   quitarEvento: (id: number): R<number> => httpClient.delete(`${schema}/Eventos/${id}`),
+
+  /** Las versiones del centro (una por confirmación), de la más nueva a la más vieja. El comparativo está en el web. */
+  versiones: (corridaId: number, cc: string, grupo: number): R<IVersion[]> => httpClient.get(`${centro(corridaId, cc, grupo)}/Versiones`),
 }
 
 /** La API responde 200 aunque no se haya podido: el resultado viene en Success. */
