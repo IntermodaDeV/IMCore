@@ -120,6 +120,7 @@ export default function CentroScreen() {
 
   const puedeEditar = enc?.Acceso === 2 && enc.Estado === 'Habilitado'
   const conOtros = (enc?.CuentasCaptura ?? 0) > 0
+  const cuentasMias = cuentas.filter(c => c.Editable == null || c.Editable === 1)
   const conVersiones = (enc?.Versiones ?? 0) > 0 && versiones.length > 0
   const totalOtros = eventos.reduce((s, e) => s + e.MontoAnio, 0)
   // Confirma el revisor o, si la corrida lo dice, su delegado; si no, el delegado lo «entrega» a su gerente.
@@ -255,15 +256,22 @@ export default function CentroScreen() {
   const renderEvento = ({ item: e }: { item: IEvento }) => {
     const meses = aLista(e.Meses)
     const fuera = meses.length - e.MesesEnAnio
+    // Las de un área (IT…) las pone el área: el gerente las ve.
+    const tocable = puedeEditar && (e.Editable == null || e.Editable === 1)
     return (
-      <View {...tarjeta} pressStyle={puedeEditar ? { opacity: 0.85 } : undefined} onPress={puedeEditar ? () => setEvento(e) : undefined}>
+      <View {...tarjeta} pressStyle={tocable ? { opacity: 0.85 } : undefined} onPress={tocable ? () => setEvento(e) : undefined}>
         <XStack alignItems="center" gap="$3">
           <YStack flex={1} gap={2}>
             <Text fontSize="$3" fontWeight="800" color="$text" numberOfLines={2}>{e.Motivo}</Text>
             <Text fontSize="$2" color="$textMuted" numberOfLines={1}>{e.Cuenta} · {e.CuentaNombre}</Text>
             <Text fontSize="$2" color="$textMuted" numberOfLines={2}>
-              {e.Colaboradores.toLocaleString('es-HN')} × L {lps(e.Valor, 2)} · {mesesTexto(meses)}
+              {e.Colaboradores.toLocaleString('es-HN')} × {e.Moneda === 'USD' ? 'US$' : 'L'} {lps(e.Valor, 2)} · {mesesTexto(meses)}
             </Text>
+            {e.Captura === 'Encargado' && (
+              <XStack marginTop={2}>
+                <Chip texto={`LO PONE ${(e.EncargadoNombre ?? 'UN ÁREA').toUpperCase()}`} color={INDIGO} />
+              </XStack>
+            )}
             {fuera > 0 && (
               <XStack marginTop={2}>
                 <Chip texto={`${fuera} ${fuera === 1 ? 'MES QUEDA FUERA' : 'MESES QUEDAN FUERA'}`} color={WARN} />
@@ -365,7 +373,7 @@ export default function CentroScreen() {
             <Text flex={1} fontSize="$2" color="$text">
               {eventos.length} {eventos.length === 1 ? 'evento' : 'eventos'} · L {lps(totalOtros)} en el año
             </Text>
-            {puedeEditar && (
+            {puedeEditar && cuentasMias.length > 0 && (
               <XStack alignItems="center" gap={4} onPress={() => setEvento('nuevo')} hitSlop={8} pressStyle={{ opacity: 0.7 }}
                 accessibilityRole="button">
                 <Plus size={16} color={ACCENT} />
@@ -521,8 +529,8 @@ export default function CentroScreen() {
             colors={[ACCENT]} tintColor={ACCENT} />}
           ListEmptyComponent={(
             <YStack alignItems="center" gap="$3" paddingTop="$6">
-              <Text color="$textMuted" textAlign="center">Sin eventos.{puedeEditar ? ' Agrega cursos, capacitaciones u otros gastos de tu gente.' : ''}</Text>
-              {puedeEditar && (
+              <Text color="$textMuted" textAlign="center">Sin eventos.{puedeEditar && cuentasMias.length > 0 ? ' Agrega cursos, capacitaciones u otros gastos.' : ''}</Text>
+              {puedeEditar && cuentasMias.length > 0 && (
                 <XStack width="100%" maxWidth={320}>
                   <Boton texto="Agregar evento" color={ACCENT} onPress={() => setEvento('nuevo')} />
                 </XStack>
@@ -588,7 +596,7 @@ export default function CentroScreen() {
         </Hoja>
       )}
       {evento && (
-        <FormEvento corridaId={corridaId} cc={cc} evento={evento === 'nuevo' ? null : evento} cuentas={cuentas}
+        <FormEvento corridaId={corridaId} cc={cc} evento={evento === 'nuevo' ? null : evento} cuentas={cuentasMias}
           onCerrar={() => setEvento(null)} onListo={() => { setEvento(null); void cargar() }} />
       )}
       {confirmando && (
@@ -1205,7 +1213,9 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   const [motivo, setMotivo] = useState(evento?.Motivo ?? '')
   const [colaboradores, setColaboradores] = useState(evento ? String(evento.Colaboradores) : '')
   const [valor, setValor] = useState(evento ? String(evento.Valor) : '')
+  const [moneda, setMoneda] = useState<'HNL' | 'USD'>(evento?.Moneda ?? 'HNL')
   const [meses, setMeses] = useState<number[]>(evento ? aLista(evento.Meses) : [])
+  const sim = moneda === 'USD' ? 'US$' : 'L'
   const [ocupado, setOcupado] = useState(false)
 
   const colNum = num(colaboradores)
@@ -1229,7 +1239,7 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   const guardar = () => {
     const data = {
       CorridaId: corridaId, CentroCosto: cc, Cuenta: cuenta as number, Motivo: motivo.trim(),
-      Colaboradores: colNum as number, Valor: valNum as number, Meses: meses,
+      Colaboradores: colNum as number, Valor: valNum as number, Moneda: moneda, Meses: meses,
     }
     void correr(() => exigir(evento ? api.modificarEvento(evento.Id, data) : api.agregarEvento(data)))
   }
@@ -1242,7 +1252,7 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   }
 
   return (
-    <Hoja titulo={evento ? 'Corregir evento' : 'Agregar evento'} subtitulo={`${cc} · otros gastos de personal`} onCerrar={onCerrar}>
+    <Hoja titulo={evento ? 'Corregir evento' : 'Agregar evento'} subtitulo={`${cc} · otros gastos`} onCerrar={onCerrar}>
       <YStack gap="$1.5">
         <Text fontSize="$2" fontWeight="700" color="$text">Cuenta</Text>
         {cuentas.map(c => (
@@ -1259,15 +1269,16 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
       <Campo etiqueta="Motivo" valor={motivo} cambiar={t => setMotivo(t.slice(0, 200))} ayuda="Ej.: curso de Excel" tipo="parrafo" />
       <XStack gap="$3">
         <YStack flex={1}><Campo etiqueta="Colaboradores" valor={colaboradores} cambiar={setColaboradores} ayuda="Cuántos" /></YStack>
-        <YStack flex={1}><Campo etiqueta="Valor por colaborador" valor={valor} cambiar={setValor} ayuda="L" tipo="decimal" /></YStack>
+        <YStack flex={1}><Campo etiqueta="Valor por colaborador" valor={valor} cambiar={setValor} ayuda={sim} tipo="decimal" /></YStack>
       </XStack>
+      <Opciones valor={moneda} cambiar={setMoneda} opciones={[['HNL', 'Lempiras'], ['USD', 'Dólares']]} />
       {colMal && <Text fontSize="$1" color={ERR}>Los colaboradores van de 1 a 99,999.</Text>}
       {valMal && <Text fontSize="$1" color={ERR}>El valor tiene que ser mayor que cero.</Text>}
       <MesesBotones valor={meses} cambiar={setMeses} />
       {porMes > 0 && (
         <Text fontSize="$2" color="$textMuted">
-          L {lps(porMes, 2)} por mes{meses.length ? ` · L ${lps(porMes * meses.length, 2)} en ${meses.length === 1 ? '1 mes' : `${meses.length} meses`}` : ''}.
-          Cada mes cae en su última semana.
+          {sim} {lps(porMes, 2)} por mes{meses.length ? ` · ${sim} ${lps(porMes * meses.length, 2)} en ${meses.length === 1 ? '1 mes' : `${meses.length} meses`}` : ''}.
+          Cada mes cae en su última semana{moneda === 'USD' ? ', con la tasa de cambio de esa semana' : ''}.
         </Text>
       )}
       <XStack gap="$2">

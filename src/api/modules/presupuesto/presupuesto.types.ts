@@ -116,6 +116,11 @@ export interface IVersion {
 export interface ICuentaCaptura {
   Cuenta: number
   Nombre: string
+  /** Quién la captura en este centro: el gerente o un área (EncargadoNombre). */
+  Captura?: 'Gerente' | 'Encargado'
+  EncargadoNombre?: string | null
+  /** 1 = este usuario puede poner eventos en ella (una API vieja no lo manda: se toma como 1). */
+  Editable?: number
   Eventos: number
   Total: number
 }
@@ -128,12 +133,20 @@ export interface IEvento {
   Motivo: string
   Colaboradores: number
   Valor: number
+  /** HNL o USD (los dólares se pasan con la tasa de cambio de su semana). */
+  Moneda?: 'HNL' | 'USD'
   Meses: number
-  /** Lo que suma en el año (meses dentro de la regla de reparto y después de la semana de corte). */
+  /** Lo que suma en el año, en lempiras (meses dentro de la regla de reparto y después de la semana de corte). */
   MontoAnio: number
   MesesEnAnio: number
   Modified_By: string | null
   Modification_Date: string | null
+  /** Quién captura la cuenta en el centro: el gerente, un área (EncargadoNombre) o nadie. */
+  Captura?: 'Gerente' | 'Encargado' | 'No'
+  EncargadoNombre?: string | null
+  /** 1 = este usuario lo puede cambiar o quitar. */
+  Editable?: number
+  CapturoNombre?: string | null
 }
 
 export interface IEventoRequest {
@@ -143,6 +156,7 @@ export interface IEventoRequest {
   Motivo: string
   Colaboradores: number
   Valor: number
+  Moneda?: 'HNL' | 'USD'
   /** 1 a 12. */
   Meses: number[]
 }
