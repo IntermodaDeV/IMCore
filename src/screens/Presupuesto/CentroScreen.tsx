@@ -1224,6 +1224,8 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   const valMal = valor !== '' && (valNum == null || valNum <= 0)
   const listo = !!cuenta && motivo.trim() !== '' && !colMal && !valMal && colNum != null && valNum != null && meses.length > 0
   const porMes = (colNum ?? 0) * (valNum ?? 0)
+  // Dos fuentes (José, 20-oct): si Planificación ya cargó un monto en la cuenta, lo del gerente se suma; se le avisa.
+  const planificado = cuentas.find(c => c.Cuenta === cuenta)?.MontoPlanificacion ?? 0
 
   // Sin aviso de éxito: el evento aparece (o cambia, o se va) en la lista y el total del centro se pone al día.
   const correr = async (accion: () => Promise<unknown>) => {
@@ -1265,6 +1267,11 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
             <Text flex={1} fontSize="$3" color="$text">{c.Cuenta} · {c.Nombre}</Text>
           </XStack>
         ))}
+        {planificado > 0 && (
+          <Text fontSize="$2" color={WARN}>
+            Planificación ya cargó L {lps(planificado)} en esta cuenta para este centro: lo que pongas aquí se suma.
+          </Text>
+        )}
       </YStack>
       <Campo etiqueta="Motivo" valor={motivo} cambiar={t => setMotivo(t.slice(0, 200))} ayuda="Ej.: curso de Excel" tipo="parrafo" />
       <XStack gap="$3">

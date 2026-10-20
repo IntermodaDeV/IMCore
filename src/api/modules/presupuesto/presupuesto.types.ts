@@ -123,6 +123,8 @@ export interface ICuentaCaptura {
   Editable?: number
   Eventos: number
   Total: number
+  /** Lo que cargó Planificación en la cuenta y el centro (montos anuales e importación): lo del gerente se suma. */
+  MontoPlanificacion?: number
 }
 
 /** Evento del gerente: colaboradores × valor por colaborador en cada mes marcado (Meses: bit 0 = enero). */
