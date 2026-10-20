@@ -7,32 +7,48 @@ import { exigir, mensajeDeError, presupuestoService as api } from '../../api/mod
 import { IResumenConsolidado } from '../../api/modules/presupuesto/presupuesto.types'
 import { ACCENT, ERR, lps } from './comun'
 
-// Resumen de todos los centros del revisor (todo IT, p. ej.), como el «Resumen por período» de Mis centros en el web.
-// Por centro o por cuenta, con el total del año; al tocar una fila se ven sus 13 períodos y, si es un centro, sus cuentas.
+// Resumen de todos los centros del revisor (todo IT, p. ej.), como el «Resumen por semana» de Mis centros en el web.
+// Por centro o por cuenta, con el total del año; al tocar una fila se ven sus semanas (por centro, con la gente
+// presupuestada de cada semana) y, si es un centro, sus cuentas. Con una API que no manda semanas: los 13 períodos.
 
 const PERIODOS = ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11', 'P12', 'P13'] as const
+
+/** Un arreglo JSON de números («[1.5, 0, …]»); vacío si no viene o no se entiende. */
+const arreglo = (j: string | null | undefined): number[] => {
+  if (!j) return []
+  try {
+    const a: unknown = JSON.parse(j)
+    return Array.isArray(a) ? a.map(x => Number(x) || 0) : []
+  } catch {
+    return []
+  }
+}
 
 interface Linea {
   id: string
   titulo: string
   detalle: string
   total: number
-  periodos: number[]
+  /** Las semanas del año (o los 13 períodos con una API vieja). */
+  columnas: number[]
+  /** Personas de cada semana: solo por centro (son las mismas en todas sus cuentas). */
+  personas: number[] | null
   cuentas: { id: string; titulo: string; total: number }[]
 }
 
-function agrupar(datos: IResumenConsolidado[], porCentro: boolean): Linea[] {
+function agrupar(datos: IResumenConsolidado[], porCentro: boolean, porSemana: boolean): Linea[] {
   const m = new Map<string, Linea>()
   for (const r of datos) {
     const id = porCentro ? `${r.CentroCosto}|${r.GrupoCodigo}` : String(r.Cuenta)
     let l = m.get(id)
     if (!l) {
       l = porCentro
-        ? { id, titulo: `${r.CentroCosto} · ${r.CentroCostoNombre ?? ''}`, detalle: `${r.GrupoCodigo} ${r.GrupoNombre ?? ''}`, total: 0, periodos: Array(13).fill(0), cuentas: [] }
-        : { id, titulo: `${r.Cuenta} · ${r.NombreCuenta ?? ''}`, detalle: `${r.GrupoCodigo} ${r.GrupoNombre ?? ''}`, total: 0, periodos: Array(13).fill(0), cuentas: [] }
+        ? { id, titulo: `${r.CentroCosto} · ${r.CentroCostoNombre ?? ''}`, detalle: `${r.GrupoCodigo} ${r.GrupoNombre ?? ''}`, total: 0, columnas: [], personas: porSemana ? arreglo(r.Personas) : null, cuentas: [] }
+        : { id, titulo: `${r.Cuenta} · ${r.NombreCuenta ?? ''}`, detalle: `${r.GrupoCodigo} ${r.GrupoNombre ?? ''}`, total: 0, columnas: [], personas: null, cuentas: [] }
       m.set(id, l)
     }
-    PERIODOS.forEach((p, i) => { (l as Linea).periodos[i] += r[p] })
+    const valores = porSemana ? arreglo(r.Semanas) : PERIODOS.map(p => r[p])
+    valores.forEach((v, i) => { (l as Linea).columnas[i] = ((l as Linea).columnas[i] ?? 0) + v })
     l.total += r.Total
     if (porCentro) l.cuentas.push({ id: String(r.Cuenta), titulo: `${r.Cuenta} · ${r.NombreCuenta ?? ''}`, total: r.Total })
   }
@@ -58,7 +74,8 @@ export default function ResumenMios({ corridaId, compacto }: { corridaId: number
   }, [corridaId])
   useEffect(() => { void cargar() }, [cargar])
 
-  const lineas = useMemo(() => agrupar(datos ?? [], porCentro), [datos, porCentro])
+  const porSemana = (datos ?? []).some(r => !!r.Semanas)
+  const lineas = useMemo(() => agrupar(datos ?? [], porCentro, porSemana), [datos, porCentro, porSemana])
   const total = lineas.reduce((s, l) => s + l.total, 0)
   const centros = new Set((datos ?? []).map(r => `${r.CentroCosto}|${r.GrupoCodigo}`)).size
 
@@ -79,11 +96,15 @@ export default function ResumenMios({ corridaId, compacto }: { corridaId: number
         </XStack>
         {abiertoEste && (
           <YStack gap="$2" marginTop="$2">
+            {l.personas && l.personas.length > 0 && <Text fontSize="$1" color="$textMuted">Por semana · p. = personas presupuestadas</Text>}
             <XStack flexWrap="wrap" rowGap="$1.5">
-              {l.periodos.map((v, i) => (
-                <YStack key={i} width="33.33%" paddingRight="$2">
-                  <Text fontSize="$1" color="$textMuted">Per {String(i + 1).padStart(2, '0')}</Text>
-                  <Text fontSize="$2" fontWeight="700" color="$text">{lps(v)}</Text>
+              {l.columnas.map((v, i) => (
+                <YStack key={i} width={porSemana ? '25%' : '33.33%'} paddingRight="$2">
+                  <Text fontSize="$1" color="$textMuted" numberOfLines={1}>
+                    {porSemana ? 'S' : 'Per '}{String(i + 1).padStart(2, '0')}
+                    {l.personas?.[i] != null ? ` · ${l.personas[i].toLocaleString('es-HN')} p.` : ''}
+                  </Text>
+                  <Text fontSize="$2" fontWeight="700" color={v ? '$text' : '$textMuted'}>{lps(v)}</Text>
                 </YStack>
               ))}
             </XStack>

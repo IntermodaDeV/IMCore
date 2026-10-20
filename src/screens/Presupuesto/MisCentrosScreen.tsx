@@ -45,7 +45,7 @@ export default function MisCentrosScreen() {
   const [vistaElegida, setVista] = useState<Vista | null>(null)
   const [verVacios, setVerVacios] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
-  // La lista de trabajo o el resumen de todos sus centros (por centro o por cuenta, con sus períodos).
+  // La lista de trabajo o el resumen de todos sus centros (por centro o por cuenta, con sus semanas).
   const [panel, setPanel] = useState<'centros' | 'resumen'>('centros')
   const [delegando, setDelegando] = useState(false)
 
@@ -180,7 +180,7 @@ export default function MisCentrosScreen() {
         {!!error && <Text fontSize="$2" color={ERR}>{error}</Text>}
         {todos.length > 0 && (
           <XStack borderBottomWidth={1} borderColor="$border" gap="$4">
-            {([['centros', 'Mis centros'], ['resumen', 'Resumen por período']] as const).map(([v, t]) => (
+            {([['centros', 'Mis centros'], ['resumen', 'Resumen por semana']] as const).map(([v, t]) => (
               <View key={v} onPress={() => setPanel(v)} paddingVertical="$2" borderBottomWidth={2}
                 borderColor={panel === v ? ACCENT : 'transparent'} marginBottom={-1}>
                 <Text fontWeight="800" fontSize="$2" color={panel === v ? '$text' : '$textMuted'}>{t}</Text>

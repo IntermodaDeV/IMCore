@@ -17,7 +17,7 @@ import {
 
 // Presupuesto › un centro de costo (el revisor). Igual que en el web, pero sencillo: la lista de personas, marcar
 // revisadas (una, varias o todas), agregar vacantes y confirmar. Para corregir a alguien se toca su tarjeta y se abre
-// un panel con pocos campos. El resumen por período está en Mis centros; lo de Administración se queda en el web.
+// un panel con pocos campos. El resumen por semana está en Mis centros; lo de Administración se queda en el web.
 // Mis centros es la vista del REVISOR: solo se edita lo habilitado y dentro del plazo, también si es administrador.
 // Si el centro tiene cuentas que captura el gerente, arriba se cambia a «Otros gastos»: sus eventos (José, resp. 29–31).
 // Si ya se confirmó alguna vez, «Versiones»: cada confirmación con su total (el comparativo está en el web).
@@ -1009,6 +1009,9 @@ function FormMover({ plazas, corridaId, cc, grupo, onListo }: {
   )
 }
 
+/** Para buscar sin importar mayúsculas ni tildes. */
+const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+
 // ---------------------------------------------------------------- agregar una vacante
 // Lo mismo que en el web: cargo, cuántas iguales, salario (semanal o mensual) y las semanas en que cuesta.
 
@@ -1017,6 +1020,20 @@ function AgregarVacante({ corridaId, cc, grupo, salarioMinimo, onCerrar, onListo
 }) {
   const { showToast } = useShowToast()
   const [cargo, setCargo] = useState('')
+  // Como en el web: el cargo se busca en los de planilla (los mismos nombres de la foto) o se escribe uno nuevo. Sin
+  // planilla (error) solo se escribe.
+  const [cargos, setCargos] = useState<string[]>([])
+  useEffect(() => {
+    let vivo = true
+    exigir(api.cargosPlanilla(corridaId)).then(r => { if (vivo) setCargos((r.Data ?? []).map(c => c.Nombre)) }).catch(() => undefined)
+    return () => { vivo = false }
+  }, [corridaId])
+  const sugeridos = useMemo(() => {
+    const q = sinAcentos(cargo.trim())
+    if (q.length < 2) return []
+    const iguales = cargos.some(c => sinAcentos(c) === q)
+    return iguales ? [] : cargos.filter(c => sinAcentos(c).includes(q)).slice(0, 6)
+  }, [cargo, cargos])
   const [cantidad, setCantidad] = useState('1')
   const [planilla, setPlanilla] = useState<'mensual' | 'semanal'>('mensual')
   const [salario, setSalario] = useState('')
@@ -1040,7 +1057,7 @@ function AgregarVacante({ corridaId, cc, grupo, salarioMinimo, onCerrar, onListo
     setOcupado(true)
     try {
       const r = await exigir(api.agregarVacante({
-        CorridaId: corridaId, CentroCosto: cc, GrupoCodigo: grupo, Cargo: cargo.trim(), Nombre: null,
+        CorridaId: corridaId, CentroCosto: cc, GrupoCodigo: grupo, Cargo: cargo.trim().toUpperCase(), Nombre: null,
         // En semanal se escribe el semanal y se guarda el mensual (lo que guarda planilla). Sin «hasta» = todo el año.
         Salario: semanal ? aMensual(salarioNum as number) : salarioNum,
         SemanaInicio: desdeNum as number, SemanaFin: hastaNum == null || hastaNum >= 52 ? 53 : hastaNum,
@@ -1056,7 +1073,18 @@ function AgregarVacante({ corridaId, cc, grupo, salarioMinimo, onCerrar, onListo
 
   return (
     <Hoja titulo="Agregar vacante" subtitulo={cc} onCerrar={onCerrar}>
-      <Campo etiqueta="Cargo" valor={cargo} cambiar={setCargo} ayuda="Ej.: OPERARIO" tipo="texto" />
+      <Campo etiqueta="Cargo" valor={cargo} cambiar={setCargo} ayuda={cargos.length ? 'Búscalo en planilla o escríbelo' : 'Ej.: OPERARIO'}
+        tipo="texto" />
+      {sugeridos.length > 0 && (
+        <YStack borderWidth={1} borderColor="$border" borderRadius="$3" overflow="hidden" marginTop={-4}>
+          {sugeridos.map((c, i) => (
+            <View key={c} paddingHorizontal="$3" paddingVertical="$2" borderTopWidth={i ? 1 : 0} borderColor="$border"
+              pressStyle={{ opacity: 0.7 }} onPress={() => setCargo(c)} accessibilityRole="button">
+              <Text fontSize="$3" color="$text" numberOfLines={1}>{c}</Text>
+            </View>
+          ))}
+        </YStack>
+      )}
       <XStack gap="$3">
         <YStack flex={1}><Campo etiqueta="Cantidad" valor={cantidad} cambiar={setCantidad} ayuda="1" /></YStack>
         <YStack flex={1} gap={4}>

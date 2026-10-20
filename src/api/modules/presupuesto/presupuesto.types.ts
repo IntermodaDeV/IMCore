@@ -282,7 +282,7 @@ export interface IConfirmarVariosRequest {
   Comentario: string | null
 }
 
-/** Una cuenta de un centro + grupo por período: el resumen de todos los centros del revisor. */
+/** Una cuenta de un centro + grupo por semana: el resumen de todos los centros del revisor. */
 export interface IResumenConsolidado {
   CentroCosto: string
   CentroCostoNombre: string | null
@@ -294,4 +294,13 @@ export interface IResumenConsolidado {
   P01: number; P02: number; P03: number; P04: number; P05: number; P06: number; P07: number
   P08: number; P09: number; P10: number; P11: number; P12: number; P13: number
   Total: number
+  /** Las semanas del año en un arreglo JSON: «[123.45, 0, …]» (una API vieja no lo manda: se usan los períodos). */
+  Semanas?: string | null
+  /** Personas del centro + grupo en cada semana, en un arreglo JSON: «[12, 12, …]». */
+  Personas?: string | null
+}
+
+/** Un cargo del catálogo de planilla (para la vacante). */
+export interface ICargoPlanilla {
+  Nombre: string
 }
