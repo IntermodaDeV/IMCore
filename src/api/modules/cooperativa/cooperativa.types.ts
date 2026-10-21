@@ -22,6 +22,66 @@ export type IEmpleadoSinAfiliacion = {
   Codigo: string | null
   /** S = semanal, Q = quincenal, M = mensual, X = sin clasificar. */
   TipoPlanilla: string | null
+
+  /**
+   * Administrativo, Directo o Indirecto.
+   *
+   * Junto con la empresa y el tipo de planilla decide cuánto puede aportar.
+   */
+  TipoEmpleado: string | null
+
+  /** PERM o TEMP, de planilla. */
+  RelacionLaboral: string | null
+
+  /**
+   * Si puede afiliarse. Hoy lo único que lo impide es ser temporal.
+   *
+   * La regla vive en el servidor: acá solo se lee. Así, el día que se agregue
+   * otra condición, la pantalla no se entera.
+   */
+  PuedeAfiliarse: boolean
+
+  /**
+   * Cuánto puede aportar al afiliarse. Lo resuelve el servidor.
+   *
+   * null cuando su combinación de empresa, planilla y tipo de empleado no está
+   * parametrizada en la cooperativa. En ese caso no hay rango que mostrar ni
+   * contra qué validar — y no se inventa uno.
+   */
+  LimitesAporte: ILimitesAporte | null
+}
+
+/**
+ * Resultado de afiliarse.
+ *
+ * `SocioCreado` y `CuentaCreada` distinguen el alta real de un reintento sobre
+ * algo que ya existía — útil para no felicitar dos veces por lo mismo.
+ */
+export type IAfiliacionResult = {
+  Success: boolean
+  Mensaje: string | null
+
+  /**
+   * Se guardó, pero con algo que conviene saber.
+   *
+   * Hoy solo llega cuando el aporte quedó fuera de un rango informativo. La
+   * pantalla no debería producirlo: valida antes de mandar.
+   */
+  Aviso: string | null
+
+  ClienteId: number | null
+  CuentaId: number | null
+  SocioCreado: boolean
+  CuentaCreada: boolean
+
+  /**
+   * Si se le acaba de dar el menú del socio.
+   *
+   * Solo viene `true` cuando se asignó ahora. Con eso se refresca el drawer:
+   * sin refrescarlo, la persona tendría que cerrar sesión para ver su pantalla
+   * nueva — y refrescarlo siempre sería pedir los menús de gusto.
+   */
+  MenuAsignado: boolean
 }
 
 /** Códigos de AdmSys.Status con Category 'CooInter'. */
@@ -75,56 +135,90 @@ export type ISolicitudSocio = {
 }
 
 /**
- * Solicitud del socio en Cooperativa.dbo.Solicitud.
+ * Una solicitud del socio, como está en Cooperativa.dbo.Solicitud.
  *
- * Estado, PlazoId y TipoSolicitudId llegan como ids: son catalogos de
- * Cooperativa que el app todavia no conoce.
+ * Ya no trae datos del préstamo: antes se pegaban acá con un JOIN porque la
+ * solicitud aprobada "era" el préstamo, pero son dos cosas y cada una tiene su
+ * consulta.
  */
 export type ISolicitudCliente = {
   SolicitudId: number
   ClienteId: number
   FechaSolicitud: string | null
+
+  /** 0 Pendiente, 1 Aprobada, 2 Rechazada, 3 EnAprobación, 4 Anulada. */
   Estado: number | null
+
+  /**
+   * El nombre del estado, resuelto por el servidor contra el catálogo.
+   *
+   * Se usa este y no un mapa en la pantalla: si la cooperativa agrega un
+   * estado, aparece con su nombre sin tocar el app.
+   */
+  EstadoNombre: string | null
+  EstadoCodigo: string | null
+
+  /**
+   * true = esta solicitud le impide pedir otra.
+   *
+   * Lo decide el servidor con la MISMA condición con la que
+   * CooInter.SP_CrearSolicitud rechaza la creación — Pendiente o En
+   * aprobación, con cobro por planilla. Por eso la pantalla pregunta esto y no
+   * compara estados por su cuenta: una lista propia acá se desincroniza en
+   * cuanto la cooperativa agrega un estado, y el socio llenaría el formulario
+   * para que recién al guardar le digan que no.
+   */
+  EnTramite: boolean
+
   Monto: number | null
   Descripcion: string | null
-  EmpresaId: number | null
-  UsuarioAprobo: string | null
-  UsuarioRechazo: string | null
-  FechaGestion: string | null
-  UsuarioCreo: string | null
-  UsuarioModifico: string | null
-  FechaCreacion: string | null
-  FechaModificacion: string | null
-  PlazoId: number | null
+
   TipoSolicitudId: number | null
+  TipoSolicitud: string | null
+
+  /** El PlazoId con el que se guardó. */
+  Plazo: number | null
+  /** 0 Mensual, 1 Quincenal, 2 Semanal. */
+  TipoPlazo: number | null
+  PlazoMeses: number | null
+
+  /** La que pidió el socio. */
+  CuotaSolicitada: number | null
+  /** La que calculó el sistema para ese monto y plazo. */
+  CuotaCotizada: number | null
+  /** La que quedó al aprobarla. null mientras no se apruebe. */
+  CuotaAutorizada: number | null
+
   Deduccion13vo: number | null
   Deduccion14vo: number | null
-  // Resueltos por el SP: se muestran en vez de los ids.
-  EstadoNombre: string | null
-  PlazoDescripcion: string | null
-  PlazoMes: number | null
-  TipoSolicitudDescripcion: string | null
 
-  // --------------------------------------------------------------------
-  // El préstamo. Todo null o cero mientras la solicitud no sea uno: una
-  // pendiente o una rechazada no tienen préstamo.
-  //
-  // Una vez aprobada, la solicitud ES el préstamo, y lo que pidió deja de
-  // importar: lo que necesita saber es cuánto debe hoy.
-  // --------------------------------------------------------------------
+  EsRefinanciamiento: boolean | null
+  PrestamoIdRefinanciar: number | null
 
-  /** Que venga lleno dice que la solicitud ya es un préstamo. */
-  PrestamoId: number | null
-  /** Lo que debe hoy. */
-  SaldoPendiente: number | null
-  /** Cuánto le van a descontar en el próximo pago. */
-  ProximaCuota: number | null
-  /** Cuándo cae ese pago. */
-  ProximoPago: string | null
-  CuotasTotal: number
-  CuotasPagadas: number
-  /** Ya terminó de pagarlo. */
-  PrestamoCancelado: boolean
+  /**
+   * El motivo que corresponde al estado: el del rechazo o el de la anulación.
+   * Lo resuelve el servidor para que la pantalla no tenga que saber cuál mirar.
+   */
+  Motivo: string | null
+  MotivoRechazo: string | null
+  MotivoAnulacion: string | null
+
+  AprobacionesMinimas: number | null
+  /** 0 planilla, 1 personal. */
+  TipoDeCobro: number | null
+  FechaPrimeraCuota: string | null
+
+  UsuarioCreo: string | null
+  UsuarioAprobo: string | null
+  UsuarioRechazo: string | null
+  UsuarioAnulo: string | null
+
+  FechaGestion: string | null
+  FechaAnulacion: string | null
+  FechaCreacion: string | null
+  FechaModificacion: string | null
+
+  EmpresaId: number | null
 }
 
 /** Estados de Cooperativa.dbo.Solicitud. */
@@ -171,8 +265,105 @@ export type IEstadoCuenta = {
 export type ITipoSolicitud = {
   TipoSolicitudId: number
   Descripcion: string | null
+
+  /**
+   * El ENUM del negocio (0..3), que NO es `TipoSolicitudId`.
+   *
+   * `TipoSolicitudId` es la llave de la fila y es POR EMPRESA: la empresa 2
+   * puede tener los mismos cuatro tipos con otros Id. Este es el mismo en
+   * todas y es el que mira el servidor al crear.
+   */
+  TipoDeSolicitud: number | null
+
+  /**
+   * El tipo exige la deducción del 13.º.
+   *
+   * Lo decide el servidor con la misma condición con la que rechaza la
+   * creación. Antes esta pantalla llevaba su propia tabla por
+   * `TipoSolicitudId` (1, 2 y 4), que da el resultado correcto para la
+   * empresa 1 de casualidad: en otra empresa pediría la deducción equivocada
+   * y el socio se enteraría recién al guardar.
+   */
+  RequiereDeduccion13vo: boolean
+
+  /** Igual que la anterior, para el 14.º. */
+  RequiereDeduccion14vo: boolean
+
   Estado: number | null
   EmpresaId: number | null
+}
+
+/**
+ * Una opción de cuota para un monto.
+ *
+ * Vienen dos o tres: la mínima, la "personalizada" — la sugerida a partir de
+ * lo que el socio escribió, que solo aparece si escribió algo — y la máxima.
+ *
+ * Las columnas generales (monto, tramo, tasa, refinanciamiento, bloqueo) se
+ * repiten en cada una porque el servidor devuelve un solo juego de filas.
+ *
+ * Cada opción la resuelve la misma función que usa el servidor al guardar, así
+ * que lo que el socio elige acá es lo que después se le cobra.
+ */
+export type IOpcionCuota = {
+  Success: boolean
+  Mensaje: string | null
+
+  /** 'minima' | 'personalizada' | 'maxima'. */
+  Clave: string | null
+  Etiqueta: string | null
+  Detalle: string | null
+
+  /** La cuota con la que se resolvió esta opción. */
+  CuotaPedida: number | null
+
+  /**
+   * false = ESTA opción no se pudo resolver; `MensajeOpcion` dice por qué.
+   * Las otras del mismo juego pueden estar bien, así que se muestra el motivo
+   * en su tarjeta en vez de descartar todo.
+   */
+  Ok: boolean | null
+  MensajeOpcion: string | null
+  Aviso: string | null
+
+  /** Cuántas cuotas salen con esta opción. */
+  Plazo: number | null
+
+  /** 0 Mensual | 1 Quincenal | 2 Semanal. */
+  TipoPlazo: number | null
+
+  /** La cuota nivelada que de verdad se va a cobrar. */
+  Cuota: number | null
+  InteresTotal: number | null
+  TotalAPagar: number | null
+
+  MontoSolicitado: number | null
+
+  /** Lo que cuesta cancelar el préstamo vigente, si lo hay. */
+  SaldoAnterior: number | null
+
+  /** MontoSolicitado + SaldoAnterior: sobre esto se calcula. */
+  MontoTotal: number | null
+
+  CuotaMinima: number | null
+  CuotaMaxima: number | null
+
+  /** El tramo es solo informativo: deja salirse del rango. */
+  TramoInformativo: boolean | null
+
+  CargoAdministrativo: number | null
+  Tasa: number | null
+
+  EsRefinanciamiento: boolean | null
+  PrestamoIdRefinanciar: number | null
+
+  /**
+   * Por qué el socio NO podría crear la solicitud. null si puede.
+   *
+   * Las opciones vienen calculadas igual: se muestran con el aviso, en vez de
+   * dejar la pantalla vacía sin explicar nada.
+   */
+  Bloqueo: string | null
 }
 
 /** Catalogo Cooperativa.dbo.Plazo. */
@@ -198,26 +389,577 @@ export type ICatalogosSolicitud = {
  * solicitud nace en Pendiente.
  */
 export type ICrearSolicitud = {
+  /**
+   * Sin esto crea; con el Id de una solicitud, la edita.
+   *
+   * Es el mismo endpoint y el mismo procedimiento para los dos casos, a
+   * propósito: con dos caminos separados bastaría que la cooperativa cambie
+   * una regla del alta para que editando se pudiera guardar algo que no se
+   * habría podido crear.
+   *
+   * El servidor solo deja editar una que esté Pendiente, que sea del socio del
+   * token y que ningún firmante haya tocado.
+   */
+  SolicitudId?: number
+
   TipoSolicitudId: number
-  PlazoId: number
   Monto: number
+
+  /**
+   * Lo que el socio dijo que puede pagar por período.
+   *
+   * No lleva `PlazoId`: el plazo NO es una decisión aparte, sale del monto y
+   * de la cuota. Pidiéndolos por separado se podía armar una combinación que
+   * no existe, y el servidor la rechazaba después de llenar todo el
+   * formulario.
+   */
+  CuotaSolicitada: number
+
+  /**
+   * La cuota de la opción que tocó — mínima, sugerida o máxima.
+   *
+   * Es una elección entre las que el servidor ya calculó, no un número que el
+   * teléfono imponga: al guardar las vuelve a resolver con la misma función y
+   * se queda con la que corresponde.
+   */
+  CuotaElegida?: number
+
   Descripcion?: string
   Deduccion13vo?: number
   Deduccion14vo?: number
 
   /**
-   * El préstamo que se refinancia. Si va, la solicitud es un refinanciamiento
-   * y `Monto` se ignora.
+   * El refinanciamiento ya NO se manda desde acá.
    *
-   * Solo viaja el Id: el saldo, la fecha y las cuotas los resuelve el servidor
-   * contra Cooperativa. El saldo es cuánto debe, no algo que el teléfono pueda
-   * declarar — si se aceptara de acá, refinanciar sería la forma de pedir
-   * cualquier monto diciendo que ya lo debía.
+   * Si el socio tiene un préstamo de planilla vigente, el servidor lo detecta
+   * solo y lo incluye en el cálculo. Mandarlo desde el teléfono permitía pedir
+   * cualquier monto diciendo que ya se debía.
    */
-  RefinanciaPrestamoId?: number
+  RefinanciaPrestamoId?: never
+}
 
-  /** Cuánto pide DE MÁS sobre el saldo. Puede ser 0: solo estirar el plazo. */
-  MontoAdicional?: number
+/**
+ * Hasta cuánto puede pedir el socio, según los tramos configurados para su
+ * empresa y su tipo de planilla.
+ *
+ * Sirve para avisarle el límite ANTES de que lo pase. Sin esto el servidor
+ * contesta "no hay un tramo de crédito configurado para un monto de
+ * 250,000.00", que es cierto pero no dice cuánto SÍ puede pedir: el socio
+ * tiene que ir adivinando a la baja.
+ */
+export type ILimitesPrestamo = {
+  /** El capital mínimo más bajo configurado. null = no hay tramos. */
+  MontoMinimo: number | null
+
+  /** El capital máximo más alto configurado. */
+  MontoMaximo: number | null
+
+  /** 0 Mensual | 1 Quincenal | 2 Semanal, según su planilla. */
+  TipoPlazo: number | null
+
+  /**
+   * Cuántos tramos activos hay.
+   *
+   * Importa porque los tramos PUEDEN TENER HUECOS: con uno de 1,000 a 20,000
+   * y otro de 50,000 a 100,000, un monto de 30,000 está dentro del mínimo y el
+   * máximo y aun así no tiene tramo. Por eso esto es una ayuda temprana, no la
+   * última palabra: el servidor sigue decidiendo al calcular.
+   */
+  Tramos: number
+}
+
+/**
+ * Una firma de la cadena, con lo que esa persona propuso.
+ */
+export type IFirmaSolicitud = {
+  SolicitudAprobadorId: number
+  SolicitudId: number
+  UsuarioId: number
+
+  /** El que tiene la última palabra. */
+  EsAprobadorFinal: boolean
+
+  /** En qué lugar de la fila firma. 1 es el primero. */
+  Orden: number
+
+  /** 0 Pendiente · 1 Aprobada · 2 Rechazada. */
+  Estado: number
+
+  UsuarioLogin: string | null
+  CodigoEmpleado: string | null
+
+  /** Nombre y apellidos, para decir quién propuso qué. */
+  Nombre: string | null
+
+  /** Cuándo firmó. null mientras no se pronuncie. */
+  FechaResolucion: string | null
+  MotivoRechazo: string | null
+
+  /**
+   * Lo que ESTA persona autorizó, que puede no ser lo que pidió el socio.
+   *
+   * Todo en null mientras no firme, y también cuando rechaza: ahí no autorizó
+   * nada.
+   */
+  MontoPropuesto: number | null
+  CuotaPropuesta: number | null
+  PlazoResultante: number | null
+  TasaId: number | null
+}
+
+/**
+ * Lo que un aprobador decide sobre una solicitud.
+ *
+ * Quién firma no va acá: lo resuelve el servidor desde el token.
+ */
+export type IResolverAprobacion = {
+  SolicitudId: number
+
+  /** true aprueba, false rechaza. */
+  Aprobar: boolean
+
+  /**
+   * Los tres van juntos al aprobar: describen una sola decisión —tanto, en
+   * tantas cuotas, de tanto cada una—. Mandar solo la cuota dejaría la firma
+   * sin decir sobre qué monto se dio.
+   */
+  MontoAutorizado?: number | null
+  CuotaAutorizada?: number | null
+  PlazoResultante?: number | null
+
+  TasaId?: number | null
+
+  /** Obligatorio al rechazar: el socio lo va a leer. */
+  MotivoRechazo?: string | null
+
+  /**
+   * Cuándo se entrega el dinero.
+   *
+   * Solo la manda el ÚLTIMO firmante — es el único que otorga — y por eso la
+   * pantalla solo le muestra ese campo a él. Es la fecha del préstamo y el
+   * punto desde el que el servidor proyecta el plan de cuotas.
+   */
+  FechaOtorgamiento?: string | null
+}
+
+/** Cómo quedó la solicitud después de la firma. */
+export type IResolverAprobacionResult = {
+  Success: boolean
+  Mensaje: string | null
+
+  SolicitudAprobadorId: number | null
+
+  /**
+   * Esta firma cerró la cadena: además de grabarse, creó el préstamo y pasó
+   * la solicitud a Aprobada.
+   */
+  EsUltimaFirma: boolean
+
+  /** 1 Aprobado · 2 Rechazado · 3 En aprobación. */
+  EstadoSolicitud: number | null
+
+  /**
+   * El préstamo que acaba de nacer. null en todo lo que no sea un cierre: las
+   * firmas intermedias y los rechazos no otorgan nada.
+   */
+  PrestamoId: number | null
+  FechaPrestamo: string | null
+
+  SiguienteUsuarioId: number | null
+  SiguienteCodigo: string | null
+  SiguienteLogin: string | null
+
+  /**
+   * Si se le pudo avisar al siguiente.
+   *
+   * Falso no invalida nada: la firma ya quedó. Sirve para poder decir "quedó
+   * firmada, pero al siguiente no se le pudo avisar" en vez de callarlo.
+   */
+  AvisoAlSiguiente: boolean
+}
+
+/**
+ * Una solicitud en la que el usuario que consulta es firmante.
+ *
+ * Alimenta "Solicitudes de préstamo", la pantalla donde se aprueba.
+ */
+export type ISolicitudPorAprobar = {
+  /**
+   * 'Pendiente' | 'Aprobada' | 'Rechazada' | 'Otro'.
+   *
+   * Es lo que hizo ÉL, NO cómo quedó la solicitud: puede haberla aprobado y
+   * que después otro la rechazara. Para eso está `EstadoNombre`, que es otra
+   * cosa. Confundirlas le diría al aprobador que algo salió como su voto
+   * cuando no fue así.
+   */
+  Grupo: string | null
+
+  /** El número crudo del estado del firmante, por si aparece uno nuevo. */
+  MiEstado: number
+  MiEstadoNombre: string | null
+
+  /**
+   * true = le toca firmar AHORA.
+   *
+   * Estar asignado no es poder firmar: la cadena va por orden y hasta que no
+   * resuelvan los anteriores, este no puede hacer nada. Las suyas aparecen
+   * igual en la lista — si desaparecieran no sabría que tiene algo en camino —
+   * pero sin poder resolverlas.
+   */
+  MeToca: boolean
+
+  SolicitudAprobadorId: number
+  MiOrden: number
+  EsAprobadorFinal: boolean
+  MiFechaResolucion: string | null
+  MiMotivoRechazo: string | null
+
+  SolicitudId: number
+  FechaSolicitud: string | null
+
+  /** El estado de la SOLICITUD, no el del firmante. */
+  Estado: number | null
+  EstadoNombre: string | null
+
+  Monto: number | null
+  Descripcion: string | null
+
+  TipoSolicitudId: number | null
+  TipoSolicitud: string | null
+
+  /** La CANTIDAD de cuotas, no un PlazoId. */
+  Plazo: number | null
+
+  /** 0 Mensual | 1 Quincenal | 2 Semanal. */
+  TipoPlazo: number | null
+
+  CuotaSolicitada: number | null
+  CuotaCotizada: number | null
+  CuotaAutorizada: number | null
+
+  Deduccion13vo: number | null
+  Deduccion14vo: number | null
+
+  EsRefinanciamiento: boolean | null
+  PrestamoIdRefinanciar: number | null
+
+  AprobacionesMinimas: number | null
+  TotalFirmantes: number
+  FirmasAFavor: number
+
+  SocioCodigo: string | null
+  SocioNombre: string | null
+  TipoPlanilla: string | null
+
+  EmpresaId: number | null
+}
+
+/** Un concepto de la liquidación del socio: lo que le toca si saliera hoy. */
+export type IPrestacionSocio = {
+  PrestacionesId: number
+  Codigo: string | null
+  CodigoPayroll: string | null
+
+  /** Cuánto lleva en la empresa. Se repite en cada fila: es del empleado. */
+  AnioAntiguedad: number
+  MesAntiguedad: number
+  DiaAntiguedad: number
+
+  CodigoConcepto: number
+  Concepto: string | null
+
+  /** Tal como está guardado. NO sirve para sumar: ver `ValorNeto`. */
+  Valor: number
+
+  /** 'IN' suma, 'DE' resta. */
+  Tipo: string | null
+
+  /**
+   * El valor con el signo que le toca según el Tipo.
+   *
+   * Es el que hay que sumar. `Valor` no sirve porque los descuentos a veces
+   * vienen guardados en negativo y a veces no; el servidor lo normaliza.
+   */
+  ValorNeto: number
+
+  EmpresaId: number | null
+}
+
+/** El empleado en planilla: su ubicación en la organización. */
+export type IEmpleadoPlanilla = {
+  Employees_Code: string | null
+  Employees_Name: string | null
+  Cod_Alterno: string | null
+  Email: string | null
+
+  /** La cadena organizacional, de lo más amplio a lo más concreto. */
+  Unidad_Negocios: string | null
+  Departamento: string | null
+  Centro_Costos: string | null
+  Posicion: string | null
+
+  Jefe_InmediatoName: string | null
+  NameJefe: string | null
+
+  Cod_Planilla: string | null
+  Company_Code: string | null
+}
+
+/**
+ * Todo lo que el aprobador necesita de una solicitud, en una sola llamada.
+ *
+ * Se arma de tres fuentes distintas y viene junto a propósito: la pantalla las
+ * pediría igual, y resolviéndolas en el servidor no quedan tres estados de
+ * carga que puedan contradecirse.
+ *
+ * Cada parte puede venir vacía sin que las otras fallen: que planilla no esté
+ * arriba no tiene por qué esconder el monto de la solicitud.
+ */
+export type IDetalleAprobacion = {
+  Solicitud: ISolicitudPorAprobar | null
+
+  /**
+   * El usuario tiene el acceso 'VerPrestaciones'.
+   *
+   * En false, `EstadoCuenta`, `Cuentas`, `Prestamos` y `Prestaciones` vienen
+   * VACÍOS — y no por un error: el servidor ni los consultó.
+   *
+   * Por eso viaja la bandera: la pantalla puede decir "no tenés acceso" en vez
+   * de mostrar todo en cero, que se leería como un socio sin ahorros ni
+   * deudas.
+   */
+  PuedeVerPrestaciones: boolean
+  Empleado: IEmpleadoPlanilla | null
+
+  /**
+   * La cadena de firmas en orden, con lo que cada una propuso.
+   *
+   * >>> EL QUE FIRMA SEGUNDO NO DECIDE SOBRE LO QUE PIDIÓ EL SOCIO <<<
+   * Decide sobre lo que dejó el anterior. Si el primero bajó el monto de
+   * 25,000 a 10,000, el segundo tiene que estar mirando 10,000 — y además
+   * tiene que poder ver que el socio había pedido otra cosa.
+   *
+   * `Solicitud.Monto` sigue siendo lo que pidió el socio a propósito: no se
+   * pisa hasta que la solicitud se cierre. Por eso la propuesta vigente hay
+   * que sacarla de acá y no de ahí.
+   *
+   * No va detrás de 'VerPrestaciones': es de la solicitud, no de la plata del
+   * socio.
+   */
+  Firmas: IFirmaSolicitud[]
+
+  Prestaciones: IPrestacionSocio[]
+
+  /** La suma de los ValorNeto: el respaldo con el que se decide. */
+  PrestacionesNeto: number
+
+  /** Ahorros y préstamos del socio. null si no se pudo leer. */
+  EstadoCuenta: IEstadoCuenta | null
+
+  /**
+   * Lo que el socio debe HOY, neto de su ahorro: préstamos − ahorro.
+   *
+   * NO confundir con la `Exposicion` de la cooperativa, que es otra cosa: el
+   * TOTAL A PAGAR del préstamo propuesto, capital más intereses. Esta dice
+   * cómo está hoy; aquella, cuánto costaría lo que se está por aprobar.
+   *
+   * Puede dar cero o negativo: tiene más ahorrado que deuda.
+   */
+  DeudaNeta: number
+
+  /**
+   * Cuántas veces la liquidación cubre la exposición.
+   *
+   * null cuando la exposición es cero o negativa: ahí no hay nada que cubrir
+   * y un número sería inventado.
+   */
+  VecesCubierto: number | null
+
+  Plan: ICuotaPlan[]
+
+  /** Sus cuentas de ahorro activas, una por fila. */
+  Cuentas: ICuentaSocio[]
+
+  /** Sus préstamos, vigentes y cancelados. */
+  Prestamos: IPrestamoSocio[]
+
+  /** Las tasas que el aprobador puede elegir, la de referencia primero. */
+  Tasas: ITasaEmpresa[]
+}
+
+/** Una tasa de interés que el aprobador puede elegir. */
+export type ITasaEmpresa = {
+  TasaId: number
+
+  /**
+   * En porcentaje ANUAL: 18.00, no 0.18. Es como la espera el cálculo del
+   * servidor; mandarla dividida daría un plan con una tasa cien veces menor
+   * sin que nada avise.
+   */
+  Porcentaje: number
+
+  /** La de referencia: con esta se cotizó la solicitud. */
+  EsPrincipal: boolean
+
+  Estado: number | null
+  EmpresaId: number | null
+}
+
+/** Una cuenta de ahorro del socio. */
+export type ICuentaSocio = {
+  CuentaId: number
+  ClienteId: number
+
+  TipoCuenta: number | null
+
+  /** null si no hay catálogo 'TipoCuenta'; se muestra el número. */
+  TipoCuentaNombre: string | null
+
+  /**
+   * La fecha de la MIGRACIÓN, no la de apertura real: hoy es la misma para
+   * todas las cuentas. La que sirve es `FechaCreacion`.
+   */
+  FechaApertura: string | null
+
+  /** Desde cuándo ahorra de verdad. Es la que se muestra. */
+  FechaCreacion: string | null
+
+  SaldoInicial: number
+  SaldoActual: number
+
+  /** Lo que le descuentan de cada pago por esta cuenta. */
+  Aporte: number | null
+
+  MonedaId: string | null
+
+  /** 0 planilla | 1 personal. */
+  TipoDeCobro: number | null
+
+  Estado: number | null
+  EmpresaId: number | null
+}
+
+/** Un préstamo del socio, con lo que debe hoy. */
+export type IPrestamoSocio = {
+  PrestamoId: number
+
+  /** null en los que no nacieron de una solicitud del app. */
+  SolicitudId: number | null
+
+  Monto: number
+
+  /** La cantidad de cuotas. */
+  Plazo: number
+
+  FechaPrestamo: string | null
+  MonedaId: string | null
+
+  /** 0 Mensual | 1 Quincenal | 2 Semanal. */
+  TipoPlazo: number | null
+
+  /**
+   * El pago periódico, tomado del PLAN y no de `Prestamo.Cuota`: en los
+   * préstamos migrados esa columna guarda cuántas cuotas son, no de cuánto es
+   * cada una.
+   */
+  Cuota: number | null
+
+  /** Lo que debe hoy: el CAPITAL pendiente. */
+  SaldoPendiente: number | null
+
+  /**
+   * Capital pendiente + el interés de la próxima cuota. Va aparte porque ese
+   * interés todavía no se devengó: solo se cobra si refinancia ahora.
+   */
+  MontoRefinanciamiento: number | null
+
+  ProximaCuota: number | null
+  ProximoPago: string | null
+
+  /** Cero = el préstamo no tiene plan de cuotas cargado. */
+  CuotasTotal: number
+  CuotasPagadas: number
+
+  /** Ya terminó de pagarlo. */
+  Cancelado: boolean
+
+  Estado: number | null
+}
+
+/**
+ * Una cuota del plan de pagos.
+ *
+ * Sale de la misma función con la que el servidor calculó el interés total de
+ * la opción, llamada con los mismos argumentos: la suma de estas filas cuadra
+ * con el total que se le mostró al socio. No son dos cálculos parecidos, es el
+ * mismo.
+ */
+export type ICuotaPlan = {
+  NumeroCuota: number
+
+  /**
+   * Capital + interés de ESTA cuota, no la cuota nivelada fija: la última
+   * absorbe el residuo de todos los redondeos y suele diferir de las demás.
+   */
+  Cuota: number
+
+  InteresCuota: number
+  CapitalCuota: number
+
+  /** Lo que se debía ANTES de pagar esta cuota. */
+  SaldoAnterior: number
+
+  /** Lo que queda debiendo DESPUÉS de esta cuota. */
+  MontoPrestamo: number
+
+  FechaPago: string | null
+
+  /**
+   * 'Calendario' | 'Proyectado' | 'Aritmetica'.
+   *
+   * 'Aritmetica' significa que el calendario de planilla no cubría el plazo y
+   * las fechas son estimadas, no las reales de pago.
+   */
+  OrigenFecha: string | null
+}
+
+/**
+ * Lo que quedó guardado al crear la solicitud.
+ *
+ * El servidor vuelve a resolver la cuota al guardar, con la misma función con
+ * la que calculó las opciones. Normalmente coincide con la que el socio eligió,
+ * pero si en el medio cambió algo — la tasa, el saldo del préstamo que arrastra
+ * — lo que vale es esto, no lo que decía la pantalla.
+ */
+export type ICrearSolicitudResult = {
+  Success: boolean
+  Mensaje: string | null
+
+  /**
+   * Se creó igual, pero hay algo que el socio debería saber: por ejemplo que
+   * la cuota quedó fuera del tramo porque el tramo es solo informativo.
+   */
+  Aviso: string | null
+
+  SolicitudId: number | null
+
+  /** Monto + lo que arrastra el préstamo que se refinancia. */
+  MontoTotal: number | null
+
+  /** Cuántas cuotas quedaron. */
+  Plazo: number | null
+
+  /** 0 Mensual | 1 Quincenal | 2 Semanal. */
+  TipoPlazo: number | null
+
+  /** La cuota que de verdad quedó. */
+  CuotaCotizada: number | null
+
+  EsRefinanciamiento: boolean | null
+  PrestamoIdRefinanciar: number | null
+
+  /** Cuántas firmas necesita para aprobarse. */
+  AprobacionesMinimas: number | null
 }
 
 /**
@@ -241,6 +983,78 @@ export type ILimitesAporte = {
   TipoPlanilla: string | null
   /** El tipo en palabras, resuelto por el servidor: 'semanal', 'quincenal'... */
   NombrePlanilla: string | null
+
+  /** El tipo de empleado al que corresponde el rango. */
+  TipoEmpleado?: string | null
+
+  /**
+   * Si el rango es una sugerencia y no un límite a exigir.
+   *
+   * Lo guarda así la cooperativa. Con `true` la pantalla muestra el rango pero
+   * no bloquea el monto.
+   */
+  Informativo?: boolean
+}
+
+/**
+ * La ficha del socio en Cooperativa.dbo.Cliente.
+ *
+ * Sale de CooInter.SP_GetClientePorCodigo, en la base de Cooperativa. Que la
+ * respuesta traiga esto o venga en null es lo que decide qué muestra la
+ * pantalla: su información, o el "quiero ser socio".
+ */
+export type IClienteCooperativa = {
+  ClienteId: number
+  Codigo: string | null
+  NIT: string | null
+
+  PrimerNombre: string | null
+  SegundoNombre: string | null
+  PrimerApellido: string | null
+  SegundoApellido: string | null
+
+  /** Los cuatro nombres ya pegados por el SP. */
+  NombreCompleto: string | null
+
+  Direccion: string | null
+  FechaIngreso: string | null
+  FechaNacimiento: string | null
+  Telefono1: string | null
+  Telefono2: string | null
+  Correo: string | null
+  EmpresaId: number | null
+  MonedaId: string | null
+  TipoPlanilla: string | null
+
+  /** Administrativo, Directo o Indirecto. */
+  TipoEmpleado: string | null
+
+  /**
+   * 1 = activa la ficha.
+   *
+   * Un socio dado de baja SÍ existe, así que no se le puede ofrecer afiliarse
+   * de nuevo: terminaría en un alta duplicada.
+   */
+  Estado: number | null
+
+  /**
+   * En qué situación está como socio: Activo, Liquidado, lo que la cooperativa
+   * tenga en su catálogo.
+   *
+   * NO es lo mismo que `Estado`. Un socio puede tener la ficha activa y estar
+   * liquidado — mostrar solo el primero diría que está todo bien.
+   */
+  EstadoSocio: number | null
+
+  /**
+   * El nombre del estado, ya resuelto por el servidor contra el catálogo.
+   *
+   * Se usa este y no un mapa en la pantalla: si la cooperativa agrega un
+   * estado, aparece con su nombre sin tocar el app.
+   */
+  EstadoSocioNombre: string | null
+
+  EstadoSocioCodigo: string | null
 }
 
 export type IEstadoAfiliacion = {

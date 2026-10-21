@@ -4,8 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { YStack, XStack, Text, ScrollView, View, styled } from 'tamagui'
 import {
-  ArrowLeft, CalendarDays, CheckCircle2, XCircle, Coins, Wallet, TriangleAlert,
-  RefreshCcw,
+  ArrowLeft, Wallet, TriangleAlert, RefreshCcw, ChevronRight,
 } from 'lucide-react-native'
 
 import { cooperativaService } from '../../api/modules/cooperativa/cooperativa.service'
@@ -62,23 +61,44 @@ const formatMonto = (valor: number | null | undefined): string => {
   })}`
 }
 
+/**
+ * El aspecto de un préstamo según cómo esté.
+ *
+ * >>> CANCELADO VA EN GRIS, NO EN ROJO <<<
+ * Antes era rojo, con la idea de que "verde es lo que está en curso y rojo lo
+ * que se cerró". Pero en el resto del módulo el rojo significa UNA cosa:
+ * rechazado. Y un préstamo cancelado es lo contrario de un problema — lo
+ * terminó de pagar. En rojo se leía como si algo hubiera salido mal.
+ *
+ * Gris neutro: ya no pide nada, solo está en el historial.
+ */
+const ASPECTO_PRESTAMO = {
+  vigente:   { color: '#22C55E', token: '$success',    texto: 'Vigente' },
+  cancelado: { color: '#94A3B8', token: '$textMuted',  texto: 'Cancelado' },
+} as const
+
 /** Un dato chico: etiqueta arriba, valor abajo. */
 function Dato({
-  icono: Icono,
   etiqueta,
   valor,
+  fuerte,
 }: {
-  icono: React.ComponentType<any>
   etiqueta: string
   valor: string
+  /** El número que importa de la fila. */
+  fuerte?: boolean
 }) {
   return (
-    <YStack flex={1}>
-      <XStack gap="$1" alignItems="center">
-        <Icono size={10} color="#94A3B8" />
-        <Text fontSize={9} color="$textMuted">{etiqueta}</Text>
-      </XStack>
-      <Text fontSize={12} color="$text" fontWeight="600" lineHeight={16}>
+    <YStack flex={1} gap="$0.5">
+      <Text fontSize={10} color="$textMuted">{etiqueta}</Text>
+      <Text
+        fontSize={fuerte ? 15 : 12}
+        color="$text"
+        fontWeight={fuerte ? '800' : '600'}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
         {valor}
       </Text>
     </YStack>
@@ -105,164 +125,142 @@ function TarjetaPrestamo({
   /** El interruptor global. Apagado, el botón de refinanciar no existe. */
   refiHabilitado: boolean
 }) {
+  const aspecto = p.Cancelado ? ASPECTO_PRESTAMO.cancelado : ASPECTO_PRESTAMO.vigente
+
+  /** Sin plan no hay detalle que abrir ni avance que mostrar. */
+  const hayPlan = p.CuotasTotal > 0
+  const avance = hayPlan ? p.CuotasPagadas / p.CuotasTotal : 0
+
   return (
-    <YStack
-      gap="$2.5"
-      padding="$3"
-      borderRadius="$4"
+    /* La MISMA tarjeta de "Mis solicitudes": franja del color del estado a la
+       izquierda, y se toca entera para entrar. Antes el detalle se abría con
+       un botón adentro, y era el único lugar del módulo donde una tarjeta de
+       lista no se podía tocar. */
+    <XStack
+      borderRadius="$5"
       backgroundColor="$backgroundElevated"
       borderWidth={1}
       borderColor="$border"
+      overflow="hidden"
+      pressStyle={hayPlan ? { opacity: 0.75 } : undefined}
+      onPress={hayPlan ? onVerDetalle : undefined}
       {...shadows.sm}
     >
-      <XStack alignItems="flex-start" gap="$2">
-        <YStack flex={1} gap="$0.5">
-          <Text fontSize={17} fontWeight="700" color="$text">
-            {formatMonto(p.Monto)}
-          </Text>
-          <Text fontSize={11} color="$textMuted">
-            {formatFecha(p.FechaPrestamo)}
-          </Text>
-        </YStack>
+      <View width={4} backgroundColor={aspecto.color} />
 
+      <YStack flex={1}>
+        {/* Encabezado: cuánto fue y cuándo, con el estado al lado. */}
         <XStack
           alignItems="center"
-          gap="$1"
-          paddingHorizontal="$2"
-          paddingVertical={2}
-          borderRadius="$10"
-          // Vigente en VERDE y cancelado en ROJO, el mismo idioma de color que
-          // los estados de "Mis solicitudes": verde es lo que está en curso y
-          // al día, rojo lo que ya se cerró.
-          backgroundColor={
-            p.Cancelado ? 'rgba(239, 68, 68, 0.12)' : 'rgba(34, 197, 94, 0.12)'
-          }
-        >
-          {p.Cancelado
-            ? <XCircle size={11} color="#EF4444" />
-            : <CheckCircle2 size={11} color="#22C55E" />}
-          <Text
-            fontSize={10}
-            fontWeight="600"
-            color={p.Cancelado ? '$error' : '$success'}
-          >
-            {p.Cancelado ? 'Cancelado' : 'Vigente'}
-          </Text>
-        </XStack>
-      </XStack>
-
-      {/* Lo que debe hoy. En el cancelado no va: un saldo en cero no dice
-          nada que el chip de estado no diga mejor. */}
-      {!p.Cancelado && (
-        <YStack
-          gap="$2"
-          padding="$2.5"
-          borderRadius="$3"
+          gap="$2.5"
+          paddingHorizontal="$3"
+          paddingVertical="$2.5"
           backgroundColor="$backgroundSurface"
-          borderWidth={1}
-          borderColor="$border"
         >
-          <YStack gap="$0.5">
-            <Text fontSize={10} color="$textMuted">Le queda debiendo</Text>
-            <Text fontSize={17} fontWeight="700" color="$text">
-              {formatMonto(p.SaldoPendiente)}
+          <YStack flex={1} gap="$0.5">
+            <Text fontSize={16} fontWeight="800" color="$text">
+              {formatMonto(p.Monto)}
+            </Text>
+            <Text fontSize={10} color="$textMuted">
+              {formatFecha(p.FechaPrestamo)}
+              {hayPlan ? ` · ${p.CuotasTotal} cuotas` : ''}
             </Text>
           </YStack>
 
-          <XStack gap="$2">
-            <Dato
-              icono={CalendarDays}
-              etiqueta="Próximo pago"
-              valor={formatFecha(p.ProximoPago)}
-            />
-            <Dato
-              icono={Coins}
-              etiqueta="Cuota"
-              valor={formatMonto(p.ProximaCuota)}
-            />
-          </XStack>
-        </YStack>
-      )}
+          {/* Solo la palabra, sin icono: igual que los badges de estado de
+              "Mis solicitudes" y del listado del aprobador. */}
+          <XStack alignItems="center" gap="$1.5">
+            <XStack
+              paddingHorizontal="$2"
+              paddingVertical="$1"
+              borderRadius="$10"
+              backgroundColor={`${aspecto.color}1F`}
+            >
+              <Text fontSize={10} fontWeight="700" color={aspecto.token}>
+                {aspecto.texto}
+              </Text>
+            </XStack>
 
-      {/* El avance en cuotas. Solo si hay plan: los préstamos viejos no lo
-          tienen y "0 de 0" no dice nada. */}
-      {p.CuotasTotal > 0 ? (
-        <YStack gap="$1">
-          <XStack alignItems="center" gap="$2">
-            <Text fontSize={10} color="$textMuted" flex={1}>Cuotas pagadas</Text>
-            <Text fontSize={11} fontWeight="700" color="$text">
-              {p.CuotasPagadas} de {p.CuotasTotal}
+            {hayPlan && <ChevronRight size={16} color="#94A3B8" />}
+          </XStack>
+        </XStack>
+
+        <YStack paddingHorizontal="$3" paddingVertical="$2.5" gap="$2.5">
+          {/* Lo que debe hoy. En el cancelado no va: un saldo en cero no dice
+              nada que el badge no diga mejor. */}
+          {!p.Cancelado && (
+            <XStack gap="$3">
+              <Dato
+                etiqueta="Le queda debiendo"
+                valor={formatMonto(p.SaldoPendiente)}
+                fuerte
+              />
+              <Dato etiqueta="Cuota" valor={formatMonto(p.ProximaCuota)} />
+              <Dato etiqueta="Próximo pago" valor={formatFecha(p.ProximoPago)} />
+            </XStack>
+          )}
+
+          {/* El avance en cuotas. Solo si hay plan: los préstamos viejos no lo
+              tienen y "0 de 0" no dice nada. */}
+          {hayPlan ? (
+            <YStack gap="$1">
+              <XStack alignItems="center" gap="$2">
+                <Text fontSize={10} color="$textMuted" flex={1}>
+                  {p.CuotasPagadas} de {p.CuotasTotal} cuotas pagadas
+                </Text>
+                <Text fontSize={10} fontWeight="700" color={aspecto.token}>
+                  {Math.round(avance * 100)}%
+                </Text>
+              </XStack>
+              <View height={4} borderRadius={999} backgroundColor="$backgroundSurface" overflow="hidden">
+                <View
+                  height={4}
+                  borderRadius={999}
+                  // Sigue al badge: una barra de un color y un badge de otro se
+                  // leerían como dos opiniones del mismo préstamo.
+                  backgroundColor={aspecto.color}
+                  width={`${Math.round(avance * 100)}%`}
+                />
+              </View>
+            </YStack>
+          ) : (
+            <XStack gap="$1.5" alignItems="flex-start">
+              <View marginTop={1}>
+                <TriangleAlert size={12} color="#94A3B8" />
+              </View>
+              <Text fontSize={10} color="$textMuted" flex={1} lineHeight={14}>
+                Este préstamo no tiene un plan de cuotas cargado.
+              </Text>
+            </XStack>
+          )}
+        </YStack>
+
+        {/* Refinanciar: solo en los VIGENTES y con saldo. En uno cancelado no
+            hay nada que arrastrar —para eso ya puede pedir uno normal— y en uno
+            sin plan de cuotas no se sabe cuánto debe.
+
+            Va al pie y separado por una línea: es una acción sobre el préstamo,
+            no un dato suyo. Delineado y no relleno porque la tarjeta entera ya
+            es tocable, y dos rellenos competirían por el mismo toque. */}
+        {refiHabilitado && !p.Cancelado && (p.SaldoPendiente ?? 0) > 0 && (
+          <XStack
+            alignItems="center"
+            justifyContent="center"
+            gap="$2"
+            height={38}
+            borderTopWidth={1}
+            borderTopColor="$border"
+            pressStyle={{ opacity: 0.6, backgroundColor: '$backgroundSurface' }}
+            onPress={onRefinanciar}
+          >
+            <RefreshCcw size={14} color="#FF551A" />
+            <Text fontSize={12} fontWeight="700" color="$primary">
+              Refinanciar
             </Text>
           </XStack>
-          <View height={4} borderRadius={2} backgroundColor="$border" overflow="hidden">
-            <View
-              height={4}
-              borderRadius={2}
-              // Sigue al chip: verde mientras está vigente, rojo cuando se
-              // cerró. Una barra verde bajo un chip rojo se leería como que
-              // los dos dicen cosas distintas del mismo préstamo.
-              backgroundColor={p.Cancelado ? '#EF4444' : '#22C55E'}
-              width={`${Math.round((p.CuotasPagadas / p.CuotasTotal) * 100)}%`}
-            />
-          </View>
-        </YStack>
-      ) : (
-        <XStack gap="$1.5" alignItems="flex-start">
-          <View marginTop={1}>
-            <TriangleAlert size={12} color="#94A3B8" />
-          </View>
-          <Text fontSize={11} color="$textMuted" flex={1} lineHeight={15}>
-            Este préstamo no tiene un plan de cuotas cargado.
-          </Text>
-        </XStack>
-      )}
-
-      {/* Ver el detalle solo si hay algo que ver. Se navega por PrestamoId
-          — no por solicitud — porque estos préstamos pueden no tener una. */}
-      {p.CuotasTotal > 0 && (
-        <XStack
-          alignItems="center"
-          justifyContent="center"
-          gap="$2"
-          height={36}
-          borderRadius="$3"
-          borderWidth={1}
-          borderColor="$border"
-          backgroundColor="$backgroundSurface"
-          pressStyle={{ opacity: 0.7 }}
-          onPress={onVerDetalle}
-        >
-          <CalendarDays size={14} color="#FF551A" />
-          <Text fontSize={12} fontWeight="700" color="$primary">
-            Ver detalle de cuotas
-          </Text>
-        </XStack>
-      )}
-
-      {/* Refinanciar: solo en los VIGENTES y con saldo. En uno cancelado no hay
-          nada que arrastrar — para eso ya puede pedir un préstamo normal — y en
-          uno sin plan de cuotas no se sabe cuánto debe.
-
-          Va relleno y no en contorno como el de arriba: es la acción que
-          resuelve lo que el socio vino a hacer cuando no lo dejan pedir otro. */}
-      {refiHabilitado && !p.Cancelado && (p.SaldoPendiente ?? 0) > 0 && (
-        <XStack
-          alignItems="center"
-          justifyContent="center"
-          gap="$2"
-          height={36}
-          borderRadius="$3"
-          backgroundColor="$primary"
-          pressStyle={{ opacity: 0.85 }}
-          onPress={onRefinanciar}
-        >
-          <RefreshCcw size={14} color="#FFFFFF" />
-          <Text fontSize={12} fontWeight="700" color="white">
-            Refinanciar
-          </Text>
-        </XStack>
-      )}
-    </YStack>
+        )}
+      </YStack>
+    </XStack>
   )
 }
 

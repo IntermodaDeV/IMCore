@@ -8,6 +8,15 @@ interface EmptyStateProps {
   message?: string
   onAction?: () => void
   actionLabel?: string
+  /**
+   * El ícono del botón. Por defecto el de recargar, que es para lo que sirve
+   * en casi todas las pantallas.
+   *
+   * Se puede cambiar porque hay vacíos donde recargar no tiene qué traer y la
+   * acción natural es crear el primer registro: ahí el botón dice
+   * "Nueva solicitud" y un ícono de recargar contradice lo que va a pasar.
+   */
+  actionIcon?: React.ComponentType<any>
 }
 
 export default function EmptyState({
@@ -15,6 +24,7 @@ export default function EmptyState({
   message = 'No encontramos información para mostrar en este momento.',
   onAction,
   actionLabel = 'Recargar',
+  actionIcon: ActionIcon = RefreshCw,
 }: EmptyStateProps) {
   return (
     <YStack
@@ -90,7 +100,7 @@ export default function EmptyState({
       {/* Botón reutilizando estilo del error */}
       {onAction && (
         <TouchableOpacity onPress={onAction} activeOpacity={0.75} style={styles.button}>
-          <RefreshCw size={15} color="white" style={{ marginRight: 6 }} />
+          <ActionIcon size={15} color="white" style={{ marginRight: 6 }} />
           <Text fontSize={13} fontWeight="700" color="white">
             {actionLabel}
           </Text>

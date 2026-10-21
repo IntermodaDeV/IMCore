@@ -59,7 +59,7 @@ export default function EstadoCuentaCard({
           <Text fontSize={10} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
             ESTADO DE CUENTA
           </Text>
-          <Text fontSize={17} fontWeight="700" color={datos.SaldoNeto < 0 ? '$error' : '$text'}>
+          <Text fontSize={15} fontWeight="700" color={datos.SaldoNeto < 0 ? '$error' : '$text'}>
             {fmtMoneda(datos.SaldoNeto)}
           </Text>
         </YStack>
@@ -93,13 +93,21 @@ export default function EstadoCuentaCard({
               La cuota va en medio porque responde otra pregunta: el saldo dice
               cuánto lleva o cuánto debe, la cuota dice cuánto le sale de cada
               pago de planilla. */}
+          {/* >>> ANCHOS EN flex, NO EN PIXELES <<<
+              Las dos columnas de plata eran fijas —82 y 96— y entre eso, el
+              icono y los espacios se iban 218px. En un teléfono angosto al
+              concepto le quedaban unos 110, y un saldo de siete cifras no
+              entraba: se cortaba o empujaba la fila.
+
+              Con flex las tres se reparten lo que haya, y los números además
+              se achican solos cuando hace falta en vez de cortarse. */}
           <XStack alignItems="center" gap="$2">
             <View width={16} />
-            <View flex={1} />
-            <Text fontSize={10} color="$textMuted" width={82} textAlign="right">
+            <View flex={1.1} />
+            <Text fontSize={10} color="$textMuted" flex={1} textAlign="right">
               CUOTA
             </Text>
-            <Text fontSize={10} color="$textMuted" width={96} textAlign="right">
+            <Text fontSize={10} color="$textMuted" flex={1.2} textAlign="right">
               SALDO
             </Text>
           </XStack>
@@ -107,16 +115,33 @@ export default function EstadoCuentaCard({
           {/* Ahorros, a favor */}
           <XStack alignItems="center" gap="$2">
             <PiggyBank size={16} color="#22C55E" />
-            <YStack flex={1}>
+            <YStack flex={1.1}>
               <Text fontSize={13} color="$text">Ahorros</Text>
-              <Text fontSize={11} color="$textMuted">
+              <Text fontSize={11} color="$textMuted" numberOfLines={1}>
                 {datos.TotalCuentas} {datos.TotalCuentas === 1 ? 'cuenta' : 'cuentas'}
               </Text>
             </YStack>
-            <Text fontSize={13} color="$text" width={82} textAlign="right">
+            <Text
+              fontSize={12}
+              color="$text"
+              flex={1}
+              textAlign="right"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
               {fmtMoneda(datos.CuotaAhorro)}
             </Text>
-            <Text fontSize={14} fontWeight="700" color="$success" width={96} textAlign="right">
+            <Text
+              fontSize={13}
+              fontWeight="700"
+              color="$success"
+              flex={1.2}
+              textAlign="right"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
               {fmtMoneda(datos.SaldoCuentas)}
             </Text>
           </XStack>
@@ -125,16 +150,33 @@ export default function EstadoCuentaCard({
               neto se lea sola. */}
           <XStack alignItems="center" gap="$2">
             <Landmark size={16} color="#EF4444" />
-            <YStack flex={1}>
+            <YStack flex={1.1}>
               <Text fontSize={13} color="$text">Préstamos</Text>
-              <Text fontSize={11} color="$textMuted">
+              <Text fontSize={11} color="$textMuted" numberOfLines={1}>
                 {datos.TotalPrestamos} {datos.TotalPrestamos === 1 ? 'préstamo' : 'préstamos'}
               </Text>
             </YStack>
-            <Text fontSize={13} color="$text" width={82} textAlign="right">
+            <Text
+              fontSize={12}
+              color="$text"
+              flex={1}
+              textAlign="right"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
               {fmtMoneda(datos.CuotaPrestamo)}
             </Text>
-            <Text fontSize={14} fontWeight="700" color="$error" width={96} textAlign="right">
+            <Text
+              fontSize={13}
+              fontWeight="700"
+              color="$error"
+              flex={1.2}
+              textAlign="right"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
               {datos.SaldoPrestamos > 0 ? '-' : ''}{fmtMoneda(datos.SaldoPrestamos)}
             </Text>
           </XStack>
@@ -157,12 +199,27 @@ export default function EstadoCuentaCard({
             borderTopWidth={1}
             borderTopColor="$border"
           >
-            <Text fontSize={13} fontWeight="600" color="$text" flex={1}>
+            {/* El +16 iguala el ancho del icono de las filas de arriba, para
+                que las tres columnas sigan alineadas sin repetir el icono. */}
+            <Text
+              fontSize={13}
+              fontWeight="600"
+              color="$text"
+              flex={1.1}
+              marginLeft={16 + 8}
+            >
               Totales
             </Text>
 
-            <YStack width={82} alignItems="flex-end">
-              <Text fontSize={13} fontWeight="700" color="$text">
+            <YStack flex={1} alignItems="flex-end">
+              <Text
+                fontSize={12}
+                fontWeight="700"
+                color="$text"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
                 {fmtMoneda((datos.CuotaAhorro ?? 0) + (datos.CuotaPrestamo ?? 0))}
               </Text>
               <Text fontSize={9} color="$textMuted">
@@ -170,11 +227,14 @@ export default function EstadoCuentaCard({
               </Text>
             </YStack>
 
-            <YStack width={96} alignItems="flex-end">
+            <YStack flex={1.2} alignItems="flex-end">
               <Text
-                fontSize={16}
+                fontSize={14}
                 fontWeight="700"
                 color={datos.SaldoNeto < 0 ? '$error' : '$success'}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
               >
                 {fmtMoneda(datos.SaldoNeto)}
               </Text>

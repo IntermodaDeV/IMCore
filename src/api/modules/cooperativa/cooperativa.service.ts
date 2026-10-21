@@ -1,7 +1,9 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
+  IAfiliacionResult,
   ICatalogosSolicitud,
+  IClienteCooperativa,
   IEstadoCuenta,
   ICrearSolicitud,
   IEmpleadoSinAfiliacion,
@@ -14,6 +16,8 @@ import {
   IAprobadorDisponible,
   IResolverPrestamo,
   IResolverPrestamosResult,
+  IResolverAprobacion,
+  IResolverAprobacionResult,
   IConfiguracionAprobadores,
   IGuardarConfiguracionAprobadores,
   IUsuarioBusqueda,
@@ -23,6 +27,13 @@ import {
   ICuotaPrestamo,
   ICuotaSimulada,
   IPrestamoResumen,
+  IOpcionCuota,
+  ICrearSolicitudResult,
+  ITipoSolicitud,
+  ICuotaPlan,
+  ILimitesPrestamo,
+  ISolicitudPorAprobar,
+  IDetalleAprobacion,
 } from './cooperativa.types'
 
 // Consume los endpoints de api/CooInter. La consulta de planilla la reenvía
@@ -36,8 +47,28 @@ const schema = 'CooInter'
 
 export const cooperativaService = {
   /**
+   * ¿Ya es socio? Lo primero que se pregunta al abrir el módulo.
+   *
+   * Va derecho a la base de Cooperativa. La respuesta se lee así:
+   *
+   *   Success && Data   ->  ya es socio, se muestra su información
+   *   Success && !Data  ->  todavía no, se muestra "quiero ser socio"
+   *   !Success          ->  no se pudo consultar: es un ERROR, no un "no es socio"
+   *
+   * Esa última distinción importa: si una caída se leyera como "no es socio",
+   * a un socio se le ofrecería afiliarse de nuevo.
+   */
+  getClienteCooperativa: () =>
+    httpClient.get<ExecutionResponse<IClienteCooperativa | null>>(
+      `${schema}/ClienteCooperativa`,
+    ),
+
+  /**
    * Todo lo que la pantalla necesita al abrirse: si el usuario aplica para
    * afiliarse y si ya tiene una solicitud en curso.
+   *
+   * @deprecated Se apoyaba en el esquema CooInter de IMCore, que ya no existe.
+   * Lo reemplaza getClienteCooperativa.
    */
   getEstadoAfiliacion: () =>
     httpClient.get<ExecutionResponse<IEstadoAfiliacion>>(`${schema}/EstadoAfiliacion`),
@@ -62,8 +93,15 @@ export const cooperativaService = {
   getMisSolicitudesPrestamo: () =>
     httpClient.get<ExecutionResponse<ISolicitudPrestamo[]>>(`${schema}/MisSolicitudesPrestamo`),
 
+  /**
+   * Afilia al usuario. Al volver con Success queda socio y su cuenta abierta.
+   *
+   * Solo manda el aporte. Identidad, empresa y planilla las resuelve el
+   * servidor contra nómina: mandarlas desde acá dejaría afiliar a alguien con
+   * datos que no son los suyos.
+   */
   crearSolicitudSocio: (aporte: number) =>
-    httpClient.post<ExecutionResponse<ISolicitudSocio>, { Aporte: number }>(
+    httpClient.post<ExecutionResponse<IAfiliacionResult>, { Aporte: number }>(
       `${schema}/SolicitudSocio`,
       { Aporte: aporte },
     ),
@@ -89,12 +127,206 @@ export const cooperativaService = {
     httpClient.get<ExecutionResponse<ICatalogosSolicitud>>(`${schema}/CatalogosSolicitud`),
 
   /**
-   * Crea la solicitud del socio. Nace en Pendiente; el estado no se manda desde
-   * acá, lo fija el servidor.
+   * Los tipos de solicitud de la empresa del socio.
+   *
+   * Aparte de `getCatalogosSolicitud`, que trae tipos Y plazos: el formulario
+   * ya no usa los plazos — el plazo sale del monto y de la cuota — y mientras
+   * venían juntos, que faltara el SP de plazos tumbaba también los tipos y la
+   * pantalla no cargaba por un dato que ni siquiera iba a mostrar.
+   */
+  getTiposSolicitud: () =>
+    httpClient.get<ExecutionResponse<ITipoSolicitud[]>>(`${schema}/TiposSolicitud`),
+
+  /**
+   * Las solicitudes donde el usuario autenticado es firmante, con el grupo al
+   * que pertenece cada una según lo que ÉL hizo.
+   *
+   * No recibe el usuario: lo resuelve el servidor desde el token. Si viajara
+   * desde acá, cualquiera podría ver — y mañana resolver — las solicitudes
+   * asignadas a otro aprobador.
+   */
+  getSolicitudesPorAprobador: () =>
+    httpClient.get<ExecutionResponse<ISolicitudPorAprobar[]>>(
+      `${schema}/SolicitudesPorAprobador`,
+    ),
+
+  /**
+   * Todo lo que el aprobador necesita de una solicitud: la solicitud, el
+   * empleado con su centro de costos, su liquidación y el plan de pagos.
+   *
+   * Si la solicitud no está asignada al usuario del token, el servidor no
+   * devuelve nada: son datos de nómina y de plata de otra persona.
+   */
+  getDetalleAprobacion: (solicitudId: number) =>
+    httpClient.get<ExecutionResponse<IDetalleAprobacion>>(
+      `${schema}/DetalleAprobacion?solicitudId=${solicitudId}`,
+    ),
+
+  /**
+   * Graba la firma del aprobador sobre una solicitud.
+   *
+   * Quién firma NO va en el cuerpo: lo resuelve el servidor desde el token.
+   * Mandarlo desde acá dejaría firmar en nombre de otro.
+   *
+   * Un "no se pudo" —ya firmó, no le toca todavía, otro la resolvió primero—
+   * vuelve como `Success: false` con el motivo en `ErrorMessage`, no como un
+   * error de red: son cosas que pasan y hay que poder decirlas con palabras.
+   */
+  resolverAprobacion: (info: IResolverAprobacion) =>
+    httpClient.post<ExecutionResponse<IResolverAprobacionResult>>(
+      `${schema}/ResolverSolicitud`,
+      info,
+    ),
+
+  /**
+   * El plan de cuotas de una solicitud que ya existe.
+   *
+   * Es una RECONSTRUCCIÓN, no una copia: la tasa y el monto total no se
+   * guardan con la solicitud, así que el servidor los vuelve a resolver — la
+   * tasa de referencia de hoy y, si es refinanciamiento, el saldo de hoy. Por
+   * eso la pantalla lo presenta como estimado.
+   */
+  getPlanCuotasSolicitud: (solicitudId: number) =>
+    httpClient.get<ExecutionResponse<ICuotaPlan[]>>(
+      `${schema}/PlanCuotasSolicitud?solicitudId=${solicitudId}`,
+    ),
+
+  /**
+   * Hasta cuánto puede pedir el socio, por los tramos configurados para su
+   * empresa y su tipo de planilla. Se consulta una vez al abrir el formulario.
+   */
+  getLimitesPrestamo: () =>
+    httpClient.get<ExecutionResponse<ILimitesPrestamo>>(`${schema}/LimitesPrestamo`),
+
+  /**
+   * El plan de cuotas de una opción: cuánto, cuándo, y cuánto va a capital y a
+   * intereses en cada pago.
+   *
+   * Los parámetros salen de la opción elegida — no de lo que el socio escribió
+   * — porque el servidor ya los resolvió al calcular las opciones. Con los
+   * mismos números el plan cuadra con el total que vio.
+   */
+  getPlanCuotas: (
+    monto: number,
+    tasaAnual: number,
+    plazo: number,
+    tipoPlazo: number,
+    opciones?: {
+      /**
+       * Quien pregunta es un FIRMANTE, no el dueño de la solicitud.
+       *
+       * Cambia de quién salen las fechas: el calendario de cuotas se arma con
+       * el calendario de planilla de la EMPRESA DEL SOCIO. Con el código del
+       * que mira, un aprobador de otra planilla veía otras fechas. Requiere
+       * `solicitudId`.
+       */
+      solicitudId?: number | null
+      comoAprobador?: boolean
+      /**
+       * Desde cuándo se proyectan las cuotas. Sin esto, hoy.
+       *
+       * Lo manda el último firmante con su fecha de otorgamiento, que es la
+       * misma que recibe el servidor al crear el préstamo: así las fechas que
+       * ve en pantalla son las que van a quedar grabadas.
+       */
+      desde?: string | null
+    },
+  ) => {
+    const params = new URLSearchParams({
+      monto: String(monto),
+      tasaAnual: String(tasaAnual),
+      plazo: String(plazo),
+      tipoPlazo: String(tipoPlazo),
+    })
+    if (opciones?.solicitudId != null && opciones.solicitudId > 0) {
+      params.append('solicitudId', String(opciones.solicitudId))
+    }
+    if (opciones?.comoAprobador) {
+      params.append('comoAprobador', 'true')
+    }
+    if (opciones?.desde) {
+      params.append('desde', opciones.desde)
+    }
+    return httpClient.get<ExecutionResponse<ICuotaPlan[]>>(
+      `${schema}/PlanCuotas?${params.toString()}`,
+    )
+  },
+
+  /**
+   * Las opciones de cuota para un monto: mínima, la sugerida a partir de lo
+   * que el socio escribió, y máxima.
+   *
+   * `cuotaPedida` es opcional: sin ella vuelven solo la mínima y la máxima.
+   *
+   * Cada opción la calcula la misma función que usa el servidor al guardar la
+   * solicitud, así que la que el socio elija es la que se le va a cobrar.
+   */
+  getOpcionesCuota: (
+    monto: number,
+    cuotaPedida?: number | null,
+    /**
+     * La solicitud que se está EDITANDO, si se está editando una.
+     *
+     * Sin esto, abrir una Pendiente para cambiarla devuelve el bloqueo "ya
+     * tiene una solicitud pendiente": se cuenta a sí misma. Es la misma
+     * exclusión que hace el servidor al guardar.
+     */
+    solicitudId?: number | null,
+    /**
+     * La tasa que está evaluando el APROBADOR.
+     *
+     * Sin ella el servidor usa la de referencia, que es con la que se cotizó
+     * la solicitud. Con ella simula con esa: la tasa definitiva se fija al
+     * autorizar, así que el que aprueba tiene que poder ver qué cuota sale con
+     * cada una.
+     */
+    tasaId?: number | null,
+    /**
+     * Quien pregunta es un FIRMANTE, no el dueño de la solicitud.
+     *
+     * >>> CAMBIA DE QUIÉN SON LOS NÚMEROS <<<
+     * El plan no sale solo del monto: depende del tramo de crédito del socio
+     * —que se elige por su empresa y su tipo de planilla— y de los préstamos
+     * que ya tiene. Sin esto el servidor usaba el código del que mira, así que
+     * el aprobador veía el plan calculado sobre SU propio tramo: el mismo
+     * monto y la misma cuota, pero otra cantidad de cuotas que la que pidió el
+     * socio.
+     *
+     * Requiere `solicitudId`, y el servidor comprueba que esa solicitud esté
+     * asignada a quien pregunta.
+     */
+    comoAprobador?: boolean,
+  ) => {
+    const params = new URLSearchParams({ monto: String(monto) })
+    if (cuotaPedida != null && cuotaPedida > 0) {
+      params.append('cuotaPedida', String(cuotaPedida))
+    }
+    if (solicitudId != null && solicitudId > 0) {
+      params.append('solicitudId', String(solicitudId))
+    }
+    if (tasaId != null && tasaId > 0) {
+      params.append('tasaId', String(tasaId))
+    }
+    if (comoAprobador) {
+      params.append('comoAprobador', 'true')
+    }
+    return httpClient.get<ExecutionResponse<IOpcionCuota[]>>(
+      `${schema}/OpcionesCuota?${params.toString()}`,
+    )
+  },
+
+  /**
+   * Crea la solicitud de préstamo. Nace en Pendiente; el estado no se manda
+   * desde acá, lo fija el servidor.
+   *
+   * La respuesta trae lo que quedó realmente guardado — el plazo, la cuota
+   * cotizada, si terminó siendo un refinanciamiento y cuántas firmas necesita —
+   * porque el servidor vuelve a resolver la cuota al guardar y puede no ser
+   * idéntica a la que se mostró.
    */
   crearSolicitud: (data: ICrearSolicitud) =>
-    httpClient.post<ExecutionResponse<number | null>, ICrearSolicitud>(
-      `${schema}/CrearSolicitud`,
+    httpClient.post<ExecutionResponse<ICrearSolicitudResult | null>, ICrearSolicitud>(
+      `${schema}/CrearSolicitudPrestamo`,
       data,
     ),
 
