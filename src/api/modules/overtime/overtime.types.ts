@@ -941,6 +941,9 @@ export interface IOvertimeEmployeeWithRequest {
   Correlative: string
   /** Quién hizo esa solicitud, para saber a quién reclamarle. */
   Solicitante: string
+  /** Horario de esa HE ('16:30'): otra HE el mismo día no se puede encimar. */
+  Start_Time?: string | null
+  End_Time?: string | null
 }
 
 /**
@@ -965,6 +968,8 @@ export interface IOvertimeShiftSchedule {
   ScheduleHours: number | null
   IsLaborable: string | null
   RequiresClocking: boolean
+  /** 'S' si el día es feriado para el turno: siempre tiene jornada y solo se pide HE Manual. */
+  IsHoliday?: string | null
 }
 
 /**

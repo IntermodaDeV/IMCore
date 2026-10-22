@@ -4,6 +4,7 @@ import { ScrollView } from 'react-native'
 import { YStack, XStack, Text, Card, View, Button, styled, useTheme } from 'tamagui'
 import {
   AlertTriangle,
+  Info,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -28,6 +29,7 @@ import SkeletonForm from '../../components/Skeletons/SkeletonForm'
 import AppSelect from '../../components/commons/AppSelect'
 import AppInput from '../../components/commons/AppInput'
 import AppDatePicker from '../../components/commons/AppDatePicker'
+import ConfirmDialog from '../../components/commons/ConfirmDialog'
 import { overtimeService } from '../../api/modules/overtime/overtime.service'
 import {
   IOvertimeEmployee,
@@ -49,11 +51,16 @@ import {
   fechaHoraISO,
   hora12,
   inicioPorJornada,
+  esFeriado,
+  esLaborable,
   normalizeTime,
   opcionesFin,
   opcionesInicio,
   rowHours,
   seEncimaConJornada,
+  timeToSeconds,
+  endSeconds,
+  secondsToTime,
 } from './Overtime.calc'
 
 // Crear una solicitud de horas extra desde el teléfono.
@@ -101,8 +108,23 @@ interface Semilla {
   comment: string
 }
 
+/**
+ * Horas que se pagan. HE Manual: las del servidor, que no cuentan el almuerzo entre
+ * los tramos del turno; mientras no responde, fin - inicio. Normal: fin - inicio.
+ */
+const horasPago = (f: Fila): number | null => {
+  const h = rowHours(f.start_Time, f.end_Time)
+  if (h === null) return null
+  return f.is_Manual && f.serverHours != null ? f.serverHours : h
+}
+
 /** Un empleado ya elegido, con su horario y sus horas. */
 interface Fila {
+  /**
+   * Horas pagables que calculó el servidor (suma del reparto). En la HE Manual no
+   * cuenta el almuerzo del turno (11:00-14:00 con almuerzo 12:00-12:30 = 2.5 h).
+   */
+  serverHours?: number | null
   employee_Code: string
   employee_Name: string
   cod_Planilla: string
@@ -116,6 +138,10 @@ interface Fila {
    * la manda la jornada y no se captura.
    */
   hasSchedule: boolean
+  /** Feriado para su turno: siempre tiene jornada y solo se pide HE Manual (marca fija). */
+  isHoliday?: boolean
+  /** Día sin jornada (descanso, domingo) para su turno: solo se pide HE Manual (marca fija). */
+  isRestDay?: boolean
   start_Time: string
   end_Time: string
   category_Id: number | null
@@ -201,6 +227,8 @@ const respetaJornada = (f: Fila): boolean => f.hasSchedule && !f.is_Manual
  */
 const conMarca = (f: Fila, valor: boolean): Fila => {
   if (f.isLocked || f.is_Manual === valor) return f
+  // Feriado o día sin jornada: solo HE Manual, la marca no se quita
+  if (!valor && (f.isHoliday || f.isRestDay)) return f
   // Sin jornada ese día (domingo, descanso) no hay HE Manual: solo se puede quitar
   if (valor && !f.hasSchedule) return f
   return {
@@ -332,6 +360,8 @@ export default function CrearSolicitudHoraExtraScreen() {
     () => new Set((route.params?.detalles ?? []).map(d => d.Employee_Code)),
   )
   const [tomados, setTomados] = useState<Map<string, IOvertimeEmployeeWithRequest>>(new Map())
+  /** Los horarios de las HE que cada empleado ya tiene ese día (puede tener varias si no se enciman). */
+  const [rangosTomados, setRangosTomados] = useState<Map<string, IOvertimeEmployeeWithRequest[]>>(new Map())
 
   /**
    * Las horas y el motivo que ya tenía cada empleado.
@@ -522,12 +552,21 @@ export default function CrearSolicitudHoraExtraScreen() {
         // rechaza el duplicado igual al guardar, así que como mucho se pierde
         // el aviso temprano.
         const lista = resTom?.Success ? (resTom.Data ?? []) : []
-        setTomados(new Map(lista.map(t => [t.Employee_Code, t])))
+        // Un empleado puede tener varias HE ese día: se juntan para el aviso
+        const rangos = new Map<string, IOvertimeEmployeeWithRequest[]>()
+        for (const t of lista) rangos.set(t.Employee_Code, [...(rangos.get(t.Employee_Code) ?? []), t])
+        setRangosTomados(rangos)
+        setTomados(new Map([...rangos.entries()].map(([code, ts]) => [code, {
+          Employee_Code: code,
+          Correlative: ts.map(t => `${t.Correlative} ${String(t.Start_Time ?? '').substring(0, 5)}-${String(t.End_Time ?? '').substring(0, 5)}`).join(', '),
+          Solicitante: [...new Set(ts.map(t => t.Solicitante).filter(Boolean))].join(', '),
+        } as IOvertimeEmployeeWithRequest])))
       })
       .catch(err => {
         if (!vigente) return
         setHorarios([])
         setTomados(new Map())
+        setRangosTomados(new Map())
         setErrorHorarios(handleError(err).message)
       })
       .finally(() => {
@@ -539,14 +578,8 @@ export default function CrearSolicitudHoraExtraScreen() {
     }
   }, [companyCode, fecha, editandoId])
 
-  // Cambiar de fecha invalida a los tomados que ya estaban marcados: ese
-  // empleado ya tiene solicitud ESE día y no se puede pedir dos veces.
-  useEffect(() => {
-    setElegidos(prev => {
-      const limpio = new Set([...prev].filter(c => !tomados.has(c)))
-      return limpio.size === prev.size ? prev : limpio
-    })
-  }, [tomados])
+  // Tener otra HE ese día ya no saca al empleado de la selección: puede pedir
+  // otra mientras el horario no se encime (lo marca su tarjeta y el SP lo valida).
 
   // ── Empleados ─────────────────────────────────────────────────────────────
 
@@ -592,6 +625,30 @@ export default function CrearSolicitudHoraExtraScreen() {
     [bloqueados, devueltos],
   )
 
+  // ── Quitar un empleado desde su tarjeta ───────────────────────────────────
+
+  /** La fila que se va a quitar (espera la confirmación). */
+  const [quitando, setQuitando] = useState<Fila | null>(null)
+
+  /**
+   * Quita al empleado de la solicitud: sale de los elegidos y de las filas. Solo
+   * mientras se puede editar: el firmado o el devuelto no se quitan desde aquí
+   * (el procedimiento lo rechazaría y tumbaría el guardado completo).
+   */
+  const quitarFila = useCallback(
+    (code: string) => {
+      if (bloqueados.has(code) || devueltos.has(code)) return
+      setElegidos(prev => {
+        if (!prev.has(code)) return prev
+        const next = new Set(prev)
+        next.delete(code)
+        return next
+      })
+      setFilas(prev => prev.filter(f => f.employee_Code !== code))
+    },
+    [bloqueados, devueltos],
+  )
+
   // ── Filas de horas ────────────────────────────────────────────────────────
 
   /**
@@ -610,14 +667,20 @@ export default function CrearSolicitudHoraExtraScreen() {
           if (!emp) return null
 
           const horario = horarios.find(h => h.ShiftId === emp.Turno_Id)
-          const inicio = inicioPorJornada(horario)
+          // Feriado: siempre tiene jornada y solo se pide HE Manual (el SP lo valida igual)
+          const feriado = esFeriado(horario)
+          const finFeriado = feriado && horario?.ShiftEnd ? String(horario.ShiftEnd).substring(0, 5) : ''
+          const inicio = inicioPorJornada(horario) || finFeriado
           const conJornada = !!inicio
           const previa = anterior.get(code)
 
           // Lo capturado en esta sesión manda sobre lo guardado: volver atrás
           // a agregar gente no puede deshacer lo que se acaba de cambiar.
           const guardado = previa ? undefined : semilla?.get(code)
-          const manual = previa?.is_Manual ?? guardado?.manual ?? false
+          // Día sin jornada (descanso): el turno tiene ese día, pero no es laboral ni feriado.
+          // Solo se pide HE Manual y se capturan inicio y fin.
+          const descanso = !!horario && !esLaborable(horario) && !feriado
+          const manual = feriado || descanso ? true : (previa?.is_Manual ?? guardado?.manual ?? false)
 
           // El inicio escrito a mano se conserva: el del día sin jornada y el
           // de una HE Manual. Una HE Manual sin nada escrito arranca en el fin
@@ -635,6 +698,8 @@ export default function CrearSolicitudHoraExtraScreen() {
             shift_Start: horario?.ShiftStart ? String(horario.ShiftStart).substring(0, 5) : '',
             shift_End: horario?.ShiftEnd ? String(horario.ShiftEnd).substring(0, 5) : '',
             hasSchedule: conJornada,
+            isHoliday: feriado,
+            isRestDay: descanso,
             // Con jornada el inicio lo manda el turno, salvo en HE Manual; en
             // los demás casos se conserva lo que el usuario ya había puesto, o
             // lo que traía guardado.
@@ -764,9 +829,15 @@ export default function CrearSolicitudHoraExtraScreen() {
                   hours: +Number(d.hours).toFixed(2),
                 }))
 
-          if (JSON.stringify(nuevo) === JSON.stringify(f.breakdown)) return f
+          // Horas pagables del servidor: todo el reparto, con o sin concepto
+          const todo = rowHours(f.start_Time, f.end_Time) === null ? [] : (porEmpleado.get(llave) ?? [])
+          const serverHours = todo.length
+            ? +todo.reduce((acc, d) => acc + (Number(d.hours) || 0), 0).toFixed(2)
+            : null
+
+          if (JSON.stringify(nuevo) === JSON.stringify(f.breakdown) && serverHours === (f.serverHours ?? null)) return f
           cambio = true
-          return { ...f, breakdown: nuevo }
+          return { ...f, breakdown: nuevo, serverHours }
         })
 
         return cambio ? next : prev
@@ -794,6 +865,47 @@ export default function CrearSolicitudHoraExtraScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firmaReparto, bandas, companyCode, fecha])
+
+  /**
+   * El inicio que manda la jornada puede caer dentro de otra HE que el empleado ya
+   * tiene ese día (p. ej. jornada hasta las 15:30 y otra HE de 15:30 a 16:30). Ahí
+   * no queda ninguna salida que no se traslape y la lista sale vacía: el inicio se
+   * corre al final de esa otra HE (las que vengan seguidas también).
+   */
+  useEffect(() => {
+    if (rangosTomados.size === 0) return
+    setFilas(prev => {
+      let cambio = false
+      const next = prev.map(f => {
+        if (f.isLocked || !respetaJornada(f)) return f
+        const otros = (rangosTomados.get(f.employee_Code) ?? [])
+          .map(t => {
+            const ini = timeToSeconds(t.Start_Time)
+            let fin = timeToSeconds(t.End_Time)
+            if (ini === null || fin === null) return null
+            if (fin <= ini) fin += 86400
+            return { ini, fin }
+          })
+          .filter((x): x is { ini: number; fin: number } => x !== null)
+        let s = timeToSeconds(f.start_Time)
+        if (s === null || otros.length === 0) return f
+        let movido = false
+        for (let i = 0; i < otros.length + 1; i++) {
+          const dentro = otros.find(x => s! >= x.ini && s! < x.fin)
+          if (!dentro) break
+          s = dentro.fin
+          movido = true
+        }
+        if (!movido) return f
+        const nuevo = secondsToTime(s)
+        if (nuevo === f.start_Time) return f
+        cambio = true
+        // El fin elegido pudo quedar antes del nuevo inicio: se vuelve a elegir
+        return { ...f, start_Time: nuevo, end_Time: '' }
+      })
+      return cambio ? next : prev
+    })
+  }, [rangosTomados, filas])
 
   const editarFila = useCallback((code: string, cambios: Partial<Fila>) => {
     setFilas(prev => prev.map(f => (f.employee_Code === code ? { ...f, ...cambios } : f)))
@@ -882,19 +994,38 @@ export default function CrearSolicitudHoraExtraScreen() {
       // ...pero tiene que TOCAR la jornada: un día sin jornada (domingo) o del todo
       // fuera de ella (sábado en la tarde) es una HE normal. Puede empezar dentro y
       // terminar fuera: lo de fuera se paga por bandas. El SP lo valida igual.
-      if (f.is_Manual && !f.hasSchedule) return 'Día sin jornada: no puede ser HE Manual'
-      if (f.is_Manual && !seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
+      // Feriado o día sin jornada: solo HE Manual, a cualquier hora
+      if ((f.isHoliday || f.isRestDay) && !puedeManual)
+        return `${f.isHoliday ? 'Feriado' : 'Día sin jornada'}: solo se puede pedir HE Manual y no tiene permiso`
+      if (f.is_Manual && !f.hasSchedule && !f.isRestDay) return 'Día sin jornada: no puede ser HE Manual'
+      if (f.is_Manual && !f.isHoliday && !f.isRestDay && !seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
         return `La HE Manual tiene que tocar la jornada ${hora12(f.shift_Start)} - ${hora12(f.shift_End)}`
       }
       if (!f.is_Manual && seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
         return `Se encima con la jornada ${hora12(f.shift_Start)} - ${hora12(f.shift_End)}`
       }
 
+      // Otra HE del mismo empleado ese día: se puede, pero sin encimar el horario
+      const ini = timeToSeconds(f.start_Time)
+      const fin = endSeconds(f.start_Time, f.end_Time)
+      if (ini !== null && fin !== null) {
+        const choque = (rangosTomados.get(f.employee_Code) ?? []).find(t => {
+          const ti = timeToSeconds(t.Start_Time)
+          let tf = timeToSeconds(t.End_Time)
+          if (ti === null || tf === null) return false
+          if (tf <= ti) tf += 86400
+          return ini < tf && fin > ti
+        })
+        if (choque) {
+          return `Se traslapa con otra HE de ese día: ${hora12(String(choque.Start_Time ?? ''))} - ${hora12(String(choque.End_Time ?? ''))} (${choque.Correlative})`
+        }
+      }
+
       if (!f.category_Id) return 'Falta el motivo'
 
       return ''
     },
-    [horarios],
+    [horarios, puedeManual, rangosTomados],
   )
 
   /**
@@ -996,7 +1127,7 @@ export default function CrearSolicitudHoraExtraScreen() {
   // ── Guardar ───────────────────────────────────────────────────────────────
 
   const totalHoras = useMemo(
-    () => filas.reduce((acc, f) => acc + (rowHours(f.start_Time, f.end_Time) ?? 0), 0),
+    () => filas.reduce((acc, f) => acc + (horasPago(f) ?? 0), 0),
     [filas],
   )
 
@@ -1017,7 +1148,8 @@ export default function CrearSolicitudHoraExtraScreen() {
           Start_Time: fechaHoraISO(fecha, f.start_Time),
           // El fin cae el día siguiente cuando el rango cruza la medianoche.
           End_Time: fechaHoraISO(fecha, f.end_Time, cruza ? 1 : 0),
-          Total_Overtime_Hours: rowHours(f.start_Time, f.end_Time),
+          // El SP lo vuelve a calcular (FN_HorasHE)
+          Total_Overtime_Hours: horasPago(f),
           // El servidor la rechaza si el usuario no tiene el acceso.
           Is_Manual: f.is_Manual,
           Comment: f.comment.trim() || null,
@@ -1149,8 +1281,28 @@ export default function CrearSolicitudHoraExtraScreen() {
             onAutorizar={corrigiendo ? () => {} : setAutorizar}
             bandas={bandas}
             cargandoBandas={cargandoBandas}
+            onQuitar={setQuitando}
+            rangosTomados={rangosTomados}
           />
         )}
+
+        <ConfirmDialog
+          open={!!quitando}
+          onOpenChange={abierto => { if (!abierto) setQuitando(null) }}
+          title="Quitar empleado"
+          message={
+            quitando
+              ? `¿Quitar a ${nombreConCodigo(quitando.employee_Name, quitando.employee_Code)} de la solicitud? Sus horas no se van a pedir.`
+              : ''
+          }
+          confirmLabel="Quitar"
+          confirmColor="#EF4444"
+          onConfirm={() => {
+            if (quitando) quitarFila(quitando.employee_Code)
+            setQuitando(null)
+          }}
+          onCancel={() => setQuitando(null)}
+        />
 
       </ScrollView>
 
@@ -1627,7 +1779,7 @@ const FilaEmpleado = React.memo(function FilaEmpleado({
 }: {
   emp: IOvertimeEmployee
   marcado: boolean
-  /** Ya tiene horas extra ese día: no se puede elegir. */
+  /** Ya tiene horas extra ese día: se puede elegir si el horario no se traslapa. */
   tomado?: IOvertimeEmployeeWithRequest
   /** Ya fue autorizado en ESTA solicitud: no se puede quitar. */
   firma?: string
@@ -1636,7 +1788,8 @@ const FilaEmpleado = React.memo(function FilaEmpleado({
 }) {
   // Las dos razones para no poder tocarlo, pero se explican distinto: una es
   // que esta en otra solicitud y la otra que ya le firmaron esta.
-  const fijo = !!tomado || !!firma
+  // Tener otra HE ese día ya no lo fija: solo la firma de esta solicitud.
+  const fijo = !!firma
 
   return (
     <XStack
@@ -1647,7 +1800,6 @@ const FilaEmpleado = React.memo(function FilaEmpleado({
       padding="$3"
       borderWidth={1}
       borderColor={marcado ? '$primary' : '$border'}
-      opacity={tomado ? 0.6 : 1}
       pressStyle={fijo ? undefined : { opacity: 0.75 }}
       onPress={fijo ? undefined : () => onAlternar(emp.Employee_Code)}
     >
@@ -1685,14 +1837,14 @@ const FilaEmpleado = React.memo(function FilaEmpleado({
           </XStack>
         )}
 
-        {/* Por qué no se puede elegir, y a quién reclamarle: casi siempre lo
-            pidió otro jefe. */}
+        {/* Ya tiene otra HE ese día: se puede pedir otra que no se encime. Dice
+            cuál y quién la pidió. */}
         {!!tomado && (
           <XStack alignItems="center" gap="$1.5" marginTop={2}>
             <AlertTriangle size={11} color={colores.warning} />
             <Text fontSize={11} color="$warning" numberOfLines={2}>
-              Ya tiene horas extra ese día ({tomado.Correlative})
-              {tomado.Solicitante ? ` · ${tomado.Solicitante}` : ''}
+              Ya tiene HE ese día: {tomado.Correlative}
+              {tomado.Solicitante ? ` · ${tomado.Solicitante}` : ''}. Puede pedir otra que no se traslape.
             </Text>
           </XStack>
         )}
@@ -1714,6 +1866,8 @@ function PasoHoras({
   puedeManual,
   onAlternarManual,
   onAlternarManualATodos,
+  onQuitar,
+  rangosTomados,
   totalHoras,
   autorizar,
   onAutorizar,
@@ -1733,6 +1887,10 @@ function PasoHoras({
   /** Tiene el acceso 'CrearHorasExtraManuales': sin él no hay botón. */
   puedeManual: boolean
   onAlternarManual: (code: string) => void
+  /** Pide confirmación para quitar al empleado (solo filas editables). */
+  onQuitar?: (f: Fila) => void
+  /** Las HE que cada empleado ya tiene ese día: sus horas no se ofrecen. */
+  rangosTomados?: Map<string, IOvertimeEmployeeWithRequest[]>
   onAlternarManualATodos: () => void
   totalHoras: number
   autorizar: boolean
@@ -1755,11 +1913,34 @@ function PasoHoras({
    * teniendo valor, y el usuario volvería a elegir creyendo que no se guardó.
    * Va marcado, porque esas horas quedan sin concepto con el que pagarse.
    */
+  /** Las HE que el empleado ya tiene ese día, en segundos (fin corrido si cruza la medianoche). */
+  const ocupados = (f: Fila) =>
+    (rangosTomados?.get(f.employee_Code) ?? [])
+      .map(t => {
+        const ini = timeToSeconds(t.Start_Time)
+        let fin = timeToSeconds(t.End_Time)
+        if (ini === null || fin === null) return null
+        if (fin <= ini) fin += 86400
+        return { ini, fin, texto: `${hora12(String(t.Start_Time ?? ''))} - ${hora12(String(t.End_Time ?? ''))}` }
+      })
+      .filter((x): x is { ini: number; fin: number; texto: string } => x !== null)
+
   const opcionesDeFin = (f: Fila) => {
-    const opciones = opcionesFin(f.start_Time, bandasDe(f), 10, f.is_Manual).map(o => ({
-      label: `${hora12(o.hora)}  ·  ${fmtHoras(o.minutos / 60)}`,
-      value: o.hora,
-    }))
+    const ini = timeToSeconds(f.start_Time)
+    const otros = ocupados(f)
+    // HE Manual con jornada: adentro la cubre el parámetro de HE Manual y lo de después
+    // las bandas del día; la lista llega hasta donde terminan esas bandas
+    const opciones = opcionesFin(f.start_Time, bandasDe(f), 10, f.is_Manual, f.hasSchedule ? f.shift_End : null)
+      // Sin traslaparse con otra HE de ese día: esas salidas no se ofrecen
+      .filter(o => {
+        if (ini === null || otros.length === 0) return true
+        const fin = endSeconds(f.start_Time, o.hora)
+        return fin === null || !otros.some(x => ini < x.fin && fin > x.ini)
+      })
+      .map(o => ({
+        label: `${hora12(o.hora)}  ·  ${fmtHoras(o.minutos / 60)}`,
+        value: o.hora,
+      }))
 
     if (f.end_Time && !opciones.some(o => o.value === f.end_Time)) {
       opciones.push({ label: `${hora12(f.end_Time)}  ·  fuera de banda`, value: f.end_Time })
@@ -1770,10 +1951,17 @@ function PasoHoras({
 
   /** Las de inicio, en AM/PM. La HE Manual ofrece el día completo. */
   const opcionesDeInicio = (f: Fila) => {
-    const opciones = opcionesInicio(f.is_Manual ? '00:00' : '04:00').map(h => ({
-      label: hora12(h),
-      value: h,
-    }))
+    const otros = ocupados(f)
+    const opciones = opcionesInicio(f.is_Manual ? '00:00' : '04:00')
+      // Una hora que cae dentro de otra HE de ese día no se ofrece
+      .filter(h => {
+        const s = timeToSeconds(h)
+        return s === null || !otros.some(x => (s >= x.ini && s < x.fin) || (s + 86400 >= x.ini && s + 86400 < x.fin))
+      })
+      .map(h => ({
+        label: hora12(h),
+        value: h,
+      }))
 
     if (f.start_Time && !opciones.some(o => o.value === f.start_Time)) {
       opciones.push({ label: hora12(f.start_Time), value: f.start_Time })
@@ -1906,7 +2094,7 @@ function PasoHoras({
       )}
 
       {filas.map(f => {
-        const horas = rowHours(f.start_Time, f.end_Time)
+        const horas = horasPago(f)
         // El motivo que falta no pinta la tarjeta en rojo: al entrar al paso
         // TODAS lo tendrían así, y lo rojo tiene que quedar para lo que está
         // mal, no para lo que todavía no se llenó. Sigue siendo obligatorio —
@@ -1923,7 +2111,7 @@ function PasoHoras({
             borderWidth={1}
             borderColor={err ? '$error' : '$border'}
           >
-            <YStack gap="$2.5">
+            <YStack gap="$1.5">
               {/* Por que esta fila no se puede tocar. La edicion es por capas:
                   el renglon firmado queda de solo lectura y los demas se
                   siguen pudiendo cambiar. */}
@@ -2011,6 +2199,18 @@ function PasoHoras({
                     {horas ? fmtHoras(horas) : '—'}
                   </Text>
                 </XStack>
+
+                {/* Quitar: solo si se puede editar (ni firmado ni devuelto) */}
+                {onQuitar && !f.isLocked && f.returnComment === undefined && (
+                  <Button
+                    size="$2"
+                    circular
+                    chromeless
+                    icon={<X size={16} color={theme.textMuted?.val as string} />}
+                    onPress={() => onQuitar(f)}
+                    accessibilityLabel={`Quitar a ${f.employee_Name}`}
+                  />
+                )}
               </XStack>
 
               {/* HE Manual en su propio renglón, debajo del nombre: en la línea
@@ -2019,7 +2219,29 @@ function PasoHoras({
                   se muestra si ya venía marcada, para que se sepa. */}
               {(puedeManual && !f.isLocked) || f.is_Manual ? (
                 <XStack justifyContent="flex-end">
-                  {puedeManual && !f.isLocked && !f.hasSchedule && !f.is_Manual ? (
+                  {(f.isHoliday || f.isRestDay) && !f.isLocked ? (
+                    // Feriado o día sin jornada: un solo badge de info con el motivo y la
+                    // marca fija al lado (antes eran dos avisos en renglones distintos)
+                    <XStack alignItems="center" gap="$1.5" flex={1} justifyContent="space-between">
+                      <XStack
+                        alignItems="center"
+                        gap="$1"
+                        paddingHorizontal={8}
+                        paddingVertical={3}
+                        borderRadius={20}
+                        flexShrink={1}
+                        style={{ backgroundColor: '#3B82F614' }}
+                      >
+                        <Info size={11} color="#3B82F6" />
+                        <Text fontSize={10} fontWeight="600" style={{ color: '#3B82F6' }} numberOfLines={2} flexShrink={1}>
+                          {f.isHoliday
+                            ? 'Feriado: solo HE Manual'
+                            : 'Día sin jornada: solo HE Manual, elegí inicio y fin'}
+                        </Text>
+                      </XStack>
+                      <MarcaManual activa texto="HE Manual" compacta />
+                    </XStack>
+                  ) : puedeManual && !f.isLocked && !f.hasSchedule && !f.is_Manual ? (
                     // Sin jornada ese día: se ve deshabilitada con el motivo
                     <XStack alignItems="center" gap="$1.5" opacity={0.45}>
                       <Text fontSize={10} color="$textMuted">Sin jornada: no puede ser manual</Text>
@@ -2041,11 +2263,39 @@ function PasoHoras({
               {/* Por qué la hora de inicio está abierta. Solo se afirma que
                   el día no es laborable cuando el horario SÍ se pudo consultar;
                   si la consulta falló, no se sabe. */}
-              {!f.hasSchedule && !f.isLocked && !errorHorarios && (
-                <XStack alignItems="center" gap="$1.5">
-                  <AlertTriangle size={11} color={theme.warning?.val as string} />
-                  <Text fontSize={11} color="$warning">
+              {/* El día sin jornada ya lo dice el badge de arriba; esto queda para el
+                  turno que no tiene ese día en su calendario. */}
+              {!f.hasSchedule && !f.isRestDay && !f.isHoliday && !f.isLocked && !errorHorarios && (
+                <XStack
+                  alignSelf="flex-start"
+                  alignItems="center"
+                  gap="$1"
+                  paddingHorizontal={8}
+                  paddingVertical={3}
+                  borderRadius={20}
+                  style={{ backgroundColor: '#3B82F614' }}
+                >
+                  <Info size={11} color="#3B82F6" />
+                  <Text fontSize={10} fontWeight="600" style={{ color: '#3B82F6' }}>
                     Día no laborable para su turno: elegí la hora de inicio
+                  </Text>
+                </XStack>
+              )}
+
+              {/* Ya tiene otra HE ese día: esas horas no se ofrecen en las listas */}
+              {!f.isLocked && ocupados(f).length > 0 && (
+                <XStack
+                  alignSelf="flex-start"
+                  alignItems="center"
+                  gap="$1"
+                  paddingHorizontal={8}
+                  paddingVertical={3}
+                  borderRadius={20}
+                  style={{ backgroundColor: '#F59E0B1A' }}
+                >
+                  <Clock size={11} color="#B45309" />
+                  <Text fontSize={10} fontWeight="600" style={{ color: '#B45309' }} flexShrink={1}>
+                    Ya tiene HE de {ocupados(f).map(x => x.texto).join(', ')}: esas horas no se ofrecen
                   </Text>
                 </XStack>
               )}
@@ -2099,7 +2349,7 @@ function PasoHoras({
                       <Text fontSize={13} fontWeight="800" color="$text">
                         {hora12(f.start_Time)}
                       </Text>
-                      , al terminar su jornada
+                      {f.start_Time === f.shift_End ? ', al terminar su jornada' : ', al terminar su otra HE de ese día'}
                     </Text>
                   </XStack>
                 ) : (

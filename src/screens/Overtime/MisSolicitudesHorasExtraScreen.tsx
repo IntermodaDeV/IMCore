@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { FlatList, RefreshControl, ScrollView } from 'react-native'
@@ -81,7 +81,10 @@ const puedeFirmar = (item: IOvertimeRequestDetail, nombreEntidad: string): boole
 }
 
 /** Estado del flujo de UN renglón, leído de sus columnas dinámicas. */
-type EstadoDetalle = 'aprobada' | 'rechazada' | 'pendiente' | 'devuelta'
+type EstadoDetalle = 'aprobada' | 'rechazada' | 'pendiente' | 'devuelta' | 'borrador'
+
+/** Celeste del borrador: se distingue del ámbar de "En proceso". */
+const CELESTE = '#0EA5E9'
 
 /**
  * En qué quedó un renglón.
@@ -94,6 +97,8 @@ type EstadoDetalle = 'aprobada' | 'rechazada' | 'pendiente' | 'devuelta'
 const estadoDetalle = (item: IOvertimeRequestDetail): EstadoDetalle => {
   // Devuelto por el jefe: no tiene firmas y le toca al solicitante corregirlo.
   if (item?.Is_Returned) return 'devuelta'
+  // Borrador: guardada sin autorizar, nadie firmó (ni el solicitante). No ha entrado al flujo.
+  if (!tieneFirma(item)) return 'borrador'
 
   const estados = Object.entries(item?.DynamicColumns ?? {})
     .filter(([k]) => k.startsWith('Status_'))
@@ -124,6 +129,8 @@ interface Solicitud {
   aprobados: number
   rechazados: number
   pendientes: number
+  /** Guardados sin autorizar: nadie los ha firmado. */
+  borradores: number
   /** Devueltos por el jefe para corregir. */
   devueltos: number
 }
@@ -146,6 +153,7 @@ const agrupar = (filas: IOvertimeRequestDetail[]): Solicitud[] => {
         aprobados: 0,
         rechazados: 0,
         pendientes: 0,
+        borradores: 0,
         devueltos: 0,
       }
       mapa.set(fila.Request_Id, grupo)
@@ -161,6 +169,7 @@ const agrupar = (filas: IOvertimeRequestDetail[]): Solicitud[] => {
     if (estado === 'aprobada') grupo.aprobados++
     else if (estado === 'rechazada') grupo.rechazados++
     else if (estado === 'devuelta') grupo.devueltos++
+    else if (estado === 'borrador') grupo.borradores++
     else grupo.pendientes++
   }
 
@@ -561,10 +570,25 @@ export default function MisSolicitudesHorasExtraScreen() {
 
   // ── Datos a la vista ──────────────────────────────────────────────────────
 
-  const solicitudes = useMemo(() => {
+  /** Ver solo las solicitudes con algún empleado devuelto (píldora junto al conteo). */
+  const [soloDevueltas, setSoloDevueltas] = useState(false)
+
+  const todasDelDia = useMemo(() => {
     const base = dia ? filas.filter(f => claveDia(f.Date) === dia) : filas
     return agrupar(base)
   }, [filas, dia])
+
+  const cuantasDevueltas = useMemo(() => todasDelDia.filter(s => s.devueltos > 0).length, [todasDelDia])
+
+  // Sin devueltas el filtro no tiene sentido: se apaga solo
+  useEffect(() => {
+    if (cuantasDevueltas === 0 && soloDevueltas) setSoloDevueltas(false)
+  }, [cuantasDevueltas, soloDevueltas])
+
+  const solicitudes = useMemo(
+    () => (soloDevueltas ? todasDelDia.filter(s => s.devueltos > 0) : todasDelDia),
+    [todasDelDia, soloDevueltas],
+  )
 
   const totales = useMemo(() => {
     const horas = solicitudes.reduce((acc, s) => acc + s.horas, 0)
@@ -681,13 +705,37 @@ export default function MisSolicitudesHorasExtraScreen() {
 
         {solicitudes.length > 0 && (
           <XStack justifyContent="space-between" alignItems="center" paddingHorizontal="$1">
-            <Text fontSize={12} color="$textMuted">
+            <Text fontSize={12} color="$textMuted" flexShrink={1}>
               <Text fontSize={12} fontWeight="700" color="$text">{solicitudes.length}</Text>
               {' '}solicitud(es) · {totales.empleados} empleado(s)
             </Text>
-            <Text fontSize={12} fontWeight="700" color="$text">
-              {fmtHoras(totales.horas)}
-            </Text>
+            <XStack alignItems="center" gap="$2">
+              {/* Filtro mínimo: solo aparece si hay devueltas. Tocarlo otra vez lo apaga. */}
+              {cuantasDevueltas > 0 && (
+                <XStack
+                  alignItems="center"
+                  gap={4}
+                  paddingHorizontal={8}
+                  paddingVertical={3}
+                  borderRadius={20}
+                  borderWidth={1}
+                  borderColor="#FF551A"
+                  style={{ backgroundColor: soloDevueltas ? '#FF551A' : '#FF551A14' }}
+                  pressStyle={{ opacity: 0.7 }}
+                  onPress={() => setSoloDevueltas(v => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel={soloDevueltas ? 'Ver todas las solicitudes' : 'Ver solo las devueltas'}
+                >
+                  <Undo2 size={11} color={soloDevueltas ? '#FFFFFF' : '#FF551A'} />
+                  <Text fontSize={11} fontWeight="700" style={{ color: soloDevueltas ? '#FFFFFF' : '#FF551A' }}>
+                    {cuantasDevueltas} devuelta{cuantasDevueltas === 1 ? '' : 's'}
+                  </Text>
+                </XStack>
+              )}
+              <Text fontSize={12} fontWeight="700" color="$text">
+                {fmtHoras(totales.horas)}
+              </Text>
+            </XStack>
           </XStack>
         )}
       </YStack>
@@ -899,20 +947,22 @@ function SolicitudCard({
   const estado =
     item.devueltos > 0
       ? 'devuelta'
-      : item.rechazados > 0 ? 'rechazada' : item.pendientes > 0 ? 'pendiente' : 'aprobada'
+      : item.rechazados > 0 ? 'rechazada' : item.pendientes > 0 ? 'pendiente'
+      : item.borradores > 0 ? 'borrador' : 'aprobada'
 
   const tono = {
     aprobada: { color: theme.success?.val as string, texto: 'Aprobada', Icono: CheckCircle2 },
     rechazada: { color: theme.error?.val as string, texto: 'Rechazada', Icono: XCircle },
     pendiente: { color: theme.warning?.val as string, texto: 'En proceso', Icono: Clock },
     devuelta: { color: '#FF551A', texto: 'Devuelta', Icono: Undo2 },
+    borrador: { color: CELESTE, texto: 'Borrador', Icono: Pencil },
   }[estado]
 
   // Con renglones en distinto estado el badge solo dice el peor: el desglose
   // aclara cuántos son cuáles, que en una solicitud de varios empleados es la
   // diferencia entre "me la rechazaron" y "le rechazaron a uno".
   const mixta =
-    [item.aprobados, item.rechazados, item.pendientes, item.devueltos].filter(n => n > 0).length > 1
+    [item.aprobados, item.rechazados, item.pendientes, item.devueltos, item.borradores].filter(n => n > 0).length > 1
 
   /**
    * Queda al menos un empleado sin firma.
@@ -986,6 +1036,11 @@ function SolicitudCard({
             {item.pendientes > 0 && (
               <Text fontSize={11} color="$textMuted">
                 <Text fontSize={11} fontWeight="700" color="$warning">{item.pendientes}</Text> en proceso
+              </Text>
+            )}
+            {item.borradores > 0 && (
+              <Text fontSize={11} color="$textMuted">
+                <Text fontSize={11} fontWeight="700" style={{ color: CELESTE }}>{item.borradores}</Text> borrador(es)
               </Text>
             )}
             {item.rechazados > 0 && (
@@ -1105,7 +1160,9 @@ function SolicitudCard({
                     ? (theme.error?.val as string)
                     : estadoD === 'devuelta'
                       ? '#FF551A'
-                      : (theme.warning?.val as string)
+                      : estadoD === 'borrador'
+                        ? CELESTE
+                        : (theme.warning?.val as string)
 
               return (
                 <YStack
@@ -1153,7 +1210,9 @@ function SolicitudCard({
                           ? 'Rechazada'
                           : estadoD === 'devuelta'
                             ? 'Devuelta'
-                            : 'En proceso'}
+                            : estadoD === 'borrador'
+                              ? 'Borrador'
+                              : 'En proceso'}
                     </Text>
                   </XStack>
 
