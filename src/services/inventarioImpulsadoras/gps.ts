@@ -22,6 +22,9 @@ export type LecturaGps =
   | { ok: true; lat: number; lng: number; prec: number; fecha: string; simulada: boolean | null }
   | { ok: false; motivo: SinGps }
 
+/** En iOS el permiso ya se confirmó en esta sesión de la app. */
+let permisoIos = false
+
 /** ¿Tiene (o da ahora) el permiso de ubicación «mientras se usa»? */
 export async function pedirPermiso(): Promise<boolean> {
   if (Platform.OS === 'android') {
@@ -33,7 +36,16 @@ export async function pedirPermiso(): Promise<boolean> {
     })
     return r === PermissionsAndroid.RESULTS.GRANTED
   }
-  return new Promise(resolve => Geolocation.requestAuthorization(() => resolve(true), () => resolve(false)))
+  if (permisoIos) return true
+  // iOS solo contesta requestAuthorization al crear su gestor de ubicación o cuando el permiso CAMBIA: pedirlo otra
+  // vez con el permiso ya dado no contesta nunca (la segunda marca se quedaba buscando). Si no contesta en 3 s se
+  // sigue: la lectura del GPS dice si falta el permiso (error 1).
+  return new Promise(resolve => {
+    const t = setTimeout(() => resolve(true), 3000)
+    Geolocation.requestAuthorization(
+      () => { clearTimeout(t); permisoIos = true; resolve(true) },
+      () => { clearTimeout(t); resolve(false) })
+  })
 }
 
 const dos = (n: number) => String(n).padStart(2, '0')
@@ -49,14 +61,26 @@ const isoLocal = (ms: number) => {
  */
 export function buscarUbicacion(esperaSeg: number, buena = 20,
   onAvance?: (restan: number, mejor: number | null) => void): { resultado: Promise<LecturaGps>; cortar: () => void } {
-  let cortarYa: () => void = () => { cortado = true }
+  // «Marcar sin esperar» suelta la pantalla en cualquier momento, también mientras se pide el permiso.
   let cortado = false
-  const resultado = (async (): Promise<LecturaGps> => {
-    if (!(await pedirPermiso())) return { ok: false, motivo: 'PERMISO' }
-    if (cortado) return { ok: false, motivo: 'TIMEOUT' }
-    return leer(esperaSeg, buena, onAvance, fn => { cortarYa = fn })
-  })()
-  return { resultado, cortar: () => cortarYa() }
+  let cortarLectura: (() => void) | null = null
+  let soltar: (r: LecturaGps) => void = () => {}
+  const resultado = new Promise<LecturaGps>(resolve => {
+    soltar = resolve
+    void (async () => {
+      if (!(await pedirPermiso())) return resolve({ ok: false, motivo: 'PERMISO' })
+      if (cortado) return
+      resolve(await leer(esperaSeg, buena, onAvance, fn => { cortarLectura = fn }))
+    })()
+  })
+  return {
+    resultado,
+    cortar: () => {
+      cortado = true
+      if (cortarLectura) cortarLectura()
+      else soltar({ ok: false, motivo: 'TIMEOUT' })
+    },
+  }
 }
 
 function leer(esperaSeg: number, buena: number, onAvance: ((restan: number, mejor: number | null) => void) | undefined,
