@@ -127,7 +127,8 @@ export interface ICuentaCaptura {
   MontoPlanificacion?: number
 }
 
-/** Evento del gerente: colaboradores × valor por colaborador en cada mes marcado (Meses: bit 0 = enero). */
+/** Evento del gerente: colaboradores × valor por colaborador en cada mes marcado (Meses: bit 0 = enero), en las semanas
+ *  marcadas o parejo en el año (Reparto; esos dos se ponen en el web). */
 export interface IEvento {
   Id: number
   Cuenta: number
@@ -138,6 +139,10 @@ export interface IEvento {
   /** HNL o USD (los dólares se pasan con la tasa de cambio de su semana). */
   Moneda?: 'HNL' | 'USD'
   Meses: number
+  /** Una API vieja no lo manda: por meses. */
+  Reparto?: 'Meses' | 'Semanas' | 'Anual'
+  /** Con Reparto = Semanas, las marcadas: «46,50». */
+  Semanas?: string | null
   /** Lo que suma en el año, en lempiras (meses dentro de la regla de reparto y después de la semana de corte). */
   MontoAnio: number
   MesesEnAnio: number
@@ -159,8 +164,11 @@ export interface IEventoRequest {
   Colaboradores: number
   Valor: number
   Moneda?: 'HNL' | 'USD'
+  Reparto?: 'Meses' | 'Semanas' | 'Anual'
   /** 1 a 12. */
   Meses: number[]
+  /** 1 a 53, con Reparto = Semanas. */
+  Semanas?: number[]
 }
 
 export interface IPlaza {

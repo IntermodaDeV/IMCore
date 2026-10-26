@@ -254,8 +254,7 @@ export default function CentroScreen() {
   }
 
   const renderEvento = ({ item: e }: { item: IEvento }) => {
-    const meses = aLista(e.Meses)
-    const fuera = meses.length - e.MesesEnAnio
+    const fuera = fueraDelAnio(e)
     // Las de un área (IT…) las pone el área: el gerente las ve.
     const tocable = puedeEditar && (e.Editable == null || e.Editable === 1)
     return (
@@ -265,7 +264,7 @@ export default function CentroScreen() {
             <Text fontSize="$3" fontWeight="800" color="$text" numberOfLines={2}>{e.Motivo}</Text>
             <Text fontSize="$2" color="$textMuted" numberOfLines={1}>{e.Cuenta} · {e.CuentaNombre}</Text>
             <Text fontSize="$2" color="$textMuted" numberOfLines={2}>
-              {e.Colaboradores.toLocaleString('es-HN')} × {e.Moneda === 'USD' ? 'US$' : 'L'} {lps(e.Valor, 2)} · {mesesTexto(meses)}
+              {e.Colaboradores.toLocaleString('es-HN')} × {e.Moneda === 'USD' ? 'US$' : 'L'} {lps(e.Valor, 2)} · {cuandoTexto(e)}
             </Text>
             {e.Captura === 'Encargado' && (
               <XStack marginTop={2}>
@@ -274,7 +273,8 @@ export default function CentroScreen() {
             )}
             {fuera > 0 && (
               <XStack marginTop={2}>
-                <Chip texto={`${fuera} ${fuera === 1 ? 'MES QUEDA FUERA' : 'MESES QUEDAN FUERA'}`} color={WARN} />
+                <Chip texto={`${fuera} ${e.Reparto === 'Semanas' ? (fuera === 1 ? 'SEMANA QUEDA FUERA' : 'SEMANAS QUEDAN FUERA')
+                  : fuera === 1 ? 'MES QUEDA FUERA' : 'MESES QUEDAN FUERA'}`} color={WARN} />
               </XStack>
             )}
           </YStack>
@@ -1198,12 +1198,20 @@ function ConfirmarCentro({ corridaId, cc, grupo, personas, vacantes, total, sinR
 
 // ---------------------------------------------------------------- otros gastos de personal (eventos del gerente)
 // Lo mismo que en el web: en las cuentas que captura el gerente en su centro, cada evento es un motivo con colaboradores ×
-// valor por colaborador en los meses en que ocurre; cada mes cae en su última semana (la base: fn_EventoSemanas).
+// valor por colaborador en los meses en que ocurre; cada mes cae en su última semana (la base: fn_EventoSemanas). Las
+// líneas por semanas o parejo en el año (José, 26-oct) se ponen en el web: aquí se ven y se corrigen sin cambiar eso.
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 const TODOS = MESES.map((_, i) => i + 1)
 const aLista = (bits: number) => TODOS.filter(m => (bits & (1 << (m - 1))) > 0)
 const mesesTexto = (l: number[]) => (l.length === 12 ? 'Todo el año' : l.map(m => MESES[m - 1]).join(', '))
+const semanasLista = (t: string | null | undefined) => (t ? t.split(',').map(Number).filter(n => n >= 1 && n <= 53) : [])
+/** Cuándo cae: «Ene, Mar», «S46, S50» o «Parejo en el año». */
+const cuandoTexto = (e: IEvento) => (e.Reparto === 'Anual' ? 'Parejo en el año'
+  : e.Reparto === 'Semanas' ? semanasLista(e.Semanas).map(s => `S${s}`).join(', ') : mesesTexto(aLista(e.Meses)))
+/** Cuántos de los meses o semanas marcados quedan fuera (regla del grupo o semana de corte); parejo, ninguno. */
+const fueraDelAnio = (e: IEvento) => (e.Reparto === 'Anual' ? 0
+  : (e.Reparto === 'Semanas' ? semanasLista(e.Semanas).length : aLista(e.Meses).length) - e.MesesEnAnio)
 
 /** Los 12 meses como botones (cuatro por fila) y «Todo el año». */
 function MesesBotones({ valor, cambiar }: { valor: number[]; cambiar: (m: number[]) => void }) {
@@ -1242,7 +1250,9 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   const [colaboradores, setColaboradores] = useState(evento ? String(evento.Colaboradores) : '')
   const [valor, setValor] = useState(evento ? String(evento.Valor) : '')
   const [moneda, setMoneda] = useState<'HNL' | 'USD'>(evento?.Moneda ?? 'HNL')
-  const [meses, setMeses] = useState<number[]>(evento ? aLista(evento.Meses) : [])
+  // Por semanas o parejo se cambia en el web; aquí se corrige lo demás y se queda como está.
+  const fijo = evento && evento.Reparto && evento.Reparto !== 'Meses' ? evento : null
+  const [meses, setMeses] = useState<number[]>(evento && !fijo ? aLista(evento.Meses) : [])
   const sim = moneda === 'USD' ? 'US$' : 'L'
   const [ocupado, setOcupado] = useState(false)
 
@@ -1250,7 +1260,7 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   const valNum = num(valor)
   const colMal = colaboradores !== '' && (colNum == null || colNum < 1 || colNum > 99999 || !Number.isInteger(colNum))
   const valMal = valor !== '' && (valNum == null || valNum <= 0)
-  const listo = !!cuenta && motivo.trim() !== '' && !colMal && !valMal && colNum != null && valNum != null && meses.length > 0
+  const listo = !!cuenta && motivo.trim() !== '' && !colMal && !valMal && colNum != null && valNum != null && (!!fijo || meses.length > 0)
   const porMes = (colNum ?? 0) * (valNum ?? 0)
   // Dos fuentes (José, 20-oct): si Planificación ya cargó un monto en la cuenta, lo del gerente se suma; se le avisa.
   const planificado = cuentas.find(c => c.Cuenta === cuenta)?.MontoPlanificacion ?? 0
@@ -1270,6 +1280,7 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
     const data = {
       CorridaId: corridaId, CentroCosto: cc, Cuenta: cuenta as number, Motivo: motivo.trim(),
       Colaboradores: colNum as number, Valor: valNum as number, Moneda: moneda, Meses: meses,
+      ...(fijo ? { Reparto: fijo.Reparto, Semanas: semanasLista(fijo.Semanas) } : {}),
     }
     void correr(() => exigir(evento ? api.modificarEvento(evento.Id, data) : api.agregarEvento(data)))
   }
@@ -1309,8 +1320,12 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
       <Opciones valor={moneda} cambiar={setMoneda} opciones={[['HNL', 'Lempiras'], ['USD', 'Dólares']]} />
       {colMal && <Text fontSize="$1" color={ERR}>Los colaboradores van de 1 a 99,999.</Text>}
       {valMal && <Text fontSize="$1" color={ERR}>El valor tiene que ser mayor que cero.</Text>}
-      <MesesBotones valor={meses} cambiar={setMeses} />
-      {porMes > 0 && (
+      {fijo ? (
+        <Text fontSize="$2" color="$textMuted">
+          {fijo.Reparto === 'Anual' ? 'Parejo en el año: el valor es el total del año.' : `En las semanas ${cuandoTexto(fijo)}.`} Eso se cambia en el web.
+        </Text>
+      ) : <MesesBotones valor={meses} cambiar={setMeses} />}
+      {porMes > 0 && !fijo && (
         <Text fontSize="$2" color="$textMuted">
           {sim} {lps(porMes, 2)} por mes{meses.length ? ` · ${sim} ${lps(porMes * meses.length, 2)} en ${meses.length === 1 ? '1 mes' : `${meses.length} meses`}` : ''}.
           Cada mes cae en su última semana{moneda === 'USD' ? ', con la tasa de cambio de esa semana' : ''}.
