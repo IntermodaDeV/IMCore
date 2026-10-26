@@ -46,6 +46,10 @@ export interface IMiCentro {
   /** Por qué no se puede delegar: candado de Planificación, o ahí está su propio salario. */
   NoDelegable?: number
   TienePropia?: number
+  /** Qué parte del centro veo, si me lo delegaron (lo dejó Planificación): sin Personal, la planilla y las observaciones
+   *  vienen en 0 y el total es el de los otros gastos. Sin el campo (API vieja), todo. */
+  VePersonal?: number
+  VeGastos?: number
 }
 
 /** Usuario a quien se puede delegar (activo y con «Mis centros de costo»). */
@@ -87,6 +91,12 @@ export interface ICentroEncabezado {
   DelegadoConfirma?: number
   PuedeConfirmar?: number
   PuedeEntregar?: number
+  /** Qué parte del centro veo, si me lo delegaron (lo dejó Planificación): sin Personal no salen las personas; sin otros
+   *  gastos, tampoco «Otros gastos» (CuentasCaptura viene en 0). Sin el campo (API vieja), todo. */
+  VePersonal?: number
+  VeGastos?: number
+  /** Al delegarlo, qué ve el delegado: 'No', 'Todo', 'Gastos' (sin salarios), 'Personal' o 'Cuentas' (las que eligió José). */
+  DelegadoVe?: 'No' | 'Todo' | 'Gastos' | 'Personal' | 'Cuentas'
   DiasAviso: number
   /** 1 = el centro lleva comisiones por persona (520103 en ESTRUCTURA). */
   TieneComision?: number

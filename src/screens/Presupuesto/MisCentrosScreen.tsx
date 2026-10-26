@@ -143,12 +143,15 @@ export default function MisCentrosScreen() {
             <Text fontSize="$2" color="$text">
               {c.Personas} {c.Personas === 1 ? 'persona' : 'personas'}{c.Vacantes > 0 ? ` + ${c.Vacantes} vac.` : ''}
             </Text>
-            <Text fontSize="$2" fontWeight="700" color={c.Plazas > 0 && c.Revisadas >= c.Plazas ? OK : '$textMuted'}>
-              Revisados {c.Revisadas} de {c.Plazas}
-            </Text>
+            {/* Delegado sin el Personal: no ve a las personas, ni cuántas revisó. */}
+            {c.VePersonal !== 0 && (
+              <Text fontSize="$2" fontWeight="700" color={c.Plazas > 0 && c.Revisadas >= c.Plazas ? OK : '$textMuted'}>
+                Revisados {c.Revisadas} de {c.Plazas}
+              </Text>
+            )}
             <Text fontSize="$2" color="$textMuted">L {lps(c.Total)} al año</Text>
           </XStack>
-          {c.Plazas > 0 && <Barra hechas={c.Revisadas} total={c.Plazas} />}
+          {c.Plazas > 0 && c.VePersonal !== 0 && <Barra hechas={c.Revisadas} total={c.Plazas} />}
           {c.Estado !== 'Confirmado' && <Observaciones c={c} />}
           {(!!c.DelegadoA || c.EsDelegado === 1) && (
             <XStack><Chip texto={`${c.EsDelegado === 1 ? `TE LO DELEGÓ ${c.DelegadoPorNombre ?? ''}` : `DELEGADO A ${c.DelegadoNombre ?? c.DelegadoA}`}${c.Entregado === 1 ? ' · ENTREGADO' : ''}`.toUpperCase()} color={INDIGO} /></XStack>

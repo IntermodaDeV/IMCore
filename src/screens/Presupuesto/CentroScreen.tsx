@@ -120,6 +120,8 @@ export default function CentroScreen() {
 
   const puedeEditar = enc?.Acceso === 2 && enc.Estado === 'Habilitado'
   const conOtros = (enc?.CuentasCaptura ?? 0) > 0
+  // Si me lo delegaron sin el Personal (Planificación lo deja por centro), no veo a las personas: la base tampoco las manda.
+  const vePersonal = (enc?.VePersonal ?? 1) === 1
   const cuentasMias = cuentas.filter(c => c.Editable == null || c.Editable === 1)
   const conVersiones = (enc?.Versiones ?? 0) > 0 && versiones.length > 0
   const totalOtros = eventos.reduce((s, e) => s + e.MontoAnio, 0)
@@ -127,6 +129,12 @@ export default function CentroScreen() {
   const puedeConfirmar = puedeEditar && (enc?.PuedeConfirmar ?? enc?.EsRevisor) === 1
   const puedeEntregar = enc?.PuedeEntregar === 1
   const seleccionadas = activas.filter(p => sel.has(p.Id))
+  const secciones = [
+    ...(vePersonal ? [['personas', `Personas (${activas.length})`] as const] : []),
+    ...(conOtros ? [['otros', `Otros gastos (${eventos.length})`] as const] : []),
+    ...(conVersiones ? [['versiones', `Versiones (${versiones.length})`] as const] : []),
+  ]
+  const sec: Seccion = secciones.some(([v]) => v === seccion) ? seccion : secciones[0]?.[0] ?? 'personas'
   const selPendientes = seleccionadas.filter(p => p.Revisado !== 1)
   // Se mueven personas de planilla (una vacante se quita aquí y se agrega allá), nunca la propia.
   const selMovibles = seleccionadas.filter(p => p.Origen === 'Planilla' && p.EsPropia !== 1)
@@ -352,22 +360,22 @@ export default function CentroScreen() {
           ? `Si hay que corregir algo, reábrelo (hasta el ${fmtFechaHora(enc.FechaLimite)}).`
           : 'Si hay que corregir algo, pídele a Planificación que lo reabra.'}${enc.Comentario ? `\nComentario: ${enc.Comentario}` : ''}`)}
       {puedeReabrir && <Boton texto="Reabrir para corregir" color={WARN} secundario disabled={ocupado} onPress={reabrir} />}
-      {enc.EsDelegado === 1 && aviso(INDIGO, `Te lo delegó ${enc.RevisorNombre ?? 'tu gerente'}. ${enc.Entregado === 1
+      {enc.EsDelegado === 1 && aviso(INDIGO, `Te lo delegó ${enc.RevisorNombre ?? 'tu gerente'}${enc.DelegadoVe === 'Cuentas'
+        ? ': ves solo las cuentas que dejó Planificación' : !vePersonal ? ': ves solo los otros gastos'
+        : enc.VeGastos === 0 ? ': ves solo el personal' : ''}. ${enc.Entregado === 1
         ? `Se lo entregaste el ${fmtFechaHora(enc.FechaEntregado)}: queda en solo lectura.`
-        : enc.DelegadoConfirma === 1 ? 'Tú lo confirmas.' : 'Al terminar, entrégaselo: tu gerente lo confirma.'}`)}
-      {enc.EsRevisor === 1 && !!enc.DelegadoA && aviso(INDIGO, `Lo delegaste a ${enc.DelegadoNombre ?? enc.DelegadoA}. ${enc.Entregado === 1
+        : (enc.PuedeConfirmar ?? enc.DelegadoConfirma) === 1 ? 'Tú lo confirmas.' : 'Al terminar, entrégaselo: tu gerente lo confirma.'}`)}
+      {enc.EsRevisor === 1 && !!enc.DelegadoA && aviso(INDIGO, `Lo delegaste a ${enc.DelegadoNombre ?? enc.DelegadoA}${enc.DelegadoVe === 'Gastos'
+        ? ' (sin salarios)' : enc.DelegadoVe === 'Personal' ? ' (solo personal)'
+        : enc.DelegadoVe === 'Cuentas' ? ' (solo algunas cuentas)' : ''}. ${enc.Entregado === 1
         ? `Te lo entregó el ${fmtFechaHora(enc.FechaEntregado)}${enc.ComentarioEntrega ? `: «${enc.ComentarioEntrega}»` : ''}. Revísalo y confírmalo.`
         : 'Todavía no te lo entrega; tú también lo puedes corregir.'}`)}
-      {(conOtros || conVersiones) && (
-        <Opciones valor={seccion} cambiar={s => { setSeccion(s); setSel(new Set()) }} opciones={[
-          ['personas', `Personas (${activas.length})`] as const,
-          ...(conOtros ? [['otros', `Otros gastos (${eventos.length})`] as const] : []),
-          ...(conVersiones ? [['versiones', `Versiones (${versiones.length})`] as const] : []),
-        ]} />
+      {secciones.length > 1 && (
+        <Opciones valor={sec} cambiar={s => { setSeccion(s); setSel(new Set()) }} opciones={secciones} />
       )}
-      {seccion === 'versiones' ? (
+      {sec === 'versiones' ? (
         <Text fontSize="$2" color="$textMuted">Cada confirmación guarda una versión. Para compararlas, ábrelas en el web.</Text>
-      ) : seccion === 'otros' ? (
+      ) : sec === 'otros' ? (
         <YStack gap={4}>
           <XStack justifyContent="space-between" alignItems="center" gap="$2">
             <Text flex={1} fontSize="$2" color="$text">
@@ -462,7 +470,7 @@ export default function CentroScreen() {
 
   // Barra de abajo: con selección, marcar lo seleccionado; sin selección, marcar todo lo pendiente y confirmar.
   const botonera = puedeEditar ? (
-    seccion !== 'personas' ? (
+    sec !== 'personas' ? (
       puedeConfirmar || puedeEntregar ? (
         <XStack gap="$2">
           {puedeConfirmar && <Boton texto="Confirmar centro" color={OK} disabled={ocupado} onPress={() => setConfirmando(true)} />}
@@ -502,7 +510,7 @@ export default function CentroScreen() {
 
   return (
     <View flex={1} backgroundColor="$background">
-      {seccion === 'versiones' ? (
+      {sec === 'versiones' ? (
         <FlatList
           data={versiones}
           keyExtractor={v => String(v.Version)}
@@ -515,7 +523,7 @@ export default function CentroScreen() {
           refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); void cargar() }}
             colors={[ACCENT]} tintColor={ACCENT} />}
         />
-      ) : seccion === 'otros' ? (
+      ) : sec === 'otros' ? (
         <FlatList
           data={eventos}
           keyExtractor={e => String(e.Id)}
