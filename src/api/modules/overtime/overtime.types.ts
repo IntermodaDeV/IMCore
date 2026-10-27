@@ -77,6 +77,16 @@ export interface IOvertimeRequestDetail {
   Is_Manual?: boolean
 
   /**
+   * Almuerzo pedido (Overtime.Lunches). Lunch_Granted = true mientras ninguna
+   * entidad lo haya quitado; Lunch_Removed_By = la que lo quitó.
+   */
+  Has_Lunch?: boolean
+  Lunch_Start?: string | null
+  Lunch_End?: string | null
+  Lunch_Granted?: boolean
+  Lunch_Removed_By?: string | null
+
+  /**
    * Devuelto por el jefe para corregir. Sin firmas: el solicitante lo edita
    * una vez y al reenviarlo vuelve a false.
    */
@@ -142,6 +152,11 @@ export interface IAuthorizeRequest {
   Comment?: string
   /** Ids de detalle sobre los que se aplica la decisión. */
   Details: number[]
+  /**
+   * Almuerzos que la entidad deja (Granted) o quita. Los que no vienen cuentan
+   * como que los dejó. Quitado una vez, ya no vuelve.
+   */
+  Lunches?: { RequestDetails_Id: number; Granted: boolean }[]
 }
 
 /**
@@ -1002,6 +1017,8 @@ export interface IOvertimeBandEmployee {
 
 /** Renglón que se manda a repartir al servidor. */
 export interface IOvertimeSplitRow {
+  /** 'Otorgar almuerzo' marcado: con el acceso, no se descuenta el almuerzo. */
+  Lunch?: boolean
   Employee_Code: string
   Shift_Id: number | null
   /** yyyy-MM-ddTHH:mm:ss */
@@ -1018,6 +1035,10 @@ export interface IOvertimeSplit {
   descripcion: string
   porcentaje: number | null
   hours: number
+  /** HE manual en día sin jornada que cubre el almuerzo del parámetro. */
+  Lunch_Eligible?: boolean
+  Lunch_Start?: string | null
+  Lunch_End?: string | null
 }
 
 /** Planilla + turno + detalle de turno: la llave con la que se piden las bandas. */
@@ -1053,6 +1074,8 @@ export interface ISaveOvertimeDetail {
    * tiene el acceso 'CrearHorasExtraManuales'.
    */
   Is_Manual: boolean
+  /** Otorgar almuerzo. El servidor solo lo toma con 'SolicitarAlmuerzoHE'. */
+  Lunch?: boolean
   /** Comentario del renglón, además del motivo. Opcional. */
   Comment: string | null
   Concepts: ISaveOvertimeConcept[]
@@ -1175,6 +1198,57 @@ export interface IApproverWeekDay {
 }
 
 /** Historial del jefe: una decisión suya sobre un detalle. */
+/** Si a un empleado se le puede pedir almuerzo ese día y, si no, por qué. */
+export interface IMealEligibility {
+  Employee_Code: string
+  Lunch_Start: string | null
+  Lunch_End: string | null
+  Eligible: boolean
+  Reason: string | null
+}
+
+/** Lista para cafetería de un día: el PDF en base64 y a quién se mandaría. */
+export interface ILunchesPdf {
+  Date: string
+  FileName: string
+  Base64: string
+  Count: number
+  To: string[]
+  Cc: string[]
+  /** Vista previa: cada página del PDF como PNG en base64. */
+  Pages: string[]
+}
+
+/** Un almuerzo de HE que el usuario aprobó (pantalla Alimentación). */
+export interface IApproverLunch {
+  Id: number
+  RequestDetails_Id: number
+  Correlative: string | null
+  /** Solicitud de alimentación (true) o almuerzo de una HE en día de descanso. */
+  Is_Meal?: boolean
+  Date: string
+  Employee_Code: string | null
+  Code_Alterno: string | null
+  Employee_Name: string | null
+  Departamento: string | null
+  Reason_Name: string | null
+  Overtime_Range: string | null
+  Total_Overtime_Hours: number | null
+  Lunch_Range: string | null
+  Requester_Name: string | null
+  Jefe_Signer: string | null
+  Gerente_Signer: string | null
+  My_Approval_Date: string | null
+  /** La etapa que falta, p. ej. 'Autoriza Gerente', y su Id (quién la aprueba). */
+  Pending_Entity: string | null
+  Pending_Entity_Id?: number | null
+  /** Todavía sin la firma del solicitante: nadie la aprueba. */
+  Is_Draft?: boolean
+  /** Pendiente · Aprobado · Rechazado */
+  Status: string | null
+  Status_Detail: string | null
+}
+
 export interface IApproverHistory {
   Id: number
   Request_Id: number
@@ -1220,6 +1294,8 @@ export interface IApproverTopRequester {
 export interface IOvertimeRequestPermissions {
   /** Tiene el acceso 'CrearHorasExtraManuales'. */
   Can_Create_Manual: boolean
+  /** Tiene el acceso 'SolicitarAlmuerzoHE': puede pedir almuerzo en sus HE. */
+  Can_Request_Lunch?: boolean
 }
 
 export interface ISaveOvertimeHeader {
@@ -1234,6 +1310,8 @@ export interface ISaveOvertimeHeader {
   Auth: boolean
   /** Entidad con la que actúa: la de Solicitante. */
   SystemEntities_Id: number | null
+  /** Solicitud de alimentación: HE de 0.5 h en el almuerzo del turno (el servidor pone el horario). */
+  Is_Meal?: boolean
 }
 
 export interface ISaveOvertimeRequest {

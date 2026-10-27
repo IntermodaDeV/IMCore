@@ -289,6 +289,12 @@ export function routeNotification(data: any): boolean {
     return true
   }
 
+  // Un cliente de PepeB2B pidió cuenta (la manda PepeTiendaApi) -> Solicitudes de usuario.
+  if (category === 'registro') {
+    navigateWhenReady('Request')
+    return true
+  }
+
   if (category === 'solicitud_compra_historico') {
     const solicitud = data.solicitud ?? data.Solicitud
     navigateWhenReady('historic', solicitud ? { solicitud: String(solicitud) } : undefined)

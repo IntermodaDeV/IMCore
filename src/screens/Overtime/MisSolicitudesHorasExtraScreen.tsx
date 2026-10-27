@@ -257,6 +257,10 @@ export default function MisSolicitudesHorasExtraScreen() {
   const [entidad, setEntidad] = useState<IUserEntity | null>(null)
   const [semanas, setSemanas] = useState<IPayWebWeek[]>([])
   const [semana, setSemana] = useState<string>('')
+  // La semana elegida, siempre al día: la recarga (deslizar o volver a la pantalla)
+  // la lee de aquí. Del estado leía la del primer render y volvía a la semana actual.
+  const semanaRef = useRef('')
+  semanaRef.current = semana
   const [dia, setDia] = useState<string | null>(null)
   const [filas, setFilas] = useState<IOvertimeRequestDetail[]>([])
   const [cargando, setCargando] = useState(true)
@@ -337,13 +341,13 @@ export default function MisSolicitudesHorasExtraScreen() {
 
     // Se conserva la semana elegida si sigue existiendo; si no, la en curso,
     // que es donde está lo que se acaba de pedir.
-    const previa = lista.find(w => claveSemana(w) === semana)
+    const previa = lista.find(w => claveSemana(w) === semanaRef.current)
     const elegida = previa ?? lista.find(w => w.IsCurrentWeek) ?? lista[lista.length - 1] ?? null
 
     setSemana(elegida ? claveSemana(elegida) : '')
 
     return { entidad: ent, semana: elegida }
-  }, [companyCode, semana])
+  }, [companyCode])
 
   /**
    * Las solicitudes de la semana. La entidad y la semana viajan como argumento
@@ -396,10 +400,9 @@ export default function MisSolicitudesHorasExtraScreen() {
       setCargando(false)
       setRefrescando(false)
     }
-    // cargarBase depende de `semana` para conservar la elegida, y meterlo acá
-    // volvería a disparar la recarga completa con cada cambio de semana.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyCode, cargarSolicitudes])
+    // La semana elegida la lee cargarBase de semanaRef: cambiar de semana no
+    // vuelve a disparar la recarga completa.
+  }, [companyCode, cargarBase, cargarSolicitudes])
 
   /**
    * Se recarga al ENTRAR y no solo al montar: la navegación deja la pantalla
@@ -1182,7 +1185,6 @@ function SolicitudCard({
                     <Text fontSize={12} fontWeight="700" color="$text" flex={1} numberOfLines={1}>
                       {nombreConCodigo(d.Employee_Name, d.Employee_Code)}
                     </Text>
-                    {!!d.Is_Manual && <EtiquetaManual texto="HE Manual" />}
                     <Text fontSize={13} fontWeight="800" color="$text">
                       {fmtHoras(d.Total_Overtime_Hours)}
                     </Text>
@@ -1320,31 +1322,6 @@ function AccionSutil({
     >
       <Icono size={13} color={color} />
       <Text fontSize={12} fontWeight="700" style={{ color }}>
-        {texto}
-      </Text>
-    </XStack>
-  )
-}
-
-/**
- * La marca de HE Manual en el listado. Mismo naranja que en la captura, para
- * que se reconozca como el mismo dato en las dos pantallas.
- */
-function EtiquetaManual({ texto }: { texto: string }) {
-  return (
-    <XStack
-      alignItems="center"
-      gap="$1"
-      paddingHorizontal={7}
-      paddingVertical={2}
-      borderRadius={20}
-      backgroundColor="#FFF7ED"
-      borderWidth={1}
-      borderColor="#FDBA74"
-      flexShrink={0}
-    >
-      <Pencil size={10} color="#C2410C" />
-      <Text fontSize={10} fontWeight="800" color="#C2410C" numberOfLines={1}>
         {texto}
       </Text>
     </XStack>

@@ -15,6 +15,7 @@ import {
   Send,
   Undo2,
   Users,
+  Utensils,
   X,
 } from 'lucide-react-native'
 
@@ -106,6 +107,8 @@ interface Semilla {
   /** Venía guardada como HE Manual. */
   manual: boolean
   comment: string
+  /** Venía con almuerzo pedido. */
+  lunch: boolean
 }
 
 /**
@@ -115,7 +118,7 @@ interface Semilla {
 const horasPago = (f: Fila): number | null => {
   const h = rowHours(f.start_Time, f.end_Time)
   if (h === null) return null
-  return f.is_Manual && f.serverHours != null ? f.serverHours : h
+  return f.serverHours != null ? f.serverHours : h
 }
 
 /** Un empleado ya elegido, con su horario y sus horas. */
@@ -156,6 +159,13 @@ interface Fila {
 
   /** Comentario del renglón, además del motivo. Opcional. */
   comment: string
+
+  /** El servidor dice que la HE cubre el almuerzo del parámetro (día de descanso). */
+  lunchEligible?: boolean
+  /** Horario del almuerzo del parámetro, 'HH:mm - HH:mm'. */
+  lunchWindow?: string
+  /** Otorgar almuerzo (solo con 'SolicitarAlmuerzoHE'). */
+  lunch?: boolean
 
   /**
    * Este empleado ya tiene firma: sus horas no se tocan.
@@ -383,6 +393,7 @@ export default function CrearSolicitudHoraExtraScreen() {
           categoryId: d.Category_Id ?? null,
           manual: !!d.Is_Manual,
           comment: d.Detail_Comment ?? '',
+          lunch: !!d.Has_Lunch,
         },
       ]),
     )
@@ -395,6 +406,11 @@ export default function CrearSolicitudHoraExtraScreen() {
    * ofrece la excepción. El servidor lo vuelve a validar al guardar.
    */
   const [puedeManual, setPuedeManual] = useState(false)
+  /**
+   * Tiene el acceso 'SolicitarAlmuerzoHE': puede pedir almuerzo en sus HE.
+   * Por ahora solo se consume; la casilla de almuerzo se arma en la siguiente fase.
+   */
+  const [puedeAlmuerzo, setPuedeAlmuerzo] = useState(false)
 
   // Paso 3
   const [horarios, setHorarios] = useState<IOvertimeShiftSchedule[]>([])
@@ -488,6 +504,7 @@ export default function CrearSolicitudHoraExtraScreen() {
       setPrestados(resPrest?.Success ? (resPrest.Data ?? []) : [])
 
       setPuedeManual(!!(resPerm?.Success && resPerm.Data?.Can_Create_Manual))
+      setPuedeAlmuerzo(!!(resPerm?.Success && resPerm.Data?.Can_Request_Lunch))
 
       // Los parámetros tampoco: sin ellos no hay límite de fechas, que es
       // justo lo que significa no tenerlos configurados.
@@ -680,7 +697,7 @@ export default function CrearSolicitudHoraExtraScreen() {
           // Día sin jornada (descanso): el turno tiene ese día, pero no es laboral ni feriado.
           // Solo se pide HE Manual y se capturan inicio y fin.
           const descanso = !!horario && !esLaborable(horario) && !feriado
-          const manual = feriado || descanso ? true : (previa?.is_Manual ?? guardado?.manual ?? false)
+          const manual = feriado ? true : descanso ? false : (previa?.is_Manual ?? guardado?.manual ?? false)
 
           // El inicio escrito a mano se conserva: el del día sin jornada y el
           // de una HE Manual. Una HE Manual sin nada escrito arranca en el fin
@@ -709,6 +726,9 @@ export default function CrearSolicitudHoraExtraScreen() {
             breakdown: [] as OvertimeBand[],
             is_Manual: manual,
             comment: previa?.comment ?? guardado?.comment ?? '',
+            lunch: previa?.lunch ?? guardado?.lunch ?? false,
+            lunchEligible: previa?.lunchEligible ?? false,
+            lunchWindow: previa?.lunchWindow ?? '',
             // Corrigiendo, todo lo que no es devuelto queda como está: fuera
             // de los "aplicar a todos" y de la validación.
             isLocked: bloqueados.has(code) || (corrigiendo && !devueltos.has(code)),
@@ -776,7 +796,7 @@ export default function CrearSolicitudHoraExtraScreen() {
   const firmaReparto = useMemo(
     () =>
       JSON.stringify(
-        filas.map(f => [f.employee_Code, f.shift_Id, f.start_Time, f.end_Time, f.is_Manual]),
+        filas.map(f => [f.employee_Code, f.shift_Id, f.start_Time, f.end_Time, f.is_Manual, !!f.lunch]),
       ),
     [filas],
   )
@@ -792,6 +812,8 @@ export default function CrearSolicitudHoraExtraScreen() {
         Start_Time: fechaHoraISO(fecha, f.start_Time),
         End_Time: fechaHoraISO(fecha, f.end_Time, cruzaMedianoche(f.start_Time, f.end_Time) ? 1 : 0),
         Is_Manual: !!f.is_Manual,
+        // Sin marcar se descuentan los 30 min del almuerzo; marcado (con el acceso), no
+        Lunch: puedeAlmuerzo && !!f.lunch,
       }))
 
     let vigente = true
@@ -835,9 +857,21 @@ export default function CrearSolicitudHoraExtraScreen() {
             ? +todo.reduce((acc, d) => acc + (Number(d.hours) || 0), 0).toFixed(2)
             : null
 
-          if (JSON.stringify(nuevo) === JSON.stringify(f.breakdown) && serverHours === (f.serverHours ?? null)) return f
+          // Almuerzo: el servidor dice si la HE cubre el del parámetro ese día
+          const conAlmuerzo = todo.find(d => !!d.Lunch_Eligible)
+          const lunchEligible = !!conAlmuerzo
+          const lunchWindow = conAlmuerzo
+            ? `${String(conAlmuerzo.Lunch_Start ?? '').substring(11, 16)} - ${String(conAlmuerzo.Lunch_End ?? '').substring(11, 16)}`
+            : ''
+
+          if (
+            JSON.stringify(nuevo) === JSON.stringify(f.breakdown) &&
+            serverHours === (f.serverHours ?? null) &&
+            lunchEligible === !!f.lunchEligible &&
+            lunchWindow === (f.lunchWindow ?? '')
+          ) return f
           cambio = true
-          return { ...f, breakdown: nuevo, serverHours }
+          return { ...f, breakdown: nuevo, serverHours, lunchEligible, lunchWindow }
         })
 
         return cambio ? next : prev
@@ -907,6 +941,36 @@ export default function CrearSolicitudHoraExtraScreen() {
     })
   }, [rangosTomados, filas])
 
+  /**
+   * HE Manual AUTOMÁTICA (2026-10-26): el usuario no la marca. Es manual si el día no
+   * tiene jornada normal (feriado o descanso) o si el horario toca la jornada (quien
+   * tiene el acceso adelantó el inicio). Se recalcula con cada cambio de horario; el
+   * SP vuelve a decidirlo al guardar.
+   */
+  useEffect(() => {
+    setFilas(prev => {
+      let cambio = false
+      const next = prev.map(f => {
+        if (f.isLocked) return f
+        const horario = horarios.find(h => h.ShiftId === f.shift_Id)
+        let manual: boolean
+        if (f.isHoliday) manual = true
+        else if (!f.hasSchedule) manual = false
+        else if (f.start_Time && f.end_Time) manual = seEncimaConJornada(f.start_Time, f.end_Time, horario)
+        else {
+          const s = timeToSeconds(f.start_Time)
+          const fin = timeToSeconds(f.shift_End)
+          const ini = timeToSeconds(f.shift_Start)
+          manual = s !== null && fin !== null && ini !== null && s < fin && s >= ini
+        }
+        if (manual === f.is_Manual) return f
+        cambio = true
+        return { ...f, is_Manual: manual }
+      })
+      return cambio ? next : prev
+    })
+  }, [filas, horarios])
+
   const editarFila = useCallback((code: string, cambios: Partial<Fila>) => {
     setFilas(prev => prev.map(f => (f.employee_Code === code ? { ...f, ...cambios } : f)))
   }, [])
@@ -927,7 +991,7 @@ export default function CrearSolicitudHoraExtraScreen() {
               // fila respeta la jornada lo manda el turno, y pisarlo pondría al
               // empleado a hacer horas extra dentro de su propio horario. Las
               // HE Manual sí lo reciben: justamente no respetan la jornada.
-              start_Time: respetaJornada(f) ? f.start_Time : origen.start_Time,
+              start_Time: origen.is_Manual || !f.hasSchedule ? origen.start_Time : f.start_Time,
             },
       )
     })
@@ -969,6 +1033,19 @@ export default function CrearSolicitudHoraExtraScreen() {
     })
   }, [])
 
+  /**
+   * Otorga el almuerzo a todos los que cumplen (su HE cubre el almuerzo); si ya
+   * lo tienen todos, lo quita. Los que no cumplen no se tocan.
+   */
+  const aplicarAlmuerzoATodos = useCallback(() => {
+    setFilas(prev => {
+      const aptas = prev.filter(f => !f.isLocked && f.lunchEligible)
+      if (aptas.length === 0) return prev
+      const valor = !aptas.every(f => f.lunch)
+      return prev.map(f => (!f.isLocked && f.lunchEligible ? { ...f, lunch: valor } : f))
+    })
+  }, [])
+
   // ── Validación por paso ───────────────────────────────────────────────────
 
   const minFecha = diasAntes === null ? undefined : corrimiento(-diasAntes)
@@ -995,8 +1072,8 @@ export default function CrearSolicitudHoraExtraScreen() {
       // fuera de ella (sábado en la tarde) es una HE normal. Puede empezar dentro y
       // terminar fuera: lo de fuera se paga por bandas. El SP lo valida igual.
       // Feriado o día sin jornada: solo HE Manual, a cualquier hora
-      if ((f.isHoliday || f.isRestDay) && !puedeManual)
-        return `${f.isHoliday ? 'Feriado' : 'Día sin jornada'}: solo se puede pedir HE Manual y no tiene permiso`
+      if (f.isHoliday && !puedeManual)
+        return 'Feriado: no tiene permiso para pedir horas extra ese día'
       if (f.is_Manual && !f.hasSchedule && !f.isRestDay) return 'Día sin jornada: no puede ser HE Manual'
       if (f.is_Manual && !f.isHoliday && !f.isRestDay && !seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
         return `La HE Manual tiene que tocar la jornada ${hora12(f.shift_Start)} - ${hora12(f.shift_End)}`
@@ -1077,6 +1154,8 @@ export default function CrearSolicitudHoraExtraScreen() {
           if (!emp) return null
           const horario = horarios.find(h => h.ShiftId === emp.Turno_Id)
           return {
+            // Sin el código, cargarBandas descarta la fila y no pide sus bandas
+            employee_Code: code,
             cod_Planilla: emp.Cod_Planilla ?? '',
             shift_Id: emp.Turno_Id ?? null,
             shift_ScheduleId: horario?.ShiftScheduleId ?? null,
@@ -1107,6 +1186,8 @@ export default function CrearSolicitudHoraExtraScreen() {
           if (!emp) return null
           const horario = horarios.find(h => h.ShiftId === emp.Turno_Id)
           return {
+            // Sin el código, cargarBandas descarta la fila y no pide sus bandas
+            employee_Code: code,
             cod_Planilla: emp.Cod_Planilla ?? '',
             shift_Id: emp.Turno_Id ?? null,
             shift_ScheduleId: horario?.ShiftScheduleId ?? null,
@@ -1152,6 +1233,8 @@ export default function CrearSolicitudHoraExtraScreen() {
           Total_Overtime_Hours: horasPago(f),
           // El servidor la rechaza si el usuario no tiene el acceso.
           Is_Manual: f.is_Manual,
+          // Otorgar almuerzo: el SP lo vuelve a validar (acceso, descanso, cubre el almuerzo)
+          Lunch: puedeAlmuerzo && !!f.lunchEligible && !!f.lunch,
           Comment: f.comment.trim() || null,
           // El reparto por banda lo calcula el procedimiento al guardar
           // (FN_SplitOvertimeByBandManual), el mismo que se ve en pantalla.
@@ -1272,7 +1355,9 @@ export default function CrearSolicitudHoraExtraScreen() {
             onAplicarHorario={aplicarHorarioATodos}
             onAplicarMotivo={aplicarMotivoATodos}
             onAplicarComentario={aplicarComentarioATodos}
+            onAplicarAlmuerzo={aplicarAlmuerzoATodos}
             puedeManual={puedeManual}
+            puedeAlmuerzo={puedeAlmuerzo}
             onAlternarManual={alternarManual}
             onAlternarManualATodos={alternarManualATodos}
             totalHoras={totalHoras}
@@ -1863,7 +1948,9 @@ function PasoHoras({
   onAplicarHorario,
   onAplicarMotivo,
   onAplicarComentario,
+  onAplicarAlmuerzo,
   puedeManual,
+  puedeAlmuerzo,
   onAlternarManual,
   onAlternarManualATodos,
   onQuitar,
@@ -1884,8 +1971,12 @@ function PasoHoras({
   onAplicarHorario: () => void
   onAplicarMotivo: () => void
   onAplicarComentario: () => void
+  /** Otorga (o quita) el almuerzo a todos los que cumplen. */
+  onAplicarAlmuerzo: () => void
   /** Tiene el acceso 'CrearHorasExtraManuales': sin él no hay botón. */
   puedeManual: boolean
+  /** 'SolicitarAlmuerzoHE': ofrece 'Otorgar almuerzo' en HE manual de día de descanso. */
+  puedeAlmuerzo: boolean
   onAlternarManual: (code: string) => void
   /** Pide confirmación para quitar al empleado (solo filas editables). */
   onQuitar?: (f: Fila) => void
@@ -1952,7 +2043,7 @@ function PasoHoras({
   /** Las de inicio, en AM/PM. La HE Manual ofrece el día completo. */
   const opcionesDeInicio = (f: Fila) => {
     const otros = ocupados(f)
-    const opciones = opcionesInicio(f.is_Manual ? '00:00' : '04:00')
+    const opciones = opcionesInicio(f.is_Manual || puedeManual || !f.hasSchedule ? '00:00' : '04:00')
       // Una hora que cae dentro de otra HE de ese día no se ofrece
       .filter(h => {
         const s = timeToSeconds(h)
@@ -1982,10 +2073,28 @@ function PasoHoras({
   const horarioAplicado = todosIguales(f => (f.end_Time ? `${f.start_Time}|${f.end_Time}` : ''))
   const motivoAplicado = todosIguales(f => (f.category_Id ? String(f.category_Id) : ''))
   const comentarioAplicado = todosIguales(f => f.comment.trim())
+  // Almuerzo: solo cuentan los que cumplen (su HE cubre el almuerzo)
+  const aptasAlmuerzo = editables.filter(f => f.lunchEligible)
+  const almuerzoAplicado = aptasAlmuerzo.length > 0 && aptasAlmuerzo.every(f => f.lunch)
 
   // La barra existe con al menos dos filas editables: con una sola no hay a
   // quién copiarle nada, y la marca de HE Manual se pone desde la propia fila.
   const mostrarBarra = editables.length > 1
+
+  // El tipo de día de la fecha, solo si es el mismo para todos (si los turnos
+  // difieren, no se pone)
+  const tipoDia = filas.length > 0 && filas.every(f => f.isHoliday)
+    ? { texto: 'Feriado', color: '#E11D48', fondo: '#FFE4E6' }
+    : filas.length > 0 && filas.every(f => f.isRestDay)
+      ? { texto: 'Descanso', color: '#6B7280', fondo: '#F3F4F6' }
+      : null
+  const badgeDia = tipoDia ? (
+    <XStack paddingHorizontal={6} paddingVertical={1} borderRadius={20} style={{ backgroundColor: tipoDia.fondo }}>
+      <Text fontSize={9} fontWeight="800" style={{ color: tipoDia.color }}>
+        {tipoDia.texto}
+      </Text>
+    </XStack>
+  ) : null
   const todasManual = editables.length > 0 && editables.every(f => f.is_Manual)
   const cuantasManual = filas.filter(f => f.is_Manual).length
 
@@ -2007,9 +2116,12 @@ function PasoHoras({
           borderWidth={1}
           borderColor="$border"
         >
-          <Text fontSize={9} fontWeight="800" color="$textMuted" letterSpacing={0.5}>
-            APLICAR A TODOS
-          </Text>
+          <XStack alignItems="center" justifyContent="space-between">
+            <Text fontSize={9} fontWeight="800" color="$textMuted" letterSpacing={0.5}>
+              APLICAR A TODOS
+            </Text>
+            {badgeDia}
+          </XStack>
 
           <XStack gap="$1.5" flexWrap="wrap" alignItems="center">
             <BotonLote
@@ -2033,19 +2145,17 @@ function PasoHoras({
               aplicado={comentarioAplicado}
               onPress={onAplicarComentario}
             />
-
-            {/* Separado de los otros dos: no copia un dato, cambia las reglas
-                de las filas. Si ya están todas marcadas, desmarca. */}
-            {puedeManual && (
-              <>
-                <View width={1} height={18} backgroundColor="$border" marginHorizontal="$1" />
-                <MarcaManual
-                  activa={todasManual}
-                  texto={cuantasManual > 0 ? `HE Manual · ${cuantasManual}` : 'HE Manual'}
-                  onPress={onAlternarManualATodos}
-                />
-              </>
+            {/* Solo con 'SolicitarAlmuerzoHE'; se apaga si nadie cumple */}
+            {puedeAlmuerzo && (
+              <BotonLote
+                icono={<Utensils size={11} color={theme.text?.val as string} />}
+                texto={aptasAlmuerzo.length > 0 ? `Almuerzo (${aptasAlmuerzo.length})` : 'Almuerzo'}
+                habilitado={aptasAlmuerzo.length > 0}
+                aplicado={almuerzoAplicado}
+                onPress={onAplicarAlmuerzo}
+              />
             )}
+
           </XStack>
 
           {!hayHorario && !hayMotivo && !hayComentario && (
@@ -2055,6 +2165,9 @@ function PasoHoras({
           )}
         </YStack>
       )}
+
+      {/* Sin barra (un solo empleado), el tipo de día va solo arriba */}
+      {!mostrarBarra && badgeDia && <XStack justifyContent="flex-end">{badgeDia}</XStack>}
 
       {cargandoHorarios && (
         <Text fontSize={12} color="$textMuted" fontStyle="italic">
@@ -2213,52 +2326,7 @@ function PasoHoras({
                 )}
               </XStack>
 
-              {/* HE Manual en su propio renglón, debajo del nombre: en la línea
-                  del nombre le quitaba espacio y lo cortaba. Con el acceso es un
-                  botón que prende y apaga; sin él, o con la fila firmada, solo
-                  se muestra si ya venía marcada, para que se sepa. */}
-              {(puedeManual && !f.isLocked) || f.is_Manual ? (
-                <XStack justifyContent="flex-end">
-                  {(f.isHoliday || f.isRestDay) && !f.isLocked ? (
-                    // Feriado o día sin jornada: un solo badge de info con el motivo y la
-                    // marca fija al lado (antes eran dos avisos en renglones distintos)
-                    <XStack alignItems="center" gap="$1.5" flex={1} justifyContent="space-between">
-                      <XStack
-                        alignItems="center"
-                        gap="$1"
-                        paddingHorizontal={8}
-                        paddingVertical={3}
-                        borderRadius={20}
-                        flexShrink={1}
-                        style={{ backgroundColor: '#3B82F614' }}
-                      >
-                        <Info size={11} color="#3B82F6" />
-                        <Text fontSize={10} fontWeight="600" style={{ color: '#3B82F6' }} numberOfLines={2} flexShrink={1}>
-                          {f.isHoliday
-                            ? 'Feriado: solo HE Manual'
-                            : 'Día sin jornada: solo HE Manual, elegí inicio y fin'}
-                        </Text>
-                      </XStack>
-                      <MarcaManual activa texto="HE Manual" compacta />
-                    </XStack>
-                  ) : puedeManual && !f.isLocked && !f.hasSchedule && !f.is_Manual ? (
-                    // Sin jornada ese día: se ve deshabilitada con el motivo
-                    <XStack alignItems="center" gap="$1.5" opacity={0.45}>
-                      <Text fontSize={10} color="$textMuted">Sin jornada: no puede ser manual</Text>
-                      <MarcaManual activa={false} texto="HE Manual" compacta />
-                    </XStack>
-                  ) : puedeManual && !f.isLocked ? (
-                    <MarcaManual
-                      activa={f.is_Manual}
-                      texto="HE Manual"
-                      compacta
-                      onPress={() => onAlternarManual(f.employee_Code)}
-                    />
-                  ) : (
-                    <MarcaManual activa texto="HE Manual" compacta />
-                  )}
-                </XStack>
-              ) : null}
+              {/* El tipo de día (feriado / descanso) va en el badge general de arriba, no por empleado */}
 
               {/* Por qué la hora de inicio está abierta. Solo se afirma que
                   el día no es laborable cuando el horario SÍ se pudo consultar;
@@ -2334,7 +2402,7 @@ function PasoHoras({
                     Si la fila respeta la jornada no se elige: lo manda el turno
                     y solo se informa de dónde salió. Sin jornada, o en una HE
                     Manual, se elige de una lista. */}
-                {respetaJornada(f) ? (
+                {f.hasSchedule && !f.isHoliday && !puedeManual ? (
                   <XStack
                     alignItems="center"
                     gap="$2"
@@ -2405,6 +2473,24 @@ function PasoHoras({
                     placeholder="Detalle de por qué se queda…"
                   />
                 </>
+              )}
+
+              {/* Almuerzo: HE manual en día de descanso que cubre el almuerzo del
+                  parámetro, y solo para quien tiene 'SolicitarAlmuerzoHE'. */}
+              {puedeAlmuerzo && (f.lunchEligible || (f.isLocked && f.lunch)) && (
+                <YStack gap="$0.5">
+                  <MarcaManual
+                    activa={!!f.lunch}
+                    texto={`Otorgar almuerzo${f.lunchWindow ? ` (${f.lunchWindow})` : ''}`}
+                    onPress={f.isLocked ? undefined : () => onEditar(f.employee_Code, { lunch: !f.lunch })}
+                  />
+                  {/* Solo en día laboral se pagan los 30 min; en feriado o descanso se da pero se descuenta */}
+                  <Text fontSize={10} color="$textMuted">
+                    {f.isHoliday || f.isRestDay || !f.hasSchedule
+                      ? 'Se le da el almuerzo; los 30 min se descuentan de las horas.'
+                      : 'El almuerzo no se descuenta de las horas.'}
+                  </Text>
+                </YStack>
               )}
 
               {/* El reparto por banda: es lo que define cuánto cuesta */}

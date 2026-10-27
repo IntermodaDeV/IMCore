@@ -176,6 +176,8 @@ export default function SolicitudesHorasExtraScreen() {
   // de uno. Así el confirm, el envío y el mensaje son un solo camino en vez de
   // dos que hay que mantener parejos.
   const [aprobando, setAprobando] = useState<IOvertimeRequestDetail[] | null>(null)
+  // Almuerzos que el que aprueba quitó en el diálogo (ids de detalle)
+  const [almuerzosQuitados, setAlmuerzosQuitados] = useState<Set<number>>(new Set())
   const [rechazando, setRechazando] = useState<IOvertimeRequestDetail[] | null>(null)
   // Devolver al solicitante: un solo empleado, y solo el jefe (Order 1).
   // Puede ser uno (desde la tarjeta) o varios (desde la barra de lote).
@@ -395,11 +397,19 @@ export default function SolicitudesHorasExtraScreen() {
 
         const ids = detalles.map(d => d.Id)
 
+        // Almuerzo: solo los que siguen otorgados (si alguien lo quitó antes, ahí murió)
+        const lunches = aprobar
+          ? detalles
+              .filter(d => d.Has_Lunch && d.Lunch_Granted)
+              .map(d => ({ RequestDetails_Id: d.Id, Granted: !almuerzosQuitados.has(d.Id) }))
+          : []
+
         const res = await overtimeService.authorizeRequest(companyCode, {
           SystemEntities_Id: Number(entidad),
           Auth: aprobar,
           Comment: comentario,
           Details: ids,
+          Lunches: lunches,
         })
 
         if (!res.Success) {
@@ -438,7 +448,7 @@ export default function SolicitudesHorasExtraScreen() {
         loader.hide()
       }
     },
-    [companyCode, entidad, loader, showToast, data, pedirImpactoBandeja],
+    [companyCode, entidad, loader, showToast, data, pedirImpactoBandeja, almuerzosQuitados],
   )
 
   /**
@@ -514,6 +524,7 @@ export default function SolicitudesHorasExtraScreen() {
   /** Abrir el confirm de aprobar: se muestra ya y el impacto llega después. */
   const abrirAprobacion = useCallback(
     (detalles: IOvertimeRequestDetail[]) => {
+      setAlmuerzosQuitados(new Set())
       setAprobando(detalles)
       pedirImpacto(detalles)
     },
@@ -1147,6 +1158,70 @@ export default function SolicitudesHorasExtraScreen() {
         // apareció nada. Lo demás —sin acceso al costo, etapa que no
         // compromete dinero— sigue sin mostrar nada, que es lo correcto.
         extra={
+          <YStack gap="$2">
+          {/* Almuerzo: los renglones que lo pidieron y nadie lo ha quitado.
+              Quitar la marca = no se otorga, y ya no vuelve para nadie. */}
+          {(aprobando ?? []).some(d => d.Has_Lunch && d.Lunch_Granted) && (
+            <YStack gap="$1.5">
+              <Text fontSize={11} fontWeight="700" color="$textSecondary" textTransform="uppercase">Almuerzo</Text>
+              {(aprobando ?? []).filter(d => d.Has_Lunch && d.Lunch_Granted).map(d => {
+                const deja = !almuerzosQuitados.has(d.Id)
+                return (
+                  <XStack
+                    key={d.Id}
+                    alignItems="center"
+                    gap="$2"
+                    paddingHorizontal="$3"
+                    paddingVertical="$2"
+                    borderRadius={8}
+                    borderWidth={1}
+                    borderColor="$borderColor"
+                    backgroundColor="$backgroundSurface"
+                    pressStyle={{ opacity: 0.7 }}
+                    onPress={() => setAlmuerzosQuitados(prev => {
+                      const next = new Set(prev)
+                      if (next.has(d.Id)) next.delete(d.Id)
+                      else next.add(d.Id)
+                      return next
+                    })}
+                  >
+                    <YStack flex={1}>
+                      <Text
+                        fontSize={12}
+                        fontWeight="600"
+                        color={deja ? '$text' : '$textSecondary'}
+                        textDecorationLine={deja ? 'none' : 'line-through'}
+                        numberOfLines={1}
+                      >
+                        {d.Employee_Name ?? d.Employee_Code}
+                      </Text>
+                      {d.Lunch_Start && d.Lunch_End ? (
+                        <Text fontSize={10} color="$textSecondary">{`${d.Lunch_Start} - ${d.Lunch_End}`}</Text>
+                      ) : null}
+                    </YStack>
+                    {/* Interruptor: verde = se otorga */}
+                    <View
+                      width={36}
+                      height={20}
+                      borderRadius={999}
+                      backgroundColor={deja ? '#16A34A' : '#CBD5E1'}
+                      justifyContent="center"
+                      paddingHorizontal={2}
+                    >
+                      <View
+                        width={16}
+                        height={16}
+                        borderRadius={8}
+                        backgroundColor="#FFFFFF"
+                        alignSelf={deja ? 'flex-end' : 'flex-start'}
+                      />
+                    </View>
+                  </XStack>
+                )
+              })}
+            </YStack>
+          )}
+          {
           // El orden importa: primero 'estoy buscando', después el resultado.
           // Al revés, el bloque de error alcanzaba a parpadear entre una
           // consulta y la siguiente.
@@ -1176,7 +1251,9 @@ export default function SolicitudesHorasExtraScreen() {
                 </Text>
               </YStack>
             </XStack>
-          ) : undefined
+          ) : null
+          }
+          </YStack>
         }
       />
 

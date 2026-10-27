@@ -14,6 +14,8 @@ type BaseProps = {
   maxDate?: string
   error?: string
   disabled?: boolean
+  /** Días que no se pueden elegir (recibe 'YYYY-MM-DD'). */
+  isDateDisabled?: (date: string) => boolean
 }
 
 type SingleProps = BaseProps & {
@@ -44,7 +46,8 @@ function buildRangeDisplay(start?: string | null, end?: string | null): string {
 }
 
 export default function AppDatePicker(props: Props) {
-  const { label, displayFormat = 'DD/MM/YYYY', direction, minDate: minDateProp, maxDate: maxDateProp, error, disabled = false } = props
+  const { label, displayFormat = 'DD/MM/YYYY', direction, minDate: minDateProp, maxDate: maxDateProp, error, disabled = false, isDateDisabled } = props
+  const disabledDates = isDateDisabled ? (d: any) => isDateDisabled(dayjs(d).format('YYYY-MM-DD')) : undefined
   const theme = useTheme()
   const [open, setOpen] = useState(false)
 
@@ -200,6 +203,7 @@ export default function AppDatePicker(props: Props) {
                     endDate={tempEnd ? dayjs(tempEnd) : undefined}
                     maxDate={maxDateProp ? dayjs(maxDateProp) : direction === 'past' ? today : undefined}
                     minDate={minDateProp ? dayjs(minDateProp) : direction === 'future' ? today : undefined}
+                    disabledDates={disabledDates}
                     onChange={({ startDate, endDate }: any) => {
                       setTempStart(startDate ? dayjs(startDate).format('YYYY-MM-DD') : null)
                       setTempEnd(endDate     ? dayjs(endDate).format('YYYY-MM-DD')   : null)
@@ -242,6 +246,7 @@ export default function AppDatePicker(props: Props) {
                   date={props.value ? dayjs(props.value) : undefined}
                   maxDate={maxDateProp ? dayjs(maxDateProp) : direction === 'past' ? today : undefined}
                   minDate={minDateProp ? dayjs(minDateProp) : direction === 'future' ? today : undefined}
+                  disabledDates={disabledDates}
                   onChange={({ date }: any) => {
                     if (date) {
                       props.onChange(dayjs(date).format('YYYY-MM-DD'))

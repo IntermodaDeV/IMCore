@@ -8,6 +8,8 @@ import DashboardHorasExtraScreen from './DashboardHorasExtraScreen'
 import DashboardSolicitanteScreen from './DashboardSolicitanteScreen'
 import DashboardJefeScreen from './DashboardJefeScreen'
 import HistorialJefeScreen from './HistorialJefeScreen'
+import AlimentacionScreen from './AlimentacionScreen'
+import CrearAlimentacionScreen from './CrearAlimentacionScreen'
 
 export const ScreensOvertime: TScreens = {
   // Primer flujo: aprobar las horas que se solicitaron
@@ -43,6 +45,14 @@ export const ScreensOvertime: TScreens = {
   HistoryHours: {
     Screen: HistorialHorasExtraScreen,
     Childs: {},
+  },
+  // Alimentación: los almuerzos de las HE que el usuario aprobó, y en qué van
+  MealsHE: {
+    Screen: AlimentacionScreen,
+    Childs: {
+      // Nueva alimentación: el botón + del listado navega acá y "atrás" regresa
+      crearAlimentacionHE: CrearAlimentacionScreen,
+    },
   },
   // Presupuesto de horas extra contra lo gastado, por área
   DashboardHE: {
