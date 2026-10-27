@@ -19,7 +19,8 @@ import {
 // revisadas (una, varias o todas), agregar vacantes y confirmar. Para corregir a alguien se toca su tarjeta y se abre
 // un panel con pocos campos. El resumen por semana está en Mis centros; lo de Administración se queda en el web.
 // Mis centros es la vista del REVISOR: solo se edita lo habilitado y dentro del plazo, también si es administrador.
-// Si el centro tiene cuentas que captura el gerente, arriba se cambia a «Otros gastos»: sus eventos (José, resp. 29–31).
+// Si el centro tiene cuentas que captura el gerente, arriba se cambia a «Gastos»: sus eventos (José, resp. 29–31). Los nombres
+// van como los pidió Diego (27-oct): «Planillas» (antes Personas) y «Gastos» (antes Otros gastos).
 // Si ya se confirmó alguna vez, «Versiones»: cada confirmación con su total (el comparativo está en el web).
 
 type Vista = 'todas' | 'pendientes' | 'observaciones'
@@ -130,8 +131,8 @@ export default function CentroScreen() {
   const puedeEntregar = enc?.PuedeEntregar === 1
   const seleccionadas = activas.filter(p => sel.has(p.Id))
   const secciones = [
-    ...(vePersonal ? [['personas', `Personas (${activas.length})`] as const] : []),
-    ...(conOtros ? [['otros', `Otros gastos (${eventos.length})`] as const] : []),
+    ...(vePersonal ? [['personas', `Planillas (${activas.length})`] as const] : []),
+    ...(conOtros ? [['otros', `Gastos (${eventos.length})`] as const] : []),
     ...(conVersiones ? [['versiones', `Versiones (${versiones.length})`] as const] : []),
   ]
   const sec: Seccion = secciones.some(([v]) => v === seccion) ? seccion : secciones[0]?.[0] ?? 'personas'
@@ -361,12 +362,12 @@ export default function CentroScreen() {
           : 'Si hay que corregir algo, pídele a Planificación que lo reabra.'}${enc.Comentario ? `\nComentario: ${enc.Comentario}` : ''}`)}
       {puedeReabrir && <Boton texto="Reabrir para corregir" color={WARN} secundario disabled={ocupado} onPress={reabrir} />}
       {enc.EsDelegado === 1 && aviso(INDIGO, `Te lo delegó ${enc.RevisorNombre ?? 'tu gerente'}${enc.DelegadoVe === 'Cuentas'
-        ? ': ves solo las cuentas que dejó Planificación' : !vePersonal ? ': ves solo los otros gastos'
-        : enc.VeGastos === 0 ? ': ves solo el personal' : ''}. ${enc.Entregado === 1
+        ? ': ves solo las cuentas que dejó Planificación' : !vePersonal ? ': ves solo los gastos del CeCo'
+        : enc.VeGastos === 0 ? ': ves solo las planillas' : ''}. ${enc.Entregado === 1
         ? `Se lo entregaste el ${fmtFechaHora(enc.FechaEntregado)}: queda en solo lectura.`
         : (enc.PuedeConfirmar ?? enc.DelegadoConfirma) === 1 ? 'Tú lo confirmas.' : 'Al terminar, entrégaselo: tu gerente lo confirma.'}`)}
       {enc.EsRevisor === 1 && !!enc.DelegadoA && aviso(INDIGO, `Lo delegaste a ${enc.DelegadoNombre ?? enc.DelegadoA}${enc.DelegadoVe === 'Gastos'
-        ? ' (sin salarios)' : enc.DelegadoVe === 'Personal' ? ' (solo personal)'
+        ? ' (sin salarios)' : enc.DelegadoVe === 'Personal' ? ' (solo planillas)'
         : enc.DelegadoVe === 'Cuentas' ? ' (solo algunas cuentas)' : ''}. ${enc.Entregado === 1
         ? `Te lo entregó el ${fmtFechaHora(enc.FechaEntregado)}${enc.ComentarioEntrega ? `: «${enc.ComentarioEntrega}»` : ''}. Revísalo y confírmalo.`
         : 'Todavía no te lo entrega; tú también lo puedes corregir.'}`)}
@@ -389,7 +390,7 @@ export default function CentroScreen() {
               </XStack>
             )}
           </XStack>
-          <Text fontSize="$1" color="$textMuted">Colaboradores × valor por colaborador en cada mes marcado; cae en la última semana del mes.</Text>
+          <Text fontSize="$1" color="$textMuted">Cantidad × valor en cada mes marcado; cae en la última semana del mes. Si no es por persona, la cantidad es 1.</Text>
         </YStack>
       ) : (<>
       <YStack gap={4}>
@@ -671,8 +672,10 @@ export function Hoja({ titulo, subtitulo, onCerrar, alto = '85%', children }: {
 
 type TipoCampo = 'entero' | 'decimal' | 'texto' | 'parrafo'
 
-export function Campo({ etiqueta, valor, cambiar, ayuda, tipo = 'entero' }: {
+export function Campo({ etiqueta, valor, cambiar, ayuda, tipo = 'entero', mayusculas = false }: {
   etiqueta: string; valor: string; cambiar: (t: string) => void; ayuda: string; tipo?: TipoCampo
+  /** El teclado en mayúsculas (el motivo de una línea: la base lo guarda así). */
+  mayusculas?: boolean
 }) {
   const theme = useTheme()
   const parrafo = tipo === 'parrafo'
@@ -681,7 +684,7 @@ export function Campo({ etiqueta, valor, cambiar, ayuda, tipo = 'entero' }: {
       <Text fontSize="$2" fontWeight="700" color="$text">{etiqueta}</Text>
       <TextInput value={valor} onChangeText={cambiar} placeholder={ayuda} placeholderTextColor={theme.textMuted?.val}
         keyboardType={tipo === 'decimal' ? 'decimal-pad' : tipo === 'entero' ? 'number-pad' : 'default'}
-        autoCapitalize={tipo === 'texto' ? 'characters' : 'sentences'}
+        autoCapitalize={tipo === 'texto' || mayusculas ? 'characters' : 'sentences'}
         multiline={parrafo}
         style={[{
           flex: 1, fontSize: 16, color: theme.text?.val, backgroundColor: theme.background?.val, borderWidth: 1,
@@ -1255,7 +1258,8 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   const { showToast } = useShowToast()
   const [cuenta, setCuenta] = useState<number | null>(evento?.Cuenta ?? (cuentas.length === 1 ? cuentas[0].Cuenta : null))
   const [motivo, setMotivo] = useState(evento?.Motivo ?? '')
-  const [colaboradores, setColaboradores] = useState(evento ? String(evento.Colaboradores) : '')
+  // No todo gasto es por persona (Diego, 27-oct: una compra de muebles): la cantidad empieza en 1 y vacía vale 1.
+  const [colaboradores, setColaboradores] = useState(evento ? String(evento.Colaboradores) : '1')
   const [valor, setValor] = useState(evento ? String(evento.Valor) : '')
   const [moneda, setMoneda] = useState<'HNL' | 'USD'>(evento?.Moneda ?? 'HNL')
   // Por semanas o parejo se cambia en el web; aquí se corrige lo demás y se queda como está.
@@ -1264,7 +1268,7 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   const sim = moneda === 'USD' ? 'US$' : 'L'
   const [ocupado, setOcupado] = useState(false)
 
-  const colNum = num(colaboradores)
+  const colNum = colaboradores.trim() === '' ? 1 : num(colaboradores)
   const valNum = num(valor)
   const colMal = colaboradores !== '' && (colNum == null || colNum < 1 || colNum > 99999 || !Number.isInteger(colNum))
   const valMal = valor !== '' && (valNum == null || valNum <= 0)
@@ -1286,7 +1290,7 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   }
   const guardar = () => {
     const data = {
-      CorridaId: corridaId, CentroCosto: cc, Cuenta: cuenta as number, Motivo: motivo.trim(),
+      CorridaId: corridaId, CentroCosto: cc, Cuenta: cuenta as number, Motivo: motivo.trim().toUpperCase(),
       Colaboradores: colNum as number, Valor: valNum as number, Moneda: moneda, Meses: meses,
       ...(fijo ? { Reparto: fijo.Reparto, Semanas: semanasLista(fijo.Semanas) } : {}),
     }
@@ -1301,7 +1305,7 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
   }
 
   return (
-    <Hoja titulo={evento ? 'Corregir evento' : 'Agregar evento'} subtitulo={`${cc} · otros gastos`} onCerrar={onCerrar}>
+    <Hoja titulo={evento ? 'Corregir evento' : 'Agregar evento'} subtitulo={`${cc} · gastos del CeCo`} onCerrar={onCerrar}>
       <YStack gap="$1.5">
         <Text fontSize="$2" fontWeight="700" color="$text">Cuenta</Text>
         {cuentas.map(c => (
@@ -1320,13 +1324,13 @@ function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
           </Text>
         )}
       </YStack>
-      <Campo etiqueta="Motivo" valor={motivo} cambiar={t => setMotivo(t.slice(0, 200))} ayuda="Ej.: curso de Excel" tipo="parrafo" />
+      <Campo etiqueta="Motivo" valor={motivo} cambiar={t => setMotivo(t.slice(0, 200))} ayuda="Ej.: CURSO DE EXCEL" tipo="parrafo" mayusculas />
       <XStack gap="$3">
-        <YStack flex={1}><Campo etiqueta="Colaboradores" valor={colaboradores} cambiar={setColaboradores} ayuda="Cuántos" /></YStack>
-        <YStack flex={1}><Campo etiqueta="Valor por colaborador" valor={valor} cambiar={setValor} ayuda={sim} tipo="decimal" /></YStack>
+        <YStack flex={1}><Campo etiqueta="Cantidad" valor={colaboradores} cambiar={setColaboradores} ayuda="1" /></YStack>
+        <YStack flex={1}><Campo etiqueta="Valor" valor={valor} cambiar={setValor} ayuda={sim} tipo="decimal" /></YStack>
       </XStack>
       <Opciones valor={moneda} cambiar={setMoneda} opciones={[['HNL', 'Lempiras'], ['USD', 'Dólares']]} />
-      {colMal && <Text fontSize="$1" color={ERR}>Los colaboradores van de 1 a 99,999.</Text>}
+      {colMal && <Text fontSize="$1" color={ERR}>La cantidad va de 1 a 99,999.</Text>}
       {valMal && <Text fontSize="$1" color={ERR}>El valor tiene que ser mayor que cero.</Text>}
       {fijo ? (
         <Text fontSize="$2" color="$textMuted">
