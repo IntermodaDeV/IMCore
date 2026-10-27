@@ -7,7 +7,7 @@ import { exigir, mensajeDeError, presupuestoService as api } from '../../api/mod
 import { IResumenConsolidado } from '../../api/modules/presupuesto/presupuesto.types'
 import { ACCENT, ERR, lps } from './comun'
 
-// Resumen de todos los centros del revisor (todo IT, p. ej.), como el «Resumen por semana» de Mis centros en el web.
+// Resumen de todos los centros del revisor (todo IT, p. ej.), como el «Resumen por Depto-CeCo» de Mis centros en el web.
 // Por centro o por cuenta, con el total del año; al tocar una fila se ven sus semanas (por centro, con la gente
 // presupuestada de cada semana) y, si es un centro, sus cuentas. Con una API que no manda semanas: los 13 períodos.
 

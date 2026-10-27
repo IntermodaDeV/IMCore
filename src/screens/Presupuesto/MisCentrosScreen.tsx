@@ -183,7 +183,7 @@ export default function MisCentrosScreen() {
         {!!error && <Text fontSize="$2" color={ERR}>{error}</Text>}
         {todos.length > 0 && (
           <XStack borderBottomWidth={1} borderColor="$border" gap="$4">
-            {([['centros', 'Mis centros'], ['resumen', 'Resumen por semana']] as const).map(([v, t]) => (
+            {([['centros', 'Mis centros'], ['resumen', 'Resumen por Depto-CeCo']] as const).map(([v, t]) => (
               <View key={v} onPress={() => setPanel(v)} paddingVertical="$2" borderBottomWidth={2}
                 borderColor={panel === v ? ACCENT : 'transparent'} marginBottom={-1}>
                 <Text fontWeight="800" fontSize="$2" color={panel === v ? '$text' : '$textMuted'}>{t}</Text>

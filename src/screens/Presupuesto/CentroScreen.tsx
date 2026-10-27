@@ -17,7 +17,7 @@ import {
 
 // Presupuesto › un centro de costo (el revisor). Igual que en el web, pero sencillo: la lista de personas, marcar
 // revisadas (una, varias o todas), agregar vacantes y confirmar. Para corregir a alguien se toca su tarjeta y se abre
-// un panel con pocos campos. El resumen por semana está en Mis centros; lo de Administración se queda en el web.
+// un panel con pocos campos. El resumen por Depto-CeCo está en Mis centros; lo de Administración se queda en el web.
 // Mis centros es la vista del REVISOR: solo se edita lo habilitado y dentro del plazo, también si es administrador.
 // Si el centro tiene cuentas que captura el gerente, arriba se cambia a «Gastos»: sus eventos (José, resp. 29–31). Los nombres
 // van como los pidió Diego (27-oct): «Planillas» (antes Personas) y «Gastos» (antes Otros gastos).
