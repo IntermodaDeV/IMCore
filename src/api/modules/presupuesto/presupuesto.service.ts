@@ -1,8 +1,8 @@
 import { HttpError, httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
-  ICentroDestino, ICentroEncabezado, IConfirmarVariosRequest, IMiCentro, IMoverPersonasRequest, IPlaza, IPlazaRequest, IResumenConsolidado,
-  IUsuarioDelegado, IVacanteRequest,
+  ICargoPlanilla, ICentroDestino, ICentroEncabezado, IConfirmarVariosRequest, ICuentaCaptura, IEvento, IEventoRequest, IMiCentro, IMoverPersonasRequest,
+  IPlaza, IPlazaRequest, IResumenConsolidado, IUsuarioDelegado, IVacanteRequest, IVersion,
 } from './presupuesto.types'
 
 // Consume api/Presupuesto (IMCoreApi): lo mismo que «Mis centros de costo» del web. El usuario sale del token y la
@@ -17,9 +17,11 @@ const centro = (corridaId: number, cc: string, grupo: number) =>
 export const presupuestoService = {
   misCentros: (corridaId?: number): R<IMiCentro[]> =>
     httpClient.get(`${schema}/MisCentros`, corridaId ? { corridaId } : undefined),
-  /** Todos los centros del revisor por cuenta y período (el resumen de «Mis centros»). */
+  /** Todos los centros del revisor por cuenta, con sus semanas (el resumen de «Mis centros»). */
   resumenConsolidado: (corridaId: number): R<IResumenConsolidado[]> =>
     httpClient.get(`${schema}/Corridas/${corridaId}/ResumenConsolidado`, { alcance: 'Mios' }),
+  /** Los cargos de planilla de la empresa de la corrida (sugerencias para la vacante). */
+  cargosPlanilla: (corridaId: number): R<ICargoPlanilla[]> => httpClient.get(`${schema}/Corridas/${corridaId}/Cargos`),
   encabezado: (corridaId: number, cc: string, grupo: number): R<ICentroEncabezado[]> =>
     httpClient.get(centro(corridaId, cc, grupo)),
   plazas: (corridaId: number, cc: string, grupo: number): R<IPlaza[]> => httpClient.get(`${centro(corridaId, cc, grupo)}/Plazas`),
@@ -55,6 +57,17 @@ export const presupuestoService = {
     httpClient.post(`${centro(corridaId, cc, grupo)}/Mover`, data),
   deshacerMovimiento: (corridaId: number, plazaId: number): R<number> =>
     httpClient.post(`${schema}/Corridas/${corridaId}/Plazas/${plazaId}/DeshacerMovimiento`, {}),
+
+  // Otros gastos de personal: los eventos del gerente en las cuentas que captura en su centro (igual que el web).
+  cuentasCaptura: (corridaId: number, cc: string, grupo: number): R<ICuentaCaptura[]> =>
+    httpClient.get(`${centro(corridaId, cc, grupo)}/CuentasCaptura`),
+  eventos: (corridaId: number, cc: string, grupo: number): R<IEvento[]> => httpClient.get(`${centro(corridaId, cc, grupo)}/Eventos`),
+  agregarEvento: (data: IEventoRequest): R<number> => httpClient.post(`${schema}/Eventos`, data),
+  modificarEvento: (id: number, data: IEventoRequest): R<number> => httpClient.put(`${schema}/Eventos/${id}`, data),
+  quitarEvento: (id: number): R<number> => httpClient.delete(`${schema}/Eventos/${id}`),
+
+  /** Las versiones del centro (una por confirmación), de la más nueva a la más vieja. El comparativo está en el web. */
+  versiones: (corridaId: number, cc: string, grupo: number): R<IVersion[]> => httpClient.get(`${centro(corridaId, cc, grupo)}/Versiones`),
 }
 
 /** La API responde 200 aunque no se haya podido: el resultado viene en Success. */

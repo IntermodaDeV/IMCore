@@ -9,7 +9,7 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { useShowToast } from '../../utils/useShowToast'
 import { shadows } from '../../theme/shadows'
 import { exigir, mensajeDeError, presupuestoService as api } from '../../api/modules/presupuesto/presupuesto.service'
-import { ICentroDestino, ICentroEncabezado, IMiCentro, IPlaza } from '../../api/modules/presupuesto/presupuesto.types'
+import { ICentroDestino, ICentroEncabezado, ICuentaCaptura, IEvento, IMiCentro, IPlaza, IVersion } from '../../api/modules/presupuesto/presupuesto.types'
 import {
   ACCENT, AZUL, Barra, Chip, ERR, EstadoChip, GRIS, OK, Observaciones, PlazoChip, WARN, aMensual, aSemanal, centroOculto,
   esTemporal, etiquetaSalario, fmtFechaHora, fueraDePlanilla, lps, mostrarSalario, temporalSinFin, tieneObservacion,
@@ -17,10 +17,13 @@ import {
 
 // Presupuesto › un centro de costo (el revisor). Igual que en el web, pero sencillo: la lista de personas, marcar
 // revisadas (una, varias o todas), agregar vacantes y confirmar. Para corregir a alguien se toca su tarjeta y se abre
-// un panel con pocos campos. El resumen por período está en Mis centros; lo de Administración se queda en el web.
+// un panel con pocos campos. El resumen por semana está en Mis centros; lo de Administración se queda en el web.
 // Mis centros es la vista del REVISOR: solo se edita lo habilitado y dentro del plazo, también si es administrador.
+// Si el centro tiene cuentas que captura el gerente, arriba se cambia a «Otros gastos»: sus eventos (José, resp. 29–31).
+// Si ya se confirmó alguna vez, «Versiones»: cada confirmación con su total (el comparativo está en el web).
 
 type Vista = 'todas' | 'pendientes' | 'observaciones'
+type Seccion = 'personas' | 'otros' | 'versiones'
 
 export default function CentroScreen() {
   const theme = useTheme()
@@ -55,15 +58,29 @@ export default function CentroScreen() {
   const [moviendo, setMoviendo] = useState<IPlaza[] | null>(null)
   const [verMovidos, setVerMovidos] = useState(false)
   const [entregando, setEntregando] = useState(false)
+  // Otros gastos de personal: los eventos del gerente y las cuentas en que los puede poner.
+  const [seccion, setSeccion] = useState<Seccion>('personas')
+  const [eventos, setEventos] = useState<IEvento[]>([])
+  const [cuentas, setCuentas] = useState<ICuentaCaptura[]>([])
+  const [evento, setEvento] = useState<IEvento | 'nuevo' | null>(null)
+  const [versiones, setVersiones] = useState<IVersion[]>([])
 
   const cargar = useCallback(async () => {
     try {
       const [e, p, m] = await Promise.all([
         exigir(api.encabezado(corridaId, cc, grupo)), exigir(api.plazas(corridaId, cc, grupo)), exigir(api.misCentros(corridaId)),
       ])
-      setEnc(e.Data?.[0] ?? null)
+      const encabezado = e.Data?.[0] ?? null
+      setEnc(encabezado)
       setPlazas(p.Data ?? [])
       setMios(m.Data ?? [])
+      // Solo si el centro tiene cuentas de captura (una API sin la captura no trae CuentasCaptura: no se piden).
+      if ((encabezado?.CuentasCaptura ?? 0) > 0) {
+        const [ev, cu] = await Promise.all([exigir(api.eventos(corridaId, cc, grupo)), exigir(api.cuentasCaptura(corridaId, cc, grupo))])
+        setEventos(ev.Data ?? [])
+        setCuentas(cu.Data ?? [])
+      }
+      if ((encabezado?.Versiones ?? 0) > 0) setVersiones((await exigir(api.versiones(corridaId, cc, grupo))).Data ?? [])
       setError(null)
     } catch (e) {
       setError(mensajeDeError(e))
@@ -102,6 +119,10 @@ export default function CentroScreen() {
     : vista === 'observaciones' ? activas.filter(tieneObservacion) : activas
 
   const puedeEditar = enc?.Acceso === 2 && enc.Estado === 'Habilitado'
+  const conOtros = (enc?.CuentasCaptura ?? 0) > 0
+  const cuentasMias = cuentas.filter(c => c.Editable == null || c.Editable === 1)
+  const conVersiones = (enc?.Versiones ?? 0) > 0 && versiones.length > 0
+  const totalOtros = eventos.reduce((s, e) => s + e.MontoAnio, 0)
   // Confirma el revisor o, si la corrida lo dice, su delegado; si no, el delegado lo «entrega» a su gerente.
   const puedeConfirmar = puedeEditar && (enc?.PuedeConfirmar ?? enc?.EsRevisor) === 1
   const puedeEntregar = enc?.PuedeEntregar === 1
@@ -232,6 +253,66 @@ export default function CentroScreen() {
     )
   }
 
+  const renderEvento = ({ item: e }: { item: IEvento }) => {
+    const fuera = fueraDelAnio(e)
+    // Las de un área (IT…) las pone el área: el gerente las ve.
+    const tocable = puedeEditar && (e.Editable == null || e.Editable === 1)
+    return (
+      <View {...tarjeta} pressStyle={tocable ? { opacity: 0.85 } : undefined} onPress={tocable ? () => setEvento(e) : undefined}>
+        <XStack alignItems="center" gap="$3">
+          <YStack flex={1} gap={2}>
+            <Text fontSize="$3" fontWeight="800" color="$text" numberOfLines={2}>{e.Motivo}</Text>
+            <Text fontSize="$2" color="$textMuted" numberOfLines={1}>{e.Cuenta} · {e.CuentaNombre}</Text>
+            <Text fontSize="$2" color="$textMuted" numberOfLines={2}>
+              {e.Colaboradores.toLocaleString('es-HN')} × {e.Moneda === 'USD' ? 'US$' : 'L'} {lps(e.Valor, 2)} · {cuandoTexto(e)}
+            </Text>
+            {e.Captura === 'Encargado' && (
+              <XStack marginTop={2}>
+                <Chip texto={`LO PONE ${(e.EncargadoNombre ?? 'UN ÁREA').toUpperCase()}`} color={INDIGO} />
+              </XStack>
+            )}
+            {fuera > 0 && (
+              <XStack marginTop={2}>
+                <Chip texto={`${fuera} ${e.Reparto === 'Semanas' ? (fuera === 1 ? 'SEMANA QUEDA FUERA' : 'SEMANAS QUEDAN FUERA')
+                  : fuera === 1 ? 'MES QUEDA FUERA' : 'MESES QUEDAN FUERA'}`} color={WARN} />
+              </XStack>
+            )}
+          </YStack>
+          <YStack alignItems="flex-end" maxWidth="40%">
+            <Text fontSize="$3" fontWeight="900" color="$text" numberOfLines={1}>L {lps(e.MontoAnio)}</Text>
+            <Text fontSize="$1" color="$textMuted">en el año</Text>
+          </YStack>
+        </XStack>
+      </View>
+    )
+  }
+
+  // Una versión: cuándo y quién la confirmó, su comentario y su total, con lo que cambió contra la anterior.
+  const renderVersion = ({ item: v, index }: { item: IVersion; index: number }) => {
+    const anterior = versiones[index + 1]
+    const dif = anterior ? v.Total - anterior.Total : 0
+    return (
+      <View {...tarjeta}>
+        <XStack alignItems="center" gap="$3">
+          <YStack flex={1} gap={2}>
+            <Text fontSize="$3" fontWeight="800" color="$text">Versión {v.Version} · {fmtFechaHora(v.Fecha)}</Text>
+            <Text fontSize="$2" color="$textMuted" numberOfLines={1}>
+              {v.UsuarioNombre || v.Usuario} · {v.Personas} {v.Personas === 1 ? 'persona' : 'personas'}
+              {v.Vacantes > 0 ? ` · ${v.Vacantes} ${v.Vacantes === 1 ? 'vacante' : 'vacantes'}` : ''}
+            </Text>
+            {!!v.Comentario && <Text fontSize="$2" color="$text" numberOfLines={3}>{v.Comentario}</Text>}
+          </YStack>
+          <YStack alignItems="flex-end" maxWidth="40%">
+            <Text fontSize="$3" fontWeight="900" color="$text" numberOfLines={1}>L {lps(v.Total)}</Text>
+            {Math.abs(dif) >= 0.5 && (
+              <Text fontSize="$1" fontWeight="700" color={dif > 0 ? ERR : OK}>{dif > 0 ? '+' : ''}{lps(dif)} vs. la {anterior.Version}</Text>
+            )}
+          </YStack>
+        </XStack>
+      </View>
+    )
+  }
+
   if (!enc || !plazas) {
     return (
       <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$background" padding="$4" gap="$3">
@@ -277,6 +358,32 @@ export default function CentroScreen() {
       {enc.EsRevisor === 1 && !!enc.DelegadoA && aviso(INDIGO, `Lo delegaste a ${enc.DelegadoNombre ?? enc.DelegadoA}. ${enc.Entregado === 1
         ? `Te lo entregó el ${fmtFechaHora(enc.FechaEntregado)}${enc.ComentarioEntrega ? `: «${enc.ComentarioEntrega}»` : ''}. Revísalo y confírmalo.`
         : 'Todavía no te lo entrega; tú también lo puedes corregir.'}`)}
+      {(conOtros || conVersiones) && (
+        <Opciones valor={seccion} cambiar={s => { setSeccion(s); setSel(new Set()) }} opciones={[
+          ['personas', `Personas (${activas.length})`] as const,
+          ...(conOtros ? [['otros', `Otros gastos (${eventos.length})`] as const] : []),
+          ...(conVersiones ? [['versiones', `Versiones (${versiones.length})`] as const] : []),
+        ]} />
+      )}
+      {seccion === 'versiones' ? (
+        <Text fontSize="$2" color="$textMuted">Cada confirmación guarda una versión. Para compararlas, ábrelas en el web.</Text>
+      ) : seccion === 'otros' ? (
+        <YStack gap={4}>
+          <XStack justifyContent="space-between" alignItems="center" gap="$2">
+            <Text flex={1} fontSize="$2" color="$text">
+              {eventos.length} {eventos.length === 1 ? 'evento' : 'eventos'} · L {lps(totalOtros)} en el año
+            </Text>
+            {puedeEditar && cuentasMias.length > 0 && (
+              <XStack alignItems="center" gap={4} onPress={() => setEvento('nuevo')} hitSlop={8} pressStyle={{ opacity: 0.7 }}
+                accessibilityRole="button">
+                <Plus size={16} color={ACCENT} />
+                <Text fontSize="$2" color={ACCENT} fontWeight="800">Agregar evento</Text>
+              </XStack>
+            )}
+          </XStack>
+          <Text fontSize="$1" color="$textMuted">Colaboradores × valor por colaborador en cada mes marcado; cae en la última semana del mes.</Text>
+        </YStack>
+      ) : (<>
       <YStack gap={4}>
         <XStack justifyContent="space-between">
           <Text fontSize="$2" color="$text">
@@ -310,6 +417,7 @@ export default function CentroScreen() {
           <Text fontSize="$1" color="$textMuted">Toca una persona para corregirla</Text>
         </XStack>
       )}
+      </>)}
     </YStack>
   )
 
@@ -354,7 +462,14 @@ export default function CentroScreen() {
 
   // Barra de abajo: con selección, marcar lo seleccionado; sin selección, marcar todo lo pendiente y confirmar.
   const botonera = puedeEditar ? (
-    seleccionadas.length > 0 ? (
+    seccion !== 'personas' ? (
+      puedeConfirmar || puedeEntregar ? (
+        <XStack gap="$2">
+          {puedeConfirmar && <Boton texto="Confirmar centro" color={OK} disabled={ocupado} onPress={() => setConfirmando(true)} />}
+          {puedeEntregar && <Boton texto="Entregar a mi gerente" color={INDIGO} disabled={ocupado} onPress={() => setEntregando(true)} />}
+        </XStack>
+      ) : null
+    ) : seleccionadas.length > 0 ? (
       <YStack gap="$2">
       {selMovibles.length > 0 && (
         <XStack>
@@ -387,6 +502,43 @@ export default function CentroScreen() {
 
   return (
     <View flex={1} backgroundColor="$background">
+      {seccion === 'versiones' ? (
+        <FlatList
+          data={versiones}
+          keyExtractor={v => String(v.Version)}
+          renderItem={renderVersion}
+          ListHeaderComponent={encabezado}
+          contentContainerStyle={{
+            paddingHorizontal: compacto ? 10 : 16, paddingTop: compacto ? 8 : 12, paddingBottom: 100 + insets.bottom,
+            width: '100%', maxWidth: 1000, alignSelf: 'center',
+          }}
+          refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); void cargar() }}
+            colors={[ACCENT]} tintColor={ACCENT} />}
+        />
+      ) : seccion === 'otros' ? (
+        <FlatList
+          data={eventos}
+          keyExtractor={e => String(e.Id)}
+          renderItem={renderEvento}
+          ListHeaderComponent={encabezado}
+          contentContainerStyle={{
+            paddingHorizontal: compacto ? 10 : 16, paddingTop: compacto ? 8 : 12, paddingBottom: 100 + insets.bottom,
+            width: '100%', maxWidth: 1000, alignSelf: 'center',
+          }}
+          refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); void cargar() }}
+            colors={[ACCENT]} tintColor={ACCENT} />}
+          ListEmptyComponent={(
+            <YStack alignItems="center" gap="$3" paddingTop="$6">
+              <Text color="$textMuted" textAlign="center">Sin eventos.{puedeEditar && cuentasMias.length > 0 ? ' Agrega cursos, capacitaciones u otros gastos.' : ''}</Text>
+              {puedeEditar && cuentasMias.length > 0 && (
+                <XStack width="100%" maxWidth={320}>
+                  <Boton texto="Agregar evento" color={ACCENT} onPress={() => setEvento('nuevo')} />
+                </XStack>
+              )}
+            </YStack>
+          )}
+        />
+      ) : (
       <FlatList
         data={visibles}
         keyExtractor={p => String(p.Id)}
@@ -415,6 +567,7 @@ export default function CentroScreen() {
             </YStack>
           )}
       />
+      )}
 
       {botonera && (
         <View position="absolute" left={0} right={0} bottom={0} paddingHorizontal={compacto ? 10 : 16} paddingTop="$2"
@@ -441,6 +594,10 @@ export default function CentroScreen() {
           <EntregarCentro corridaId={corridaId} cc={cc} grupo={grupo} gerente={enc.RevisorNombre} sinRevisar={activas.length - revisadas}
             onListo={() => { setEntregando(false); void cargar() }} />
         </Hoja>
+      )}
+      {evento && (
+        <FormEvento corridaId={corridaId} cc={cc} evento={evento === 'nuevo' ? null : evento} cuentas={cuentasMias}
+          onCerrar={() => setEvento(null)} onListo={() => { setEvento(null); void cargar() }} />
       )}
       {confirmando && (
         <ConfirmarCentro corridaId={corridaId} cc={cc} grupo={grupo} personas={personas} vacantes={vacantes} total={total}
@@ -852,6 +1009,9 @@ function FormMover({ plazas, corridaId, cc, grupo, onListo }: {
   )
 }
 
+/** Para buscar sin importar mayúsculas ni tildes. */
+const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+
 // ---------------------------------------------------------------- agregar una vacante
 // Lo mismo que en el web: cargo, cuántas iguales, salario (semanal o mensual) y las semanas en que cuesta.
 
@@ -860,6 +1020,20 @@ function AgregarVacante({ corridaId, cc, grupo, salarioMinimo, onCerrar, onListo
 }) {
   const { showToast } = useShowToast()
   const [cargo, setCargo] = useState('')
+  // Como en el web: el cargo se busca en los de planilla (los mismos nombres de la foto) o se escribe uno nuevo. Sin
+  // planilla (error) solo se escribe.
+  const [cargos, setCargos] = useState<string[]>([])
+  useEffect(() => {
+    let vivo = true
+    exigir(api.cargosPlanilla(corridaId)).then(r => { if (vivo) setCargos((r.Data ?? []).map(c => c.Nombre)) }).catch(() => undefined)
+    return () => { vivo = false }
+  }, [corridaId])
+  const sugeridos = useMemo(() => {
+    const q = sinAcentos(cargo.trim())
+    if (q.length < 2) return []
+    const iguales = cargos.some(c => sinAcentos(c) === q)
+    return iguales ? [] : cargos.filter(c => sinAcentos(c).includes(q)).slice(0, 6)
+  }, [cargo, cargos])
   const [cantidad, setCantidad] = useState('1')
   const [planilla, setPlanilla] = useState<'mensual' | 'semanal'>('mensual')
   const [salario, setSalario] = useState('')
@@ -883,7 +1057,7 @@ function AgregarVacante({ corridaId, cc, grupo, salarioMinimo, onCerrar, onListo
     setOcupado(true)
     try {
       const r = await exigir(api.agregarVacante({
-        CorridaId: corridaId, CentroCosto: cc, GrupoCodigo: grupo, Cargo: cargo.trim(), Nombre: null,
+        CorridaId: corridaId, CentroCosto: cc, GrupoCodigo: grupo, Cargo: cargo.trim().toUpperCase(), Nombre: null,
         // En semanal se escribe el semanal y se guarda el mensual (lo que guarda planilla). Sin «hasta» = todo el año.
         Salario: semanal ? aMensual(salarioNum as number) : salarioNum,
         SemanaInicio: desdeNum as number, SemanaFin: hastaNum == null || hastaNum >= 52 ? 53 : hastaNum,
@@ -899,7 +1073,18 @@ function AgregarVacante({ corridaId, cc, grupo, salarioMinimo, onCerrar, onListo
 
   return (
     <Hoja titulo="Agregar vacante" subtitulo={cc} onCerrar={onCerrar}>
-      <Campo etiqueta="Cargo" valor={cargo} cambiar={setCargo} ayuda="Ej.: OPERARIO" tipo="texto" />
+      <Campo etiqueta="Cargo" valor={cargo} cambiar={setCargo} ayuda={cargos.length ? 'Búscalo en planilla o escríbelo' : 'Ej.: OPERARIO'}
+        tipo="texto" />
+      {sugeridos.length > 0 && (
+        <YStack borderWidth={1} borderColor="$border" borderRadius="$3" overflow="hidden" marginTop={-4}>
+          {sugeridos.map((c, i) => (
+            <View key={c} paddingHorizontal="$3" paddingVertical="$2" borderTopWidth={i ? 1 : 0} borderColor="$border"
+              pressStyle={{ opacity: 0.7 }} onPress={() => setCargo(c)} accessibilityRole="button">
+              <Text fontSize="$3" color="$text" numberOfLines={1}>{c}</Text>
+            </View>
+          ))}
+        </YStack>
+      )}
       <XStack gap="$3">
         <YStack flex={1}><Campo etiqueta="Cantidad" valor={cantidad} cambiar={setCantidad} ayuda="1" /></YStack>
         <YStack flex={1} gap={4}>
@@ -1007,6 +1192,153 @@ function ConfirmarCentro({ corridaId, cc, grupo, personas, vacantes, total, sinR
         <Boton texto={siguiente ? `Confirmar y seguir con ${siguiente.CentroCosto}` : 'Confirmar y volver'} color={OK}
           disabled={ocupado} onPress={() => void confirmar()} />
       </XStack>
+    </Hoja>
+  )
+}
+
+// ---------------------------------------------------------------- otros gastos de personal (eventos del gerente)
+// Lo mismo que en el web: en las cuentas que captura el gerente en su centro, cada evento es un motivo con colaboradores ×
+// valor por colaborador en los meses en que ocurre; cada mes cae en su última semana (la base: fn_EventoSemanas). Las
+// líneas por semanas o parejo en el año (José, 26-oct) se ponen en el web: aquí se ven y se corrigen sin cambiar eso.
+
+const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+const TODOS = MESES.map((_, i) => i + 1)
+const aLista = (bits: number) => TODOS.filter(m => (bits & (1 << (m - 1))) > 0)
+const mesesTexto = (l: number[]) => (l.length === 12 ? 'Todo el año' : l.map(m => MESES[m - 1]).join(', '))
+const semanasLista = (t: string | null | undefined) => (t ? t.split(',').map(Number).filter(n => n >= 1 && n <= 53) : [])
+/** Cuándo cae: «Ene, Mar», «S46, S50» o «Parejo en el año». */
+const cuandoTexto = (e: IEvento) => (e.Reparto === 'Anual' ? 'Parejo en el año'
+  : e.Reparto === 'Semanas' ? semanasLista(e.Semanas).map(s => `S${s}`).join(', ') : mesesTexto(aLista(e.Meses)))
+/** Cuántos de los meses o semanas marcados quedan fuera (regla del grupo o semana de corte); parejo, ninguno. */
+const fueraDelAnio = (e: IEvento) => (e.Reparto === 'Anual' ? 0
+  : (e.Reparto === 'Semanas' ? semanasLista(e.Semanas).length : aLista(e.Meses).length) - e.MesesEnAnio)
+
+/** Los 12 meses como botones (cuatro por fila) y «Todo el año». */
+function MesesBotones({ valor, cambiar }: { valor: number[]; cambiar: (m: number[]) => void }) {
+  const todo = valor.length === 12
+  return (
+    <YStack gap="$1.5">
+      <XStack justifyContent="space-between" alignItems="center">
+        <Text fontSize="$2" fontWeight="700" color="$text">Meses</Text>
+        <Text fontSize="$2" color={ACCENT} fontWeight="800" hitSlop={8} onPress={() => cambiar(todo ? [] : TODOS)}>
+          {todo ? 'Quitar todos' : 'Todo el año'}
+        </Text>
+      </XStack>
+      <XStack flexWrap="wrap" gap="$1.5">
+        {MESES.map((m, i) => {
+          const on = valor.includes(i + 1)
+          return (
+            <View key={m} flexBasis="22%" flexGrow={1} height={40} borderRadius="$3" borderWidth={1.5}
+              borderColor={on ? ACCENT : '$border'} backgroundColor={on ? ACCENT : 'transparent'} alignItems="center" justifyContent="center"
+              pressStyle={{ opacity: 0.8 }} accessibilityRole="checkbox" accessibilityState={{ checked: on }}
+              onPress={() => cambiar(on ? valor.filter(x => x !== i + 1) : [...valor, i + 1].sort((a, b) => a - b))}>
+              <Text fontWeight="800" fontSize="$2" color={on ? '#fff' : '$text'}>{m}</Text>
+            </View>
+          )
+        })}
+      </XStack>
+    </YStack>
+  )
+}
+
+function FormEvento({ corridaId, cc, evento, cuentas, onCerrar, onListo }: {
+  corridaId: number; cc: string; evento: IEvento | null; cuentas: ICuentaCaptura[]; onCerrar: () => void; onListo: () => void
+}) {
+  const { showToast } = useShowToast()
+  const [cuenta, setCuenta] = useState<number | null>(evento?.Cuenta ?? (cuentas.length === 1 ? cuentas[0].Cuenta : null))
+  const [motivo, setMotivo] = useState(evento?.Motivo ?? '')
+  const [colaboradores, setColaboradores] = useState(evento ? String(evento.Colaboradores) : '')
+  const [valor, setValor] = useState(evento ? String(evento.Valor) : '')
+  const [moneda, setMoneda] = useState<'HNL' | 'USD'>(evento?.Moneda ?? 'HNL')
+  // Por semanas o parejo se cambia en el web; aquí se corrige lo demás y se queda como está.
+  const fijo = evento && evento.Reparto && evento.Reparto !== 'Meses' ? evento : null
+  const [meses, setMeses] = useState<number[]>(evento && !fijo ? aLista(evento.Meses) : [])
+  const sim = moneda === 'USD' ? 'US$' : 'L'
+  const [ocupado, setOcupado] = useState(false)
+
+  const colNum = num(colaboradores)
+  const valNum = num(valor)
+  const colMal = colaboradores !== '' && (colNum == null || colNum < 1 || colNum > 99999 || !Number.isInteger(colNum))
+  const valMal = valor !== '' && (valNum == null || valNum <= 0)
+  const listo = !!cuenta && motivo.trim() !== '' && !colMal && !valMal && colNum != null && valNum != null && (!!fijo || meses.length > 0)
+  const porMes = (colNum ?? 0) * (valNum ?? 0)
+  // Dos fuentes (José, 20-oct): si Planificación ya cargó un monto en la cuenta, lo del gerente se suma; se le avisa.
+  const planificado = cuentas.find(c => c.Cuenta === cuenta)?.MontoPlanificacion ?? 0
+
+  // Sin aviso de éxito: el evento aparece (o cambia, o se va) en la lista y el total del centro se pone al día.
+  const correr = async (accion: () => Promise<unknown>) => {
+    setOcupado(true)
+    try {
+      await accion()
+      onListo()
+    } catch (e) {
+      showToast('error', 'No se pudo', mensajeDeError(e))
+      setOcupado(false)
+    }
+  }
+  const guardar = () => {
+    const data = {
+      CorridaId: corridaId, CentroCosto: cc, Cuenta: cuenta as number, Motivo: motivo.trim(),
+      Colaboradores: colNum as number, Valor: valNum as number, Moneda: moneda, Meses: meses,
+      ...(fijo ? { Reparto: fijo.Reparto, Semanas: semanasLista(fijo.Semanas) } : {}),
+    }
+    void correr(() => exigir(evento ? api.modificarEvento(evento.Id, data) : api.agregarEvento(data)))
+  }
+  const quitar = () => {
+    if (!evento) return
+    Alert.alert('Quitar evento', `¿Quitar «${evento.Motivo}»?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Quitar', style: 'destructive', onPress: () => void correr(() => exigir(api.quitarEvento(evento.Id))) },
+    ])
+  }
+
+  return (
+    <Hoja titulo={evento ? 'Corregir evento' : 'Agregar evento'} subtitulo={`${cc} · otros gastos`} onCerrar={onCerrar}>
+      <YStack gap="$1.5">
+        <Text fontSize="$2" fontWeight="700" color="$text">Cuenta</Text>
+        {cuentas.map(c => (
+          <XStack key={c.Cuenta} gap="$2" alignItems="center" onPress={() => setCuenta(c.Cuenta)} paddingVertical="$1.5"
+            accessibilityRole="radio" accessibilityState={{ checked: cuenta === c.Cuenta }}>
+            <View width={20} height={20} borderRadius={10} borderWidth={2} borderColor={cuenta === c.Cuenta ? ACCENT : '$border'}
+              alignItems="center" justifyContent="center">
+              {cuenta === c.Cuenta && <View width={10} height={10} borderRadius={5} backgroundColor={ACCENT} />}
+            </View>
+            <Text flex={1} fontSize="$3" color="$text">{c.Cuenta} · {c.Nombre}</Text>
+          </XStack>
+        ))}
+        {planificado > 0 && (
+          <Text fontSize="$2" color={WARN}>
+            Planificación ya cargó L {lps(planificado)} en esta cuenta para este centro: lo que pongas aquí se suma.
+          </Text>
+        )}
+      </YStack>
+      <Campo etiqueta="Motivo" valor={motivo} cambiar={t => setMotivo(t.slice(0, 200))} ayuda="Ej.: curso de Excel" tipo="parrafo" />
+      <XStack gap="$3">
+        <YStack flex={1}><Campo etiqueta="Colaboradores" valor={colaboradores} cambiar={setColaboradores} ayuda="Cuántos" /></YStack>
+        <YStack flex={1}><Campo etiqueta="Valor por colaborador" valor={valor} cambiar={setValor} ayuda={sim} tipo="decimal" /></YStack>
+      </XStack>
+      <Opciones valor={moneda} cambiar={setMoneda} opciones={[['HNL', 'Lempiras'], ['USD', 'Dólares']]} />
+      {colMal && <Text fontSize="$1" color={ERR}>Los colaboradores van de 1 a 99,999.</Text>}
+      {valMal && <Text fontSize="$1" color={ERR}>El valor tiene que ser mayor que cero.</Text>}
+      {fijo ? (
+        <Text fontSize="$2" color="$textMuted">
+          {fijo.Reparto === 'Anual' ? 'Parejo en el año: el valor es el total del año.' : `En las semanas ${cuandoTexto(fijo)}.`} Eso se cambia en el web.
+        </Text>
+      ) : <MesesBotones valor={meses} cambiar={setMeses} />}
+      {porMes > 0 && !fijo && (
+        <Text fontSize="$2" color="$textMuted">
+          {sim} {lps(porMes, 2)} por mes{meses.length ? ` · ${sim} ${lps(porMes * meses.length, 2)} en ${meses.length === 1 ? '1 mes' : `${meses.length} meses`}` : ''}.
+          Cada mes cae en su última semana{moneda === 'USD' ? ', con la tasa de cambio de esa semana' : ''}.
+        </Text>
+      )}
+      <XStack gap="$2">
+        <Boton texto={evento ? 'Guardar' : 'Agregar'} color={ACCENT} disabled={ocupado || !listo} onPress={guardar} />
+      </XStack>
+      {evento && (
+        <Text fontSize="$2" color={ERR} fontWeight="700" textAlign="center" paddingVertical="$2" onPress={ocupado ? undefined : quitar}>
+          Quitar este evento
+        </Text>
+      )}
     </Hoja>
   )
 }

@@ -180,6 +180,9 @@ export default function MiAsistenciaScreen() {
               {sig && !bloqueo && (
                 <BotonGrande texto={TIPO[sig].boton} onPress={() => setDestino({ tipo: sig, turno: null, tienda: g.tienda })} />
               )}
+              {sig === 'SALIDA_ALMUERZO' && !bloqueo && (
+                <EnlaceSalida onPress={() => setDestino({ tipo: 'FIN', turno: null, tienda: g.tienda })} />
+              )}
             </YStack>
           )
         })}
@@ -320,6 +323,8 @@ function TarjetaTurno({ turno: t, hechas, deshabilitado, onMarcar }: {
               Salir a almuerzo
             </Text>
           )}
+          {/* Entró tarde o no almuerza: puede irse sin marcar el almuerzo. */}
+          {sig === 'SALIDA_ALMUERZO' && <EnlaceSalida onPress={() => onMarcar('FIN')} />}
         </YStack>
       ) : (
         <XStack alignItems="center" gap="$2" justifyContent="center" paddingVertical="$1">
@@ -331,6 +336,14 @@ function TarjetaTurno({ turno: t, hechas, deshabilitado, onMarcar }: {
   )
 }
 const theme_muted = '#9ca3af'
+
+function EnlaceSalida({ onPress }: { onPress: () => void }) {
+  return (
+    <Text fontSize="$2" fontWeight="700" color={ACCENT} textAlign="center" onPress={onPress}>
+      Marcar salida (sin almuerzo)
+    </Text>
+  )
+}
 
 function ListaMarcas({ hechas, programado }: { hechas: MarcaVista[]; programado?: IAgendaTurno }) {
   const prog: Partial<Record<TipoMarca, string | null>> = programado

@@ -94,6 +94,81 @@ export interface ICentroEncabezado {
   TieneVariable?: number
   /** Salario mínimo mensual de la corrida: para «usar el mínimo» al agregar una vacante. */
   SalarioMinimo?: number | null
+  /** Cuántas cuentas de «Otros gastos de personal» tiene el centro en este grupo (0 = no se muestra la sección). */
+  CuentasCaptura?: number
+  /** Versiones guardadas (una por confirmación); 0 o sin el dato = no se muestra la sección. */
+  Versiones?: number
+}
+
+/** Una versión del centro: cada confirmación guarda una (en la app, solo la lista con sus totales). */
+export interface IVersion {
+  Version: number
+  Fecha: string | null
+  Usuario: string | null
+  UsuarioNombre: string | null
+  Comentario: string | null
+  Personas: number
+  Vacantes: number
+  Total: number
+}
+
+/** Una cuenta que captura el gerente en su centro, con cuántos eventos tiene y lo que suman en el año. */
+export interface ICuentaCaptura {
+  Cuenta: number
+  Nombre: string
+  /** Quién la captura en este centro: el gerente o un área (EncargadoNombre). */
+  Captura?: 'Gerente' | 'Encargado'
+  EncargadoNombre?: string | null
+  /** 1 = este usuario puede poner eventos en ella (una API vieja no lo manda: se toma como 1). */
+  Editable?: number
+  Eventos: number
+  Total: number
+  /** Lo que cargó Planificación en la cuenta y el centro (montos anuales e importación): lo del gerente se suma. */
+  MontoPlanificacion?: number
+}
+
+/** Evento del gerente: colaboradores × valor por colaborador en cada mes marcado (Meses: bit 0 = enero), en las semanas
+ *  marcadas o parejo en el año (Reparto; esos dos se ponen en el web). */
+export interface IEvento {
+  Id: number
+  Cuenta: number
+  CuentaNombre: string
+  Motivo: string
+  Colaboradores: number
+  Valor: number
+  /** HNL o USD (los dólares se pasan con la tasa de cambio de su semana). */
+  Moneda?: 'HNL' | 'USD'
+  Meses: number
+  /** Una API vieja no lo manda: por meses. */
+  Reparto?: 'Meses' | 'Semanas' | 'Anual'
+  /** Con Reparto = Semanas, las marcadas: «46,50». */
+  Semanas?: string | null
+  /** Lo que suma en el año, en lempiras (meses dentro de la regla de reparto y después de la semana de corte). */
+  MontoAnio: number
+  MesesEnAnio: number
+  Modified_By: string | null
+  Modification_Date: string | null
+  /** Quién captura la cuenta en el centro: el gerente, un área (EncargadoNombre) o nadie. */
+  Captura?: 'Gerente' | 'Encargado' | 'No'
+  EncargadoNombre?: string | null
+  /** 1 = este usuario lo puede cambiar o quitar. */
+  Editable?: number
+  CapturoNombre?: string | null
+}
+
+export interface IEventoRequest {
+  CorridaId: number
+  CentroCosto: string
+  Cuenta: number
+  Motivo: string
+  Colaboradores: number
+  Valor: number
+  Moneda?: 'HNL' | 'USD'
+  Reparto?: 'Meses' | 'Semanas' | 'Anual'
+  /** 1 a 12. */
+  Meses: number[]
+  /** 1 a 53, con Reparto = Semanas. */
+  Semanas?: number[]
 }
 
 export interface IPlaza {
@@ -215,7 +290,7 @@ export interface IConfirmarVariosRequest {
   Comentario: string | null
 }
 
-/** Una cuenta de un centro + grupo por período: el resumen de todos los centros del revisor. */
+/** Una cuenta de un centro + grupo por semana: el resumen de todos los centros del revisor. */
 export interface IResumenConsolidado {
   CentroCosto: string
   CentroCostoNombre: string | null
@@ -227,4 +302,13 @@ export interface IResumenConsolidado {
   P01: number; P02: number; P03: number; P04: number; P05: number; P06: number; P07: number
   P08: number; P09: number; P10: number; P11: number; P12: number; P13: number
   Total: number
+  /** Las semanas del año en un arreglo JSON: «[123.45, 0, …]» (una API vieja no lo manda: se usan los períodos). */
+  Semanas?: string | null
+  /** Personas del centro + grupo en cada semana, en un arreglo JSON: «[12, 12, …]». */
+  Personas?: string | null
+}
+
+/** Un cargo del catálogo de planilla (para la vacante). */
+export interface ICargoPlanilla {
+  Nombre: string
 }
