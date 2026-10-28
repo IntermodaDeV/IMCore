@@ -119,31 +119,52 @@ export default function CrearAlimentacionScreen() {
     cargar()
   }, [cargar])
 
-  // Al elegir el día (o al cargar la gente) se valida a todos de una vez
+  // Al elegir el día (o al cargar la gente) se valida a todos de una vez. Hasta que el
+  // servidor responde POR ESA FECHA nadie se puede elegir: cada uno califica según su
+  // turno (un feriado puede serlo para un turno y no para otro) y eso lo dice el servidor.
+  const [validadoPara, setValidadoPara] = useState<string | null>(null)
+  const [errorValidacion, setErrorValidacion] = useState<string | null>(null)
   useEffect(() => {
     if (!companyCode || !fecha || empleados.length === 0) return
     let vigente = true
     setValidando(true)
+    setValidadoPara(null)
+    setErrorValidacion(null)
+    setCalifica(new Map())
     overtimeService
       .getMealEligibility(companyCode, fecha, empleados.map(e => e.Employee_Code))
       .then(res => {
-        if (!vigente || !res?.Success) return
+        if (!vigente) return
+        if (!res?.Success) {
+          setErrorValidacion(res?.ErrorMessage || 'No se pudo revisar quién califica ese día.')
+          return
+        }
         const mapa = new Map((res.Data ?? []).map(x => [x.Employee_Code.trim(), x]))
         setCalifica(mapa)
-        // Lo elegido que ya no califica ese día se suelta
-        setElegidos(prev => new Set([...prev].filter(c => mapa.get(c.trim())?.Eligible !== false)))
+        setValidadoPara(fecha)
+        // Lo elegido que no califica ese día (o que el servidor no devolvió) se suelta
+        setElegidos(prev => new Set([...prev].filter(c => mapa.get(c.trim())?.Eligible === true)))
       })
-      .catch(() => {})
+      .catch(err => vigente && setErrorValidacion(handleError(err)?.message || 'No se pudo revisar quién califica ese día.'))
       .finally(() => vigente && setValidando(false))
     return () => {
       vigente = false
     }
   }, [companyCode, fecha, empleados])
 
-  /** No califica ese día (si todavía no se sabe, se deja elegir: el servidor valida al guardar). */
-  const noCalifica = useCallback(
-    (code: string) => califica.get(code.trim())?.Eligible === false,
+  /**
+   * Ese día nadie tiene almuerzo de turno (feriado o descanso entre semana): lo dice
+   * el servidor (GetMealEligibility sin Lunch_Start para todos), la pantalla solo avisa.
+   */
+  const diaSinAlmuerzo = useMemo(
+    () => califica.size > 0 && [...califica.values()].every(x => !x.Lunch_Start),
     [califica],
+  )
+
+  /** No se puede elegir: el servidor no ha respondido por esta fecha, o dijo que no califica. */
+  const noCalifica = useCallback(
+    (code: string) => validadoPara !== fecha || califica.get(code.trim())?.Eligible !== true,
+    [califica, validadoPara, fecha],
   )
 
   const alternar = (code: string) =>
@@ -155,17 +176,40 @@ export default function CrearAlimentacionScreen() {
       return next
     })
 
+  // Filtro: solo los que sí se pueden elegir ese día (lo dice el servidor por su turno)
+  const [soloPueden, setSoloPueden] = useState(false)
+  const cuantosPueden = useMemo(
+    () => (validadoPara === fecha ? [...califica.values()].filter(x => x.Eligible === true).length : 0),
+    [califica, validadoPara, fecha],
+  )
+
+  /**
+   * Ninguno califica ese día. Si es porque nadie tiene almuerzo de turno, ya lo dice el
+   * aviso de feriado/descanso; si no, se dice el motivo más común (lo da el servidor).
+   */
+  const ningunoPuede = validadoPara === fecha && califica.size > 0 && cuantosPueden === 0
+  const motivoGeneral = useMemo(() => {
+    const cuenta = new Map<string, number>()
+    califica.forEach(x => x.Reason && cuenta.set(x.Reason, (cuenta.get(x.Reason) ?? 0) + 1))
+    return [...cuenta.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+  }, [califica])
+
+  const vista = useMemo(
+    () => (soloPueden ? filtrados.filter(e => !noCalifica(e.Employee_Code)) : filtrados),
+    [soloPueden, filtrados, noCalifica],
+  )
+
   // Secciones: mis empleados a cargo, y los otros empleados por módulo
   const secciones = useMemo(() => {
-    const propios = filtrados.filter(e => e.Propio)
+    const propios = vista.filter(e => e.Propio)
     const porModulo = new Map<string, Empleado[]>()
-    for (const e of filtrados.filter(x => !x.Propio)) {
+    for (const e of vista.filter(x => !x.Propio)) {
       const m = (e.Modulo_Nombre ?? '').trim() || 'Sin módulo'
       porModulo.set(m, [...(porModulo.get(m) ?? []), e])
     }
     // Cada grupo colapsable. Cerrado, la sección va sin filas (todos = el grupo completo).
-    // Buscando, todos abiertos: si no, lo encontrado quedaría escondido.
-    const buscando = filtrados.length !== empleados.length
+    // Buscando o filtrando, todos abiertos: si no, lo encontrado quedaría escondido.
+    const buscando = vista.length !== empleados.length
     const out: { key: string; etiqueta?: string; title: string; todos: Empleado[]; data: Empleado[] }[] = []
     const grupo = (key: string, title: string, todos: Empleado[], etiqueta?: string) =>
       out.push({ key, etiqueta, title, todos, data: buscando || abiertos.has(key) ? todos : [] })
@@ -174,7 +218,7 @@ export default function CrearAlimentacionScreen() {
       .sort(([a], [b]) => a.localeCompare(b))
       .forEach(([m, data], i) => grupo(`modulo:${m}`, m, data, i === 0 ? 'Otros empleados' : undefined))
     return out
-  }, [filtrados, empleados, abiertos])
+  }, [vista, empleados, abiertos])
 
   const alternarGrupo = (key: string) =>
     setAbiertos(prev => {
@@ -287,6 +331,71 @@ export default function CrearAlimentacionScreen() {
           </Text>
         </XStack>
 
+        {/* No se pudo revisar quién califica: nadie se puede elegir hasta reintentar */}
+        {!!errorValidacion && !validando && (
+          <XStack
+            alignItems="center"
+            gap="$2"
+            padding="$2.5"
+            marginBottom="$2"
+            borderRadius={10}
+            borderWidth={1}
+            borderColor="$error"
+            backgroundColor="$backgroundSurface"
+          >
+            <Text fontSize={11} color="$error" flex={1} fontWeight="600">
+              {errorValidacion} No se puede elegir a nadie hasta revisarlo.
+            </Text>
+            <Text
+              fontSize={11}
+              fontWeight="800"
+              color="$primary"
+              onPress={() => setEmpleados(prev => [...prev])}
+            >
+              Reintentar
+            </Text>
+          </XStack>
+        )}
+
+        {/* Feriado o descanso entre semana: nadie tiene almuerzo de turno ese día */}
+        {diaSinAlmuerzo && !validando && (
+          <XStack
+            alignItems="flex-start"
+            gap="$2"
+            padding="$2.5"
+            marginBottom="$2"
+            borderRadius={10}
+            borderWidth={1}
+            borderColor="$warning"
+            backgroundColor="$backgroundSurface"
+          >
+            <Utensils size={14} color={theme.warning?.val as string} style={{ marginTop: 1 }} />
+            <Text fontSize={11} color="$warning" flex={1} fontWeight="600">
+              Ese día no hay almuerzo de turno (feriado o descanso). Elija otro día; en feriado o descanso el
+              almuerzo se da dentro de la hora extra (Otorgar almuerzo).
+            </Text>
+          </XStack>
+        )}
+
+        {/* Ninguno califica por otro motivo (migrado, ya tienen HE en el almuerzo…) */}
+        {ningunoPuede && !diaSinAlmuerzo && !validando && (
+          <XStack
+            alignItems="flex-start"
+            gap="$2"
+            padding="$2.5"
+            marginBottom="$2"
+            borderRadius={10}
+            borderWidth={1}
+            borderColor="$warning"
+            backgroundColor="$backgroundSurface"
+          >
+            <Utensils size={14} color={theme.warning?.val as string} style={{ marginTop: 1 }} />
+            <Text fontSize={11} color="$warning" flex={1} fontWeight="600">
+              Ese día ninguno de sus empleados puede pedir almuerzo.{motivoGeneral ? ` Motivo: ${motivoGeneral}.` : ''} Elija otro día.
+            </Text>
+          </XStack>
+        )}
+
         <SearchInput
           data={empleados}
           searchKeys={['Employee_Name', 'Employee_Code', 'Departamento', 'Modulo_Nombre']}
@@ -304,9 +413,32 @@ export default function CrearAlimentacionScreen() {
                 {todosVisibles ? 'Quitar todos' : 'Seleccionar todos'}
               </Text>
             </XStack>
-            <Text fontSize={11} color="$textMuted">
-              {elegidos.size} seleccionado(s)
-            </Text>
+            <XStack alignItems="center" gap="$2">
+              {/* Filtro: solo los que sí se pueden elegir ese día */}
+              <XStack
+                alignItems="center"
+                gap="$1"
+                paddingHorizontal={8}
+                paddingVertical={3}
+                borderRadius={20}
+                borderWidth={1}
+                borderColor={soloPueden ? '$primary' : '$border'}
+                backgroundColor={soloPueden ? '$primaryOpacity2' : 'transparent'}
+                opacity={validadoPara === fecha ? 1 : 0.5}
+                pressStyle={{ opacity: 0.6 }}
+                onPress={() => validadoPara === fecha && setSoloPueden(v => !v)}
+              >
+                {soloPueden
+                  ? <CheckSquare size={12} color={theme.primary?.val as string} />
+                  : <Square size={12} color={theme.textMuted?.val as string} />}
+                <Text fontSize={11} fontWeight="600" color={soloPueden ? '$primary' : '$textMuted'}>
+                  Solo los que pueden ({cuantosPueden})
+                </Text>
+              </XStack>
+              <Text fontSize={11} color="$textMuted">
+                {elegidos.size} sel.
+              </Text>
+            </XStack>
           </XStack>
         )}
       </YStack>
@@ -370,7 +502,11 @@ export default function CrearAlimentacionScreen() {
           const activo = elegidos.has(item.Employee_Code)
           // No califica ese día: deshabilitado, con el motivo (no llega a guardar)
           const fuera = noCalifica(item.Employee_Code)
-          const motivo = fuera ? califica.get(item.Employee_Code.trim())?.Reason : null
+          // Sin respuesta del servidor para esta fecha: todavía no se sabe (o falló)
+          const pendiente = validadoPara !== fecha
+          const motivo = !fuera ? null
+            : pendiente ? (errorValidacion ? 'No se pudo revisar su turno' : 'Revisando su turno…')
+            : califica.get(item.Employee_Code.trim())?.Reason || 'No califica ese día'
           return (
             <XStack
               alignItems="center"
@@ -392,8 +528,8 @@ export default function CrearAlimentacionScreen() {
                 <Text fontSize={13} fontWeight="700" color="$text" numberOfLines={1}>
                   {nombreConCodigo(item.Employee_Name, item.Employee_Code)}
                 </Text>
-                <Text fontSize={10} color={fuera ? '$warning' : '$textMuted'} numberOfLines={2}>
-                  {fuera ? motivo || 'No califica ese día' : item.Departamento}
+                <Text fontSize={10} color={fuera && !pendiente ? '$warning' : '$textMuted'} numberOfLines={2}>
+                  {fuera ? motivo : item.Departamento}
                 </Text>
               </YStack>
             </XStack>

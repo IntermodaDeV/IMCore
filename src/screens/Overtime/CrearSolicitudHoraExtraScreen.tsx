@@ -164,6 +164,8 @@ interface Fila {
   lunchEligible?: boolean
   /** Horario del almuerzo del parámetro, 'HH:mm - HH:mm'. */
   lunchWindow?: string
+  /** El servidor dice si ese almuerzo se paga (día laboral) o solo se da (feriado o descanso). */
+  lunchPaid?: boolean
   /** Otorgar almuerzo (solo con 'SolicitarAlmuerzoHE'). */
   lunch?: boolean
 
@@ -729,6 +731,7 @@ export default function CrearSolicitudHoraExtraScreen() {
             lunch: previa?.lunch ?? guardado?.lunch ?? false,
             lunchEligible: previa?.lunchEligible ?? false,
             lunchWindow: previa?.lunchWindow ?? '',
+            lunchPaid: previa?.lunchPaid ?? false,
             // Corrigiendo, todo lo que no es devuelto queda como está: fuera
             // de los "aplicar a todos" y de la validación.
             isLocked: bloqueados.has(code) || (corrigiendo && !devueltos.has(code)),
@@ -863,15 +866,17 @@ export default function CrearSolicitudHoraExtraScreen() {
           const lunchWindow = conAlmuerzo
             ? `${String(conAlmuerzo.Lunch_Start ?? '').substring(11, 16)} - ${String(conAlmuerzo.Lunch_End ?? '').substring(11, 16)}`
             : ''
+          const lunchPaid = !!conAlmuerzo?.Lunch_Paid
 
           if (
             JSON.stringify(nuevo) === JSON.stringify(f.breakdown) &&
             serverHours === (f.serverHours ?? null) &&
             lunchEligible === !!f.lunchEligible &&
-            lunchWindow === (f.lunchWindow ?? '')
+            lunchWindow === (f.lunchWindow ?? '') &&
+            lunchPaid === !!f.lunchPaid
           ) return f
           cambio = true
-          return { ...f, breakdown: nuevo, serverHours, lunchEligible, lunchWindow }
+          return { ...f, breakdown: nuevo, serverHours, lunchEligible, lunchWindow, lunchPaid }
         })
 
         return cambio ? next : prev
@@ -1066,18 +1071,10 @@ export default function CrearSolicitudHoraExtraScreen() {
       const horas = rowHours(f.start_Time, f.end_Time)
       if (horas === null || horas <= 0) return 'El fin no puede ser igual al inicio'
 
-      // La HE Manual es justamente la que se puede pedir dentro de la jornada.
+      // El tipo (normal o manual) lo pone el servidor: aquí no se le pide nada al usuario
       const horario = horarios.find(h => h.ShiftId === f.shift_Id)
-      // ...pero tiene que TOCAR la jornada: un día sin jornada (domingo) o del todo
-      // fuera de ella (sábado en la tarde) es una HE normal. Puede empezar dentro y
-      // terminar fuera: lo de fuera se paga por bandas. El SP lo valida igual.
-      // Feriado o día sin jornada: solo HE Manual, a cualquier hora
       if (f.isHoliday && !puedeManual)
         return 'Feriado: no tiene permiso para pedir horas extra ese día'
-      if (f.is_Manual && !f.hasSchedule && !f.isRestDay) return 'Día sin jornada: no puede ser HE Manual'
-      if (f.is_Manual && !f.isHoliday && !f.isRestDay && !seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
-        return `La HE Manual tiene que tocar la jornada ${hora12(f.shift_Start)} - ${hora12(f.shift_End)}`
-      }
       if (!f.is_Manual && seEncimaConJornada(f.start_Time, f.end_Time, horario)) {
         return `Se encima con la jornada ${hora12(f.shift_Start)} - ${hora12(f.shift_End)}`
       }
@@ -1975,7 +1972,7 @@ function PasoHoras({
   onAplicarAlmuerzo: () => void
   /** Tiene el acceso 'CrearHorasExtraManuales': sin él no hay botón. */
   puedeManual: boolean
-  /** 'SolicitarAlmuerzoHE': ofrece 'Otorgar almuerzo' en HE manual de día de descanso. */
+  /** 'SolicitarAlmuerzoHE': ofrece 'Otorgar almuerzo' cuando la HE cruza el almuerzo del turno. */
   puedeAlmuerzo: boolean
   onAlternarManual: (code: string) => void
   /** Pide confirmación para quitar al empleado (solo filas editables). */
@@ -2475,8 +2472,8 @@ function PasoHoras({
                 </>
               )}
 
-              {/* Almuerzo: HE manual en día de descanso que cubre el almuerzo del
-                  parámetro, y solo para quien tiene 'SolicitarAlmuerzoHE'. */}
+              {/* Almuerzo: cuando el servidor dice que la HE cruza el almuerzo del
+                  turno (Lunch_Eligible), y solo para quien tiene 'SolicitarAlmuerzoHE'. */}
               {puedeAlmuerzo && (f.lunchEligible || (f.isLocked && f.lunch)) && (
                 <YStack gap="$0.5">
                   <MarcaManual
@@ -2484,11 +2481,11 @@ function PasoHoras({
                     texto={`Otorgar almuerzo${f.lunchWindow ? ` (${f.lunchWindow})` : ''}`}
                     onPress={f.isLocked ? undefined : () => onEditar(f.employee_Code, { lunch: !f.lunch })}
                   />
-                  {/* Solo en día laboral se pagan los 30 min; en feriado o descanso se da pero se descuenta */}
+                  {/* Si se paga o solo se da lo dice el servidor (Lunch_Paid): laboral se paga; feriado o descanso se descuenta */}
                   <Text fontSize={10} color="$textMuted">
-                    {f.isHoliday || f.isRestDay || !f.hasSchedule
-                      ? 'Se le da el almuerzo; los 30 min se descuentan de las horas.'
-                      : 'El almuerzo no se descuenta de las horas.'}
+                    {f.lunchPaid
+                      ? 'El almuerzo no se descuenta de las horas.'
+                      : 'Se le da el almuerzo; los 30 min se descuentan de las horas.'}
                   </Text>
                 </YStack>
               )}

@@ -463,6 +463,9 @@ export interface IOvertimeMealEmployee {
   Inicio: string | null
   Fin: string | null
 
+  /** Raciones de esta fila: cena y/o almuerzo de día laboral (0, 1 o 2). */
+  Raciones?: number
+
   /** Lo que cuesta esta racion. */
   Costo: number
 }
@@ -1039,6 +1042,8 @@ export interface IOvertimeSplit {
   Lunch_Eligible?: boolean
   Lunch_Start?: string | null
   Lunch_End?: string | null
+  /** Día laboral: los 30 min se pagan. Feriado o descanso: se da y se descuentan. Lo decide el servidor. */
+  Lunch_Paid?: boolean
 }
 
 /** Planilla + turno + detalle de turno: la llave con la que se piden las bandas. */

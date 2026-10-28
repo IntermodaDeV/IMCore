@@ -2344,7 +2344,8 @@ function DesgloseRaciones({
                 Raciones
               </Text>
               <Text fontSize={14} fontWeight="800" color="$text">
-                {raciones.length}
+                {/* Una fila puede ser 2 raciones (cena y almuerzo laboral): lo dice el servidor */}
+                {raciones.reduce((n, r) => n + (Number(r.Raciones) || 1), 0)}
               </Text>
             </YStack>
             <YStack alignItems="flex-end">
