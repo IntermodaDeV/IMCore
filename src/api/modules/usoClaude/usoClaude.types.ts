@@ -28,6 +28,9 @@ export interface IUsoMensual {
   LineasEliminadas: number
   Commits: number
   PullRequests: number
+  /** Tiempo activo de Claude Code (active_time.total) por tipo: la persona escribiendo / Claude trabajando. */
+  SegundosUsuario: number
+  SegundosCli: number
   UltimaActividad?: string | null
 }
 
@@ -64,10 +67,24 @@ export interface IVentanaPersona {
   UltimaActividad?: string | null
 }
 
+/** Un día de una persona con un producto (solo días con uso). La suma de los días da el mes. */
+export interface IUsoDiario {
+  Fecha: string
+  Producto: string
+  Email: string
+  Solicitudes: number
+  Prompts: number
+  CostoUsd: number
+  /** Entrada + salida + caché leída + caché escrita. */
+  Tokens: number
+}
+
 export interface IUsoClaude {
   Mensual: IUsoMensual[]
   Csv: ICsvValorMensual[]
   Asientos: IAsientoMensual[]
   /** Falta en una API anterior a las ventanas. */
   Ventanas?: IVentanaPersona[]
+  /** Falta en una API anterior a las gráficas por día. */
+  Diario?: IUsoDiario[]
 }
