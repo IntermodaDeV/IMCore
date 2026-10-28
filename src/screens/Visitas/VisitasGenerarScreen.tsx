@@ -292,6 +292,12 @@ export default function VisitasGenerarScreen() {
   const selectedHorario = horarios.find((h) => h.Id === horarioId)
   const selectedMotivo = motivos.find((m) => m.Id === motivoId)
   const isOtros = (selectedMotivo?.Name ?? '').toLowerCase() === 'otros'
+  // Venta de carpa con el período encendido: el pase solo puede ser para días
+  // del período. Apagado, el servidor no manda fechas y no se limita nada.
+  const carpa =
+    selectedMotivo?.VentaCarpa === 1 && selectedMotivo.VentaCarpaDesde && selectedMotivo.VentaCarpaHasta
+      ? { desde: selectedMotivo.VentaCarpaDesde, hasta: selectedMotivo.VentaCarpaHasta }
+      : null
 
   // ── Personas ──────────────────────────────────────────────
   const addPersona = () => setPersonas((prev) => [...prev, ''])
@@ -380,6 +386,12 @@ export default function VisitasGenerarScreen() {
         5000,
         'bottom'
       )
+    // Mismo criterio que el SP: se miran los días que el pase va a autorizar.
+    // Las fechas AAAA-MM-DD se comparan bien como texto.
+    if (carpa && efectivos.some((d) => d < carpa.desde || d > carpa.hasta))
+      return showToast('error', 'Validación',
+        `Un pase de venta de carpa solo puede ser para días del ${prettyDate(carpa.desde)} al ${prettyDate(carpa.hasta)}`,
+        5000, 'bottom')
 
     setLoadingGen(true)
     try {
@@ -834,6 +846,15 @@ export default function VisitasGenerarScreen() {
             onValueChange={(val) => setMotivoId(Number(val))}
             options={motivos.map((m) => ({ label: m.Name, value: String(m.Id) }))}
           />
+
+          {carpa && (
+            <XStack alignItems="center" gap="$1.5" marginTop={-4}>
+              <Calendar size={12} color="#94A3B8" />
+              <Text fontSize={11} color="$textMuted" flexShrink={1}>
+                Venta del {prettyDate(carpa.desde)} al {prettyDate(carpa.hasta)}
+              </Text>
+            </XStack>
+          )}
 
           {isOtros && (
             <AppInput

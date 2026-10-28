@@ -5,6 +5,14 @@ export interface IMotivo {
   Status_Id: number
   Create_By?: string
   Modified_By?: string
+  /** 1 = el motivo de la venta de carpa: solo lo ve quien tiene el acceso
+   *  'VisitasVentaCarpa' y, con el período encendido, solo entre las fechas. El
+   *  servidor lo filtra con el usuario del token; acá solo se lee. */
+  VentaCarpa?: number | null
+  /** Período de la venta (AAAA-MM-DD), solo en el motivo marcado y solo con el
+   *  período encendido: entonces el pase solo puede ser para esos días. */
+  VentaCarpaDesde?: string | null
+  VentaCarpaHasta?: string | null
 }
 
 export interface IHorarioDetalle {

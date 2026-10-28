@@ -11,6 +11,13 @@ import { visitasService } from '../../api/modules/visitas/visitas.service'
 import { IMotivo } from '../../api/modules/visitas/visitas.types'
 import { handleError } from '../../utils/errorHandler'
 
+// "AAAA-MM-DD" -> "DD/MM". Por componentes: new Date('2026-11-02') es medianoche
+// UTC y en Honduras corre el día.
+const fechaCorta = (iso: string) => {
+  const [, m, d] = iso.split('-')
+  return m && d ? `${d}/${m}` : iso
+}
+
 export default function VisitasMotivosScreen() {
   const { user } = useAuth()
   const { showToast } = useShowToast()
@@ -190,6 +197,16 @@ export default function VisitasMotivosScreen() {
                       {!!m.Description && (
                         <Text fontSize={12} color="$textMuted">
                           {m.Description}
+                        </Text>
+                      )}
+                      {/* Para que se entienda por qué no aparece en el formulario
+                          de quien no tiene el acceso, o fuera de las fechas. */}
+                      {m.VentaCarpa === 1 && (
+                        <Text fontSize={11} color="$textMuted">
+                          Solo con acceso
+                          {m.VentaCarpaDesde && m.VentaCarpaHasta
+                            ? ` · venta del ${fechaCorta(m.VentaCarpaDesde)} al ${fechaCorta(m.VentaCarpaHasta)}`
+                            : ''}
                         </Text>
                       )}
                     </YStack>

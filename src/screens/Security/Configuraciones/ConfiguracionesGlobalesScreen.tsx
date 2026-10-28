@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { RefreshControl } from 'react-native'
+import { Platform, RefreshControl } from 'react-native'
 import { ScrollView, Text, XStack, YStack, View, Spinner, Input, Button, useTheme } from 'tamagui'
-import { Settings, Check, ChevronDown, ChevronRight } from 'lucide-react-native'
+import { Settings, Check, ChevronDown, ChevronRight, CalendarDays } from 'lucide-react-native'
+import DateTimePicker from '@react-native-community/datetimepicker'
 
 import { usePageHeader } from '../../../hooks/usePageHeader'
+import { useAuth } from '../../../context/AuthContext'
 import { useShowToast } from '../../../utils/useShowToast'
 import { configuracionService, IConfiguracion } from '../../../api/modules/configuracion/configuracion.service'
 import { pasesService } from '../../../api/modules/pases/pases.service'
@@ -132,7 +134,7 @@ const sueltosDe = (g: Grupo) => {
 /** Cuántas TARJETAS se ven en el grupo. */
 const contarVisibles = (g: Grupo) => sueltosDe(g).length + rangosDe(g).length
 
-type ConfigKind = 'bool' | 'options' | 'number' | 'multi' | 'companyMap' | 'usuario' | 'texto'
+type ConfigKind = 'bool' | 'options' | 'number' | 'multi' | 'companyMap' | 'usuario' | 'texto' | 'fecha'
 const CONFIG_META: Record<
   string,
   {
@@ -316,6 +318,13 @@ const CONFIG_META: Record<
     max: 366,
     ayudaRango: 'Por debajo de esto el pase es normal y avisa cada movimiento.',
   },
+  // Venta de carpa (Visitas_43): el motivo es solo para quien tiene el acceso.
+  // Con el período apagado lo ve siempre (para invitar con anticipación);
+  // encendido, solo con HOY entre las dos fechas. Las fechas son 'fecha' y no
+  // texto: una que el SQL no entienda esconde el motivo sin ningún aviso.
+  'Visitas.VentaCarpaActiva': { label: 'Período de la venta de carpa encendido', kind: 'bool' },
+  'Visitas.VentaCarpaDesde': { label: 'Venta de carpa: primer día', kind: 'fecha' },
+  'Visitas.VentaCarpaHasta': { label: 'Venta de carpa: último día', kind: 'fecha' },
   // ── Inventario Clientes ── (también se cambian desde el web de Inventarios, por sus admin)
   'InventarioClientes.PermitirReabrirCerrados': {
     label: 'Se puede pedir reabrir un inventario que ya cerró la oficina',
@@ -701,6 +710,14 @@ export default function ConfiguracionesGlobalesScreen() {
                       valor={c.Valor ?? ''}
                       saving={saving}
                       onSave={(v) => guardarValor(c, v, 'Guardado')}
+                    />
+                  ) : meta.kind === 'fecha' ? (
+                    <FechaConfigRow
+                      label={meta.label}
+                      descripcion={c.Descripcion}
+                      valor={c.Valor ?? ''}
+                      saving={saving}
+                      onSave={(v) => guardarValor(c, v, fechaLegible(v))}
                     />
                   ) : meta.kind === 'multi' ? (
                     <MultiConfigRow
@@ -1094,6 +1111,97 @@ function TextoConfigRow({
           {saving ? <Spinner size="small" color="white" /> : <Check size={18} color={cambiado ? 'white' : ACCENT} />}
         </Button>
       </XStack>
+    </YStack>
+  )
+}
+
+// "AAAA-MM-DD" -> "DD/MM/AAAA". Por componentes: new Date('2026-11-02') es
+// medianoche UTC y en Honduras corre el día.
+const fechaLegible = (iso: string) => {
+  const [y, m, d] = iso.split('-')
+  return y && m && d ? `${d}/${m}/${y}` : iso
+}
+const fechaDeIso = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return y && m && d ? new Date(y, m - 1, d) : new Date()
+}
+const isoDeFecha = (f: Date) =>
+  `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`
+
+// Una fecha AAAA-MM-DD, que es lo que lee el SQL. Se elige con el selector del
+// sistema, así que no hay forma de guardar una fecha mal escrita: una que el SQL
+// no entienda deja cerrado lo que dependa de ella, sin aviso.
+// iOS: calendario en línea y se guarda con el botón. Android: el diálogo del
+// sistema ya tiene su «Aceptar», así que guarda al elegir.
+function FechaConfigRow({
+  label, descripcion, valor, saving, onSave,
+}: {
+  label: string; descripcion?: string | null; valor: string; saving: boolean; onSave: (v: string) => void
+}) {
+  const { theme } = useAuth()
+  const [abierto, setAbierto] = useState(false)
+  const [temp, setTemp] = useState(() => fechaDeIso(valor))
+  useEffect(() => { setTemp(fechaDeIso(valor)) }, [valor])
+
+  const esIOS = Platform.OS === 'ios'
+  const cambiado = isoDeFecha(temp) !== valor
+
+  return (
+    <YStack gap="$3">
+      <YStack gap="$1">
+        <Text fontSize="$4" fontWeight="800" color="$text">{label}</Text>
+        {!!descripcion && <Text fontSize="$2" color="$textMuted">{descripcion}</Text>}
+      </YStack>
+      <XStack gap="$2" alignItems="center">
+        <View
+          flex={1}
+          height={44}
+          onPress={saving ? undefined : () => setAbierto((a) => !a)}
+          pressStyle={{ opacity: 0.7 }}
+          borderWidth={1}
+          borderColor="$border"
+          borderRadius={8}
+          backgroundColor="$backgroundElevated"
+          paddingHorizontal="$3"
+          flexDirection="row"
+          alignItems="center"
+          justifyContent="space-between"
+        >
+          <Text fontSize="$5" color={valor ? '$text' : '$textMuted'}>
+            {valor ? fechaLegible(valor) : '(sin fecha)'}
+          </Text>
+          <CalendarDays size={18} color={ACCENT} />
+        </View>
+        {esIOS && abierto && (
+          <Button
+            height={44}
+            paddingHorizontal="$3"
+            backgroundColor={cambiado ? ACCENT : '$backgroundHover'}
+            disabled={!cambiado || saving}
+            onPress={() => { onSave(isoDeFecha(temp)); setAbierto(false) }}
+          >
+            {saving ? <Spinner size="small" color="white" /> : <Check size={18} color={cambiado ? 'white' : ACCENT} />}
+          </Button>
+        )}
+        {saving && !(esIOS && abierto) ? <Spinner size="small" color={ACCENT} /> : null}
+      </XStack>
+      {abierto && (
+        <DateTimePicker
+          value={temp}
+          mode="date"
+          display={esIOS ? 'inline' : 'default'}
+          themeVariant={theme === 'dark' ? 'dark' : 'light'}
+          accentColor={ACCENT}
+          onChange={(e, d) => {
+            if (!esIOS) {
+              setAbierto(false)
+              if (e.type === 'set' && d && isoDeFecha(d) !== valor) onSave(isoDeFecha(d))
+              return
+            }
+            if (d) setTemp(d)
+          }}
+        />
+      )}
     </YStack>
   )
 }
