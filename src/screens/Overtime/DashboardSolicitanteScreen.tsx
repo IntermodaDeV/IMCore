@@ -3,7 +3,7 @@ import { useNavigation } from '@react-navigation/native'
 import { FlatList, Modal, RefreshControl, ScrollView, useWindowDimensions } from 'react-native'
 import { BarChart } from 'react-native-gifted-charts'
 import { YStack, XStack, Text, View, Card, Button, styled, useTheme } from 'tamagui'
-import { ArrowLeft, CalendarX, CheckCircle2, Clock, FileText, Pencil, Users, XCircle } from 'lucide-react-native'
+import { ArrowLeft, CalendarX, CheckCircle2, Clock, FileText, Users, XCircle } from 'lucide-react-native'
 
 import { useAuth } from '../../context/AuthContext'
 import { usePageHeader } from '../../hooks/usePageHeader'
@@ -1008,23 +1008,7 @@ function DesgloseEmpleados({
                           {[dia, horario].filter(Boolean).join(' · ')}
                         </Text>
                       )}
-                      {item.Is_Manual && (
-                        <XStack
-                          alignItems="center"
-                          gap="$1"
-                          paddingHorizontal={6}
-                          paddingVertical={1}
-                          borderRadius={20}
-                          backgroundColor="#FFF7ED"
-                          borderWidth={1}
-                          borderColor="#FDBA74"
-                        >
-                          <Pencil size={9} color="#C2410C" />
-                          <Text fontSize={9} fontWeight="800" color="#C2410C">
-                            HE Manual
-                          </Text>
-                        </XStack>
-                      )}
+                      {/* HE Manual es interno: no se muestra */}
                     </XStack>
 
                     {/* En qué banda cayeron sus horas: el mismo componente de

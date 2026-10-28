@@ -3,6 +3,7 @@ import { requestOpenPass } from './passNavigation'
 import { requestOpenMiPase, requestOpenPaseAprobacion } from './paseNavigation'
 import { requestOpenHistorialHoraExtra, requestOpenSolicitudHoraExtra } from './overtimeNavigation'
 import { requestOpenMiPaseSalida, requestOpenPaseSalidaFirma } from './pasesSalidaNavigation'
+import { requestOpenMiSolicitud, requestOpenSolicitudAprobacion } from './cooperativaNavigation'
 import { openStore } from './appUpdate'
 
 // Enruta una notificación (push o bandeja) a su pantalla de detalle según la
@@ -17,28 +18,40 @@ export function routeNotification(data: any): boolean {
   // viejas que todavia esten en la bandeja caen al return false del final y no
   // navegan. Las de PRESTAMO, que si tienen cadena de aprobacion, van abajo.
 
-  // Un socio pidio un prestamo -> la bandeja del primer aprobador, con la
-  // solicitud resaltada para no tener que buscarla en la lista.
+  /* Las tres de la BANDEJA DEL APROBADOR van a la misma pantalla, y las tres
+     publican el destino en el bus despues de navegar: si la pantalla ya estaba
+     montada resalta al toque, y si no, el destino queda pendiente y se consume
+     al suscribirse.
+
+     El param `solicitud` se mantiene por compatibilidad con lo que ya estaba,
+     pero quien resalta es el bus: un `navigate` con params nuevos no vuelve a
+     disparar nada cuando la pantalla ya esta montada, que es justo el caso en
+     el que el aprobador tiene la lista abierta y le llega un aviso. */
+
+  // Un socio pidio un prestamo -> Pendientes, que es donde espera firma.
   if (category === 'coointer_solicitud_prestamo') {
     const solicitud = Number(data.solicitudId ?? data.SolicitudId)
     navigateWhenReady('RequestSocio', solicitud > 0 ? { solicitud } : undefined)
+    requestOpenSolicitudAprobacion(solicitud, 'Pendiente')
     return true
   }
 
-  // Le asignaron una solicitud para firmar -> la misma pantalla: el servidor le
-  // muestra solo lo suyo.
+  // Le asignaron una solicitud para firmar -> tambien Pendientes.
   if (category === 'coointer_prestamo_asignado') {
     const solicitud = Number(data.solicitudId ?? data.SolicitudId)
     navigateWhenReady('RequestSocio', solicitud > 0 ? { solicitud } : undefined)
+    requestOpenSolicitudAprobacion(solicitud, 'Pendiente')
     return true
   }
 
   // Ya no hace falta su firma: se cerro con el minimo de otros, la rechazaron,
-  // o lo sacaron de la cadena. Va a la misma pantalla, donde la solicitud ya
-  // aparece resuelta.
+  // o lo sacaron de la cadena. Acá NO se fuerza pestaña: la solicitud ya no
+  // está en Pendientes, y mandarlo ahí sería llevarlo a buscarla donde no está.
+  // El bus la encuentra en la pestaña en la que el usuario esté parado.
   if (category === 'coointer_prestamo_no_requerido') {
     const solicitud = Number(data.solicitudId ?? data.SolicitudId)
     navigateWhenReady('RequestSocio', solicitud > 0 ? { solicitud } : undefined)
+    requestOpenSolicitudAprobacion(solicitud)
     return true
   }
 
@@ -47,6 +60,9 @@ export function routeNotification(data: any): boolean {
   if (category === 'coointer_prestamo_resultado') {
     const solicitud = Number(data.solicitudId ?? data.SolicitudId)
     navigateWhenReady('RequestCoo', solicitud > 0 ? { solicitud } : undefined)
+    // Otro bus que el del aprobador: son dos pantallas y dos papeles. Ver
+    // cooperativaNavigation.
+    requestOpenMiSolicitud(solicitud)
     return true
   }
 
@@ -270,6 +286,12 @@ export function routeNotification(data: any): boolean {
   if (category === 'solicitud_compra') {
     const solicitud = data.solicitud ?? data.Solicitud
     navigateWhenReady('aprobacionSC', solicitud ? { solicitud: String(solicitud) } : undefined)
+    return true
+  }
+
+  // Un cliente de PepeB2B pidió cuenta (la manda PepeTiendaApi) -> Solicitudes de usuario.
+  if (category === 'registro') {
+    navigateWhenReady('Request')
     return true
   }
 

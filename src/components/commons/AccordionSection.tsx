@@ -9,6 +9,22 @@ interface AccordionSectionProps {
     subtitleError?: string
     children: React.ReactNode
     defaultOpen?: boolean
+    /**
+     * Avisa cuando se abre o se cierra.
+     *
+     * El estado sigue siendo de la sección: esto es solo para que quien la usa
+     * pueda cargar su contenido al abrirla, en vez de consultarlo siempre por
+     * si acaso. Es opcional, así que las pantallas que ya la usan no cambian.
+     */
+    onOpenChange?: (open: boolean) => void
+    /**
+     * El aire que deja arriba. Por defecto "$3", como venía.
+     *
+     * Se puede bajar porque en una pantalla cuyo contenedor ya separa con
+     * `gap`, este margen SE SUMA a esa separación y la sección queda despegada
+     * del resto del formulario.
+     */
+    marginTop?: string
 }
 
 export default function AccordionSection({
@@ -17,6 +33,8 @@ export default function AccordionSection({
     subtitleError,
     children,
     defaultOpen = false,
+    onOpenChange,
+    marginTop = '$3',
 }: AccordionSectionProps) {
     const [open, setOpen] = useState(defaultOpen)
 
@@ -27,7 +45,7 @@ export default function AccordionSection({
             borderWidth={1}
             borderColor="$border"
             overflow="hidden"
-            marginTop="$3"
+            marginTop={marginTop}
         >
             {/* Header */}
             <XStack
@@ -36,7 +54,11 @@ export default function AccordionSection({
                 alignItems="center"
                 gap="$3"
                 pressStyle={{ opacity: 0.7 }}
-                onPress={() => setOpen((prev) => !prev)}
+                onPress={() => setOpen((prev) => {
+                    const siguiente = !prev
+                    onOpenChange?.(siguiente)
+                    return siguiente
+                })}
             >
                 <YStack flex={1} gap="$0.5">
                     <Text fontSize={14} fontWeight="700" color="$text">

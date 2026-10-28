@@ -148,7 +148,9 @@ export const finMaximoEnBandas = (
       const bEnd = b.end + offset
 
       if (bEnd <= cobertura) continue      // ya cubierta
-      if (bStart > cobertura) break        // hueco: la cobertura se corta acá
+      // hueco: la cobertura se corta acá. Un segundo no es hueco: la jornada cierra
+      // a las 16:30:00 y la banda arranca a las 16:30:01.
+      if (bStart > cobertura + 1) break
       cobertura = bEnd
     }
   }
@@ -185,11 +187,19 @@ export const opcionesFin = (
   bands: TimeBand[] = [],
   horasMaxSinBandas = 10,
   manual = false,
+  /**
+   * Fin de la jornada del día. En una HE MANUAL que empieza dentro de la jornada,
+   * ese tramo lo cubre el parámetro de HE Manual; lo de después se paga con las
+   * bandas del día, así que la cobertura se cuenta desde aquí.
+   */
+  finJornada?: string | null,
 ): OpcionFin[] => {
   const start = timeToSeconds(inicio)
   if (start === null) return []
 
-  const techoBandas = finMaximoEnBandas(inicio, bands)
+  const fj = timeToSeconds(finJornada)
+  const desdeJornada = manual && fj !== null && start < fj
+  const techoBandas = finMaximoEnBandas(desdeJornada ? finJornada : inicio, bands)
   const generico = start + horasMaxSinBandas * 3600
   const techo = manual ? Math.max(techoBandas ?? 0, generico) : (techoBandas ?? generico)
 
@@ -481,6 +491,10 @@ export const computeBreakdown = (
 
   return result
 }
+
+/** ¿El día es feriado para ese turno? 'S'/'N'. Siempre tiene jornada y solo lleva HE Manual. */
+export const esFeriado = (schedule: IOvertimeShiftSchedule | undefined): boolean =>
+  String(schedule?.IsHoliday ?? '').trim().toUpperCase() === 'S'
 
 /** ¿El día es laborable para ese turno? Es 'S'/'N' en la vista de turnos. */
 export const esLaborable = (schedule: IOvertimeShiftSchedule | undefined): boolean =>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { Input, YStack, Text, View, useTheme } from 'tamagui'
-import { CheckCircle2, AlertCircle, AlertTriangle } from 'lucide-react-native'
+import { Keyboard } from 'react-native'
+import { Input, YStack, Text, View, XStack, useTheme } from 'tamagui'
+import { CheckCircle2, AlertCircle, AlertTriangle, Check } from 'lucide-react-native'
 
 export type InputStatus = 'default' | 'error' | 'success' | 'warning'
 
@@ -138,6 +139,10 @@ export default function AppInput({
   // when unfloated the label itself acts as the visual placeholder.
   const visiblePlaceholder = floating ? (placeholder ?? '') : ''
 
+  // Varias líneas: Enter salta de línea, así que no hay tecla para cerrar el teclado.
+  // Mientras se escribe sale un check discreto abajo a la derecha, dentro del campo.
+  const showDone = multiline && focused && !disabled
+
   return (
     <YStack gap="$1" marginBottom="$2">
       <View
@@ -165,6 +170,8 @@ export default function AppInput({
           paddingLeft={hasPrefix ? 44 : '$3'}
           paddingRight={hasSuffix ? 44 : '$3'}
           paddingTop={multiline ? 22 : undefined}
+          // Lugar para el check sin tapar la última línea
+          paddingBottom={showDone ? 24 : undefined}
           borderWidth={1}
           borderColor={borderColor}
           backgroundColor={disabled ? '$backgroundSurface' : '$backgroundElevated'}
@@ -198,6 +205,24 @@ export default function AppInput({
           >
             {renderSlot(suffix ?? rightElement)}
           </View>
+        )}
+
+        {/* Cerrar el teclado (solo varias líneas, mientras se escribe) */}
+        {showDone && (
+          <XStack
+            position="absolute"
+            right={6}
+            bottom={6}
+            padding={4}
+            pressStyle={{ opacity: 0.5 }}
+            hitSlop={10}
+            onPress={() => Keyboard.dismiss()}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar el teclado"
+            style={{ zIndex: 11 }}
+          >
+            <Check size={16} color={theme.textMuted?.val as string} />
+          </XStack>
         )}
 
         {/* Floating label */}

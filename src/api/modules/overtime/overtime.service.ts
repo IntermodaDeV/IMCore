@@ -38,6 +38,9 @@ import {
   IApproverWeekDay,
   IApproverTopRequester,
   IApproverHistory,
+  IApproverLunch,
+  ILunchesPdf,
+  IMealEligibility,
   IOvertimeShiftSchedule,
   IOvertimeUserParameter,
   IPayWebWeek,
@@ -263,6 +266,32 @@ export const overtimeService = {
     ),
 
   /** Historial del jefe: lo que aprobó, rechazó o devolvió en la semana. */
+  /** Alimentación: los almuerzos de las HE que el usuario aprobó en el rango. */
+  getApproverLunches: (companyCode: string, startDate: string, finalDate: string) =>
+    httpClient.get<ExecutionResponse<IApproverLunch[]>>(`${schema}/ApproverLunches`, {
+      companyCode,
+      startDate,
+      finalDate,
+    }),
+
+  /** Solicitud de almuerzo: qué empleados califican ese día y por qué no. */
+  getMealEligibility: (companyCode: string, date: string, employees: string[]) =>
+    httpClient.post<ExecutionResponse<IMealEligibility[]>, string[]>(
+      `${schema}/MealEligibility?companyCode=${encodeURIComponent(companyCode)}&date=${encodeURIComponent(date)}`,
+      employees,
+    ),
+
+  /** Alimentación: genera la lista para cafetería de un día (PDF en base64). */
+  getLunchesPdf: (companyCode: string, date: string) =>
+    httpClient.get<ExecutionResponse<ILunchesPdf>>(`${schema}/LunchesPdf`, { companyCode, date }),
+
+  /** Alimentación: manda la lista del día a los correos configurados. */
+  sendLunchesPdf: (companyCode: string, date: string) =>
+    httpClient.post<ExecutionResponse<null>, Record<string, never>>(
+      `${schema}/LunchesPdf/Send?companyCode=${encodeURIComponent(companyCode)}&date=${encodeURIComponent(date)}`,
+      {},
+    ),
+
   getApproverHistory: (companyCode: string, entityId: number, startDate: string, finalDate: string) =>
     httpClient.get<ExecutionResponse<IApproverHistory[]>>(`${schema}/ApproverHistory`, {
       companyCode,

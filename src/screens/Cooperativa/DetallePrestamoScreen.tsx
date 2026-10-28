@@ -3,7 +3,7 @@ import { RefreshControl } from 'react-native'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import { YStack, XStack, Text, ScrollView, View, Button, styled } from 'tamagui'
 import {
-  ArrowLeft, CalendarCheck, CalendarDays, CheckCircle2, Clock, Coins, Wallet,
+  ArrowLeft, CheckCircle2, Clock, Wallet, ChevronUp, ChevronDown,
 } from 'lucide-react-native'
 
 import { cooperativaService } from '../../api/modules/cooperativa/cooperativa.service'
@@ -56,23 +56,130 @@ const formatMonto = (valor: number | null | undefined): string => {
   })}`
 }
 
-/** Un dato del encabezado: etiqueta chica arriba, valor abajo. */
-function Dato({
+/**
+ * El aspecto del préstamo según cómo esté. El mismo de "Mis préstamos": un
+ * cancelado va en gris y no en rojo, porque terminó de pagarse — en el resto
+ * del módulo el rojo significa rechazado.
+ */
+const ASPECTO_PRESTAMO = {
+  vigente:   { color: '#22C55E', token: '$success',   texto: 'Vigente' },
+  cancelado: { color: '#94A3B8', token: '$textMuted', texto: 'Cancelado' },
+} as const
+
+/**
+ * Una tarjeta con encabezado, la misma de las otras pantallas del módulo.
+ *
+ * El título va DENTRO, sobre una franja de otro fondo, para que cada bloque se
+ * lea como una pieza y no como una lista con una etiqueta flotando encima.
+ */
+function Tarjeta({
+  titulo,
   icono: Icono,
-  etiqueta,
-  valor,
+  color = '#94A3B8',
+  destacada,
+  children,
 }: {
+  titulo: string
   icono: React.ComponentType<any>
-  etiqueta: string
-  valor: string
+  color?: string
+  /** La tarjeta principal: borde y encabezado toman el color. */
+  destacada?: boolean
+  children: React.ReactNode
 }) {
   return (
-    <YStack>
-      <XStack gap="$1" alignItems="center">
-        <Icono size={10} color="#94A3B8" />
-        <Text fontSize={9} color="$textMuted">{etiqueta}</Text>
+    <YStack
+      borderRadius="$5"
+      backgroundColor="$backgroundElevated"
+      borderWidth={destacada ? 1.5 : 1}
+      borderColor={destacada ? `${color}66` : '$border'}
+      overflow="hidden"
+      {...(destacada ? shadows.md : shadows.sm)}
+    >
+      <XStack
+        alignItems="center"
+        gap="$2"
+        paddingHorizontal="$3.5"
+        paddingVertical="$2.5"
+        backgroundColor={destacada ? `${color}1A` : '$backgroundSurface'}
+        borderBottomWidth={1}
+        borderBottomColor={destacada ? `${color}33` : '$border'}
+      >
+        <Icono size={14} color={color} />
+        <Text fontSize={11} fontWeight="800" color="$text" letterSpacing={0.3} flex={1}>
+          {titulo.toUpperCase()}
+        </Text>
       </XStack>
-      <Text fontSize={12} color="$text" fontWeight="600" lineHeight={16}>
+
+      <YStack paddingHorizontal="$3.5" paddingVertical="$2.5">
+        {children}
+      </YStack>
+    </YStack>
+  )
+}
+
+/**
+ * Un plegable de una línea, para lo que va DENTRO de una tarjeta.
+ *
+ * El mismo del resto del módulo. AccordionSection no sirve acá: es una tarjeta
+ * entera —fondo propio, borde y un chevron en un círculo— y metida adentro de
+ * otra se lee como una caja dentro de una caja. Esto ocupa lo que mide una
+ * línea de texto.
+ */
+function Plegable({
+  titulo,
+  children,
+}: {
+  titulo: string
+  children: React.ReactNode
+}) {
+  const [abierto, setAbierto] = useState(false)
+
+  return (
+    <YStack paddingTop="$2" borderTopWidth={1} borderTopColor="$border">
+      <XStack
+        alignItems="center"
+        gap="$1.5"
+        paddingVertical="$1"
+        pressStyle={{ opacity: 0.6 }}
+        onPress={() => setAbierto(a => !a)}
+      >
+        <Text fontSize={11} fontWeight="700" color="$primary" flex={1}>
+          {titulo}
+        </Text>
+        {abierto
+          ? <ChevronUp size={14} color="#94A3B8" />
+          : <ChevronDown size={14} color="#94A3B8" />}
+      </XStack>
+
+      {abierto && <YStack paddingTop="$1">{children}</YStack>}
+    </YStack>
+  )
+}
+
+/** Un dato: etiqueta chica arriba, valor abajo. */
+function Dato({
+  etiqueta,
+  valor,
+  fuerte,
+  color,
+}: {
+  etiqueta: string
+  valor: string
+  /** Uno de los dos números que el socio vino a buscar. */
+  fuerte?: boolean
+  color?: string
+}) {
+  return (
+    <YStack flex={1} gap="$0.5">
+      <Text fontSize={10} color="$textMuted">{etiqueta}</Text>
+      <Text
+        fontSize={fuerte ? 18 : 12}
+        color={color ?? '$text'}
+        fontWeight={fuerte ? '800' : '600'}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
         {valor}
       </Text>
     </YStack>
@@ -171,6 +278,31 @@ export default function DetallePrestamoScreen() {
   const p = cuotas[0]
 
   const pagadas = cuotas.filter(c => c.Pagada).length
+  const avance = pagadas / cuotas.length
+
+  /**
+   * La primera cuota que todavía no se paga.
+   *
+   * De ahí salen las tres cosas que el socio pregunta primero: cuándo es el
+   * próximo descuento, de cuánto, y cuánto le queda debiendo — `SaldoAnterior`
+   * de esa cuota es justamente el saldo con el que llega a ella.
+   */
+  const proxima = cuotas.find(c => !c.Pagada) ?? null
+
+  const cancelado = proxima == null
+  const aspecto = cancelado ? ASPECTO_PRESTAMO.cancelado : ASPECTO_PRESTAMO.vigente
+
+  /**
+   * El monto de la cuota.
+   *
+   * >>> NO ES p.Cuota <<<
+   * dbo.Prestamo.Cuota es un INT y vale lo mismo que Plazo: la CANTIDAD de
+   * cuotas. El monto vive en PrestamoDetalle.TotalCuota. Acá decía `p.Cuota` y
+   * mostraba el número de cuotas donde debía ir plata.
+   */
+  const montoCuota = p.TotalCuota
+
+  const ultima = cuotas[cuotas.length - 1]
 
   return (
     <ScrollView
@@ -179,144 +311,164 @@ export default function DetallePrestamoScreen() {
       contentContainerStyle={{ padding: 12, paddingBottom: 24, gap: 8 }}
       refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} />}
     >
-      {/* ── El préstamo. Lo que se pidió y con qué condiciones. ────────── */}
-      <YStack
-        gap="$2.5"
-        padding="$3"
-        borderRadius="$4"
-        backgroundColor="$backgroundElevated"
-        borderWidth={1}
-        borderColor="$border"
-        {...shadows.sm}
-      >
-        <YStack gap="$0.5">
-          <Text fontSize={11} color="$textMuted">Préstamo #{p.PrestamoId}</Text>
-          <Text fontSize={22} fontWeight="700" color="$text">
-            {formatMonto(p.Monto)}
-          </Text>
-        </YStack>
-
-        <XStack gap="$2" paddingTop="$2" borderTopWidth={1} borderTopColor="$border">
-          <View flex={1}>
-            <Dato icono={Coins} etiqueta="Cuota" valor={formatMonto(p.Cuota)} />
-          </View>
-          <View flex={1}>
-            <Dato icono={CalendarDays} etiqueta="Cuotas" valor={String(p.Plazo)} />
-          </View>
-          <View flex={1}>
-            {/* La fecha del préstamo es la de su aprobación: se registra en la
-                cooperativa recién cuando termina de firmarse. */}
-            <Dato
-              icono={CalendarCheck}
-              etiqueta="Aprobado el"
-              valor={formatFecha(p.FechaPrestamo)}
-            />
-          </View>
-        </XStack>
-
-        {/* El avance: cuántas cuotas van. Es lo que el socio busca de un
-            vistazo, antes de leer el plan renglón por renglón. */}
-        <YStack
-          gap="$1.5"
-          padding="$2"
-          borderRadius={8}
-          backgroundColor="$backgroundSurface"
-          borderWidth={1}
-          borderColor="$border"
-        >
-          <XStack alignItems="center" gap="$2">
-            <Text fontSize={11} color="$textMuted" flex={1}>Cuotas pagadas</Text>
-            <Text fontSize={13} fontWeight="700" color="$text">
-              {pagadas} de {cuotas.length}
+      {/* ── Lo que falta. Es a lo que se entra. ──────────────────────────
+          Antes la tarjeta abría con el monto original y la fecha de
+          aprobación, que son historia. Lo que el socio pregunta es cuánto
+          debe y cuándo le toca el próximo descuento. */}
+      <Tarjeta titulo="Resumen" icono={Wallet} color={aspecto.color} destacada>
+        {cancelado ? (
+          <XStack alignItems="center" gap="$2" paddingVertical="$2">
+            <CheckCircle2 size={18} color="#22C55E" />
+            <Text fontSize={13} color="$text" flex={1} lineHeight={18}>
+              Lo terminó de pagar. Las {cuotas.length} cuotas están saldadas.
             </Text>
           </XStack>
+        ) : (
+          <XStack gap="$3" paddingVertical="$1.5">
+            {/* SaldoAnterior de la próxima cuota: es el saldo con el que llega
+                a ella, o sea lo que debe hoy. */}
+            <Dato
+              etiqueta="Le queda debiendo"
+              valor={formatMonto(proxima?.SaldoAnterior)}
+              fuerte
+            />
+            <Dato
+              etiqueta="Próximo pago"
+              valor={formatFecha(proxima?.FechaCuota ?? null)}
+              fuerte
+            />
+          </XStack>
+        )}
 
-          {/* La barra dice lo mismo que el número, pero se lee sin leerlo. */}
-          <View height={5} borderRadius={3} backgroundColor="$border" overflow="hidden">
+        {/* El avance. Va en las dos ramas: en el cancelado confirma que llegó
+            al final, y es la misma barra de "Mis préstamos". */}
+        <YStack gap="$1" paddingTop="$2" borderTopWidth={1} borderTopColor="$border">
+          <XStack alignItems="center" gap="$2">
+            <Text fontSize={10} color="$textMuted" flex={1}>
+              {pagadas} de {cuotas.length} cuotas pagadas
+            </Text>
+            <Text fontSize={10} fontWeight="700" color={aspecto.token}>
+              {Math.round(avance * 100)}%
+            </Text>
+          </XStack>
+          <View height={5} borderRadius={999} backgroundColor="$backgroundSurface" overflow="hidden">
             <View
               height={5}
-              borderRadius={3}
-              backgroundColor={pagadas === cuotas.length ? '#22C55E' : '#FF551A'}
-              width={`${Math.round((pagadas / cuotas.length) * 100)}%`}
+              borderRadius={999}
+              backgroundColor={aspecto.color}
+              width={`${Math.round(avance * 100)}%`}
             />
           </View>
         </YStack>
-      </YStack>
-
-      {/* ── El plan, cuota por cuota ───────────────────────────────────── */}
-      <YStack
-        gap="$1.5"
-        padding="$3"
-        borderRadius="$4"
-        backgroundColor="$backgroundElevated"
-        borderWidth={1}
-        borderColor="$border"
-        {...shadows.sm}
-      >
-        <XStack alignItems="center" gap="$1.5">
-          <CalendarDays size={11} color="#94A3B8" />
-          <Text fontSize={9} fontWeight="700" color="$textMuted" letterSpacing={0.4}>
-            PLAN DE PAGOS
-          </Text>
+        {/* ── Las condiciones con las que se otorgó ────────────────────
+            Dentro del mismo resumen y no en otra tarjeta: son del mismo
+            préstamo, y partirlas obligaba a bajar para saber de cuánto
+            era. Lo de arriba es cómo va; esto es cómo empezó. */}
+        <XStack gap="$3" paddingTop="$2.5" borderTopWidth={1} borderTopColor="$border">
+          <Dato etiqueta="Monto" valor={formatMonto(p.Monto)} />
+          <Dato etiqueta="Cuota" valor={formatMonto(montoCuota)} />
+          <Dato etiqueta="Cuotas" valor={String(cuotas.length)} />
         </XStack>
 
+        <XStack gap="$3" paddingTop="$2.5" paddingBottom="$1">
+          {/* La fecha del préstamo es la de su aprobación: se registra en la
+              cooperativa recién cuando termina de firmarse. */}
+          <Dato etiqueta="Otorgado el" valor={formatFecha(p.FechaPrestamo)} />
+          <Dato etiqueta="Primera cuota" valor={formatFecha(p.FechaCuota)} />
+          <Dato etiqueta="Última cuota" valor={formatFecha(ultima.FechaCuota)} />
+        </XStack>
+
+        {/* ── El plan, cuota por cuota ─────────────────────────────────
+            Plegado: son decenas de renglones y abiertos empujan todo lo
+            demás fuera de la pantalla. El resumen de arriba alcanza para
+            saber cómo va; esto es para el que quiere ver cada pago. */}
+        <Plegable titulo={`Ver las ${cuotas.length} cuotas`}>
         {/* Los encabezados de columna, para no repetir la etiqueta en cada
-            renglón: con 120 cuotas eso sería una pared de texto. */}
-        <XStack alignItems="center" gap="$1.5">
-          <Text fontSize={9} color="$textMuted" width={40}>N.º</Text>
+            renglón: con 120 cuotas eso sería una pared de texto.
+
+            Los anchos van en flex y no en pixeles: fijos, un saldo de siete
+            cifras no entraba en pantallas angostas. */}
+        <XStack alignItems="center" gap="$1.5" paddingBottom="$1.5">
+          <Text fontSize={9} color="$textMuted" width={34}>N.º</Text>
           <Text fontSize={9} color="$textMuted" flex={1}>FECHA</Text>
-          <Text fontSize={9} color="$textMuted" width={76} textAlign="right">CUOTA</Text>
-          <Text fontSize={9} color="$textMuted" width={86} textAlign="right">SALDO</Text>
+          <Text fontSize={9} color="$textMuted" flex={1} textAlign="right">CUOTA</Text>
+          <Text fontSize={9} color="$textMuted" flex={1.2} textAlign="right">SALDO</Text>
         </XStack>
 
         {/* Sin desglose de capital e interés: la cuota es lo que se le
             descuenta y el saldo lo que le queda debiendo. Tampoco va el
             capital solo — restándolo de la cuota queda a la vista el interés
             que justamente no se quiere mostrar. */}
-        {cuotas.map(c => (
-          <XStack
-            key={c.NumeroCuota}
-            alignItems="center"
-            gap="$1.5"
-            paddingVertical="$1.5"
-            borderTopWidth={1}
-            borderTopColor="$border"
-          >
-            <XStack width={40} alignItems="center" gap="$1">
-              {/* El check dice de un vistazo cuáles ya se pagaron, sin tener
-                  que comparar montos. */}
-              {c.Pagada
-                ? <CheckCircle2 size={11} color="#22C55E" />
-                : <Clock size={11} color="#94A3B8" />}
-              <Text fontSize={11} color="$textMuted">{c.NumeroCuota}</Text>
+        {cuotas.map(c => {
+          /* La próxima a pagar, marcada. En un plan de 120 renglones es lo
+             único que el socio busca, y hasta ahora se veía igual que las
+             otras 119. */
+          const esProxima = c.NumeroCuota === proxima?.NumeroCuota
+
+          return (
+            <XStack
+              key={c.NumeroCuota}
+              alignItems="center"
+              gap="$1.5"
+              paddingVertical="$1.5"
+              paddingHorizontal={esProxima ? '$1.5' : 0}
+              marginHorizontal={esProxima ? '$-1.5' : 0}
+              borderRadius={esProxima ? '$2' : 0}
+              backgroundColor={esProxima ? '#FF551A14' : 'transparent'}
+              borderTopWidth={1}
+              borderTopColor="$border"
+              // Las pagadas se apagan: lo que importa es lo que falta.
+              opacity={c.Pagada ? 0.5 : 1}
+            >
+              <XStack width={34} alignItems="center" gap="$1">
+                {/* El check dice de un vistazo cuáles ya se pagaron, sin tener
+                    que comparar montos. */}
+                {c.Pagada
+                  ? <CheckCircle2 size={11} color="#22C55E" />
+                  : <Clock size={11} color={esProxima ? '#FF551A' : '#94A3B8'} />}
+                <Text fontSize={10} color="$textMuted">{c.NumeroCuota}</Text>
+              </XStack>
+
+              <Text
+                fontSize={11}
+                fontWeight={esProxima ? '700' : '400'}
+                color={esProxima ? '$primary' : '$text'}
+                flex={1}
+              >
+                {formatFecha(c.FechaCuota)}
+              </Text>
+
+              <Text
+                fontSize={11}
+                fontWeight="600"
+                color="$text"
+                flex={1}
+                textAlign="right"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
+                {formatMonto(c.TotalCuota)}
+              </Text>
+
+              {/* El saldo que deja esa cuota: es lo que le permite ver cómo va
+                  bajando la deuda. */}
+              <Text
+                fontSize={11}
+                color="$textMuted"
+                flex={1.2}
+                textAlign="right"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
+                {formatMonto(c.SaldoActual)}
+              </Text>
             </XStack>
-
-            <Text
-              fontSize={12}
-              color={c.Pagada ? '$textMuted' : '$text'}
-              flex={1}
-            >
-              {formatFecha(c.FechaCuota)}
-            </Text>
-
-            <Text
-              fontSize={12}
-              fontWeight="600"
-              color={c.Pagada ? '$textMuted' : '$text'}
-              width={76}
-              textAlign="right"
-            >
-              {formatMonto(c.TotalCuota)}
-            </Text>
-
-            {/* El saldo que deja esa cuota: es lo que le permite ver cómo va
-                bajando la deuda. */}
-            <Text fontSize={12} color="$textMuted" width={86} textAlign="right">
-              {formatMonto(c.SaldoActual)}
-            </Text>
-          </XStack>
-        ))}
-      </YStack>
+          )
+        })}
+        </Plegable>
+      </Tarjeta>
     </ScrollView>
   )
 }

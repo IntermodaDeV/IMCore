@@ -3,12 +3,12 @@ import { RefreshControl, KeyboardAvoidingView, Platform } from 'react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { YStack, XStack, Text, Button, ScrollView, View, Spinner } from 'tamagui'
 import {
-  Handshake, UserCog, CalendarDays, IdCard, Mail, Phone, MapPin,
-  Building2, AlertCircle, BadgeCheck,
-  FilePlus2, PiggyBank, Info,
+  Handshake, AlertCircle, BadgeCheck, UserX,
+  FilePlus2, PiggyBank, Info, Landmark,
 } from 'lucide-react-native'
 import { cooperativaService } from '../../api/modules/cooperativa/cooperativa.service'
 import {
+  IClienteCooperativa,
   IEstadoAfiliacion,
   ILimitesAporte,
   IEmpleadoSinAfiliacion,
@@ -44,13 +44,6 @@ import { shadows } from '../../theme/shadows'
  * token. Ver cooperativa.service.ts.
  */
 
-const TIPO_PLANILLA: Record<string, string> = {
-  S: 'Semanal',
-  Q: 'Quincenal',
-  M: 'Mensual',
-  X: 'Sin clasificar',
-}
-
 /**
  * Cada cuanto se le descuenta el aporte, segun su planilla.
  *
@@ -85,35 +78,150 @@ const formatFecha = (valor: string | null): string => {
 }
 
 /** Junta los cuatro campos del nombre saltando los vacíos. */
-const nombreCompleto = (e: IEmpleadoSinAfiliacion | ISolicitudSocio): string =>
+const nombreCompleto = (
+  e: IEmpleadoSinAfiliacion | ISolicitudSocio | IClienteCooperativa,
+): string =>
   [e.PrimerNombre, e.SegundoNombre, e.PrimerApellido, e.SegundoApellido]
     .map(p => p?.trim())
     .filter(Boolean)
     .join(' ')
 
-function Dato({
-  icono: Icono,
+/**
+ * Las iniciales del nombre, para el avatar.
+ *
+ * Dos a lo sumo: con tres o cuatro el circulo se vuelve ilegible en 44px.
+ */
+const iniciales = (nombre: string): string =>
+  nombre
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(p => p[0]?.toUpperCase() ?? '')
+    .join('')
+
+/**
+ * Una linea de la ficha: etiqueta a la izquierda, valor a la derecha.
+ *
+ * El valor lleva flex y se alinea a la derecha, asi que los largos — correo,
+ * direccion — bajan de renglon solos sin romper la columna ni empujar la
+ * etiqueta. Por eso no hace falta un modo aparte para los campos anchos.
+ */
+function Fila({
   etiqueta,
   valor,
+  ultima = false,
 }: {
-  icono: React.ComponentType<any>
   etiqueta: string
   valor: string | null
+  ultima?: boolean
 }) {
   return (
-    <XStack gap="$2" alignItems="flex-start">
-      <View marginTop={2}>
-        <Icono size={13} color="#94A3B8" />
-      </View>
-      <YStack flex={1} gap="$0.5">
-        <Text fontSize={10} color="$textMuted" fontWeight="600">
-          {etiqueta}
-        </Text>
-        <Text fontSize={13} color="$text" lineHeight={17}>
-          {valor && valor.trim() ? valor : '-'}
-        </Text>
-      </YStack>
+    <XStack
+      gap="$2.5"
+      paddingVertical="$1.5"
+      alignItems="flex-start"
+      borderBottomWidth={ultima ? 0 : 1}
+      borderBottomColor="$border"
+    >
+      <Text fontSize={11} color="$textMuted" minWidth={64}>
+        {etiqueta}
+      </Text>
+      <Text
+        fontSize={12}
+        fontWeight="600"
+        color="$text"
+        flex={1}
+        textAlign="right"
+        lineHeight={16}
+      >
+        {valor && valor.trim() ? valor : '—'}
+      </Text>
     </XStack>
+  )
+}
+
+/**
+ * Una pantalla de estado: icono, titulo y explicacion.
+ *
+ * La usan los dos caminos que NO llevan a un formulario — el que no califica y
+ * el que no se pudo consultar. Antes cada uno era un recuadro con una linea de
+ * texto, y eso se lee como un error de la app; con el icono grande y el titulo
+ * se lee como lo que es: una respuesta.
+ *
+ * `tono` pinta el circulo y el bloque del detalle. Se pasa el color crudo y no
+ * un token porque los temas no definen opacidades para ambar ni para gris.
+ */
+function PantallaEstado({
+  icono: Icono,
+  tono,
+  titulo,
+  descripcion,
+  detalle,
+  pie,
+}: {
+  icono: React.ComponentType<any>
+  tono: string
+  titulo: string
+  descripcion: string
+  detalle?: React.ReactNode
+  pie?: string
+}) {
+  return (
+    <YStack
+      gap="$3"
+      paddingHorizontal="$4"
+      paddingVertical="$5"
+      borderRadius="$6"
+      backgroundColor="$backgroundElevated"
+      borderWidth={1}
+      borderColor="$border"
+      alignItems="center"
+      {...shadows.sm}
+    >
+      {/* Dos circulos concentricos: el de afuera apenas teñido, el de adentro
+          mas saturado. Da profundidad sin necesitar una ilustracion. */}
+      <View
+        width={84}
+        height={84}
+        borderRadius={999}
+        backgroundColor={`${tono}14`}
+        alignItems="center"
+        justifyContent="center"
+      >
+        <View
+          width={60}
+          height={60}
+          borderRadius={999}
+          backgroundColor={`${tono}24`}
+          alignItems="center"
+          justifyContent="center"
+        >
+          <Icono size={28} color={tono} />
+        </View>
+      </View>
+
+      <Text fontSize={17} fontWeight="800" color="$text" textAlign="center">
+        {titulo}
+      </Text>
+
+      <Text
+        fontSize={13}
+        color="$textMuted"
+        textAlign="center"
+        lineHeight={20}
+        maxWidth={300}
+      >
+        {descripcion}
+      </Text>
+
+      {detalle}
+
+      {!!pie && (
+        <Text fontSize={11} color="$textMuted" textAlign="center">
+          {pie}
+        </Text>
+      )}
+    </YStack>
   )
 }
 
@@ -128,66 +236,65 @@ function FichaDatos({
   datos,
   chip,
 }: {
-  datos: IEmpleadoSinAfiliacion | ISolicitudSocio
+  // Las tres formas tienen los mismos campos de ficha — identidad, nombres,
+  // fechas, planilla, contacto — aunque vengan de tablas distintas.
+  datos: IEmpleadoSinAfiliacion | ISolicitudSocio | IClienteCooperativa
   chip?: React.ReactNode
 }) {
+  const nombre = nombreCompleto(datos) || 'Empleado'
+
   return (
     <YStack
-      gap="$2.5"
-      padding="$3"
-      borderRadius="$4"
+      borderRadius="$6"
       backgroundColor="$backgroundElevated"
       borderWidth={1}
       borderColor="$border"
+      overflow="hidden"
       {...shadows.sm}
     >
-      <YStack gap="$1.5">
-        <XStack gap="$2" alignItems="center">
-          <UserCog size={15} color="#94A3B8" />
-          <Text fontSize={15} fontWeight="700" color="$text" flex={1}>
-            {nombreCompleto(datos) || 'Empleado'}
+      {/* Encabezado. Va sobre un fondo distinto para que se lea como la
+          identidad de la persona y no como un dato mas de la lista. */}
+      <XStack
+        gap="$2.5"
+        paddingHorizontal="$3"
+        paddingVertical="$2.5"
+        alignItems="center"
+        backgroundColor="$backgroundSurface"
+      >
+        <View
+          width={38}
+          height={38}
+          borderRadius={999}
+          backgroundColor="$primaryOpacity"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <Text fontSize={14} fontWeight="800" color="$primary">
+            {iniciales(nombre)}
           </Text>
-        </XStack>
-        {chip}
+        </View>
+
+        <YStack flex={1} gap="$1">
+          <Text fontSize={14} fontWeight="800" color="$text" lineHeight={18} numberOfLines={2}>
+            {nombre}
+          </Text>
+          {chip}
+        </YStack>
+      </XStack>
+
+      {/* Los datos, uno por renglon y separados por una linea fina.
+          Antes iban de dos en dos con un icono cada uno: entraban mas en menos
+          alto, pero con seis iconos grises la tarjeta se leia como un formulario
+          y costaba encontrar un dato concreto. En una columna el ojo baja
+          derecho por las etiquetas. */}
+      <YStack paddingHorizontal="$3" paddingBottom="$1">
+        <Fila etiqueta="Identidad" valor={datos.NIT} />
+        <Fila etiqueta="Código" valor={datos.Codigo} />
+        <Fila etiqueta="Ingreso" valor={formatFecha(datos.FechaIngreso)} />
+        <Fila etiqueta="Teléfono" valor={datos.Telefono1} />
+        <Fila etiqueta="Correo" valor={datos.Correo} />
+        <Fila etiqueta="Dirección" valor={datos.Direccion} ultima />
       </YStack>
-
-      {/* De dos en dos: son datos cortos y en una sola columna la ficha se
-          comia la pantalla antes de que apareciera el campo del aporte. */}
-      <XStack gap="$2">
-        <View flex={1}>
-          <Dato icono={IdCard} etiqueta="Identidad" valor={datos.NIT} />
-        </View>
-        <View flex={1}>
-          <Dato icono={IdCard} etiqueta="Código" valor={datos.Codigo} />
-        </View>
-      </XStack>
-
-      <XStack gap="$2">
-        <View flex={1}>
-          <Dato icono={CalendarDays} etiqueta="Nacimiento" valor={formatFecha(datos.FechaNacimiento)} />
-        </View>
-        <View flex={1}>
-          <Dato icono={CalendarDays} etiqueta="Ingreso" valor={formatFecha(datos.FechaIngreso)} />
-        </View>
-      </XStack>
-
-      <XStack gap="$2">
-        <View flex={1}>
-          <Dato
-            icono={Building2}
-            etiqueta="Planilla"
-            valor={TIPO_PLANILLA[datos.TipoPlanilla ?? ''] ?? datos.TipoPlanilla}
-          />
-        </View>
-        <View flex={1}>
-          <Dato icono={Phone} etiqueta="Teléfono" valor={datos.Telefono1} />
-        </View>
-      </XStack>
-
-      {/* Estos dos se quedan a todo el ancho: en media columna se partirian en
-          tres o cuatro lineas y ocuparian mas, no menos. */}
-      <Dato icono={Mail} etiqueta="Correo" valor={datos.Correo} />
-      <Dato icono={MapPin} etiqueta="Dirección" valor={datos.Direccion} />
     </YStack>
   )
 }
@@ -196,7 +303,14 @@ export default function PerfilSocioScreen() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [enviando, setEnviando] = useState(false)
-  const [estado, setEstado] = useState<IEstadoAfiliacion | null>(null)
+  // La ficha del socio, o null si todavía no lo es. Lo que decide qué se pinta.
+  const [cliente, setCliente] = useState<IClienteCooperativa | null>(null)
+  // Por qué no se pudo consultar. Vacío cuando la consulta salió bien — sea
+  // que encontró socio o que no.
+  const [motivo, setMotivo] = useState('')
+  // Sus datos de planilla. Solo se piden cuando NO es socio: son los que
+  // precargan el "quiero ser socio".
+  const [empleado, setEmpleado] = useState<IEstadoAfiliacion['Empleado']>(null)
   const [estadoCuenta, setEstadoCuenta] = useState<IEstadoCuenta | null>(null)
 
   // Aporte que va a ahorrar en cada pago. Se pide antes de solicitar porque al
@@ -219,57 +333,86 @@ export default function PerfilSocioScreen() {
   usePageHeader({
     center: (
       <Text fontSize={16} fontWeight="700" color="$text">
-        Cooperativa
+        Perfil de socio
       </Text>
     ),
   })
 
+  /**
+   * ¿Es socio? Una sola consulta, derecho a la base de Cooperativa.
+   *
+   * Antes esto preguntaba por el "estado de afiliación", que se armaba en
+   * IMCore cruzando su solicitud, los límites de aporte y la antigüedad
+   * mínima. Ese esquema ya no existe: ahora la pregunta es más simple y la
+   * contesta una sola fila de dbo.Cliente.
+   *
+   * Los tres desenlaces se tratan distinto a propósito:
+   *
+   *   Success && Data   ya es socio       -> su información
+   *   Success && !Data  todavía no        -> "quiero ser socio"
+   *   !Success          no se pudo saber  -> el motivo, y NINGUNA de las dos
+   *
+   * El tercero no es el segundo. Si una caída se leyera como "no es socio",
+   * a alguien afiliado se le ofrecería afiliarse otra vez.
+   */
   const consultar = useCallback(async () => {
     try {
-      const response: ExecutionResponse<IEstadoAfiliacion> =
-        await cooperativaService.getEstadoAfiliacion()
+      const response: ExecutionResponse<IClienteCooperativa | null> =
+        await cooperativaService.getClienteCooperativa()
 
-      if (response?.Success && response.Data) {
-        setEstado(response.Data)
+      if (!response?.Success) {
+        setCliente(null)
+        setEstadoCuenta(null)
+        setMotivo(response?.ErrorMessage || 'No se pudo consultar su afiliación.')
+        return
+      }
 
-        // El servidor le acaba de dar el menu del socio. Sin este aviso el
-        // drawer sigue con la lista vieja y la persona tendria que cerrar
-        // sesion para ver su pantalla de solicitudes.
-        if (response.Data.MenuAsignado) requestMenuRefresh()
+      const socio = response.Data ?? null
 
-        // Solo si ya es socio: quien no lo es no tiene cuenta que consultar.
-        // Es informacion complementaria, asi que un fallo no se muestra ni
-        // corta la pantalla; a lo sumo no se pinta la tarjeta.
-        if (response.Data.Solicitud?.Status_Code === ESTADO_SOLICITUD.APROBADO) {
-          try {
-            const cuenta = await cooperativaService.getEstadoCuenta()
-            setEstadoCuenta(cuenta?.Success && cuenta.Data ? cuenta.Data : null)
-          } catch {
-            setEstadoCuenta(null)
-          }
-        } else {
+      setCliente(socio)
+      setMotivo('')
+
+      if (socio) {
+        setEmpleado(null)
+
+        // La cuenta solo si ya es socio: quien no lo es no tiene qué consultar.
+        // Es información complementaria, así que un fallo no se muestra ni corta
+        // la pantalla; a lo sumo no se pinta la tarjeta.
+        try {
+          const cuenta = await cooperativaService.getEstadoCuenta()
+          setEstadoCuenta(cuenta?.Success && cuenta.Data ? cuenta.Data : null)
+        } catch {
           setEstadoCuenta(null)
         }
-      } else {
-        setEstado({
-          Empleado: null,
-          Solicitud: null,
-          Motivo: response?.ErrorMessage || 'No se pudo consultar su afiliación.',
-          PuedeSolicitar: false,
-          LimitesAporte: null,
-          BloqueoSolicitud: null,
-        })
+        return
+      }
+
+      // No es socio: se le ofrece afiliarse, y para eso hacen falta sus datos
+      // de planilla. Salen de payroll.ObtenerEmpleadosActivosSinAfiliacion, que
+      // devuelve justo a los activos que todavía no son clientes.
+      //
+      // Si no viene, se dice por qué: puede no estar activo o no tener ficha en
+      // planilla, y en ninguno de esos casos se le puede ofrecer el alta.
+      setEstadoCuenta(null)
+
+      try {
+        const emp = await cooperativaService.getEmpleadoSinAfiliacion()
+
+        if (emp?.Success && emp.Data) {
+          setEmpleado(emp.Data)
+        } else {
+          setEmpleado(null)
+          setMotivo(emp?.ErrorMessage || 'No se encontró su información de empleado.')
+        }
+      } catch (err) {
+        setEmpleado(null)
+        setMotivo(handleError(err).message)
       }
     } catch (err) {
       const error = handleError(err)
-      setEstado({
-        Empleado: null,
-        Solicitud: null,
-        Motivo: error.message,
-        PuedeSolicitar: false,
-        LimitesAporte: null,
-        BloqueoSolicitud: null,
-      })
+      setCliente(null)
+      setEstadoCuenta(null)
+      setMotivo(error.message)
     }
   }, [])
 
@@ -299,6 +442,31 @@ export default function PerfilSocioScreen() {
    * empiezan a descontar de planilla. Un toque accidental no deberia alcanzar
    * para eso.
    */
+  /**
+   * El aviso de que el monto se sale del rango, o cadena vacía si está bien.
+   *
+   * Vive en una sola función porque la usan dos momentos: mientras escribe y al
+   * confirmar. Con el texto duplicado, los dos mensajes se desalinean en cuanto
+   * alguien toca uno.
+   *
+   * Un rango `Informativo` NO bloquea: la cooperativa lo guarda como sugerencia,
+   * así que se avisa pero se deja seguir. Bloquear ahí sería impedir un monto
+   * que de verdad se acepta.
+   */
+  const mensajeFueraDeRango = (valor: string): string => {
+    const monto = Number(valor)
+
+    if (!valor.trim() || isNaN(monto) || monto <= 0) return ''
+    if (!limites) return ''
+    if (monto >= limites.Minimo && monto <= limites.Maximo) return ''
+
+    const rango = `${fmtMoneda(limites.Minimo)} y ${fmtMoneda(limites.Maximo)}`
+
+    return limites.Informativo
+      ? `Lo habitual es entre ${rango}`
+      : `Debe estar entre ${rango}`
+  }
+
   const pedirConfirmacion = () => {
     const monto = Number(aporte)
 
@@ -307,8 +475,12 @@ export default function PerfilSocioScreen() {
       return
     }
 
-    if (limites && (monto < limites.Minimo || monto > limites.Maximo)) {
-      setErrorAporte(`Debe estar entre ${fmtMoneda(limites.Minimo)} y ${fmtMoneda(limites.Maximo)}`)
+    // Fuera de rango no se confirma — salvo que el rango sea informativo, donde
+    // el aviso ya se mostró mientras escribía y la decisión es suya.
+    const aviso = mensajeFueraDeRango(aporte)
+
+    if (aviso && !limites?.Informativo) {
+      setErrorAporte(aviso)
       return
     }
 
@@ -334,13 +506,32 @@ export default function PerfilSocioScreen() {
         return
       }
 
-      showToast('success', 'Ya sos socio', response.SuccessMessage || '', 4000, 'top')
+      showToast(
+        'success',
+        // SocioCreado distingue el alta de verdad de un reintento sobre algo
+        // que ya existia. Felicitar dos veces por lo mismo confunde: la persona
+        // no sabe si se afilio otra vez.
+        response.Data?.SocioCreado === false ? 'Ya estabas afiliado' : 'Ya sos socio',
+        response.Data?.Mensaje || response.SuccessMessage || '',
+        4000,
+        'top',
+      )
 
-      // El procedimiento le acabo de asignar el menu del socio. Sin este aviso
-      // el drawer sigue con la lista vieja y tendria que cerrar sesion para ver
-      // su pantalla de solicitudes.
-      requestMenuRefresh()
+      // Se guardo, pero con algo que decir. Hoy solo pasa si el rango era
+      // informativo y el monto quedo afuera — la pantalla no deberia dejar
+      // llegar hasta aca, asi que si aparece es que la regla cambio de un lado
+      // y no del otro. Se muestra en vez de tragarselo.
+      if (response.Data?.Aviso) {
+        showToast('info', 'Sobre tu aporte', response.Data.Aviso, 7000, 'top')
+      }
 
+      // Solo si de verdad se le asigno algo. Refrescar siempre seria volver a
+      // pedir los menus en cada afiliacion repetida, sin que nada haya
+      // cambiado.
+      if (response.Data?.MenuAsignado) requestMenuRefresh()
+
+      // Volver al flujo de entrada: ahora que es socio, la misma consulta de
+      // siempre lo lleva a su ficha y su estado de cuenta.
       await consultar()
     } catch (err) {
       const error = handleError(err)
@@ -358,18 +549,23 @@ export default function PerfilSocioScreen() {
     )
   }
 
-  const solicitud = estado?.Solicitud ?? null
-  const empleado = estado?.Empleado ?? null
-  const aprobada = solicitud?.Status_Code === ESTADO_SOLICITUD.APROBADO
-
-  // Puede afiliarse cualquiera que sea elegible y no lo sea todavia.
+  // Cuanto puede aportar. Viene con sus datos de empleado: lo resuelve la
+  // cooperativa cruzando empresa, tipo de planilla y tipo de empleado.
   //
-  // Se mira `aprobada` y no `!solicitud`: pueden quedar filas viejas en PEND de
-  // cuando habia aprobacion, y esas ya no significan nada. Si bloquearan, esas
-  // personas no podrian afiliarse nunca — nadie va a resolverlas.
-  const puedeSolicitar = !!empleado && !aprobada
-  const limites: ILimitesAporte | null = estado?.LimitesAporte ?? null
-  const bloqueo = estado?.BloqueoSolicitud ?? null
+  // Puede ser null — hay combinaciones sin parametrizar — y en ese caso la
+  // pantalla lo dice en vez de inventar un rango.
+  const limites: ILimitesAporte | null = empleado?.LimitesAporte ?? null
+
+  // ---------------------------------------------------------------------
+  // PENDIENTE — la antiguedad minima para poder afiliarse.
+  //
+  // Salia de AdmSys.Configuracion en IMCore, que ya no se consulta. Falta
+  // decidir donde vive ahora.
+  //
+  // `null as T` y no `: T = null`: con la anotacion sola TypeScript estrecha la
+  // constante a null y cualquier `bloqueo?.Campo` pasa a ser `never`.
+  // ---------------------------------------------------------------------
+  const bloqueo = null as IEstadoAfiliacion['BloqueoSolicitud']
 
   // Como se le va a descontar. Sin planilla reconocida se dice en general: es
   // preferible a afirmar una frecuencia que puede no ser la suya.
@@ -403,23 +599,63 @@ export default function PerfilSocioScreen() {
         </Text>
       </XStack>
 
+      {/* El rango va ARRIBA del campo, no debajo.
+          Debajo era una aclaracion que se leia despues de haber escrito; arriba
+          es la instruccion que dice que escribir. */}
+      {limites ? (
+        <XStack
+          gap="$2"
+          alignItems="center"
+          paddingHorizontal="$2.5"
+          paddingVertical="$2"
+          borderRadius="$3"
+          backgroundColor="rgba(34, 197, 94, 0.10)"
+        >
+          <PiggyBank size={13} color="#22C55E" />
+          <Text fontSize={12} color="$text" flex={1}>
+            Podés aportar entre{' '}
+            <Text fontWeight="800">{fmtMoneda(limites.Minimo)}</Text> y{' '}
+            <Text fontWeight="800">{fmtMoneda(limites.Maximo)}</Text>
+            {limites.NombrePlanilla ? ` de cada pago ${limites.NombrePlanilla}` : ''}
+          </Text>
+        </XStack>
+      ) : (
+        /* Sin rango no se puede validar nada. Se dice, en vez de dejarlo
+           escribir un monto que la cooperativa va a rechazar despues. */
+        <XStack
+          gap="$2"
+          alignItems="flex-start"
+          paddingHorizontal="$2.5"
+          paddingVertical="$2"
+          borderRadius="$3"
+          backgroundColor="rgba(245, 158, 11, 0.12)"
+        >
+          <View marginTop={1}>
+            <Info size={13} color="#F59E0B" />
+          </View>
+          <Text fontSize={12} color="$text" flex={1} lineHeight={17}>
+            La cooperativa todavía no tiene definido un rango de aporte para tu
+            tipo de planilla. Consultá con ellos antes de afiliarte.
+          </Text>
+        </XStack>
+      )}
+
       <AppInput
         label="Monto a aportar"
         value={aporte}
         onChangeText={(v: string) => {
-          setAporte(soloDecimal(v))
-          setErrorAporte('')
+          const limpio = soloDecimal(v)
+          setAporte(limpio)
+
+          // Se avisa MIENTRAS escribe, no al confirmar. Enterarse de que el
+          // monto no sirve recien al presionar el boton obliga a volver, y la
+          // validacion al confirmar sigue estando igual por si llega vacio.
+          setErrorAporte(mensajeFueraDeRango(limpio))
         }}
         keyboardType="decimal-pad"
         placeholder="0.00"
         error={errorAporte}
       />
-
-      {!!limites && (
-        <Text fontSize={11} color="$textMuted">
-          Entre {fmtMoneda(limites.Minimo)} y {fmtMoneda(limites.Maximo)}
-        </Text>
-      )}
 
       {/* Lo que de verdad tiene que entender antes de aceptar: que este monto
           le sale del sueldo, y cada cuanto. */}
@@ -440,7 +676,19 @@ export default function PerfilSocioScreen() {
      Sale por su propio return: sin encabezado ni bloque de estado, solo la
      ficha del socio con un chip que dice desde cuándo lo es.
      ------------------------------------------------------------------------ */
-  if (aprobada && solicitud) {
+  if (cliente) {
+    // Al dia por los DOS lados. EstadoSocio = 0 es Activo en el catalogo de la
+    // cooperativa; cuando no viene — bases viejas, o el catalogo sin cargar —
+    // manda el estado de la ficha, que es lo unico que se sabe.
+    const socioAlDia =
+      cliente.Estado === 1 &&
+      (cliente.EstadoSocio == null || cliente.EstadoSocio === 0)
+
+    /* Sale del estado de cuenta, que ya cuenta TODOS sus préstamos —también
+       los migrados o cargados en el escritorio, que son la mayoría— y no solo
+       los que nacieron de una solicitud del app. */
+    const tienePrestamos = (estadoCuenta?.TotalPrestamos ?? 0) > 0
+
     return (
       <ScrollView
         flex={1}
@@ -449,7 +697,7 @@ export default function PerfilSocioScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <FichaDatos
-          datos={solicitud}
+          datos={cliente}
           chip={
             <XStack
               alignSelf="flex-start"
@@ -460,16 +708,34 @@ export default function PerfilSocioScreen() {
               borderRadius="$10"
               // rgba literal: los temas solo definen primaryOpacity, no hay un
               // token de opacidad para success.
-              backgroundColor="rgba(34, 197, 94, 0.12)"
+              // Verde solo cuando esta activo por los DOS lados: la ficha y su
+              // situacion como socio. Un liquidado con la ficha activa no
+              // deberia verse igual que uno al dia.
+              backgroundColor={
+                socioAlDia
+                  ? 'rgba(34, 197, 94, 0.12)'
+                  : 'rgba(239, 68, 68, 0.12)'
+              }
             >
-              <BadgeCheck size={12} color="#22C55E" />
-              <Text fontSize={11} fontWeight="600" color="$success">
-                {/* Sin fecha = socio de antes de este modulo: se afilio fuera
-                    del sistema y nadie registro cuando. Decir "Socio desde -"
-                    seria peor que no decir la fecha. */}
-                {solicitud.Resolution_Date
-                  ? `Socio desde ${formatFecha(solicitud.Resolution_Date)}`
-                  : 'Socio activo'}
+              <BadgeCheck size={12} color={socioAlDia ? '#22C55E' : '#EF4444'} />
+              <Text
+                fontSize={11}
+                fontWeight="600"
+                color={socioAlDia ? '$success' : '$error'}
+              >
+                {/* El nombre sale del catalogo de la cooperativa — Activo,
+                    Liquidado, lo que tengan cargado — y no de un mapa escrito
+                    aca: un estado nuevo aparece solo.
+
+                    Si no vino, se cae al estado de la ficha, que es lo unico
+                    que se sabe con certeza.
+
+                    Ya no se dice "Socio desde": dbo.Cliente no guarda cuando se
+                    afilio. Esa fecha salia de IMCore, y esa tabla ya no existe
+                    — inventarla seria peor que no mostrarla. */}
+                {cliente.EstadoSocioNombre
+                  ? `Socio ${cliente.EstadoSocioNombre.toLowerCase()}`
+                  : cliente.Estado === 1 ? 'Socio activo' : 'Socio dado de baja'}
               </Text>
             </XStack>
           }
@@ -477,19 +743,117 @@ export default function PerfilSocioScreen() {
         
         {!!estadoCuenta && <EstadoCuentaCard datos={estadoCuenta} />}
 
-        <Button
-          backgroundColor="$primary"
-          color="#FFFFFF"
-          height={44}
-          borderRadius="$4"
-          fontWeight="600"
-          fontSize={14}
-          icon={<FilePlus2 size={17} color="#FFFFFF" />}
-          pressStyle={{ opacity: 0.85 }}
-          onPress={() => navigation.navigate('RequestCoo' as never)}
-        >
-          Ver mis solicitudes
-        </Button>
+        {/* Dos salidas del perfil, lado a lado y del mismo tamaño: las dos
+            llevan a una lista y ninguna es más importante que la otra.
+
+            La de préstamos SOLO si tiene alguno. Un botón que lleva a una
+            lista vacía promete algo que no hay — y el socio que nunca pidió
+            nada no tiene por qué saber que esa pantalla existe. */}
+        <XStack gap="$2.5">
+          <Button
+            flex={1}
+            backgroundColor="$primary"
+            color="#FFFFFF"
+            height={44}
+            borderRadius="$4"
+            fontWeight="600"
+            fontSize={13}
+            icon={<FilePlus2 size={16} color="#FFFFFF" />}
+            pressStyle={{ opacity: 0.85 }}
+            onPress={() => navigation.navigate('RequestCoo' as never)}
+          >
+            Mis solicitudes
+          </Button>
+
+          {tienePrestamos && (
+            <Button
+              flex={1}
+              backgroundColor="transparent"
+              height={44}
+              borderRadius="$4"
+              borderWidth={1.5}
+              borderColor="$primary"
+              fontWeight="600"
+              fontSize={13}
+              color="$primary"
+              icon={<Landmark size={16} color="#FF551A" />}
+              pressStyle={{ opacity: 0.6 }}
+              onPress={() => navigation.navigate('historicoPrestamos' as never)}
+            >
+              Mis préstamos
+            </Button>
+          )}
+        </XStack>
+      </ScrollView>
+    )
+  }
+
+  /* ------------------------------------------------------------------------
+     NO CALIFICA — hoy, por ser empleado temporal.
+     Sale por su propio return: no hay nada que elegir ni que completar, asi
+     que mostrarle el formulario con el boton apagado solo lo haria buscar que
+     le falta.
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     NO PUEDE AFILIARSE.
+     Se llega por dos caminos y a proposito muestran lo mismo:
+
+       empleado = null      planilla no lo devolvio. El procedimiento solo
+                            trae permanentes, asi que lo mas probable es que
+                            no lo sea.
+       PuedeAfiliarse false vino con una relacion laboral que no califica.
+                            Hoy no puede pasar — el filtro los deja afuera —
+                            pero queda cubierto por si el filtro se relaja.
+
+     >>> POR QUE EL TEXTO NO AFIRMA "SOS TEMPORAL" <<<
+     Porque cero filas tambien significa que no esta activo, que su tipo de
+     planilla no lo esta, que su centro de costos no figura en
+     EstructuraContable, o que el codigo no existe. Son indistinguibles desde
+     aca. Se dice la REGLA — solo permanentes — y se ofrece a quien crea que
+     hay un error el camino para que lo revisen, en vez de acusar a su
+     contrato de algo que puede ser un dato mal cargado.
+     ------------------------------------------------------------------------ */
+  if (!cliente && (!empleado || !empleado.PuedeAfiliarse)) {
+    return (
+      <ScrollView
+        flex={1}
+        backgroundColor="$backgroundPage"
+        contentContainerStyle={{ padding: 12, paddingBottom: 24, gap: 12 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <PantallaEstado
+          icono={UserX}
+          tono="#F59E0B"
+          titulo="Todavía no podés afiliarte"
+          descripcion="La cooperativa acepta solo a empleados permanentes, y en planilla no figurás como tal."
+          detalle={
+            /* El dato crudo cuando lo tenemos. Si el empleado no vino, no hay
+               relacion laboral que mostrar — y no se inventa una. */
+            empleado?.RelacionLaboral ? (
+              <XStack
+                gap="$2"
+                alignItems="center"
+                paddingHorizontal="$3"
+                paddingVertical="$2.5"
+                borderRadius="$4"
+                backgroundColor="rgba(245, 158, 11, 0.10)"
+              >
+                <Text fontSize={12} color="$textMuted">
+                  En planilla figurás como
+                </Text>
+                <Text fontSize={13} fontWeight="800" color="$text">
+                  {empleado.RelacionLaboral === 'TEMP'
+                    ? 'Temporal'
+                    : empleado.RelacionLaboral}
+                </Text>
+              </XStack>
+            ) : undefined
+          }
+        />
+
+        {/* Su ficha, solo si planilla la devolvio: ver sus datos es lo que le
+            permite notar si hay algo mal cargado y pedir que lo corrijan. */}
+        {!!empleado && <FichaDatos datos={empleado} />}
       </ScrollView>
     )
   }
@@ -581,24 +945,36 @@ export default function PerfilSocioScreen() {
           )}
         </>
       ) : (
-        /* No aplica: se muestra el motivo que dio el procedimiento */
-        <YStack
-          gap="$2.5"
-          padding="$3"
-          borderRadius="$4"
-          backgroundColor="$backgroundSurface"
-          borderWidth={1}
-          borderColor="$border"
-          alignItems="center"
-        >
-          <AlertCircle size={24} color="#94A3B8" />
-          <Text fontSize={13} color="$text" textAlign="center" lineHeight={18}>
-            {estado?.Motivo || 'No se encontró información de afiliación.'}
-          </Text>
-          <Text fontSize={11} color="$textMuted" textAlign="center">
-            Deslizá hacia abajo para volver a consultar.
-          </Text>
-        </YStack>
+        /* No se pudo resolver.
+           OJO: esto NO quiere decir que no califique. Puede que ya sea socio,
+           que no este activo, que su tipo de planilla no lo este, que su centro
+           de costos no figure en EstructuraContable, o que el codigo no exista.
+           Son indistinguibles desde aca, asi que el texto no afirma ninguna: se
+           muestra el motivo que dio el servidor y se ofrece reintentar. */
+        <PantallaEstado
+          icono={AlertCircle}
+          tono="#94A3B8"
+          titulo="No pudimos consultar tu afiliación"
+          descripcion="No encontramos tu información de empleado para ofrecerte la afiliación."
+          detalle={
+            !!motivo && (
+              <YStack
+                paddingHorizontal="$3"
+                paddingVertical="$2.5"
+                borderRadius="$4"
+                backgroundColor="$backgroundSurface"
+                borderWidth={1}
+                borderColor="$border"
+                maxWidth={320}
+              >
+                <Text fontSize={12} color="$text" textAlign="center" lineHeight={17}>
+                  {motivo}
+                </Text>
+              </YStack>
+            )
+          }
+          pie="Deslizá hacia abajo para volver a consultar."
+        />
       )}
 
       {/* Confirmacion antes de afiliar.
