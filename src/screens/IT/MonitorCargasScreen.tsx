@@ -8,8 +8,8 @@ import { usePageHeader } from '../../hooks/usePageHeader'
 import { HttpError } from '../../api/core/httpClient'
 import { monitorCargasService as svc } from '../../api/modules/monitorCargas/monitorCargas.service'
 import {
-  CapaAnalitica, EstadoCorrida, EstadoFuente, IAdvertenciaMonitor, ICapaMonitor, IFuenteMonitor, IMedicionMonitor,
-  IProcesoMonitor,
+  CapaAnalitica, EstadoCorrida, EstadoFuente, IAdvertenciaMonitor, ICapaMonitor, IConexionEstado, IFuenteMonitor,
+  IMedicionMonitor, IProcesoMonitor,
 } from '../../api/modules/monitorCargas/monitorCargas.types'
 import { shadows } from '../../theme/shadows'
 
@@ -17,8 +17,8 @@ import { shadows } from '../../theme/shadows'
    MONITOR DE CARGAS en el teléfono — el resumen, nada más.
 
    Si nuestras cargas corrieron, si las fuentes llegaron a su ritmo y si se
-   publicó a IMCore; el % de cada fuente y de cada capa de IMAnalitica, las
-   advertencias vigentes y cada proceso. Es la misma opción de menú del web
+   publicó a IMCore; si cada servidor responde; el % de cada fuente y de cada
+   capa de IMAnalitica, las advertencias vigentes y cada proceso. Es la misma opción de menú del web
    ('itMonitorCargas') y los mismos endpoints; ejecutar, reintentar, corridas,
    gráficas y conexiones quedan en el web. La lógica del semáforo y de los %
    es la del web (IMCoreWeb/src/pages/it/monitorCargasUi.ts): si cambia allá,
@@ -45,6 +45,14 @@ const ESTADO_CORRIDA: Record<EstadoCorrida, { color: string; label: string }> = 
   Advertencia: { color: NARANJA, label: 'Con hallazgos' },
   Error: { color: ROJO, label: 'Error' },
   Cancelada: { color: '$textMuted', label: 'Cortada' },
+}
+
+/** Los servidores, con el nombre de las fichas del web (CONEXIONES en monitorCargasUi.ts). */
+const SERVIDORES: Record<string, string> = {
+  'CUBO-INTERMODA': 'CUBO-INTERMODA · IMAnalitica',
+  'GIM-PRO3-DBO': 'AX en vivo',
+  IMREPSVCPRO: 'MDS',
+  'CRM-DBS': 'CRM · IMCore_Pro y AVentas',
 }
 
 /** Las fuentes que vigila hoy la vigilancia, en el orden del flujo. CRONO es solo referencia (D-15). */
@@ -137,6 +145,7 @@ interface Datos {
   mediciones: IMedicionMonitor[]
   capas: ICapaMonitor[]
   advertencias: IAdvertenciaMonitor[]
+  conexiones: IConexionEstado[]
 }
 
 export default function MonitorCargasScreen() {
@@ -155,16 +164,16 @@ export default function MonitorCargasScreen() {
   const cargar = useCallback(async () => {
     const n = ++pedido.current
     try {
-      const [p, f, m, c, a] = await Promise.all([
-        svc.procesos(), svc.fuentes(), svc.mediciones(1), svc.capas(), svc.advertencias(7),
+      const [p, f, m, c, a, x] = await Promise.all([
+        svc.procesos(), svc.fuentes(), svc.mediciones(1), svc.capas(), svc.advertencias(7), svc.conexionEstado(),
       ])
       if (n !== pedido.current) return
-      const mal = [p, f, m, c, a].find(r => !r.Success)
+      const mal = [p, f, m, c, a, x].find(r => !r.Success)
       if (mal) {
         setError(mal.ErrorMessage || 'No se pudo cargar el monitor.')
         return
       }
-      setDatos({ procesos: p.Data, fuentes: f.Data, mediciones: m.Data, capas: c.Data, advertencias: a.Data })
+      setDatos({ procesos: p.Data, fuentes: f.Data, mediciones: m.Data, capas: c.Data, advertencias: a.Data, conexiones: x.Data })
       setError(null)
       setActualizado(Date.now())
     } catch (e: any) {
@@ -202,7 +211,10 @@ export default function MonitorCargasScreen() {
   const nivelCargas: Nivel = !datos ? 'info' : conError.length ? 'error' : sinCorrer.length ? 'aviso' : 'ok'
   const vigiladas = fuentes.filter(f => f.Estado !== 'Excluida')
   const fuentesMal = vigiladas.filter(conProblema)
-  const nivelFuentes: Nivel = datos ? nivelDe(vigiladas.map(f => f.Estado), vigiladas.map(f => f.Estructura)) : 'info'
+  // Un servidor que no responde es un problema de fuente, no de nuestras cargas: va en este semáforo, en rojo.
+  const sinConexion = (datos?.conexiones ?? []).filter(c => c.Estado === 'Error')
+  const nivelFuentes: Nivel = sinConexion.length ? 'error'
+    : datos ? nivelDe(vigiladas.map(f => f.Estado), vigiladas.map(f => f.Estructura)) : 'info'
 
   // ── Cada fuente principal: su %, su métrica y qué la tiene mal ──────────
   const nodos = FUENTES_PRINCIPALES.map(fp => {
@@ -263,8 +275,10 @@ export default function MonitorCargasScreen() {
             valor={nivelCargas === 'ok' ? 'Al día' : nivelCargas === 'error' ? `${conError.length} con error` : 'Sin correr'}
             sub={vigilancia ? `Vigilancia ${hace(vigilancia.Inicio, ahora)} · próxima ${enCuanto(vigilancia.ProximaCorrida, ahora)}` : ''} />
           <Semaforo nivel={nivelFuentes} titulo="Fuentes"
-            valor={fuentesMal.length === 0 ? 'Al día' : plural(fuentesMal.length, 'aviso', 'avisos')}
-            sub={fuentesMal.length ? fuentesMal.map(f => f.Nombre).join(', ') : `${vigiladas.length} partes vigiladas en 3 fuentes`} />
+            valor={sinConexion.length ? `${sinConexion.length} sin conexión`
+              : fuentesMal.length === 0 ? 'Al día' : plural(fuentesMal.length, 'aviso', 'avisos')}
+            sub={sinConexion.length ? `No responde: ${sinConexion.map(c => SERVIDORES[c.Servidor] ?? c.Servidor).join(', ')}`
+              : fuentesMal.length ? fuentesMal.map(f => f.Nombre).join(', ') : `${vigiladas.length} partes vigiladas en 3 fuentes`} />
           <Semaforo nivel="info" titulo="Publicación a IMCore" valor="Por construir"
             sub="Paso 6: solo resúmenes que cambien, con la hora de los datos" />
 
@@ -294,6 +308,29 @@ export default function MonitorCargasScreen() {
                 )}
               </YStack>
             ))}
+          </Tarjeta>
+
+          <Tarjeta titulo="Conexiones">
+            {datos.conexiones.length === 0 ? (
+              <Text fontSize="$2" color="$textMuted">Sin revisar todavía.</Text>
+            ) : datos.conexiones.map(c => (
+              <YStack key={c.Servidor} gap={2}>
+                <XStack justifyContent="space-between" alignItems="center" gap="$2">
+                  <Text flex={1} fontSize="$3" color="$text" numberOfLines={1}>{SERVIDORES[c.Servidor] ?? c.Servidor}</Text>
+                  {c.Estado === 'OK'
+                    ? <Pastilla color={VERDE} texto={c.Milisegundos ? `Responde · ${c.Milisegundos} ms` : 'Responde'} />
+                    : <Pastilla color={ROJO} texto="No responde" />}
+                </XStack>
+                {c.Estado === 'Error' && (
+                  <Text fontSize="$1" color={ROJO} numberOfLines={3}>Falla {hace(c.FallaDesde, ahora)}. {c.Error}</Text>
+                )}
+              </YStack>
+            ))}
+            {datos.conexiones.length > 0 && (
+              <Text fontSize="$1" color="$textMuted">
+                Revisadas {hace(datos.conexiones.reduce((m, c) => (c.RevisadaEn > m ? c.RevisadaEn : m), ''), ahora)} · cada 15 min
+              </Text>
+            )}
           </Tarjeta>
 
           <Tarjeta titulo="IMAnalitica por capa">

@@ -66,6 +66,18 @@ export interface ICapaMonitor {
   Estado: 'PorConstruir' | 'AlDia' | 'Parcial' | 'Error'
 }
 
+/** Si un servidor responde, según la última revisión del proceso CONEXIONES (cada 15 min). */
+export interface IConexionEstado {
+  Servidor: string
+  Estado: 'OK' | 'Error'
+  Milisegundos: number | null
+  Error: string | null
+  RevisadaEn: string
+  UltimaOkEn: string | null
+  /** Desde cuándo no responde; null si responde. */
+  FallaDesde: string | null
+}
+
 /** Una advertencia o error de las revisiones, agrupado por fuente, cuenta y revisión. */
 export interface IAdvertenciaMonitor {
   Resultado: 'Advertencia' | 'Error'

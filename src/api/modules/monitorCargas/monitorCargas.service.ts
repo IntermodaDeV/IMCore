@@ -1,6 +1,8 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
-import { IAdvertenciaMonitor, ICapaMonitor, IFuenteMonitor, IMedicionMonitor, IProcesoMonitor } from './monitorCargas.types'
+import {
+  IAdvertenciaMonitor, ICapaMonitor, IConexionEstado, IFuenteMonitor, IMedicionMonitor, IProcesoMonitor,
+} from './monitorCargas.types'
 
 // api/MonitorCargas, los mismos endpoints del web. SOLO CONSULTA en la app: ejecutar,
 // reintentar, corridas, gráficas y conexiones son del web. El permiso es la opción de menú
@@ -18,4 +20,7 @@ export const monitorCargasService = {
   capas: () => httpClient.get<ExecutionResponse<ICapaMonitor[]>>(`${schema}/Capas`),
 
   advertencias: (dias = 7) => httpClient.get<ExecutionResponse<IAdvertenciaMonitor[]>>(`${schema}/Advertencias`, { dias }),
+
+  /** Si cada servidor responde (proceso CONEXIONES, cada 15 min). */
+  conexionEstado: () => httpClient.get<ExecutionResponse<IConexionEstado[]>>(`${schema}/ConexionEstado`),
 }
