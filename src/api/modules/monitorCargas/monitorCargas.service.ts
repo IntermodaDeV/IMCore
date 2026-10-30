@@ -2,7 +2,7 @@ import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
   IAccionMonitorResult, IAdvertenciaMonitor, ICapaMonitor, IConexionEstado, IFuenteMonitor, IMedicionMonitor, IPasoMonitor,
-  IProcesoMonitor,
+  IProcesoMonitor, ISincronizacion,
 } from './monitorCargas.types'
 
 // api/MonitorCargas, los mismos endpoints del web. La app consulta y puede ejecutar un proceso
@@ -25,6 +25,8 @@ export const monitorCargasService = {
 
   /** Si cada servidor responde (proceso CONEXIONES, cada 15 min). */
   conexionEstado: () => httpClient.get<ExecutionResponse<IConexionEstado[]>>(`${schema}/ConexionEstado`),
+  /** Sincronización con IMCore: cada tabla publicada, IMAnalitica contra IMCore. */
+  sincronizacion: () => httpClient.get<ExecutionResponse<ISincronizacion>>(`${schema}/Sincronizacion`),
 
   /** Pasos de una corrida; mientras corre, la pantalla los vuelve a pedir para mostrar el avance. */
   pasos: (corridaId: number) => httpClient.get<ExecutionResponse<IPasoMonitor[]>>(`${schema}/Corridas/${corridaId}/Pasos`),

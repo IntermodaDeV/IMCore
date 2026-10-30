@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshControl, ScrollView } from 'react-native'
 import { Spinner, Text, View, XStack, YStack } from 'tamagui'
 import {
-  Activity, AlertTriangle, CalendarClock, CheckCircle2, CircleDashed, CircleX, Clock, CloudUpload, Database, Gauge,
-  ChevronDown, ChevronUp, History, Layers, Play, RefreshCw, Server, ServerCrash, Store, Timer,
+  Activity, AlertTriangle, ArrowLeftRight, CalendarClock, CheckCircle2, CircleDashed, CircleX, Clock, CloudUpload, Database,
+  Gauge, ChevronDown, ChevronUp, History, Layers, Play, RefreshCw, Server, ServerCrash, Store, Timer,
 } from 'lucide-react-native'
 import { useFocusEffect } from '@react-navigation/native'
 
@@ -15,16 +15,17 @@ import { HttpError } from '../../api/core/httpClient'
 import { monitorCargasService as svc } from '../../api/modules/monitorCargas/monitorCargas.service'
 import {
   CapaAnalitica, EstadoCorrida, EstadoFuente, IAdvertenciaMonitor, ICapaMonitor, IConexionEstado, IFuenteMonitor,
-  IMedicionMonitor, IPasoMonitor, IProcesoMonitor,
+  IMedicionMonitor, IPasoMonitor, IProcesoMonitor, ISincronizacion, ISincronizacionTabla,
 } from '../../api/modules/monitorCargas/monitorCargas.types'
 import { shadows } from '../../theme/shadows'
 
 /* ============================================================================
    MONITOR DE CARGAS en el teléfono — el resumen, nada más.
 
-   Si nuestras cargas corrieron, si las fuentes llegaron a su ritmo y si se
-   publicó a IMCore; si cada servidor responde; el % de cada fuente y de cada
-   capa de IMAnalitica, las advertencias vigentes y cada proceso. Es la misma
+   Si nuestras cargas corrieron, si las fuentes llegaron a su ritmo y si IMCore
+   tiene lo que IMAnalitica le publicó (tabla por tabla); si cada servidor
+   responde; el % de cada fuente y de cada capa de IMAnalitica, las advertencias
+   vigentes y cada proceso. Es la misma
    opción de menú del web ('itMonitorCargas') y los mismos endpoints. Como en el
    web, «Ejecutar ahora» (con el acceso 'MonitorCargasEjecutar') y los pasos de
    la corrida en vivo; reintentar, corridas, gráficas y conexiones quedan en el
@@ -92,6 +93,18 @@ const CAPAS: { capa: CapaAnalitica; nombre: string; cuando: string }[] = [
   { capa: 'mart', nombre: 'mart · resúmenes', cuando: 'paso 6' },
   { capa: 'publicacion', nombre: 'publicación a IMCore', cuando: 'paso 6' },
 ]
+
+/** La publicación a IMCore (D-16): tiene su propio indicador y no cuenta en «Nuestras cargas». */
+const PROCESO_PUBLICACION = 'PUBLICACION'
+
+const ESTADO_SINC: Record<ISincronizacionTabla['Estado'], { color: string; label: string }> = {
+  AlDia: { color: VERDE, label: 'Al día' },
+  Pendiente: { color: GRIS, label: 'Por publicar' },
+  Distinta: { color: NARANJA, label: 'Distinta' },
+  FaltaTabla: { color: ROJO, label: 'Falta la tabla' },
+  SinOrigen: { color: ROJO, label: 'Sin origen' },
+  Inactiva: { color: GRIS, label: 'Inactiva' },
+}
 
 /* ── La misma lógica del web ─────────────────────────────────────────────── */
 
@@ -173,6 +186,8 @@ interface Datos {
   capas: ICapaMonitor[]
   advertencias: IAdvertenciaMonitor[]
   conexiones: IConexionEstado[]
+  /** null si la API publicada todavía no la tiene: el resto de la pantalla sigue. */
+  sinc: ISincronizacion | null
 }
 
 export default function MonitorCargasScreen() {
@@ -200,8 +215,9 @@ export default function MonitorCargasScreen() {
   const cargar = useCallback(async () => {
     const n = ++pedido.current
     try {
-      const [p, f, m, c, a, x] = await Promise.all([
+      const [p, f, m, c, a, x, s] = await Promise.all([
         svc.procesos(), svc.fuentes(), svc.mediciones(1), svc.capas(), svc.advertencias(7), svc.conexionEstado(),
+        svc.sincronizacion().catch(() => null),
       ])
       if (n !== pedido.current) return
       const mal = [p, f, m, c, a, x].find(r => !r.Success)
@@ -209,7 +225,8 @@ export default function MonitorCargasScreen() {
         setError(mal.ErrorMessage || 'No se pudo cargar el monitor.')
         return
       }
-      setDatos({ procesos: p.Data, fuentes: f.Data, mediciones: m.Data, capas: c.Data, advertencias: a.Data, conexiones: x.Data })
+      setDatos({ procesos: p.Data, fuentes: f.Data, mediciones: m.Data, capas: c.Data, advertencias: a.Data, conexiones: x.Data,
+        sinc: s?.Success ? s.Data : null })
       setError(null)
       setActualizado(Date.now())
     } catch (e: any) {
@@ -267,8 +284,9 @@ export default function MonitorCargasScreen() {
 
   // ── Semáforo: las mismas tres preguntas del web ─────────────────────────
   const vigilancia = procesos.find(p => p.Codigo === 'VIGILANCIA')
-  const conError = procesos.filter(p => p.Estado === 'Error' || p.Estado === 'Cancelada')
-  const sinCorrer = procesos.filter(p => atrasado(p, ahora))
+  const cargas = procesos.filter(p => p.Codigo !== PROCESO_PUBLICACION)
+  const conError = cargas.filter(p => p.Estado === 'Error' || p.Estado === 'Cancelada')
+  const sinCorrer = cargas.filter(p => atrasado(p, ahora))
   const nivelCargas: Nivel = !datos ? 'info' : conError.length ? 'error' : sinCorrer.length ? 'aviso' : 'ok'
   const vigiladas = fuentes.filter(f => f.Estado !== 'Excluida')
   const fuentesMal = vigiladas.filter(conProblema)
@@ -276,6 +294,25 @@ export default function MonitorCargasScreen() {
   const sinConexion = (datos?.conexiones ?? []).filter(c => c.Estado === 'Error')
   const nivelFuentes: Nivel = sinConexion.length ? 'error'
     : datos ? nivelDe(vigiladas.map(f => f.Estado), vigiladas.map(f => f.Estructura)) : 'info'
+  // Publicación: la sincronización tabla por tabla y que su proceso corra a su hora y sin error (como el web).
+  const sinc = datos?.sinc ?? null
+  const publicacion = procesos.find(p => p.Codigo === PROCESO_PUBLICACION)
+  const pubError = publicacion?.Estado === 'Error' || publicacion?.Estado === 'Cancelada'
+  const tablasPub = (sinc?.Tablas ?? []).filter(t => t.Activa)
+  const tablasMal = tablasPub.filter(t => t.Estado !== 'AlDia')
+  const nivelPublicacion: Nivel = !sinc ? 'info'
+    : sinc.Estado === 'Error' || pubError ? 'error'
+    : sinc.Estado === 'Pendiente' || (publicacion && atrasado(publicacion, ahora)) ? 'aviso'
+    : sinc.Estado === 'SinTablas' ? 'info' : 'ok'
+  const valorPublicacion = !sinc ? '—'
+    : sinc.Estado === 'Error' || pubError ? 'Con error'
+    : sinc.Estado === 'SinTablas' ? 'Sin resúmenes'
+    : tablasMal.length ? `${tablasMal.length} de ${tablasPub.length} por igualar` : 'Al día'
+  const subPublicacion = !sinc ? 'La API publicada todavía no tiene la sincronización.'
+    : pubError ? (publicacion?.ErrorMensaje ?? 'La última publicación no terminó.')
+    : sinc.Estado === 'Error' ? sinc.Resumen
+    : publicacion ? `${plural(tablasPub.length, 'tabla', 'tablas')} · publicó ${hace(publicacion.Inicio, ahora)} · próxima ${enCuanto(publicacion.ProximaCorrida, ahora)}`
+    : sinc.Resumen
 
   // ── Cada fuente principal: su %, su métrica y qué la tiene mal ──────────
   const nodos = FUENTES_PRINCIPALES.map(fp => {
@@ -306,8 +343,8 @@ export default function MonitorCargasScreen() {
     .sort((a, b) => (a.Resultado === b.Resultado ? b.UltimaVez.localeCompare(a.UltimaVez) : a.Resultado === 'Error' ? -1 : 1))
   const MAX_ADVERTENCIAS = 10
 
-  // El estado general es el peor de nuestras cargas y las fuentes (la publicación todavía no existe).
-  const general = peor(nivelCargas, nivelFuentes)
+  // El estado general es el peor de las tres preguntas.
+  const general = peor(peor(nivelCargas, nivelFuentes), nivelPublicacion)
   const TITULO_GENERAL: Record<Nivel, string> = {
     ok: 'Todo al día', aviso: 'Con avisos', error: 'Requiere atención', info: 'Sin datos',
   }
@@ -359,8 +396,8 @@ export default function MonitorCargasScreen() {
                   : fuentesMal.length === 0 ? 'Al día' : plural(fuentesMal.length, 'aviso', 'avisos')}
                 sub={sinConexion.length ? `No responde: ${sinConexion.map(c => SERVIDORES[c.Servidor] ?? c.Servidor).join(', ')}`
                   : fuentesMal.length ? fuentesMal.map(nombreParte).join(', ') : `${vigiladas.length} partes vigiladas en 3 fuentes`} />
-              <FilaSemaforo icono={CloudUpload} nivel="info" titulo="Publicación a IMCore" valor="Por construir"
-                sub="Paso 6: solo resúmenes que cambien, con la hora de los datos" />
+              <FilaSemaforo icono={CloudUpload} nivel={nivelPublicacion} titulo="Publicación a IMCore" valor={valorPublicacion}
+                sub={subPublicacion} />
             </YStack>
           </YStack>
 
@@ -458,6 +495,41 @@ export default function MonitorCargasScreen() {
               )
             })}
           </Seccion>
+
+          {sinc && (
+            <Seccion icono={ArrowLeftRight} titulo="Sincronización"
+              resumen={sinc.Estado === 'SinTablas' ? 'Sin tablas' : `${tablasPub.length - tablasMal.length} de ${tablasPub.length} al día`}
+              color={COLOR_NIVEL[nivelPublicacion]}>
+              {(sinc.ErrorIMCore ?? sinc.ErrorIMAnalitica) ? (
+                <Text fontSize="$2" color={ROJO}>{sinc.ErrorIMCore ?? sinc.ErrorIMAnalitica}</Text>
+              ) : sinc.Tablas.length === 0 ? (
+                <Text fontSize="$2" color="$textMuted">Todavía no hay resúmenes que publicar: llegan con el paso 3 (maestros).</Text>
+              ) : sinc.Tablas.map((t, i) => {
+                const e = ESTADO_SINC[t.Estado] ?? { color: GRIS, label: t.Estado }
+                return (
+                  <XStack key={t.Tabla} gap="$3" alignItems="flex-start"
+                    borderTopWidth={i === 0 ? 0 : 1} borderTopColor="$border" paddingTop={i === 0 ? 0 : '$3'}>
+                    <Circulo icono={t.Estado === 'AlDia' ? CheckCircle2 : e.color === ROJO ? CircleX : AlertTriangle} color={e.color} tam={34} />
+                    <YStack flex={1} gap={3}>
+                      <XStack alignItems="center" gap="$2">
+                        <Text flex={1} fontSize="$3" fontWeight="700" color="$text" numberOfLines={1}>{t.Tabla}</Text>
+                        <Pastilla color={e.color} texto={e.label} />
+                      </XStack>
+                      <XStack gap="$3" flexWrap="wrap">
+                        <Dato icono={Layers} texto={`IMAnalitica ${entero(t.FilasIMAnalitica)}`} />
+                        <Dato icono={CloudUpload} texto={`IMCore ${t.ExisteEnIMCore ? entero(t.FilasIMCore) : '—'}`} />
+                        <Dato icono={Clock} texto={hace(t.PublicadaEnIMCore, ahora)} />
+                      </XStack>
+                      {t.Estado !== 'AlDia' && <Text fontSize="$1" color="$textMuted" numberOfLines={3}>{t.Detalle}</Text>}
+                    </YStack>
+                  </XStack>
+                )
+              })}
+              {!!sinc.UltimaPublicacion && (
+                <Dato icono={Clock} texto={`Publicación ${sinc.UltimaVersion} ${hace(sinc.UltimaPublicacion, ahora)} · ${sinc.BaseIMCore ?? 'IMCore'}`} />
+              )}
+            </Seccion>
+          )}
 
           <Seccion icono={AlertTriangle} titulo="Advertencias" resumen={vigentes.length ? `${vigentes.length} vigentes` : 'Ninguna'}
             color={vigentes.some(a => a.Resultado === 'Error') ? ROJO : vigentes.length ? NARANJA : VERDE}>

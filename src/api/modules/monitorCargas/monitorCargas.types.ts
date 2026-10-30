@@ -15,6 +15,8 @@ export interface IProcesoMonitor {
   Descripcion: string | null
   Horario: string | null
   Activo: boolean
+  /** SQL: lo corre la base. Proxy: una rutina de IMCoreProxy (la publicación a IMCore). */
+  Ejecutor: 'SQL' | 'Proxy' | null
   LimiteLecturas: number | null
   CorridaId: number | null
   Estado: EstadoCorrida | null
@@ -114,4 +116,31 @@ export interface IAdvertenciaMonitor {
   UltimoDetalle: string | null
   /** Apareció en la última corrida terminada de su proceso. */
   Vigente: boolean
+}
+
+/** Una tabla publicada: lo que IMAnalitica le publicó contra lo que IMCore tiene (la API lee IMCore directo). */
+export interface ISincronizacionTabla {
+  Tabla: string
+  Origen: string | null
+  ColumnaParte: string | null
+  Activa: boolean
+  Partes: number
+  FilasIMAnalitica: number
+  ExisteEnIMCore: boolean
+  FilasIMCore: number | null
+  PublicadaEnIMCore: string | null
+  Estado: 'AlDia' | 'Pendiente' | 'Distinta' | 'FaltaTabla' | 'SinOrigen' | 'Inactiva'
+  Detalle: string
+}
+
+/** Sincronización con IMCore (D-16): cada tabla y el estado general. */
+export interface ISincronizacion {
+  Estado: 'AlDia' | 'Pendiente' | 'Error' | 'SinTablas'
+  Resumen: string
+  BaseIMCore: string | null
+  UltimaVersion: number | null
+  UltimaPublicacion: string | null
+  ErrorIMAnalitica: string | null
+  ErrorIMCore: string | null
+  Tablas: ISincronizacionTabla[]
 }
