@@ -1,12 +1,14 @@
 import { httpClient } from '../../core/httpClient'
 import { ExecutionResponse } from '../response.type'
 import {
-  IAdvertenciaMonitor, ICapaMonitor, IConexionEstado, IFuenteMonitor, IMedicionMonitor, IProcesoMonitor,
+  IAccionMonitorResult, IAdvertenciaMonitor, ICapaMonitor, IConexionEstado, IFuenteMonitor, IMedicionMonitor, IPasoMonitor,
+  IProcesoMonitor,
 } from './monitorCargas.types'
 
-// api/MonitorCargas, los mismos endpoints del web. SOLO CONSULTA en la app: ejecutar,
-// reintentar, corridas, gráficas y conexiones son del web. El permiso es la opción de menú
-// 'itMonitorCargas', que la API valida contra la BD en cada llamada.
+// api/MonitorCargas, los mismos endpoints del web. La app consulta y puede ejecutar un proceso
+// (como «Ejecutar ahora» del web); reintentar, corridas, gráficas y conexiones son del web. Ver: la
+// opción de menú 'itMonitorCargas'; ejecutar: además el acceso 'MonitorCargasEjecutar'. La API
+// valida los dos contra la BD en cada llamada.
 const schema = 'MonitorCargas'
 
 export const monitorCargasService = {
@@ -23,4 +25,11 @@ export const monitorCargasService = {
 
   /** Si cada servidor responde (proceso CONEXIONES, cada 15 min). */
   conexionEstado: () => httpClient.get<ExecutionResponse<IConexionEstado[]>>(`${schema}/ConexionEstado`),
+
+  /** Pasos de una corrida; mientras corre, la pantalla los vuelve a pedir para mostrar el avance. */
+  pasos: (corridaId: number) => httpClient.get<ExecutionResponse<IPasoMonitor[]>>(`${schema}/Corridas/${corridaId}/Pasos`),
+
+  /** Responde enseguida: la corrida sigue en segundo plano y aparece en procesos. */
+  ejecutar: (proceso: string) =>
+    httpClient.post<ExecutionResponse<IAccionMonitorResult>>(`${schema}/Procesos/${encodeURIComponent(proceso)}/Ejecutar`),
 }

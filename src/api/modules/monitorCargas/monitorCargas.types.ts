@@ -78,6 +78,27 @@ export interface IConexionEstado {
   FallaDesde: string | null
 }
 
+/** Un paso de una corrida, con sus lecturas y procesador. */
+export interface IPasoMonitor {
+  Orden: number
+  Nombre: string
+  Estado: string | null
+  Inicio: string | null
+  Fin: string | null
+  Milisegundos: number | null
+  Filas: number | null
+  LecturasLogicas: number | null
+  CpuMs: number | null
+  Mensaje: string | null
+}
+
+/** Ejecutar no espera la corrida: Aceptado = false si ya estaba corriendo. */
+export interface IAccionMonitorResult {
+  Aceptado: boolean
+  Mensaje: string
+  CorridaId: number | null
+}
+
 /** Una advertencia o error de las revisiones, agrupado por fuente, cuenta y revisión. */
 export interface IAdvertenciaMonitor {
   Resultado: 'Advertencia' | 'Error'
